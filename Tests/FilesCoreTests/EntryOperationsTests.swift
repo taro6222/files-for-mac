@@ -86,3 +86,33 @@ private func entryFixture() throws -> URL {
     #expect(raw["operation"] as? String == "moveToTrash")
     #expect(raw["state"] as? String == "partial")
 }
+
+@Test func entryRestoreFromTrashMovesItemsBack() async throws {
+    let root = try entryFixture(); defer { try? FileManager.default.removeItem(at: root) }
+    let journal = root.appendingPathComponent("journal")
+    let source = root.appendingPathComponent("source.txt")
+    let restored = root.appendingPathComponent("restore-target")
+    try Data("restore".utf8).write(to: source)
+    try FileManager.default.createDirectory(at: restored, withIntermediateDirectories: true)
+    let trash = try await EntryOperations.moveToTrash([source], journalDirectory: journal)
+    let trashed = trash.items.compactMap { $0.trashed }
+    #expect(trashed.count == 1)
+    #expect(!FileManager.default.fileExists(atPath: source.path))
+    let result = try await EntryOperations.restoreFromTrash([trashed[0]], to: restored, journalDirectory: journal)
+    #expect(result.state == "completed")
+    #expect(result.items.count == 1)
+    #expect(result.items[0].state == "completed")
+    #expect(result.items[0].target.deletingLastPathComponent().path == restored.path)
+    #expect(FileManager.default.fileExists(atPath: result.items[0].target.path))
+}
+
+@Test func entryRestoreFailsOutsideTrash() async throws {
+    let root = try entryFixture(); defer { try? FileManager.default.removeItem(at: root) }
+    let journal = root.appendingPathComponent("journal")
+    let source = root.appendingPathComponent("not-trashed.txt")
+    try Data("noop".utf8).write(to: source)
+    let result = try await EntryOperations.restoreFromTrash([source], to: root, journalDirectory: journal)
+    #expect(result.state == "partial")
+    #expect(result.items[0].state == "failed")
+    #expect(result.items[0].message != nil)
+}

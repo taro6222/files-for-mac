@@ -24,6 +24,20 @@ public struct TrashOperationResult: Sendable {
     public let journalError: String?
 }
 
+public struct RestoreItemOperationResult: Sendable {
+    public let source: URL
+    public let target: URL
+    public let state: String
+    public let message: String?
+}
+
+public struct RestoreOperationResult: Sendable {
+    public let id: String
+    public let state: String
+    public let items: [RestoreItemOperationResult]
+    public let journalError: String?
+}
+
 /// Single directory-entry operations. No replacement, recursive rename, or undo.
 public enum EntryOperations {
     private static func operationDateFormatter() -> ISO8601DateFormatter {
@@ -131,6 +145,110 @@ public enum EntryOperations {
         }.value
     }
 
+    public static func restoreFromTrash(_ sources: [URL], to destination: URL, journalDirectory: URL) async throws -> RestoreOperationResult {
+        let normalizedSources = sources.map(\.standardizedFileURL)
+        let normalizedDestination = destination.standardizedFileURL
+        guard !normalizedSources.isEmpty else { throw EntryOperationError.noSources }
+        return try await Task.detached(priority: .userInitiated) {
+            let fm = FileManager.default
+            let operationId = UUID().uuidString
+            let journalURL = journalDirectory.appendingPathComponent("restore-\(operationId).json")
+
+            struct RestoreItemJournal: Codable {
+                let source: URL
+                let target: URL
+                let state: String
+                let message: String?
+                let updatedAt: String
+            }
+
+            struct RestoreJournal: Codable {
+                let version = 1
+                let operation = "restoreFromTrash"
+                let operationId: String
+                let state: String
+                let items: [RestoreItemJournal]
+                let journalError: String?
+            }
+
+            let dateFormatter = operationDateFormatter()
+            var itemStates = normalizedSources.map {
+                RestoreItemOperationResult(source: $0, target: normalizedDestination.appendingPathComponent($0.lastPathComponent), state: "queued", message: nil)
+            }
+            var finalState = "completed"
+            var journalError: String?
+
+            func currentItemStates() -> [RestoreItemJournal] {
+                return itemStates.enumerated().map { index, item in
+                    RestoreItemJournal(source: item.source, target: item.target, state: item.state, message: item.message, updatedAt: dateFormatter.string(from: Date()))
+                }
+            }
+
+            func save(state: String) throws {
+                try fm.createDirectory(at: journalDirectory, withIntermediateDirectories: true)
+                let journal = RestoreJournal(operationId: operationId, state: state, items: currentItemStates(), journalError: journalError)
+                try JSONEncoder().encode(journal).write(to: journalURL, options: .atomic)
+            }
+
+            func isInTrash(_ source: URL) -> Bool {
+                let path = source.standardizedFileURL.path
+                let roots = [
+                    FileManager.SearchPathDirectory.trashDirectory
+                ]
+                for domain in [FileManager.SearchPathDomainMask.userDomainMask, .localDomainMask] as [FileManager.SearchPathDomainMask] {
+                    for root in FileManager.default.urls(for: roots[0], in: domain) {
+                        let candidate = root.standardizedFileURL.path
+                        if path == candidate || path.hasPrefix(candidate + "/") { return true }
+                    }
+                }
+                return false
+            }
+
+            do {
+                try save(state: "queued")
+                for index in normalizedSources.indices {
+                    let source = normalizedSources[index]
+                    let destination = normalizedDestination.appendingPathComponent(source.lastPathComponent)
+                    itemStates[index] = RestoreItemOperationResult(source: source, target: destination, state: itemStates[index].state, message: itemStates[index].message)
+                    if !isInTrash(source) {
+                        itemStates[index] = RestoreItemOperationResult(source: source, target: destination, state: "failed", message: LString.restoreSourceNotInTrash)
+                        finalState = "partial"
+                        try save(state: finalState)
+                        continue
+                    }
+                    do {
+                        if fm.fileExists(atPath: destination.path) {
+                            itemStates[index] = RestoreItemOperationResult(source: source, target: destination, state: "conflict", message: LString.pathConflictMessage)
+                            finalState = "partial"
+                            try save(state: finalState)
+                            continue
+                        }
+                        try fm.moveItem(at: source, to: destination)
+                        itemStates[index] = RestoreItemOperationResult(source: source, target: destination, state: "completed", message: nil)
+                    } catch {
+                        itemStates[index] = RestoreItemOperationResult(source: source, target: destination, state: "failed", message: error.localizedDescription)
+                        finalState = "partial"
+                    }
+                    try save(state: finalState)
+                }
+            } catch {
+                finalState = "failed"
+                journalError = error.localizedDescription
+                try? save(state: finalState)
+                throw error
+            }
+
+            do {
+                try save(state: finalState)
+            } catch {
+                journalError = error.localizedDescription
+                try? save(state: finalState)
+            }
+
+            return RestoreOperationResult(id: operationId, state: finalState, items: itemStates, journalError: journalError)
+        }.value
+    }
+
     private struct Journal: Encodable {
         let version = 1
         let operation: String
@@ -196,4 +314,6 @@ public enum EntryOperations {
 
 private enum LString {
     static let fileMissing = "원본 항목이 없습니다."
+    static let restoreSourceNotInTrash = "휴지통에 없는 항목입니다."
+    static let pathConflictMessage = "대상 폴더에 같은 이름의 항목이 이미 존재합니다."
 }

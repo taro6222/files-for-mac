@@ -26,7 +26,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
-        guard CopyWindow.isRunning || DeletionWindow.isRunning || BrowserWindow.entryOperationRunning else { return .terminateNow }
+        guard CopyWindow.isRunning || DeletionWindow.isRunning || RestoreWindow.isRunning || BrowserWindow.entryOperationRunning else { return .terminateNow }
         let alert = NSAlert()
         alert.messageText = L("파일 작업이 진행 중입니다", "A file operation is running")
         alert.informativeText = L("작업 완료 후 종료하세요. 복사는 복사 창에서 취소할 수 있습니다.", "Quit after the operation finishes. Copies can be cancelled in the copy window.")
@@ -49,6 +49,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let copy = file.addItem(withTitle: L("선택 항목 복사…", "Copy Selection To…"), action: #selector(BrowserWindow.copySelection(_:)), keyEquivalent: "c")
         copy.keyEquivalentModifierMask = [.command, .shift]
         file.addItem(withTitle: L("휴지통으로 이동", "Move to Trash"), action: #selector(BrowserWindow.deleteSelection(_:)), keyEquivalent: "\u{8}")
+        file.addItem(withTitle: L("휴지통에서 복원…", "Restore From Trash…"), action: #selector(BrowserWindow.restoreSelection(_:)), keyEquivalent: "")
         file.addItem(withTitle: L("창 닫기", "Close Window"), action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w")
         let editItem = NSMenuItem(); editItem.title = L("편집", "Edit"); menu.addItem(editItem)
         let edit = NSMenu(title: editItem.title); editItem.submenu = edit
