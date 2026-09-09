@@ -250,3 +250,42 @@ private struct ChunkedLoader: DirectoryStreaming {
     try await Task.sleep(for: .milliseconds(200))
     #expect(model.items.isEmpty); #expect(!model.isLoading)
 }
+
+@Test @MainActor func sidebarSectionsPersistCollapseAndOrderWithoutChangingHome() {
+    let suite = "files-sidebar-tests-\(UUID())"
+    let defaults = UserDefaults(suiteName: suite)!
+    defer { defaults.removePersistentDomain(forName: suite) }
+    let preferences = BrowserPreferences(defaults: defaults, initialFavorites: [])
+    preferences.toggleSidebar(.favorites); preferences.moveSidebar(.locations, by: -1)
+    let restored = BrowserPreferences(defaults: defaults)
+    #expect(restored.sidebarOrder == [.locations, .favorites])
+    #expect(restored.collapsedSidebar == [.favorites])
+    #expect(restored.showHomeFavorites)
+    preferences.toggleSidebar(.favorites)
+    #expect(preferences.collapsedSidebar.isEmpty)
+}
+
+@Test @MainActor func sidebarOrderRepairsUnknownAndDuplicateSavedValues() {
+    let suite = "files-sidebar-invalid-\(UUID())", defaults: UserDefaults
+    defaults = UserDefaults(suiteName: suite)!
+    defer { defaults.removePersistentDomain(forName: suite) }
+    defaults.set(["locations", "obsolete", "locations"], forKey: "sidebarOrder")
+    defaults.set(["unknown", "favorites"], forKey: "collapsedSidebar")
+    let preferences = BrowserPreferences(defaults: defaults)
+    #expect(preferences.sidebarOrder == [.locations, .favorites])
+    #expect(preferences.collapsedSidebar == [.favorites])
+    preferences.moveSidebar(.locations, by: -1)
+    #expect(preferences.sidebarOrder == [.locations, .favorites])
+}
+
+@Test func unreadableDirectoryReturnsPermissionError() async throws {
+    let root = try fixture()
+    defer {
+        try? FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: root.path)
+        try? FileManager.default.removeItem(at: root)
+    }
+    try FileManager.default.setAttributes([.posixPermissions: 0o000], ofItemAtPath: root.path)
+    await #expect(throws: (any Error).self) {
+        _ = try await LocalFileSystem().contents(of: root, showHidden: false)
+    }
+}

@@ -7,6 +7,9 @@ public final class BrowserPreferences {
     public static let shared = BrowserPreferences()
     private let defaults: UserDefaults
     private var observers: [UUID: () -> Void] = [:]
+    public enum SidebarSection: String, CaseIterable, Sendable { case favorites, locations }
+    public private(set) var sidebarOrder: [SidebarSection]
+    public private(set) var collapsedSidebar: Set<SidebarSection>
     public private(set) var favorites: [URL]
     public private(set) var recent: [URL]
     public private(set) var showHidden: Bool
@@ -17,6 +20,12 @@ public final class BrowserPreferences {
 
     public init(defaults: UserDefaults = .standard, initialFavorites: [URL]? = nil) {
         self.defaults = defaults
+        var order: [SidebarSection] = []
+        for raw in defaults.stringArray(forKey: "sidebarOrder") ?? [] {
+            if let section = SidebarSection(rawValue: raw), !order.contains(section) { order.append(section) }
+        }
+        sidebarOrder = order + SidebarSection.allCases.filter { !order.contains($0) }
+        collapsedSidebar = Set((defaults.stringArray(forKey: "collapsedSidebar") ?? []).compactMap(SidebarSection.init(rawValue:)))
         let home = FileManager.default.homeDirectoryForCurrentUser
         favorites = (defaults.stringArray(forKey: "favorites")?.map { URL(fileURLWithPath: $0) }
             ?? initialFavorites ?? ["Downloads", "Documents", "Desktop"].map { home.appendingPathComponent($0) })
@@ -32,6 +41,16 @@ public final class BrowserPreferences {
     }
     public func removeObserver(_ id: UUID) { observers.removeValue(forKey: id) }
     private func changed() { for callback in Array(observers.values) { callback() } }
+    public func toggleSidebar(_ section: SidebarSection) {
+        if collapsedSidebar.contains(section) { collapsedSidebar.remove(section) }
+        else { collapsedSidebar.insert(section) }
+        defaults.set(collapsedSidebar.map(\.rawValue).sorted(), forKey: "collapsedSidebar"); changed()
+    }
+    public func moveSidebar(_ section: SidebarSection, by offset: Int) {
+        guard let index = sidebarOrder.firstIndex(of: section), sidebarOrder.indices.contains(index + offset) else { return }
+        sidebarOrder.swapAt(index, index + offset)
+        defaults.set(sidebarOrder.map(\.rawValue), forKey: "sidebarOrder"); changed()
+    }
     public func toggleFavorite(_ url: URL) {
         let url = url.standardizedFileURL
         if favorites.contains(url) { favorites.removeAll { $0 == url } }

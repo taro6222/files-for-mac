@@ -4,7 +4,7 @@ import FilesCore
 #endif
 
 @MainActor
-final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableViewDelegate, NSComboBoxDelegate, NSMenuDelegate {
+final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableViewDelegate, NSComboBoxDelegate, NSMenuDelegate, NSMenuItemValidation {
     var onClose: (() -> Void)?
     private let model = BrowserModel()
     private let table = NSTableView()
@@ -79,6 +79,7 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
     private func setupUI() {
         guard let root = window?.contentView else { return }
         let split = NSSplitView()
+        split.autosaveName = "BrowserSidebarSplit"
         split.isVertical = true; split.dividerStyle = .thin; split.translatesAutoresizingMaskIntoConstraints = false
         root.addSubview(split)
         NSLayoutConstraint.activate([split.leadingAnchor.constraint(equalTo: root.leadingAnchor), split.trailingAnchor.constraint(equalTo: root.trailingAnchor), split.topAnchor.constraint(equalTo: root.topAnchor), split.bottomAnchor.constraint(equalTo: root.bottomAnchor)])
@@ -107,6 +108,8 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         buildSidebar()
         let main = NSStackView(); main.orientation = .vertical; main.spacing = 0; main.alignment = .leading
         split.addArrangedSubview(main)
+        split.setHoldingPriority(.defaultHigh, forSubviewAt: 0)
+        split.setHoldingPriority(.defaultLow, forSubviewAt: 1)
         split.setPosition(220, ofDividerAt: 0)
 
         let header = NSStackView(); header.orientation = .horizontal; header.spacing = 10
@@ -214,6 +217,7 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
     private func locationButton(_ title: String, symbol: String, url: URL?, in stack: NSStackView) {
         let b = LocationButton(title: title, target: self, action: #selector(openLocation(_:)))
         b.url = url; b.bezelStyle = .recessed; b.isBordered = false
+        b.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         b.alignment = .left; b.font = .systemFont(ofSize: 13)
         b.image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)
         b.imagePosition = .imageLeading; b.imageHugsTitle = true
@@ -239,13 +243,35 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
     private func buildSidebar() {
         sidebar.arrangedSubviews.forEach { sidebar.removeArrangedSubview($0); $0.removeFromSuperview() }
         locationButton(L("홈", "Home"), symbol: "house", url: nil, in: sidebar)
-        section(L("즐겨찾기", "Favorites"), in: sidebar)
-        for url in favorites { locationButton(displayName(url), symbol: "folder", url: url, in: sidebar) }
-        section(L("위치", "Locations"), in: sidebar)
-        locationButton(L("사용자 폴더", "User Folder"), symbol: "person.crop.circle", url: FileManager.default.homeDirectoryForCurrentUser, in: sidebar)
-        locationButton(L("응용 프로그램", "Applications"), symbol: "square.grid.2x2", url: URL(fileURLWithPath: "/Applications"), in: sidebar)
-        for volume in volumes {
-            locationButton(volume.name, symbol: "externaldrive", url: volume.url, in: sidebar)
+        for section in preferences.sidebarOrder {
+            let collapsed = preferences.collapsedSidebar.contains(section)
+            let title = section == .favorites ? L("즐겨찾기", "Favorites") : L("위치", "Locations")
+            let disclosure = SidebarSectionButton(title: title, target: self, action: #selector(toggleSidebarSection(_:)))
+            disclosure.section = section; disclosure.bezelStyle = .recessed; disclosure.isBordered = false
+            disclosure.alignment = .left; disclosure.font = .systemFont(ofSize: 11, weight: .semibold)
+            disclosure.image = NSImage(systemSymbolName: collapsed ? "chevron.right" : "chevron.down", accessibilityDescription: nil)
+            disclosure.imagePosition = .imageLeading; disclosure.imageHugsTitle = true
+            disclosure.setAccessibilityLabel(title + (collapsed ? L(" 펼치기", " Expand") : L(" 접기", " Collapse")))
+            disclosure.identifier = NSUserInterfaceItemIdentifier("sidebar." + section.rawValue)
+            let menu = NSMenu(); menu.autoenablesItems = false
+            for (label, action, offset) in [(L("섹션 위로", "Move Section Up"), #selector(moveSidebarUp(_:)), -1),
+                                             (L("섹션 아래로", "Move Section Down"), #selector(moveSidebarDown(_:)), 1)] {
+                let item = menu.addItem(withTitle: label, action: action, keyEquivalent: "")
+                item.target = self; item.representedObject = section.rawValue
+                if let index = preferences.sidebarOrder.firstIndex(of: section) { item.isEnabled = preferences.sidebarOrder.indices.contains(index + offset) }
+            }
+            disclosure.menu = menu; sidebar.addArrangedSubview(disclosure)
+            disclosure.heightAnchor.constraint(equalToConstant: 28).isActive = true
+            disclosure.widthAnchor.constraint(equalTo: sidebar.widthAnchor, constant: -28).isActive = true
+            guard !collapsed else { continue }
+            switch section {
+            case .favorites:
+                for url in favorites { locationButton(displayName(url), symbol: "folder", url: url, in: sidebar) }
+            case .locations:
+                locationButton(L("사용자 폴더", "User Folder"), symbol: "person.crop.circle", url: FileManager.default.homeDirectoryForCurrentUser, in: sidebar)
+                locationButton(L("응용 프로그램", "Applications"), symbol: "square.grid.2x2", url: URL(fileURLWithPath: "/Applications"), in: sidebar)
+                for volume in volumes { locationButton(volume.name, symbol: "externaldrive", url: volume.url, in: sidebar) }
+            }
         }
     }
     private func buildHome() {
@@ -336,6 +362,7 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
             lastRecordedLocation = url; preferences.recordVisit(url)
         }
         updateStatus()
+        if model.location != nil && window?.firstResponder === window { window?.makeFirstResponder(table) }
     }
     private func updateStatus() {
         if model.location == nil { status.stringValue = L("준비됨", "Ready"); return }
@@ -421,6 +448,7 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         preferences.toggleFavorite(url)
     }
     @objc func openSelection(_ sender: Any?) {
+        if sender as? NSTableView === table && table.clickedRow < 0 { return }
         let rows = table.selectedRowIndexes
         guard let first = rows.first, model.items.indices.contains(first) else { return }
         let item = model.items[first]
@@ -451,7 +479,7 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
 }
 
 @MainActor
-final class LocationButton: NSButton { var url: URL? }
+final class LocationButton: SidebarKeyboardButton { var url: URL? }
 
 @MainActor
 final class FlippedView: NSView { override var isFlipped: Bool { true } }
@@ -554,5 +582,67 @@ extension BrowserWindow {
             self.volumes = result; self.buildSidebar()
             if self.model.location == nil { self.buildHome() }
         }
+    }
+}
+
+@MainActor
+private final class SidebarSectionButton: SidebarKeyboardButton {
+    var section: BrowserPreferences.SidebarSection = .favorites
+}
+
+extension BrowserWindow {
+    @objc private func toggleSidebarSection(_ sender: SidebarSectionButton) {
+        let section = sender.section
+        preferences.toggleSidebar(section)
+        if let replacement = sidebar.arrangedSubviews.first(where: { $0.identifier?.rawValue == "sidebar." + section.rawValue }) {
+            window?.makeFirstResponder(replacement)
+        }
+    }
+    @objc private func moveSidebarUp(_ sender: NSMenuItem) { moveSidebar(sender, by: -1) }
+    @objc private func moveSidebarDown(_ sender: NSMenuItem) { moveSidebar(sender, by: 1) }
+    private func moveSidebar(_ sender: NSMenuItem, by offset: Int) {
+        guard let raw = sender.representedObject as? String, let section = BrowserPreferences.SidebarSection(rawValue: raw) else { return }
+        preferences.moveSidebar(section, by: offset)
+    }
+    @objc func goHome(_ sender: Any?) { navigate(nil); focusSidebar(nil) }
+    @objc func focusFiles(_ sender: Any?) {
+        if model.location == nil { focusSidebar(nil) } else { window?.makeFirstResponder(table) }
+    }
+    @objc func focusSidebar(_ sender: Any?) {
+        if let first = sidebar.arrangedSubviews.first { window?.makeFirstResponder(first) }
+    }
+    @objc func openViewOptions(_ sender: Any?) {
+        optionsMenu.popUp(positioning: nil, at: NSPoint(x: content.bounds.maxX - 200, y: content.bounds.maxY), in: content)
+    }
+    func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
+        switch menuItem.action {
+        case #selector(goBack(_:)): return !model.history.back.isEmpty
+        case #selector(goForward(_:)): return !model.history.forward.isEmpty
+        case #selector(goUp(_:)): return model.location != nil && model.location?.path != "/"
+        case #selector(openSelection(_:)), #selector(revealSelection(_:)): return !table.selectedRowIndexes.isEmpty && model.location != nil
+        default: return true
+        }
+    }
+}
+
+/// Arrow navigation works independently of macOS's optional full-keyboard-access setting.
+@MainActor
+class SidebarKeyboardButton: NSButton {
+    override func keyDown(with event: NSEvent) {
+        let modifiers = event.modifierFlags.intersection([.command, .control, .option])
+        if modifiers.isEmpty, event.keyCode == 125 || event.keyCode == 126,
+           let stack = superview as? NSStackView {
+            let buttons = stack.arrangedSubviews.compactMap { $0 as? NSButton }.filter { !$0.isHidden && $0.isEnabled }
+            if let index = buttons.firstIndex(of: self) {
+                let next = index + (event.keyCode == 125 ? 1 : -1)
+                if buttons.indices.contains(next) { window?.makeFirstResponder(buttons[next]) }
+            }
+            return
+        }
+        if event.keyCode == 109, event.modifierFlags.contains(.shift), let menu {
+            menu.popUp(positioning: nil, at: NSPoint(x: 0, y: bounds.maxY), in: self)
+            return
+        }
+        super.keyDown(with: event)
     }
 }
