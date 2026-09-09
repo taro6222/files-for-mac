@@ -116,3 +116,32 @@ private func entryFixture() throws -> URL {
     #expect(result.items[0].state == "failed")
     #expect(result.items[0].message != nil)
 }
+
+@Test func entryPermanentDeleteRemovesExistingItemsAndReportsState() async throws {
+    let root = try entryFixture(); defer { try? FileManager.default.removeItem(at: root) }
+    let journal = root.appendingPathComponent("journal")
+    let sourceFile = root.appendingPathComponent("to-delete.txt")
+    let sourceFolder = root.appendingPathComponent("to-delete-folder")
+    try Data("delete".utf8).write(to: sourceFile)
+    try FileManager.default.createDirectory(at: sourceFolder, withIntermediateDirectories: true)
+    try Data("inside".utf8).write(to: sourceFolder.appendingPathComponent("inside.txt"))
+    let result = try await EntryOperations.permanentlyDelete([sourceFile, sourceFolder], journalDirectory: journal)
+    #expect(result.state == "completed")
+    #expect(!FileManager.default.fileExists(atPath: sourceFile.path))
+    #expect(!FileManager.default.fileExists(atPath: sourceFolder.path))
+    #expect(result.items.allSatisfy { $0.state == "completed" })
+}
+
+@Test func entryPermanentDeleteTracksMissingAndFailed() async throws {
+    let root = try entryFixture(); defer { try? FileManager.default.removeItem(at: root) }
+    let journal = root.appendingPathComponent("journal")
+    let source = root.appendingPathComponent("to-delete.txt")
+    let missing = root.appendingPathComponent("not-exists.txt")
+    try Data("delete".utf8).write(to: source)
+    let result = try await EntryOperations.permanentlyDelete([source, missing], journalDirectory: journal)
+    #expect(result.state == "partial")
+    #expect(result.items.count == 2)
+    #expect(result.items[0].state == "completed")
+    #expect(result.items[1].state == "notFound")
+    #expect(result.items[1].message != nil)
+}

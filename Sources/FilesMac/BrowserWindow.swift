@@ -241,8 +241,11 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         menu.addItem(NSMenuItem.separator())
         let delete = menu.addItem(withTitle: L("휴지통으로 이동", "Move to Trash"), action: #selector(deleteSelection(_:)), keyEquivalent: ""); delete.target = self
         let restore = menu.addItem(withTitle: L("휴지통에서 복원…", "Restore From Trash…"), action: #selector(restoreSelection(_:)), keyEquivalent: ""); restore.target = self
+        let permanentDelete = menu.addItem(withTitle: L("영구 삭제…", "Delete Permanently…"), action: #selector(permanentlyDeleteSelection(_:)), keyEquivalent: "")
+        permanentDelete.target = self
         delete.isEnabled = false
         restore.isEnabled = false
+        permanentDelete.isEnabled = false
         let reveal = menu.addItem(withTitle: L("Finder에서 보기", "Reveal in Finder"), action: #selector(revealSelection(_:)), keyEquivalent: ""); reveal.target = self
         table.menu = menu
     }
@@ -603,6 +606,30 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         !model.isLoading && !Self.entryOperationRunning && !CopyWindow.isRunning &&
         !DeletionWindow.isRunning && !RestoreWindow.isRunning && !table.selectedRowIndexes.isEmpty
     }
+    @objc func permanentlyDeleteSelection(_ sender: Any?) {
+        guard canPermanentDeleteSelection else { return }
+        guard let window else { return }
+        let selected = table.selectedRowIndexes.compactMap { model.items.indices.contains($0) ? model.items[$0].url : nil }
+        guard !selected.isEmpty else { return }
+        let names = selected.map(\.lastPathComponent).joined(separator: ", ")
+        let alert = NSAlert()
+        alert.messageText = L("영구 삭제", "Delete Permanently")
+        alert.alertStyle = .critical
+        alert.informativeText = L("선택한 항목을 영구 삭제합니다. 이 작업은 실행 취소할 수 없습니다.", "Delete selected items permanently. This action cannot be undone.") + "\n\n" + names
+        alert.addButton(withTitle: L("영구 삭제", "Delete Permanently"))
+        alert.addButton(withTitle: L("취소", "Cancel"))
+        alert.beginSheetModal(for: window) { [weak self] response in
+            guard response == .alertFirstButtonReturn else { return }
+            guard let self else { return }
+            PermanentDeleteWindow.start(sources: selected) { [weak self] in
+                self?.refresh(nil)
+            }
+        }
+    }
+    private var canPermanentDeleteSelection: Bool {
+        !model.isLoading && !Self.entryOperationRunning && !CopyWindow.isRunning &&
+        !DeletionWindow.isRunning && !RestoreWindow.isRunning && !PermanentDeleteWindow.isRunning && !table.selectedRowIndexes.isEmpty
+    }
     private func promptForEntryName(source: FileItem?) {
         guard !Self.entryOperationRunning, !CopyWindow.isRunning, !model.isLoading,
               let parent = model.location, let window else { return }
@@ -904,6 +931,7 @@ extension BrowserWindow {
         switch menuItem.action {
         case #selector(deleteSelection(_:)): return canDeleteSelection
         case #selector(restoreSelection(_:)): return canRestoreSelection
+        case #selector(permanentlyDeleteSelection(_:)): return canPermanentDeleteSelection
         case #selector(createFolder(_:)): return model.location != nil && !model.isLoading && !Self.entryOperationRunning && !CopyWindow.isRunning
         case #selector(renameSelection(_:)): return model.location != nil && table.selectedRowIndexes.count == 1 && !model.isLoading && !Self.entryOperationRunning && !CopyWindow.isRunning
         case #selector(retryAutomaticRefresh(_:)): return model.location != nil && watcherStatus != .active

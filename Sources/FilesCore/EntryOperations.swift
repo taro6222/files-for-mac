@@ -38,6 +38,19 @@ public struct RestoreOperationResult: Sendable {
     public let journalError: String?
 }
 
+public struct PermanentDeleteItemOperationResult: Sendable {
+    public let source: URL
+    public let state: String
+    public let message: String?
+}
+
+public struct PermanentDeleteOperationResult: Sendable {
+    public let id: String
+    public let state: String
+    public let items: [PermanentDeleteItemOperationResult]
+    public let journalError: String?
+}
+
 /// Single directory-entry operations. No replacement, recursive rename, or undo.
 public enum EntryOperations {
     private static func operationDateFormatter() -> ISO8601DateFormatter {
@@ -246,6 +259,87 @@ public enum EntryOperations {
             }
 
             return RestoreOperationResult(id: operationId, state: finalState, items: itemStates, journalError: journalError)
+        }.value
+    }
+
+    public static func permanentlyDelete(_ sources: [URL], journalDirectory: URL) async throws -> PermanentDeleteOperationResult {
+        let normalizedSources = sources.map(\.standardizedFileURL)
+        guard !normalizedSources.isEmpty else { throw EntryOperationError.noSources }
+
+        return try await Task.detached(priority: .userInitiated) {
+            let fm = FileManager.default
+            let operationId = UUID().uuidString
+            let journalURL = journalDirectory.appendingPathComponent("permanent-delete-\(operationId).json")
+
+            struct PermanentDeleteItemJournal: Codable {
+                let source: URL
+                let state: String
+                let message: String?
+                let updatedAt: String
+            }
+
+            struct PermanentDeleteJournal: Codable {
+                let version = 1
+                let operation = "permanentlyDelete"
+                let operationId: String
+                let state: String
+                let items: [PermanentDeleteItemJournal]
+                let journalError: String?
+            }
+
+            let dateFormatter = operationDateFormatter()
+            var itemStates = normalizedSources.map { PermanentDeleteItemOperationResult(source: $0, state: "queued", message: nil) }
+            var finalState = "completed"
+            var journalError: String?
+
+            func currentItemStates() -> [PermanentDeleteItemJournal] {
+                return itemStates.enumerated().map { index, item in
+                    PermanentDeleteItemJournal(source: item.source, state: item.state, message: item.message,
+                                              updatedAt: dateFormatter.string(from: Date()))
+                }
+            }
+
+            func save(state: String) throws {
+                try fm.createDirectory(at: journalDirectory, withIntermediateDirectories: true)
+                let journal = PermanentDeleteJournal(operationId: operationId, state: state, items: currentItemStates(),
+                                                     journalError: journalError)
+                try JSONEncoder().encode(journal).write(to: journalURL, options: .atomic)
+            }
+
+            do {
+                try save(state: "queued")
+                for index in normalizedSources.indices {
+                    let source = normalizedSources[index]
+                    do {
+                        guard fm.fileExists(atPath: source.path) else {
+                            itemStates[index] = PermanentDeleteItemOperationResult(source: source, state: "notFound", message: LString.fileMissing)
+                            finalState = "partial"
+                            try save(state: finalState)
+                            continue
+                        }
+                        try fm.removeItem(at: source)
+                        itemStates[index] = PermanentDeleteItemOperationResult(source: source, state: "completed", message: nil)
+                    } catch {
+                        itemStates[index] = PermanentDeleteItemOperationResult(source: source, state: "failed", message: error.localizedDescription)
+                        finalState = "partial"
+                    }
+                    try save(state: finalState)
+                }
+            } catch {
+                finalState = "failed"
+                journalError = error.localizedDescription
+                try? save(state: finalState)
+                throw error
+            }
+
+            do {
+                try save(state: finalState)
+            } catch {
+                journalError = error.localizedDescription
+                try? save(state: finalState)
+            }
+
+            return PermanentDeleteOperationResult(id: operationId, state: finalState, items: itemStates, journalError: journalError)
         }.value
     }
 
