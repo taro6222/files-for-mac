@@ -206,7 +206,7 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         bottom.edgeInsets = NSEdgeInsets(top: 7, left: 18, bottom: 7, right: 18)
         status.font = .systemFont(ofSize: 11); status.textColor = .secondaryLabelColor
         bottom.addArrangedSubview(status); bottom.addArrangedSubview(NSView())
-        let phase = NSTextField(labelWithString: L("M1 · 읽기 전용 탐색", "M1 · Read-only browser"))
+        let phase = NSTextField(labelWithString: L("M2 · 탐색 및 복사", "M2 · Browse and copy"))
         phase.font = .systemFont(ofSize: 11); phase.textColor = .tertiaryLabelColor
         bottom.addArrangedSubview(phase); main.addArrangedSubview(bottom)
         for view in [header, toolbar, divider, content, bottom] { view.widthAnchor.constraint(equalTo: main.widthAnchor).isActive = true }
@@ -233,6 +233,7 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         NSLayoutConstraint.activate([scroll.leadingAnchor.constraint(equalTo: content.leadingAnchor), scroll.trailingAnchor.constraint(equalTo: content.trailingAnchor), scroll.topAnchor.constraint(equalTo: content.topAnchor), scroll.bottomAnchor.constraint(equalTo: content.bottomAnchor)])
         let menu = NSMenu()
         let open = menu.addItem(withTitle: L("열기", "Open"), action: #selector(openSelection(_:)), keyEquivalent: ""); open.target = self
+        let copy = menu.addItem(withTitle: L("선택 항목 복사…", "Copy Selection To…"), action: #selector(copySelection(_:)), keyEquivalent: ""); copy.target = self
         let reveal = menu.addItem(withTitle: L("Finder에서 보기", "Reveal in Finder"), action: #selector(revealSelection(_:)), keyEquivalent: ""); reveal.target = self
         table.menu = menu
     }
@@ -527,6 +528,23 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         if item.isBrowsable { navigate(item.url) }
         else { NSWorkspace.shared.open(item.url) }
     }
+    @objc func copySelection(_ sender: Any?) {
+        guard !CopyWindow.isRunning, !model.isLoading, let window else { return }
+        let sources = table.selectedRowIndexes.compactMap { model.items.indices.contains($0) ? model.items[$0].url : nil }
+        guard !sources.isEmpty else { return }
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = true; panel.canChooseFiles = false; panel.allowsMultipleSelection = false
+        panel.prompt = L("여기에 복사", "Copy Here")
+        panel.message = L("복사할 대상 폴더를 선택하세요. 같은 이름은 덮어쓰지 않고 건너뜁니다.", "Choose the destination folder. Existing names will be skipped.")
+        panel.beginSheetModal(for: window) { [weak self] response in
+            guard response == .OK, let destination = panel.url else { return }
+            CopyWindow.start(sources: sources, destination: destination) { [weak self] in
+                if self?.model.location?.resolvingSymlinksInPath() == destination.resolvingSymlinksInPath() {
+                    self?.refresh(nil)
+                }
+            }
+        }
+    }
     @objc func revealSelection(_ sender: Any?) {
         let urls = table.selectedRowIndexes.compactMap { model.items.indices.contains($0) ? model.items[$0].url : nil }
         if !urls.isEmpty { NSWorkspace.shared.activateFileViewerSelecting(urls) }
@@ -718,6 +736,7 @@ extension BrowserWindow {
     func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
         switch menuItem.action {
         case #selector(retryAutomaticRefresh(_:)): return model.location != nil && watcherStatus != .active
+        case #selector(copySelection(_:)): return !CopyWindow.isRunning && !model.isLoading && !table.selectedRowIndexes.isEmpty
         case #selector(stopLoading(_:)): return model.isLoading
         case #selector(goBack(_:)): return !model.history.back.isEmpty
         case #selector(goForward(_:)): return !model.history.forward.isEmpty
