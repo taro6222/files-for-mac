@@ -145,3 +145,36 @@ private func entryFixture() throws -> URL {
     #expect(result.items[1].state == "notFound")
     #expect(result.items[1].message != nil)
 }
+
+@Test func entryMoveMovesItemsIntoDestination() async throws {
+    let root = try entryFixture(); defer { try? FileManager.default.removeItem(at: root) }
+    let journal = root.appendingPathComponent("journal")
+    let destination = root.appendingPathComponent("dest")
+    let source = root.appendingPathComponent("move.txt")
+    try FileManager.default.createDirectory(at: destination, withIntermediateDirectories: true)
+    try Data("move".utf8).write(to: source)
+    let report = try await EntryOperations.move([source], to: destination, conflictPolicy: .skip, journalDirectory: journal)
+    let movedPath = destination.appendingPathComponent("move.txt")
+    #expect(report.state == "completed")
+    #expect(report.items.count == 1)
+    #expect(report.items[0].state == "completed")
+    #expect(report.items[0].target == movedPath)
+    #expect(!FileManager.default.fileExists(atPath: source.path))
+    #expect(FileManager.default.fileExists(atPath: movedPath.path))
+}
+
+@Test func entryMoveSkipsConflicts() async throws {
+    let root = try entryFixture(); defer { try? FileManager.default.removeItem(at: root) }
+    let journal = root.appendingPathComponent("journal")
+    let destination = root.appendingPathComponent("dest")
+    let source = root.appendingPathComponent("move.txt")
+    try FileManager.default.createDirectory(at: destination, withIntermediateDirectories: true)
+    try Data("move".utf8).write(to: source)
+    try Data("existing".utf8).write(to: destination.appendingPathComponent("move.txt"))
+    let report = try await EntryOperations.move([source], to: destination, conflictPolicy: .skip, journalDirectory: journal)
+    #expect(report.state == "partial")
+    #expect(report.items.count == 1)
+    #expect(report.items[0].state == "conflict")
+    #expect(FileManager.default.fileExists(atPath: source.path))
+    #expect(FileManager.default.fileExists(atPath: destination.appendingPathComponent("move.txt").path))
+}

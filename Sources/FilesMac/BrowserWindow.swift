@@ -238,6 +238,7 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         let rename = menu.addItem(withTitle: L("이름 변경…", "Rename…"), action: #selector(renameSelection(_:)), keyEquivalent: ""); rename.target = self
         let open = menu.addItem(withTitle: L("열기", "Open"), action: #selector(openSelection(_:)), keyEquivalent: ""); open.target = self
         let copy = menu.addItem(withTitle: L("선택 항목 복사…", "Copy Selection To…"), action: #selector(copySelection(_:)), keyEquivalent: ""); copy.target = self
+        let move = menu.addItem(withTitle: L("선택 항목 이동…", "Move Selection To…"), action: #selector(moveSelection(_:)), keyEquivalent: ""); move.target = self
         menu.addItem(NSMenuItem.separator())
         let delete = menu.addItem(withTitle: L("휴지통으로 이동", "Move to Trash"), action: #selector(deleteSelection(_:)), keyEquivalent: ""); delete.target = self
         let restore = menu.addItem(withTitle: L("휴지통에서 복원…", "Restore From Trash…"), action: #selector(restoreSelection(_:)), keyEquivalent: ""); restore.target = self
@@ -606,6 +607,11 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         !model.isLoading && !Self.entryOperationRunning && !CopyWindow.isRunning &&
         !DeletionWindow.isRunning && !RestoreWindow.isRunning && !table.selectedRowIndexes.isEmpty
     }
+    private var canMoveSelection: Bool {
+        !model.isLoading && !Self.entryOperationRunning && !CopyWindow.isRunning &&
+        !DeletionWindow.isRunning && !RestoreWindow.isRunning && !MoveWindow.isRunning && !PermanentDeleteWindow.isRunning &&
+        !table.selectedRowIndexes.isEmpty
+    }
     @objc func permanentlyDeleteSelection(_ sender: Any?) {
         guard canPermanentDeleteSelection else { return }
         guard let window else { return }
@@ -696,6 +702,22 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
             self?.prepareCopy(sources: sources, destination: destination)
         }
     }
+    @objc func moveSelection(_ sender: Any?) {
+        guard canMoveSelection else { return }
+        guard let window else { return }
+        let selected = table.selectedRowIndexes.compactMap { model.items.indices.contains($0) ? model.items[$0].url : nil }
+        guard !selected.isEmpty else { return }
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.allowsMultipleSelection = false
+        panel.prompt = L("이동할 위치 선택", "Choose Move Location")
+        panel.message = L("선택한 항목을 이동할 대상 폴더를 선택하세요.", "Choose destination folder for move.")
+        panel.beginSheetModal(for: window) { [weak self] response in
+            guard response == .OK, let destination = panel.url else { return }
+            self?.prepareMove(sources: selected, destination: destination)
+        }
+    }
     func copyFilesToClipboard() {
         guard !model.isLoading else { return }
         let urls = table.selectedRowIndexes.compactMap { model.items.indices.contains($0) ? model.items[$0].url as NSURL : nil }
@@ -728,6 +750,23 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
                 if self?.model.location?.resolvingSymlinksInPath() == destination.resolvingSymlinksInPath() {
                     self?.refresh(nil)
                 }
+            }
+        }
+    }
+    private func prepareMove(sources: [URL], destination: URL) {
+        guard !Self.entryOperationRunning, !MoveWindow.isRunning, let window else { return }
+        let alert = NSAlert()
+        alert.messageText = L("이동 시 이름 충돌 처리", "Move conflict policy")
+        alert.informativeText = L("대상: ", "Destination: ") + destination.path + "\n" +
+            L("\(sources.count)개 항목을 이동합니다. 이번 작업에서 이름이 겹치면 적용할 정책을 선택하세요.", "Moving \(sources.count) items. Choose how this job handles conflicting names.")
+        alert.addButton(withTitle: L("건너뛰기", "Skip Conflicts"))
+        alert.addButton(withTitle: L("교체", "Replace Existing"))
+        alert.addButton(withTitle: L("취소", "Cancel"))
+        alert.beginSheetModal(for: window) { [weak self] response in
+            guard response == .alertFirstButtonReturn || response == .alertSecondButtonReturn else { return }
+            MoveWindow.start(sources: sources, destination: destination,
+                             conflictPolicy: response == .alertSecondButtonReturn ? .replace : .skip) { [weak self] in
+                self?.refresh(nil)
             }
         }
     }
@@ -932,6 +971,7 @@ extension BrowserWindow {
         case #selector(deleteSelection(_:)): return canDeleteSelection
         case #selector(restoreSelection(_:)): return canRestoreSelection
         case #selector(permanentlyDeleteSelection(_:)): return canPermanentDeleteSelection
+        case #selector(moveSelection(_:)): return canMoveSelection
         case #selector(createFolder(_:)): return model.location != nil && !model.isLoading && !Self.entryOperationRunning && !CopyWindow.isRunning
         case #selector(renameSelection(_:)): return model.location != nil && table.selectedRowIndexes.count == 1 && !model.isLoading && !Self.entryOperationRunning && !CopyWindow.isRunning
         case #selector(retryAutomaticRefresh(_:)): return model.location != nil && watcherStatus != .active

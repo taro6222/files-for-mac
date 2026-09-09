@@ -26,7 +26,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
-        guard CopyWindow.isRunning || DeletionWindow.isRunning || RestoreWindow.isRunning ||
+        guard CopyWindow.isRunning || DeletionWindow.isRunning || RestoreWindow.isRunning || MoveWindow.isRunning ||
               PermanentDeleteWindow.isRunning || BrowserWindow.entryOperationRunning else { return .terminateNow }
         let alert = NSAlert()
         alert.messageText = L("파일 작업이 진행 중입니다", "A file operation is running")
@@ -49,6 +49,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         file.addItem(withTitle: L("이름 변경…", "Rename…"), action: #selector(BrowserWindow.renameSelection(_:)), keyEquivalent: "")
         let copy = file.addItem(withTitle: L("선택 항목 복사…", "Copy Selection To…"), action: #selector(BrowserWindow.copySelection(_:)), keyEquivalent: "c")
         copy.keyEquivalentModifierMask = [.command, .shift]
+        let move = file.addItem(withTitle: L("선택 항목 이동…", "Move Selection To…"), action: #selector(BrowserWindow.moveSelection(_:)), keyEquivalent: "v")
+        move.keyEquivalentModifierMask = [.command, .shift]
         file.addItem(withTitle: L("휴지통으로 이동", "Move to Trash"), action: #selector(BrowserWindow.deleteSelection(_:)), keyEquivalent: "\u{8}")
         file.addItem(withTitle: L("휴지통에서 복원…", "Restore From Trash…"), action: #selector(BrowserWindow.restoreSelection(_:)), keyEquivalent: "")
         file.addItem(withTitle: L("영구 삭제…", "Delete Permanently…"), action: #selector(BrowserWindow.permanentlyDeleteSelection(_:)), keyEquivalent: "")

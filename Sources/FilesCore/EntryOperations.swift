@@ -51,6 +51,25 @@ public struct PermanentDeleteOperationResult: Sendable {
     public let journalError: String?
 }
 
+public struct MoveItemOperationResult: Sendable {
+    public let source: URL
+    public let target: URL
+    public let state: String
+    public let message: String?
+}
+
+public struct MoveOperationResult: Sendable {
+    public let id: String
+    public let state: String
+    public let items: [MoveItemOperationResult]
+    public let journalError: String?
+}
+
+public enum MoveConflictPolicy: String, Sendable {
+    case skip
+    case replace
+}
+
 /// Single directory-entry operations. No replacement, recursive rename, or undo.
 public enum EntryOperations {
     private static func operationDateFormatter() -> ISO8601DateFormatter {
@@ -340,6 +359,105 @@ public enum EntryOperations {
             }
 
             return PermanentDeleteOperationResult(id: operationId, state: finalState, items: itemStates, journalError: journalError)
+        }.value
+    }
+
+    public static func move(_ sources: [URL], to destination: URL, conflictPolicy: MoveConflictPolicy = .skip,
+                            journalDirectory: URL) async throws -> MoveOperationResult {
+        let normalizedSources = sources.map(\.standardizedFileURL)
+        guard !normalizedSources.isEmpty else { throw EntryOperationError.noSources }
+        return try await Task.detached(priority: .userInitiated) {
+            let fm = FileManager.default
+            let operationId = UUID().uuidString
+            let journalURL = journalDirectory.appendingPathComponent("move-\(operationId).json")
+            let normalizedDestination = destination.standardizedFileURL
+
+            struct MoveItemJournal: Codable {
+                let source: URL
+                let target: URL
+                let state: String
+                let message: String?
+                let updatedAt: String
+            }
+
+            struct MoveJournal: Codable {
+                let version = 1
+                let operation = "move"
+                let operationId: String
+                let state: String
+                let items: [MoveItemJournal]
+                let journalError: String?
+            }
+
+            let dateFormatter = operationDateFormatter()
+            var itemStates = normalizedSources.map {
+                MoveItemOperationResult(source: $0, target: normalizedDestination.appendingPathComponent($0.lastPathComponent),
+                                       state: "queued", message: nil)
+            }
+            var finalState = "completed"
+            var journalError: String?
+
+            func currentItemStates() -> [MoveItemJournal] {
+                return itemStates.enumerated().map { index, item in
+                    MoveItemJournal(source: item.source, target: item.target, state: item.state, message: item.message,
+                                   updatedAt: dateFormatter.string(from: Date()))
+                }
+            }
+
+            func save(state: String) throws {
+                try fm.createDirectory(at: journalDirectory, withIntermediateDirectories: true)
+                let journal = MoveJournal(operationId: operationId, state: state, items: currentItemStates(), journalError: journalError)
+                try JSONEncoder().encode(journal).write(to: journalURL, options: .atomic)
+            }
+
+            do {
+                try save(state: "queued")
+                for index in normalizedSources.indices {
+                    let source = normalizedSources[index]
+                    let target = normalizedDestination.appendingPathComponent(source.lastPathComponent)
+                    do {
+                        guard fm.fileExists(atPath: source.path) else {
+                            itemStates[index] = MoveItemOperationResult(source: source, target: target, state: "notFound", message: LString.fileMissing)
+                            finalState = "partial"
+                            try save(state: finalState)
+                            continue
+                        }
+
+                        do {
+                            let conflictInfo = fm.fileExists(atPath: target.path)
+                            if conflictInfo {
+                                if conflictPolicy == .skip {
+                                    itemStates[index] = MoveItemOperationResult(source: source, target: target, state: "conflict", message: LString.pathConflictMessage)
+                                    finalState = "partial"
+                                    try save(state: finalState)
+                                    continue
+                                }
+                                try fm.removeItem(at: target)
+                            }
+                            try fm.moveItem(at: source, to: target)
+                            itemStates[index] = MoveItemOperationResult(source: source, target: target, state: "completed", message: nil)
+                        } catch {
+                            itemStates[index] = MoveItemOperationResult(source: source, target: target, state: "failed", message: error.localizedDescription)
+                            finalState = "partial"
+                        }
+                    }
+                    try save(state: finalState)
+                }
+            } catch {
+                finalState = "failed"
+                journalError = error.localizedDescription
+                try? save(state: finalState)
+                throw error
+            }
+
+            do {
+                try save(state: finalState)
+            } catch {
+                journalError = error.localizedDescription
+                try? save(state: finalState)
+            }
+
+            return MoveOperationResult(id: operationId, state: finalState, items: itemStates, journalError: journalError)
         }.value
     }
 
