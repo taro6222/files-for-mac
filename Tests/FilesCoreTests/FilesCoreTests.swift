@@ -358,3 +358,18 @@ private struct ChunkedLoader: DirectoryStreaming {
     model.navigate(nil)
     #expect(!model.wasCancelled); #expect(model.items.isEmpty)
 }
+
+@Test func deletedEventStillMatchesCanonicalWatchedParent() throws {
+    let root = URL(fileURLWithPath: "/private/tmp/files-event-path-\(UUID())", isDirectory: true)
+    try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: root) }
+    let child = root.appendingPathComponent("file.txt")
+    try Data().write(to: child)
+    let watched = root.resolvingSymlinksInPath().standardizedFileURL.path
+    #expect(DirectoryWatcher.affectsDirectory(eventPath: child.path, watchedPath: watched))
+    try FileManager.default.removeItem(at: child)
+    #expect(DirectoryWatcher.affectsDirectory(eventPath: child.path, watchedPath: watched))
+    let nested = root.appendingPathComponent("nested", isDirectory: true)
+    try FileManager.default.createDirectory(at: nested, withIntermediateDirectories: true)
+    #expect(!DirectoryWatcher.affectsDirectory(eventPath: nested.appendingPathComponent("file.txt").path, watchedPath: watched))
+}

@@ -44,4 +44,6 @@ CLANG_MODULE_CACHE_PATH="$PWD/.build/ModuleCache" swift test --disable-sandbox
 
 ### UI 검증
 
-로그인된 macOS GUI 세션에서 `scripts/verify-ui.sh`를 실행하면 최소 창 크기의 한국어/영어 및 두 테마, 오류 안내, 다중 창 반복 탐색을 독립 테스트 설정으로 검증한다. 결과·이미지는 `build/ui-verification/`에 저장된다. `--performance`를 붙이면 20회 반복·100개 스크롤 위치의 표본과 p95를 `build/ui-performance/`에 저장한다. [최신 검증 범위와 한계](docs/verification/m1/INCREMENT_08.md)를 참고한다.
+로그인된 macOS GUI 세션에서 `scripts/verify-ui.sh`를 실행하면 최소 창 크기의 한국어/영어 및 두 테마, 오류 안내, 다중 창 반복 탐색을 독립 테스트 설정으로 검증한다. 결과·이미지는 `build/ui-verification/`에 저장된다. `--performance`를 붙이면 20회 반복·100개 스크롤 위치의 표본과 p95를 `build/ui-performance/`에 저장한다. [최신 검증 범위와 한계](docs/verification/m1/INCREMENT_09.md)를 참고한다.
+
+자동 갱신은 연결 중과 사용 불가 상태를 구분합니다. 폴더를 다시 선택하거나 이동 메뉴의 `자동 갱신 다시 연결`로 등록을 재시도할 수 있습니다.

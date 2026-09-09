@@ -38,6 +38,8 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
     private var volumeTask: Task<Void, Never>?
     private var rendering = false
     private var watcher: DirectoryWatcher?
+    private enum WatcherStatus { case idle, connecting, active, unavailable }
+    private var watcherStatus: WatcherStatus = .idle
     private let makeWatcher: @Sendable (URL) -> DirectoryWatcher?
     private var watcherTask: Task<Void, Never>?
     private var watchedURL: URL?
@@ -424,7 +426,10 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         }
         if model.isLoading { status.stringValue += " · " + L("읽는 중…", "Loading…") }
         if model.wasCancelled { status.stringValue += " · " + L("읽기 중단 · 불완전한 목록일 수 있음", "Loading stopped · List may be incomplete") }
-        if model.location != nil && watcher == nil { status.stringValue += " · " + L("자동 갱신 사용 불가", "Automatic refresh unavailable") }
+        if model.location != nil {
+            if watcherStatus == .connecting { status.stringValue += " · " + L("자동 갱신 연결 중…", "Connecting automatic refresh…") }
+            else if watcherStatus == .unavailable { status.stringValue += " · " + L("자동 갱신 사용 불가", "Automatic refresh unavailable") }
+        }
     }
     func numberOfRows(in tableView: NSTableView) -> Int { model.items.count }
     func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
@@ -497,9 +502,16 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
             : L("탐색할 폴더를 선택하세요.", "Select a folder to browse.")
         guard let window else { return }
         panel.beginSheetModal(for: window) { [weak self] response in
-            if response == .OK, let url = panel.url { self?.navigate(url) }
+            if response == .OK, let url = panel.url { self?.openChosenFolder(url) }
         }
     }
+    private func openChosenFolder(_ url: URL) {
+        let sameLocation = model.location == url.standardizedFileURL
+        navigate(url)
+        // An explicit selection may grant access after a previous registration failed.
+        if sameLocation { updateWatcher(force: true) }
+    }
+    @objc func retryAutomaticRefresh(_ sender: Any?) { updateWatcher(force: true) }
     @objc func toggleHidden(_ sender: Any?) {
         preferences.setShowHidden(!preferences.showHidden)
     }
@@ -519,11 +531,13 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         let urls = table.selectedRowIndexes.compactMap { model.items.indices.contains($0) ? model.items[$0].url : nil }
         if !urls.isEmpty { NSWorkspace.shared.activateFileViewerSelecting(urls) }
     }
-    private func updateWatcher() {
-        guard watchedURL != model.location else { return }
+    private func updateWatcher(force: Bool = false) {
+        guard force || watchedURL != model.location else { return }
         watcherTask?.cancel()
         if let watcher { Task.detached { watcher.stop() } }
         watcher = nil; watchedURL = model.location
+        watcherStatus = model.location == nil ? .idle : .connecting
+        updateStatus()
         pendingRefresh = false
         guard let url = model.location else { return }
         watcherTask = Task { [weak self, makeWatcher] in
@@ -534,6 +548,7 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
                 return
             }
             self?.watcher = watcher
+            self?.watcherStatus = watcher == nil ? .unavailable : .active
             self?.updateStatus()
             guard let watcher else { return }
             // Cover changes between the initial directory read and watcher activation.
@@ -702,6 +717,7 @@ extension BrowserWindow {
     }
     func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
         switch menuItem.action {
+        case #selector(retryAutomaticRefresh(_:)): return model.location != nil && watcherStatus != .active
         case #selector(stopLoading(_:)): return model.isLoading
         case #selector(goBack(_:)): return !model.history.back.isEmpty
         case #selector(goForward(_:)): return !model.history.forward.isEmpty
@@ -739,6 +755,16 @@ class SidebarKeyboardButton: NSButton {
 }
 
 #if DEBUG
+private final class RetryingWatcherFactory: @unchecked Sendable {
+    private let lock = NSLock()
+    private var calls = 0
+    func make(_ url: URL) -> DirectoryWatcher? {
+        lock.lock(); calls += 1; let attempt = calls; lock.unlock()
+        return attempt == 1 ? nil : DirectoryWatcher(url: url)
+    }
+    func count() -> Int { lock.lock(); defer { lock.unlock() }; return calls }
+}
+
 private struct DelayedUIListLoader: DirectoryLoading {
     func contents(of url: URL, showHidden: Bool) async throws -> [FileItem] {
         // Deliberately ignore caller cancellation to exercise generation checks.
@@ -940,6 +966,41 @@ extension BrowserWindow {
             checks["lateWatcherDiscarded"] = factoryHasFinished()
                 && delayed.watcher == nil && delayed.watchedURL == nil && delayed.model.location == nil
             delayed.close()
+            let factory = RetryingWatcherFactory()
+            let reconnect = BrowserWindow(preferences: preferences, restoresFrame: false, makeWatcher: { factory.make($0) })
+            reconnect.navigate(denied)
+            let initiallyConnecting = reconnect.watcherStatus == .connecting
+            let firstAttempt = ContinuousClock.now
+            while reconnect.watcherStatus == .connecting && elapsed(firstAttempt) < 3 {
+                try await Task.sleep(for: .milliseconds(10))
+            }
+            checks["watcherRegistrationStatus"] = initiallyConnecting && reconnect.watcherStatus == .unavailable
+            reconnect.openChosenFolder(denied)
+            let retryAttempt = ContinuousClock.now
+            while reconnect.watcherStatus == .connecting && elapsed(retryAttempt) < 3 {
+                try await Task.sleep(for: .milliseconds(10))
+            }
+            checks["sameFolderReconnects"] = factory.count() == 2 && reconnect.watcherStatus == .active
+            let changedFile = denied.appendingPathComponent("watcher-reconnected.txt")
+            let baselineStart = ContinuousClock.now
+            repeat {
+                try await Task.sleep(for: .milliseconds(200))
+            } while (reconnect.model.isLoading || reconnect.pendingRefresh) && elapsed(baselineStart) < 3
+            let baselineReady = !reconnect.model.isLoading && !reconnect.pendingRefresh
+                && !reconnect.model.items.contains { $0.name == changedFile.lastPathComponent }
+            try Data("changed".utf8).write(to: changedFile)
+            let changeStart = ContinuousClock.now
+            while !reconnect.model.items.contains(where: { $0.name == changedFile.lastPathComponent }) && elapsed(changeStart) < 4 {
+                try await Task.sleep(for: .milliseconds(20))
+            }
+            checks["reconnectedWatcherReceivesChanges"] = baselineReady && reconnect.model.items.contains { $0.name == changedFile.lastPathComponent }
+            try fm.removeItem(at: changedFile)
+            let removalStart = ContinuousClock.now
+            while reconnect.model.items.contains(where: { $0.name == changedFile.lastPathComponent }) && elapsed(removalStart) < 4 {
+                try await Task.sleep(for: .milliseconds(20))
+            }
+            checks["reconnectedWatcherReceivesDeletion"] = !reconnect.model.items.contains { $0.name == changedFile.lastPathComponent }
+            reconnect.close()
             let cancellable = BrowserWindow(preferences: preferences, restoresFrame: false,
                 loader: DelayedUIListLoader(), makeWatcher: { _ in nil })
             cancellable.window?.setFrame(NSRect(x: 80, y: 80, width: 900, height: 600), display: true)
@@ -965,7 +1026,7 @@ extension BrowserWindow {
                 "cycles": cycleChecks,
                 "language": Locale.preferredLanguages.first ?? "unknown", "theme": dark ? "dark" : "light",
                 "os": ProcessInfo.processInfo.operatingSystemVersionString,
-                "measurement": "Warm local fixture; AppKit layout/display completion, not compositor presentation or p95."]
+                "measurement": "Warm local fixture; AppKit layout/display completion, not compositor presentation. Percentiles describe this run only."]
             try JSONSerialization.data(withJSONObject: report, options: [.prettyPrinted, .sortedKeys]).write(to: destination.appendingPathComponent("report.json"))
             try fm.removeItem(at: fixture)
             // End the QA process only after deferred preference cleanup runs.

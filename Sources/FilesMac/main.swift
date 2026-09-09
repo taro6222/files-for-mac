@@ -50,6 +50,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         go.addItem(withTitle: L("새로고침", "Refresh"), action: #selector(BrowserWindow.refresh(_:)), keyEquivalent: "r")
         let stop = go.addItem(withTitle: L("읽기 중단", "Stop Loading"), action: #selector(BrowserWindow.stopLoading(_:)), keyEquivalent: "\u{1b}")
         stop.keyEquivalentModifierMask = []
+        go.addItem(withTitle: L("자동 갱신 다시 연결", "Reconnect Automatic Refresh"), action: #selector(BrowserWindow.retryAutomaticRefresh(_:)), keyEquivalent: "")
         let hidden = go.addItem(withTitle: L("숨김 항목 전환", "Toggle Hidden Files"), action: #selector(BrowserWindow.toggleHidden(_:)), keyEquivalent: ".")
         hidden.keyEquivalentModifierMask = [.command, .shift]
         let home = go.addItem(withTitle: L("홈", "Home"), action: #selector(BrowserWindow.goHome(_:)), keyEquivalent: "h")

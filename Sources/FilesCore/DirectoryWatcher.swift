@@ -34,9 +34,9 @@ public final class DirectoryWatcher: @unchecked Sendable {
             let context = Unmanaged<Context>.fromOpaque(info).takeUnretainedValue()
             let entries = paths.assumingMemoryBound(to: UnsafePointer<CChar>.self)
             for index in 0..<count {
-                let path = URL(fileURLWithPath: String(cString: entries[index])).standardizedFileURL.path
+                let path = String(cString: entries[index])
                 let needsRescan = flags[index] & FSEventStreamEventFlags(kFSEventStreamEventFlagMustScanSubDirs | kFSEventStreamEventFlagRootChanged) != 0
-                if needsRescan || path == context.path || (path as NSString).deletingLastPathComponent == context.path {
+                if needsRescan || DirectoryWatcher.affectsDirectory(eventPath: path, watchedPath: context.path) {
                     context.continuation.yield(()); break
                 }
             }
@@ -48,6 +48,13 @@ public final class DirectoryWatcher: @unchecked Sendable {
         self.stream = stream
         FSEventStreamSetDispatchQueue(stream, DispatchQueue(label: "files.directory-events", qos: .utility))
         if !FSEventStreamStart(stream) { stop(); return nil }
+    }
+    static func affectsDirectory(eventPath: String, watchedPath: String) -> Bool {
+        let url = URL(fileURLWithPath: eventPath)
+        // Foundation normalizes /private/tmp differently once the event item is gone.
+        // Resolve the surviving parent, rather than relying on the deleted item.
+        return url.standardizedFileURL.path == watchedPath
+            || url.deletingLastPathComponent().resolvingSymlinksInPath().standardizedFileURL.path == watchedPath
     }
     public func stop() {
         lock.lock(); defer { lock.unlock() }
