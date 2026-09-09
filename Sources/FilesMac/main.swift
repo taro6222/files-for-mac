@@ -7,7 +7,14 @@ import FilesCore
 final class AppDelegate: NSObject, NSApplicationDelegate {
     var windows: [BrowserWindow] = []
     func applicationDidFinishLaunching(_ notification: Notification) {
-        buildMenu(); newWindow(nil); NSApp.activate(ignoringOtherApps: true)
+        buildMenu()
+        #if DEBUG
+        if let output = ProcessInfo.processInfo.environment["FILES_UI_QA_OUTPUT"] {
+            Task { @MainActor in await BrowserWindow.runUIVerification(output: output) }
+            return
+        }
+        #endif
+        newWindow(nil); NSApp.activate(ignoringOtherApps: true)
     }
     @objc func newWindow(_ sender: Any?) {
         let controller = BrowserWindow()

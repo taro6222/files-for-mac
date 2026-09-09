@@ -20,7 +20,7 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
     private let homeView = NSStackView()
     private let sidebar = NSStackView()
     private let content = NSView()
-    private let preferences = BrowserPreferences.shared
+    private let preferences: BrowserPreferences
     private var preferencesToken: UUID?
     private var favorites: [URL] { preferences.favorites }
     private var recent: [URL] { preferences.recent }
@@ -43,15 +43,19 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         let d = DateFormatter(); d.dateStyle = .medium; d.timeStyle = .short; return d
     }()
 
-    init() {
+    init(preferences: BrowserPreferences = .shared, restoresFrame: Bool = true) {
+        self.preferences = preferences
         let w = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1280, height: 820),
             styleMask: [.titled, .closable, .miniaturizable, .resizable], backing: .buffered, defer: false)
         super.init(window: w)
         w.title = "Files macOS"; w.minSize = NSSize(width: 900, height: 600)
-        w.center(); w.setFrameAutosaveName("BrowserWindow"); w.titlebarAppearsTransparent = true
+        w.center()
+        if restoresFrame { w.setFrameAutosaveName("BrowserWindow") }
+        w.titlebarAppearsTransparent = true
         w.isReleasedWhenClosed = false
+        w.contentView = BrowserBackgroundView()
         model.showHidden = preferences.showHidden
-        setupUI()
+        setupUI(restoresLayout: restoresFrame)
         model.onChange = { [weak self] in self?.render() }
         preferencesToken = preferences.observe { [weak self] in self?.preferencesChanged() }
         model.navigate(nil)
@@ -76,10 +80,10 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
 
-    private func setupUI() {
+    private func setupUI(restoresLayout: Bool) {
         guard let root = window?.contentView else { return }
         let split = NSSplitView()
-        split.autosaveName = "BrowserSidebarSplit"
+        if restoresLayout { split.autosaveName = "BrowserSidebarSplit" }
         split.isVertical = true; split.dividerStyle = .thin; split.translatesAutoresizingMaskIntoConstraints = false
         root.addSubview(split)
         NSLayoutConstraint.activate([split.leadingAnchor.constraint(equalTo: root.leadingAnchor), split.trailingAnchor.constraint(equalTo: root.trailingAnchor), split.topAnchor.constraint(equalTo: root.topAnchor), split.bottomAnchor.constraint(equalTo: root.bottomAnchor)])
@@ -148,7 +152,7 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         main.addArrangedSubview(content)
         content.translatesAutoresizingMaskIntoConstraints = false
         content.heightAnchor.constraint(greaterThanOrEqualToConstant: 350).isActive = true
-        setupTable()
+        setupTable(restoresLayout: restoresLayout)
         homeView.orientation = .vertical; homeView.alignment = .leading; homeView.spacing = 16
         homeView.edgeInsets = NSEdgeInsets(top: 32, left: 32, bottom: 32, right: 32)
         homeView.translatesAutoresizingMaskIntoConstraints = false
@@ -177,10 +181,11 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         for view in [header, toolbar, divider, content, bottom] { view.widthAnchor.constraint(equalTo: main.widthAnchor).isActive = true }
     }
 
-    private func setupTable() {
+    private func setupTable(restoresLayout: Bool) {
         table.style = .fullWidth; table.rowHeight = 32; table.usesAlternatingRowBackgroundColors = false
         table.allowsMultipleSelection = true; table.allowsColumnReordering = true
-        table.autosaveName = "FileColumns"; table.autosaveTableColumns = true
+        if restoresLayout { table.autosaveName = "FileColumns" }
+        table.autosaveTableColumns = restoresLayout
         table.columnAutoresizingStyle = .lastColumnOnlyAutoresizingStyle
         table.delegate = self; table.dataSource = self; table.target = self; table.doubleAction = #selector(openSelection(_:))
         table.setAccessibilityLabel(L("파일 목록", "File list"))
@@ -287,10 +292,8 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         if preferences.showHomeVolumes {
             section(L("드라이브", "Drives"), in: homeView)
             for volume in volumes {
-                let card = NSStackView(); card.orientation = .vertical; card.alignment = .leading; card.spacing = 6
+                let card = VolumeCardView(); card.orientation = .vertical; card.alignment = .leading; card.spacing = 6
                 card.edgeInsets = NSEdgeInsets(top: 12, left: 14, bottom: 12, right: 14)
-                card.wantsLayer = true; card.layer?.cornerRadius = 8
-                card.layer?.backgroundColor = NSColor.quaternaryLabelColor.withAlphaComponent(0.08).cgColor
                 homeView.addArrangedSubview(card)
                 card.widthAnchor.constraint(equalTo: homeView.widthAnchor, constant: -64).isActive = true
                 locationButton(volume.name, symbol: "externaldrive.fill", url: volume.url, in: card)
@@ -352,6 +355,7 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         if !model.isLoading {
             scroll.contentView.scroll(to: NSPoint(x: 0, y: model.history.current.scrollOffset))
             scroll.reflectScrolledClipView(scroll.contentView)
+            if model.history.current.scrollOffset == 0 && !model.items.isEmpty { table.scrollRowToVisible(0) }
         }
         if model.isLoading && model.items.isEmpty { message.stringValue = L("폴더를 읽는 중…", "Loading folder…") }
         else if let error = model.error { message.stringValue = L("폴더를 열 수 없습니다.\n", "Unable to open this folder.\n") + error }
@@ -644,5 +648,145 @@ class SidebarKeyboardButton: NSButton {
             return
         }
         super.keyDown(with: event)
+    }
+}
+
+#if DEBUG
+/// Runs against generated fixtures only; release builds contain no QA entry point.
+extension BrowserWindow {
+    static func runUIVerification(output: String) async {
+        let fm = FileManager.default
+        let destination = URL(fileURLWithPath: output, isDirectory: true)
+        let suite = "FilesMac.UIVerification.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        var checks: [String: Bool] = [:]
+        var metrics: [String: Double] = [:]
+        do {
+            try fm.createDirectory(at: destination, withIntermediateDirectories: true)
+            let fixture = destination.appendingPathComponent("fixture", isDirectory: true)
+            try fm.createDirectory(at: fixture, withIntermediateDirectories: true)
+            for index in 0..<10_000 {
+                let name = index == 0 ? "00000-한글-é-📁-long-file-name.txt" : String(format: "%05d-file.txt", index)
+                try Data("fixture".utf8).write(to: fixture.appendingPathComponent(name))
+            }
+            let preferences = BrowserPreferences(defaults: defaults, initialFavorites: [fixture])
+            let dark = ProcessInfo.processInfo.environment["FILES_UI_QA_THEME"] == "dark"
+            NSApp.appearance = NSAppearance(named: dark ? .darkAqua : .aqua)
+            let controller = BrowserWindow(preferences: preferences, restoresFrame: false)
+            guard let window = controller.window, let root = window.contentView else { throw CocoaError(.coderInvalidValue) }
+            window.appearance = NSAppearance(named: dark ? .darkAqua : .aqua)
+            window.setFrame(NSRect(x: 80, y: 80, width: 900, height: 600), display: true)
+            controller.showWindow(nil)
+            NSApp.activate(ignoringOtherApps: true)
+            func capture(_ name: String) throws {
+                root.layoutSubtreeIfNeeded()
+                root.displayIfNeeded()
+                guard let bitmap = root.bitmapImageRepForCachingDisplay(in: root.bounds) else { throw CocoaError(.fileWriteUnknown) }
+                root.effectiveAppearance.performAsCurrentDrawingAppearance {
+                    root.cacheDisplay(in: root.bounds, to: bitmap)
+                }
+                guard let png = bitmap.representation(using: .png, properties: [:]) else { throw CocoaError(.fileWriteUnknown) }
+                try png.write(to: destination.appendingPathComponent(name + ".png"))
+            }
+            try await Task.sleep(for: .milliseconds(500))
+            try capture("home")
+            checks["minimumWindow"] = window.frame.size == NSSize(width: 900, height: 600)
+            checks["pathFieldUsableWidth"] = controller.pathField.frame.width >= 160
+            controller.focusPath(nil)
+            checks["pathFocus"] = controller.pathField.currentEditor() != nil
+            let start = ContinuousClock.now
+            controller.navigate(fixture)
+            var firstLayout: Double?
+            while controller.model.isLoading && start.duration(to: .now) < .seconds(30) {
+                if firstLayout == nil && !controller.model.items.isEmpty {
+                    root.layoutSubtreeIfNeeded(); root.displayIfNeeded()
+                    firstLayout = elapsed(start)
+                }
+                try await Task.sleep(for: .milliseconds(10))
+            }
+            root.layoutSubtreeIfNeeded(); root.displayIfNeeded()
+            metrics["firstNonemptyAppKitDisplaySeconds"] = firstLayout ?? elapsed(start)
+            metrics["completeAppKitDisplaySeconds"] = elapsed(start)
+            checks["tenThousandRows"] = !controller.model.isLoading && controller.model.error == nil && controller.table.numberOfRows == 10_000
+            controller.focusFiles(nil)
+            checks["fileListFocus"] = window.firstResponder === controller.table
+            try capture("files-top")
+            controller.table.selectRowIndexes(IndexSet(integer: 9_999), byExtendingSelection: false)
+            let scrollStart = ContinuousClock.now
+            controller.table.scrollRowToVisible(9_999)
+            root.layoutSubtreeIfNeeded(); root.displayIfNeeded()
+            metrics["scrollToLastRowDisplaySeconds"] = elapsed(scrollStart)
+            checks["lastRowVisible"] = NSLocationInRange(9_999, controller.table.rows(in: controller.table.visibleRect))
+            controller.savePosition()
+            try capture("files-bottom")
+            controller.goHome(nil)
+            controller.goBack(nil)
+            let restorationStart = ContinuousClock.now
+            while controller.model.isLoading && restorationStart.duration(to: .now) < .seconds(30) {
+                try await Task.sleep(for: .milliseconds(10))
+            }
+            root.layoutSubtreeIfNeeded()
+            checks["historySelection"] = controller.table.selectedRowIndexes == IndexSet(integer: 9_999)
+            checks["historyScroll"] = NSLocationInRange(9_999, controller.table.rows(in: controller.table.visibleRect))
+            controller.navigate(fixture.appendingPathComponent("missing-directory"))
+            let errorStart = ContinuousClock.now
+            while controller.model.isLoading && errorStart.duration(to: .now) < .seconds(5) {
+                try await Task.sleep(for: .milliseconds(10))
+            }
+            checks["missingDirectoryShowsError"] = controller.model.error != nil && !controller.message.isHidden && controller.table.numberOfRows == 0
+            try capture("error")
+            let denied = fixture.appendingPathComponent("unreadable", isDirectory: true)
+            try fm.createDirectory(at: denied, withIntermediateDirectories: true)
+            try fm.setAttributes([.posixPermissions: 0], ofItemAtPath: denied.path)
+            defer { try? fm.setAttributes([.posixPermissions: 0o700], ofItemAtPath: denied.path) }
+            controller.navigate(denied)
+            let permissionStart = ContinuousClock.now
+            while controller.model.isLoading && permissionStart.duration(to: .now) < .seconds(5) {
+                try await Task.sleep(for: .milliseconds(10))
+            }
+            checks["permissionDeniedShowsError"] = controller.model.error != nil && !controller.message.isHidden && controller.table.numberOfRows == 0
+            try capture("permission-error")
+            try fm.setAttributes([.posixPermissions: 0o700], ofItemAtPath: denied.path)
+            let report: [String: Any] = ["checks": checks, "metrics": metrics,
+                "language": Locale.preferredLanguages.first ?? "unknown", "theme": dark ? "dark" : "light",
+                "os": ProcessInfo.processInfo.operatingSystemVersionString,
+                "measurement": "Warm local fixture; AppKit layout/display completion, not compositor presentation or p95."]
+            try JSONSerialization.data(withJSONObject: report, options: [.prettyPrinted, .sortedKeys]).write(to: destination.appendingPathComponent("report.json"))
+            try fm.removeItem(at: fixture)
+            // End the QA process only after deferred preference cleanup runs.
+            DispatchQueue.main.async { exit(checks.values.allSatisfy { $0 } ? 0 : 1) }
+        } catch {
+            fputs("UI verification failed: \(error)\n", stderr)
+            DispatchQueue.main.async { exit(1) }
+        }
+    }
+    private static func elapsed(_ start: ContinuousClock.Instant) -> Double {
+        let value = start.duration(to: .now).components
+        return Double(value.seconds) + Double(value.attoseconds) / 1e18
+    }
+}
+#endif
+
+/// Paint semantic colors during drawing so theme changes also update cached views.
+private final class BrowserBackgroundView: NSView {
+    override func draw(_ dirtyRect: NSRect) {
+        NSColor.windowBackgroundColor.setFill()
+        bounds.fill()
+    }
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        needsDisplay = true
+    }
+}
+
+private final class VolumeCardView: NSStackView {
+    override func draw(_ dirtyRect: NSRect) {
+        NSColor.quaternaryLabelColor.withAlphaComponent(0.08).setFill()
+        NSBezierPath(roundedRect: bounds, xRadius: 8, yRadius: 8).fill()
+    }
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        needsDisplay = true
     }
 }

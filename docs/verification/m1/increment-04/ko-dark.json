@@ -1,0 +1,23 @@
+{
+  "checks" : {
+    "fileListFocus" : true,
+    "historyScroll" : true,
+    "historySelection" : true,
+    "lastRowVisible" : true,
+    "minimumWindow" : true,
+    "missingDirectoryShowsError" : true,
+    "pathFieldUsableWidth" : true,
+    "pathFocus" : true,
+    "permissionDeniedShowsError" : true,
+    "tenThousandRows" : true
+  },
+  "language" : "ko",
+  "measurement" : "Warm local fixture; AppKit layout\/display completion, not compositor presentation or p95.",
+  "metrics" : {
+    "completeAppKitDisplaySeconds" : 0.98235050000000002,
+    "firstNonemptyAppKitDisplaySeconds" : 0.050140166999999999,
+    "scrollToLastRowDisplaySeconds" : 0.0030538340000000001
+  },
+  "os" : "Version 26.6.2 (Build 25G83)",
+  "theme" : "dark"
+}
