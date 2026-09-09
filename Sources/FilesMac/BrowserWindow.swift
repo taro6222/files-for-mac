@@ -12,6 +12,9 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
     private let pathField = NSComboBox()
     private let status = NSTextField(labelWithString: "")
     private let message = NSTextField(wrappingLabelWithString: "")
+    private let recoveryActions = NSStackView()
+    private let retryButton = NSButton()
+    private let chooseAgainButton = NSButton()
     private let titleLabel = NSTextField(labelWithString: "")
     private let backButton = NSButton()
     private let forwardButton = NSButton()
@@ -182,6 +185,21 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         message.alignment = .center; message.translatesAutoresizingMaskIntoConstraints = false
         content.addSubview(message)
         NSLayoutConstraint.activate([message.centerXAnchor.constraint(equalTo: content.centerXAnchor), message.centerYAnchor.constraint(equalTo: content.centerYAnchor), message.widthAnchor.constraint(lessThanOrEqualTo: content.widthAnchor, multiplier: 0.8)])
+        recoveryActions.orientation = .horizontal; recoveryActions.spacing = 10
+        recoveryActions.translatesAutoresizingMaskIntoConstraints = false
+        retryButton.title = L("다시 시도", "Retry"); retryButton.bezelStyle = .rounded
+        retryButton.target = self; retryButton.action = #selector(refresh(_:))
+        retryButton.setAccessibilityIdentifier("recovery.retry")
+        chooseAgainButton.title = L("폴더 선택…", "Choose Folder…"); chooseAgainButton.bezelStyle = .rounded
+        chooseAgainButton.target = self; chooseAgainButton.action = #selector(chooseFolder(_:))
+        chooseAgainButton.setAccessibilityIdentifier("recovery.chooseFolder")
+        recoveryActions.addArrangedSubview(retryButton); recoveryActions.addArrangedSubview(chooseAgainButton)
+        content.addSubview(recoveryActions)
+        NSLayoutConstraint.activate([
+            recoveryActions.topAnchor.constraint(equalTo: message.bottomAnchor, constant: 14),
+            recoveryActions.centerXAnchor.constraint(equalTo: content.centerXAnchor),
+            recoveryActions.widthAnchor.constraint(lessThanOrEqualTo: content.widthAnchor, constant: -32)
+        ])
         let bottom = NSStackView(); bottom.orientation = .horizontal
         bottom.edgeInsets = NSEdgeInsets(top: 7, left: 18, bottom: 7, right: 18)
         status.font = .systemFont(ofSize: 11); status.textColor = .secondaryLabelColor
@@ -386,6 +404,7 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         else if model.location != nil && model.items.isEmpty { message.stringValue = L("이 폴더는 비어 있습니다.", "This folder is empty.") }
         else { message.stringValue = "" }
         message.isHidden = message.stringValue.isEmpty
+        recoveryActions.isHidden = message.isHidden || model.isLoading || (model.failure == nil && !model.wasCancelled)
         if !model.isLoading && !model.wasCancelled && model.error == nil, let url = model.location, url != lastRecordedLocation {
             lastRecordedLocation = url; preferences.recordVisit(url)
         }
@@ -471,6 +490,11 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
     @objc func chooseFolder(_ sender: Any?) {
         let panel = NSOpenPanel(); panel.canChooseDirectories = true; panel.canChooseFiles = false
         panel.allowsMultipleSelection = false
+        panel.title = L("폴더 선택", "Choose Folder")
+        panel.prompt = L("열기", "Open")
+        panel.message = model.failure == .permissionDenied
+            ? L("접근할 폴더를 직접 선택하세요. 파일 시스템의 읽기 권한은 별도로 필요합니다.", "Select the folder to access. File system read permissions are still required.")
+            : L("탐색할 폴더를 선택하세요.", "Select a folder to browse.")
         guard let window else { return }
         panel.beginSheetModal(for: window) { [weak self] response in
             if response == .OK, let url = panel.url { self?.navigate(url) }
@@ -807,6 +831,13 @@ extension BrowserWindow {
                 try await Task.sleep(for: .milliseconds(10))
             }
             checks["missingDirectoryShowsError"] = controller.model.error != nil && !controller.message.isHidden && controller.table.numberOfRows == 0
+            controller.retryButton.performClick(nil)
+            let retryStart = ContinuousClock.now
+            while controller.model.isLoading && retryStart.duration(to: .now) < .seconds(5) {
+                try await Task.sleep(for: .milliseconds(10))
+            }
+            checks["failedReadRetries"] = !controller.model.isLoading && controller.model.failure == .notFound
+                && !controller.recoveryActions.isHidden
             try capture("error")
             let denied = fixture.appendingPathComponent("unreadable", isDirectory: true)
             try fm.createDirectory(at: denied, withIntermediateDirectories: true)
@@ -818,6 +849,7 @@ extension BrowserWindow {
                 try await Task.sleep(for: .milliseconds(10))
             }
             checks["permissionDeniedShowsError"] = controller.model.error != nil && !controller.message.isHidden && controller.table.numberOfRows == 0
+            checks["permissionRecoveryVisible"] = !controller.recoveryActions.isHidden && controller.chooseAgainButton.isEnabled
             checks["permissionErrorLocalized"] = controller.message.stringValue.contains(DirectoryFailure.permissionDenied.message(korean: Locale.preferredLanguages.first?.hasPrefix("ko") == true))
             try capture("permission-error")
             try fm.setAttributes([.posixPermissions: 0o700], ofItemAtPath: denied.path)
@@ -917,15 +949,16 @@ extension BrowserWindow {
             cancellable.refreshButton.performClick(nil)
             checks["stopButtonCancels"] = hadStopLabel && cancellable.model.wasCancelled && !cancellable.model.isLoading
                 && cancellable.refreshButton.accessibilityLabel() == L("새로고침", "Refresh")
+            checks["cancelledRecoveryVisible"] = !cancellable.recoveryActions.isHidden
             try capture("cancelled", view: cancellable.window?.contentView)
             try await Task.sleep(for: .milliseconds(400))
             cancellable.requestWatcherRefresh(for: denied)
             checks["cancelledReadStaysStopped"] = cancellable.model.wasCancelled && !cancellable.model.isLoading
                 && cancellable.model.items.isEmpty && !cancellable.message.isHidden
-            cancellable.refreshButton.performClick(nil)
+            cancellable.retryButton.performClick(nil)
             try await Task.sleep(for: .milliseconds(400))
             checks["cancelledReadRetries"] = !cancellable.model.isLoading && !cancellable.model.wasCancelled
-                && cancellable.model.items.map(\.name) == ["ready.txt"]
+                && cancellable.model.items.map(\.name) == ["ready.txt"] && cancellable.recoveryActions.isHidden
             cancellable.close()
             let report: [String: Any] = ["checks": checks, "metrics": metrics,
                 "samples": ["multiwindowCycleSeconds": durations, "scrollStepSeconds": scrollDurations],
