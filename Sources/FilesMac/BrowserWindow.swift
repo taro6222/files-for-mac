@@ -34,6 +34,7 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
     private var volumeTask: Task<Void, Never>?
     private var rendering = false
     private var watcher: DirectoryWatcher?
+    private let makeWatcher: @Sendable (URL) -> DirectoryWatcher?
     private var watcherTask: Task<Void, Never>?
     private var watchedURL: URL?
     private var pendingRefresh = false
@@ -43,8 +44,10 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         let d = DateFormatter(); d.dateStyle = .medium; d.timeStyle = .short; return d
     }()
 
-    init(preferences: BrowserPreferences = .shared, restoresFrame: Bool = true) {
+    init(preferences: BrowserPreferences = .shared, restoresFrame: Bool = true,
+         makeWatcher: @escaping @Sendable (URL) -> DirectoryWatcher? = { DirectoryWatcher(url: $0) }) {
         self.preferences = preferences
+        self.makeWatcher = makeWatcher
         let w = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1280, height: 820),
             styleMask: [.titled, .closable, .miniaturizable, .resizable], backing: .buffered, defer: false)
         super.init(window: w)
@@ -68,7 +71,10 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         observerTokens.append(NotificationCenter.default.addObserver(forName: NSWindow.willCloseNotification, object: w, queue: .main) { [weak self] _ in
             Task { @MainActor in
                 guard let self else { return }
-                self.watcherTask?.cancel(); self.watcher?.stop(); self.completionTask?.cancel(); self.volumeTask?.cancel()
+                self.watcherTask?.cancel()
+                if let watcher = self.watcher { Task.detached { watcher.stop() } }
+                self.watcher = nil
+                self.completionTask?.cancel(); self.volumeTask?.cancel()
                 if let token = self.preferencesToken { self.preferences.removeObserver(token) }
                 for token in self.observerTokens {
                     NotificationCenter.default.removeObserver(token)
@@ -320,8 +326,9 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         }
     }
     private func displayName(_ url: URL) -> String { FileManager.default.displayName(atPath: url.path) }
-    private func savePosition() {
-        guard !rendering else { return }
+    private func savePosition(allowWhileLoading: Bool = false) {
+        // Partial rows may not contain the selection awaiting history restoration.
+        guard !rendering, allowWhileLoading || !model.isLoading else { return }
         let ids = Set(table.selectedRowIndexes.compactMap { model.items.indices.contains($0) ? model.items[$0].id : nil })
         model.savePosition(selection: ids, scrollOffset: scroll.contentView.bounds.origin.y)
     }
@@ -338,7 +345,10 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
             updateWatcher()
             if pendingRefresh && !model.isLoading {
                 pendingRefresh = false
-                Task { @MainActor [weak self] in self?.refresh(nil) }
+                let location = model.location
+                Task { @MainActor [weak self] in
+                    if let location { self?.requestWatcherRefresh(for: location) }
+                }
             }
         }
         titleLabel.stringValue = model.location.map(displayName) ?? L("홈", "Home")
@@ -421,7 +431,7 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         NSLayoutConstraint.activate([label.leadingAnchor.constraint(equalTo: leading, constant: 8), label.trailingAnchor.constraint(equalTo: cell.trailingAnchor, constant: -8), label.centerYAnchor.constraint(equalTo: cell.centerYAnchor)])
         return cell
     }
-    func tableViewSelectionDidChange(_ notification: Notification) { savePosition(); updateStatus() }
+    func tableViewSelectionDidChange(_ notification: Notification) { savePosition(allowWhileLoading: true); updateStatus() }
     func tableView(_ tableView: NSTableView, sortDescriptorsDidChange oldDescriptors: [NSSortDescriptor]) {
         guard let descriptor = tableView.sortDescriptors.first, let field = SortField(rawValue: descriptor.key ?? "") else { return }
         savePosition(); model.sort(SortOrder(field: field, ascending: descriptor.ascending))
@@ -468,19 +478,34 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
     }
     private func updateWatcher() {
         guard watchedURL != model.location else { return }
-        watcherTask?.cancel(); watcher?.stop(); watcher = nil; watchedURL = model.location
+        watcherTask?.cancel()
+        if let watcher { Task.detached { watcher.stop() } }
+        watcher = nil; watchedURL = model.location
         pendingRefresh = false
         guard let url = model.location else { return }
-        watcher = DirectoryWatcher(url: url)
-        updateStatus()
-        guard let watcher else { return }
-        watcherTask = Task { [weak self] in
+        watcherTask = Task { [weak self, makeWatcher] in
+            // FSEventStreamCreate and symlink resolution may block on filesystem I/O.
+            let watcher = await Task.detached(priority: .utility) { makeWatcher(url) }.value
+            guard !Task.isCancelled, self?.watchedURL == url else {
+                if let watcher { Task.detached { watcher.stop() } }
+                return
+            }
+            self?.watcher = watcher
+            self?.updateStatus()
+            guard let watcher else { return }
+            // Cover changes between the initial directory read and watcher activation.
+            self?.requestWatcherRefresh(for: url)
             for await _ in watcher.events {
                 guard let self, !Task.isCancelled, self.model.location == url else { return }
-                if self.model.isLoading { self.pendingRefresh = true }
-                else { self.refresh(nil) }
+                self.requestWatcherRefresh(for: url)
             }
         }
+    }
+
+    private func requestWatcherRefresh(for url: URL) {
+        guard model.location == url else { return }
+        if model.isLoading { pendingRefresh = true }
+        else { refresh(nil) }
     }
 
 }
@@ -773,7 +798,9 @@ extension BrowserWindow {
             let peerSelection = peer?.model.history.current.selection
             var repeatsPassed = true
             var durations: [Double] = []
-            for iteration in 0..<5 {
+            var cycleChecks: [[String: Bool]] = []
+            let repetitions = min(100, max(5, Int(ProcessInfo.processInfo.environment["FILES_UI_QA_REPETITIONS"] ?? "5") ?? 5))
+            for iteration in 0..<repetitions {
                 let cycleStart = ContinuousClock.now
                 preferences.setShowHidden(iteration.isMultiple(of: 2))
                 preferences.setShowExtensions(!iteration.isMultiple(of: 2))
@@ -781,26 +808,65 @@ extension BrowserWindow {
                 peer?.window?.contentView?.layoutSubtreeIfNeeded()
                 let visibleRow = peer?.model.items.firstIndex { $0.name == "visible.txt" } ?? -1
                 let visibleCell = visibleRow >= 0 ? peer?.table.view(atColumn: 0, row: visibleRow, makeIfNecessary: true) as? NSTableCellView : nil
-                repeatsPassed = repeatsPassed && peer?.table.numberOfRows == (preferences.showHidden ? 2 : 1)
-                    && visibleCell?.textField?.stringValue == (preferences.showExtensions ? "visible.txt" : "visible")
-                    && controller.model.history.current.selection == primarySelection
-                    && peer?.model.history.current.selection == peerSelection
-                    && peer?.model.location == denied && controller.model.location == fixture
+                var cycle: [String: Bool] = [
+                    "peerRows": peer?.table.numberOfRows == (preferences.showHidden ? 2 : 1),
+                    "extensionCell": visibleCell?.textField?.stringValue == (preferences.showExtensions ? "visible.txt" : "visible"),
+                    "primarySelection": controller.model.history.current.selection == primarySelection,
+                    "peerSelection": peer?.model.history.current.selection == peerSelection,
+                    "locations": peer?.model.location == denied && controller.model.location == fixture]
                 controller.goHome(nil); controller.goBack(nil)
                 try await settleWindows()
-                repeatsPassed = repeatsPassed && controller.model.history.current.selection == primarySelection
-                    && controller.table.numberOfRows == 10_001 && controller.model.failure == nil
+                cycle["restoredSelection"] = controller.model.history.current.selection == primarySelection
+                cycle["restoredRows"] = controller.table.numberOfRows == 10_001 && controller.model.failure == nil
+                cycleChecks.append(cycle)
+                repeatsPassed = repeatsPassed && cycle.values.allSatisfy { $0 }
                 durations.append(elapsed(cycleStart))
             }
-            checks["fiveMultiwindowCycles"] = repeatsPassed && !primarySelection.isEmpty && peerSelection?.isEmpty == false
+            checks["multiwindowCycles"] = repeatsPassed && !primarySelection.isEmpty && peerSelection?.isEmpty == false
             metrics["multiwindowCycleMinimumSeconds"] = durations.min()
             metrics["multiwindowCycleMaximumSeconds"] = durations.max()
+            // Nearest-rank percentile; raw samples are included so results remain auditable.
+            func p95(_ samples: [Double]) -> Double {
+                samples.sorted()[Int(ceil(Double(samples.count) * 0.95)) - 1]
+            }
+            metrics["multiwindowCycleP95Seconds"] = p95(durations)
+            var scrollDurations: [Double] = []
+            var scrollPositionsValid = true
+            for step in 0..<100 {
+                let row = step * (controller.table.numberOfRows - 1) / 99
+                let scrollStart = ContinuousClock.now
+                controller.table.scrollRowToVisible(row)
+                root.layoutSubtreeIfNeeded(); root.displayIfNeeded()
+                scrollDurations.append(elapsed(scrollStart))
+                scrollPositionsValid = scrollPositionsValid && NSLocationInRange(row, controller.table.rows(in: controller.table.visibleRect))
+                try await Task.sleep(for: .milliseconds(10))
+            }
+            checks["hundredScrollPositions"] = scrollPositionsValid
+            metrics["scrollStepP95Seconds"] = p95(scrollDurations)
             peer?.close(); peer = nil
             try await Task.sleep(for: .milliseconds(100))
             checks["closedWindowReleased"] = releasedPeer == nil
             controller.focusFiles(nil)
             checks["remainingWindowUsable"] = window.firstResponder === controller.table && controller.model.items.count == 10_001
+            let factoryFinished = DispatchSemaphore(value: 0)
+            let delayed = BrowserWindow(preferences: preferences, restoresFrame: false, makeWatcher: { url in
+                Thread.sleep(forTimeInterval: 0.5)
+                let watcher = DirectoryWatcher(url: url)
+                factoryFinished.signal()
+                return watcher
+            })
+            let navigationStart = ContinuousClock.now
+            delayed.navigate(denied)
+            delayed.goHome(nil)
+            checks["slowWatcherDoesNotBlockNavigation"] = elapsed(navigationStart) < 0.4 && delayed.model.location == nil
+            try await Task.sleep(for: .seconds(1))
+            func factoryHasFinished() -> Bool { factoryFinished.wait(timeout: .now()) == .success }
+            checks["lateWatcherDiscarded"] = factoryHasFinished()
+                && delayed.watcher == nil && delayed.watchedURL == nil && delayed.model.location == nil
+            delayed.close()
             let report: [String: Any] = ["checks": checks, "metrics": metrics,
+                "samples": ["multiwindowCycleSeconds": durations, "scrollStepSeconds": scrollDurations],
+                "cycles": cycleChecks,
                 "language": Locale.preferredLanguages.first ?? "unknown", "theme": dark ? "dark" : "light",
                 "os": ProcessInfo.processInfo.operatingSystemVersionString,
                 "measurement": "Warm local fixture; AppKit layout/display completion, not compositor presentation or p95."]
