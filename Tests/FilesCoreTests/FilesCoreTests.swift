@@ -326,3 +326,35 @@ private struct ChunkedLoader: DirectoryStreaming {
     model.navigate(nil)
     #expect(model.failure == nil); #expect(model.error == nil)
 }
+
+@Test @MainActor func cancelledReadIgnoresLateResultAndCanReload() async throws {
+    let model = BrowserModel(loader: DelayedLoader())
+    model.navigate(URL(fileURLWithPath: "/slow"))
+    try await Task.sleep(for: .milliseconds(10))
+    model.cancelLoad()
+    #expect(model.wasCancelled); #expect(!model.isLoading); #expect(model.error == nil)
+    try await Task.sleep(for: .milliseconds(200))
+    #expect(model.items.isEmpty); #expect(model.wasCancelled)
+    model.reload()
+    #expect(!model.wasCancelled)
+    try await Task.sleep(for: .milliseconds(200))
+    #expect(model.items.map(\.name) == ["slow"]); #expect(!model.isLoading)
+    model.cancelLoad() // A completed list must not become cancelled.
+    #expect(!model.wasCancelled)
+}
+
+@Test @MainActor func cancelledStreamPreservesPartialRowsAndHomeClearsState() async throws {
+    let model = BrowserModel(loader: ChunkedLoader())
+    model.navigate(URL(fileURLWithPath: "/chunked"))
+    for _ in 0..<50 {
+        if !model.items.isEmpty { break }
+        try await Task.sleep(for: .milliseconds(2))
+    }
+    #expect(model.items.count == 1)
+    model.cancelLoad()
+    try await Task.sleep(for: .milliseconds(200))
+    #expect(model.items.map(\.name) == ["first"])
+    #expect(model.wasCancelled); #expect(!model.isLoading)
+    model.navigate(nil)
+    #expect(!model.wasCancelled); #expect(model.items.isEmpty)
+}

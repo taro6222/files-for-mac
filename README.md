@@ -40,8 +40,8 @@ CLANG_MODULE_CACHE_PATH="$PWD/.build/ModuleCache" swift test --disable-sandbox
 
 폴더 감시 통합 테스트는 macOS FSEvents 서비스 접근이 필요합니다. 제한된 실행 샌드박스에서는 서비스 접근이 차단되어 실패할 수 있으므로 실제 macOS 개발 환경에서도 실행합니다.
 
-키보드: ⌃⌘S로 사이드바, ⇧⌘L로 파일 목록, ⇧⌘H로 홈, ⌘,로 보기 옵션에 접근합니다. 사이드바에서는 ↑/↓로 이동하고 Space로 실행하며 Shift+F10으로 항목 메뉴를 엽니다.
+키보드: ⌃⌘S로 사이드바, ⇧⌘L로 파일 목록, ⇧⌘H로 홈, ⌘,로 보기 옵션에 접근합니다. 사이드바에서는 ↑/↓로 이동하고 Space로 실행하며 Shift+F10으로 항목 메뉴를 엽니다. 폴더를 읽는 중에는 Esc 또는 도구 모음의 읽기 중단 버튼으로 멈추고, ⌘R로 다시 읽을 수 있습니다. 중단된 목록은 불완전할 수 있습니다.
 
 ### UI 검증
 
-로그인된 macOS GUI 세션에서 `scripts/verify-ui.sh`를 실행하면 최소 창 크기의 한국어/영어 및 두 테마, 오류 안내, 다중 창 반복 탐색을 독립 테스트 설정으로 검증한다. 결과·이미지는 `build/ui-verification/`에 저장된다. `--performance`를 붙이면 20회 반복·100개 스크롤 위치의 표본과 p95를 `build/ui-performance/`에 저장한다. [최신 검증 범위와 한계](docs/verification/m1/INCREMENT_06.md)를 참고한다.
+로그인된 macOS GUI 세션에서 `scripts/verify-ui.sh`를 실행하면 최소 창 크기의 한국어/영어 및 두 테마, 오류 안내, 다중 창 반복 탐색을 독립 테스트 설정으로 검증한다. 결과·이미지는 `build/ui-verification/`에 저장된다. `--performance`를 붙이면 20회 반복·100개 스크롤 위치의 표본과 p95를 `build/ui-performance/`에 저장한다. [최신 검증 범위와 한계](docs/verification/m1/INCREMENT_07.md)를 참고한다.

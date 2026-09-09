@@ -6,8 +6,8 @@ import FilesCore
 @MainActor
 final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableViewDelegate, NSComboBoxDelegate, NSMenuDelegate, NSMenuItemValidation {
     var onClose: (() -> Void)?
-    private let model = BrowserModel()
-    private let table = NSTableView()
+    private let model: BrowserModel
+    private let table = BrowserFileTable()
     private let scroll = NSScrollView()
     private let pathField = NSComboBox()
     private let status = NSTextField(labelWithString: "")
@@ -17,6 +17,7 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
     private let forwardButton = NSButton()
     private let upButton = NSButton()
     private let hiddenButton = NSButton()
+    private let refreshButton = NSButton()
     private let homeView = NSStackView()
     private let sidebar = NSStackView()
     private let content = NSView()
@@ -45,7 +46,9 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
     }()
 
     init(preferences: BrowserPreferences = .shared, restoresFrame: Bool = true,
+         loader: any DirectoryLoading = LocalFileSystem(),
          makeWatcher: @escaping @Sendable (URL) -> DirectoryWatcher? = { DirectoryWatcher(url: $0) }) {
+        self.model = BrowserModel(loader: loader)
         self.preferences = preferences
         self.makeWatcher = makeWatcher
         let w = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1280, height: 820),
@@ -74,6 +77,7 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
                 self.watcherTask?.cancel()
                 if let watcher = self.watcher { Task.detached { watcher.stop() } }
                 self.watcher = nil
+                self.model.onChange = nil; self.model.cancelLoad()
                 self.completionTask?.cancel(); self.volumeTask?.cancel()
                 if let token = self.preferencesToken { self.preferences.removeObserver(token) }
                 for token in self.observerTokens {
@@ -138,7 +142,8 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         configure(forwardButton, "chevron.right", L("앞으로", "Forward"), #selector(goForward(_:)))
         configure(upButton, "arrow.up", L("상위 폴더", "Enclosing Folder"), #selector(goUp(_:)))
         toolbar.addArrangedSubview(backButton); toolbar.addArrangedSubview(forwardButton); toolbar.addArrangedSubview(upButton)
-        toolbar.addArrangedSubview(button("arrow.clockwise", L("새로고침", "Refresh"), #selector(refresh(_:))))
+        configure(refreshButton, "arrow.clockwise", L("새로고침", "Refresh"), #selector(refreshOrStop(_:)))
+        toolbar.addArrangedSubview(refreshButton)
         pathField.numberOfVisibleItems = 8
         pathField.completes = false
         pathField.toolTip = L("경로 입력 후 아래 화살표로 추천 폴더를 선택하거나 Tab으로 완성", "Type a path, then use the dropdown or Tab to complete")
@@ -328,7 +333,7 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
     private func displayName(_ url: URL) -> String { FileManager.default.displayName(atPath: url.path) }
     private func savePosition(allowWhileLoading: Bool = false) {
         // Partial rows may not contain the selection awaiting history restoration.
-        guard !rendering, allowWhileLoading || !model.isLoading else { return }
+        guard !rendering, allowWhileLoading || (!model.isLoading && !model.wasCancelled) else { return }
         let ids = Set(table.selectedRowIndexes.compactMap { model.items.indices.contains($0) ? model.items[$0].id : nil })
         model.savePosition(selection: ids, scrollOffset: scroll.contentView.bounds.origin.y)
     }
@@ -343,7 +348,7 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         rendering = true; defer {
             rendering = false
             updateWatcher()
-            if pendingRefresh && !model.isLoading {
+            if pendingRefresh && !model.isLoading && !model.wasCancelled {
                 pendingRefresh = false
                 let location = model.location
                 Task { @MainActor [weak self] in
@@ -357,6 +362,9 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         backButton.isEnabled = !model.history.back.isEmpty; forwardButton.isEnabled = !model.history.forward.isEmpty
         upButton.isEnabled = model.location != nil && model.location?.path != "/"
         hiddenButton.contentTintColor = model.showHidden ? .systemBlue : .labelColor
+        let refreshTitle = model.isLoading ? L("읽기 중단", "Stop Loading") : L("새로고침", "Refresh")
+        refreshButton.image = NSImage(systemSymbolName: model.isLoading ? "xmark" : "arrow.clockwise", accessibilityDescription: refreshTitle)
+        refreshButton.toolTip = refreshTitle; refreshButton.setAccessibilityLabel(refreshTitle)
         scroll.isHidden = model.location == nil; homeScroll.isHidden = model.location != nil
         if model.location == nil { lastRecordedLocation = nil; buildHome() }
         table.reloadData()
@@ -372,10 +380,13 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
             message.stringValue = L("폴더를 열 수 없습니다.\n", "Unable to open this folder.\n")
                 + failure.message(korean: Locale.preferredLanguages.first?.hasPrefix("ko") == true)
         }
+        else if model.wasCancelled && model.items.isEmpty {
+            message.stringValue = L("읽기를 중단했습니다.\n새로고침하거나 다른 폴더로 이동하세요.", "Loading stopped.\nRefresh or open another folder.")
+        }
         else if model.location != nil && model.items.isEmpty { message.stringValue = L("이 폴더는 비어 있습니다.", "This folder is empty.") }
         else { message.stringValue = "" }
         message.isHidden = message.stringValue.isEmpty
-        if !model.isLoading && model.error == nil, let url = model.location, url != lastRecordedLocation {
+        if !model.isLoading && !model.wasCancelled && model.error == nil, let url = model.location, url != lastRecordedLocation {
             lastRecordedLocation = url; preferences.recordVisit(url)
         }
         updateStatus()
@@ -393,6 +404,7 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
             status.stringValue += " · " + ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file)
         }
         if model.isLoading { status.stringValue += " · " + L("읽는 중…", "Loading…") }
+        if model.wasCancelled { status.stringValue += " · " + L("읽기 중단 · 불완전한 목록일 수 있음", "Loading stopped · List may be incomplete") }
         if model.location != nil && watcher == nil { status.stringValue += " · " + L("자동 갱신 사용 불가", "Automatic refresh unavailable") }
     }
     func numberOfRows(in tableView: NSTableView) -> Int { model.items.count }
@@ -441,6 +453,13 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
     @objc func goForward(_ sender: Any?) { window?.makeFirstResponder(nil); savePosition(); model.forward() }
     @objc func goUp(_ sender: Any?) { if let url = model.location { navigate(url.deletingLastPathComponent()) } }
     @objc func refresh(_ sender: Any?) { savePosition(); model.reload() }
+    @objc func refreshOrStop(_ sender: Any?) {
+        if model.isLoading { stopLoading(sender) } else { refresh(sender) }
+    }
+    @objc func stopLoading(_ sender: Any?) {
+        pendingRefresh = false
+        model.cancelLoad()
+    }
     @objc func focusPath(_ sender: Any?) { window?.makeFirstResponder(pathField); pathField.selectText(nil) }
     @objc func submitPath(_ sender: Any?) {
         let path = (pathField.stringValue as NSString).expandingTildeInPath
@@ -503,7 +522,7 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
     }
 
     private func requestWatcherRefresh(for url: URL) {
-        guard model.location == url else { return }
+        guard model.location == url, !model.wasCancelled else { return }
         if model.isLoading { pendingRefresh = true }
         else { refresh(nil) }
     }
@@ -515,6 +534,17 @@ final class LocationButton: SidebarKeyboardButton { var url: URL? }
 
 @MainActor
 final class FlippedView: NSView { override var isFlipped: Bool { true } }
+
+@MainActor
+private final class BrowserFileTable: NSTableView {
+    override func keyDown(with event: NSEvent) {
+        if event.keyCode == 53 && event.modifierFlags.intersection([.command, .control, .option]).isEmpty {
+            (window?.windowController as? BrowserWindow)?.stopLoading(nil)
+            return
+        }
+        super.keyDown(with: event)
+    }
+}
 
 private struct VolumeSummary: Sendable {
     let url: URL
@@ -648,6 +678,7 @@ extension BrowserWindow {
     }
     func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
         switch menuItem.action {
+        case #selector(stopLoading(_:)): return model.isLoading
         case #selector(goBack(_:)): return !model.history.back.isEmpty
         case #selector(goForward(_:)): return !model.history.forward.isEmpty
         case #selector(goUp(_:)): return model.location != nil && model.location?.path != "/"
@@ -662,6 +693,10 @@ extension BrowserWindow {
 class SidebarKeyboardButton: NSButton {
     override func keyDown(with event: NSEvent) {
         let modifiers = event.modifierFlags.intersection([.command, .control, .option])
+        if modifiers.isEmpty && event.keyCode == 53 {
+            (window?.windowController as? BrowserWindow)?.stopLoading(nil)
+            return
+        }
         if modifiers.isEmpty, event.keyCode == 125 || event.keyCode == 126,
            let stack = superview as? NSStackView {
             let buttons = stack.arrangedSubviews.compactMap { $0 as? NSButton }.filter { !$0.isHidden && $0.isEnabled }
@@ -680,6 +715,14 @@ class SidebarKeyboardButton: NSButton {
 }
 
 #if DEBUG
+private struct DelayedUIListLoader: DirectoryLoading {
+    func contents(of url: URL, showHidden: Bool) async throws -> [FileItem] {
+        // Deliberately ignore caller cancellation to exercise generation checks.
+        await Task.detached { try? await Task.sleep(for: .milliseconds(250)) }.value
+        return [FileItem(url: url.appendingPathComponent("ready.txt"), name: "ready.txt", isDirectory: false)]
+    }
+}
+
 /// Runs against generated fixtures only; release builds contain no QA entry point.
 extension BrowserWindow {
     static func runUIVerification(output: String) async {
@@ -707,12 +750,13 @@ extension BrowserWindow {
             window.setFrame(NSRect(x: 80, y: 80, width: 900, height: 600), display: true)
             controller.showWindow(nil)
             NSApp.activate(ignoringOtherApps: true)
-            func capture(_ name: String) throws {
-                root.layoutSubtreeIfNeeded()
-                root.displayIfNeeded()
-                guard let bitmap = root.bitmapImageRepForCachingDisplay(in: root.bounds) else { throw CocoaError(.fileWriteUnknown) }
-                root.effectiveAppearance.performAsCurrentDrawingAppearance {
-                    root.cacheDisplay(in: root.bounds, to: bitmap)
+            func capture(_ name: String, view: NSView? = nil) throws {
+                let view = view ?? root
+                view.layoutSubtreeIfNeeded()
+                view.displayIfNeeded()
+                guard let bitmap = view.bitmapImageRepForCachingDisplay(in: view.bounds) else { throw CocoaError(.fileWriteUnknown) }
+                view.effectiveAppearance.performAsCurrentDrawingAppearance {
+                    view.cacheDisplay(in: view.bounds, to: bitmap)
                 }
                 guard let png = bitmap.representation(using: .png, properties: [:]) else { throw CocoaError(.fileWriteUnknown) }
                 try png.write(to: destination.appendingPathComponent(name + ".png"))
@@ -864,6 +908,25 @@ extension BrowserWindow {
             checks["lateWatcherDiscarded"] = factoryHasFinished()
                 && delayed.watcher == nil && delayed.watchedURL == nil && delayed.model.location == nil
             delayed.close()
+            let cancellable = BrowserWindow(preferences: preferences, restoresFrame: false,
+                loader: DelayedUIListLoader(), makeWatcher: { _ in nil })
+            cancellable.window?.setFrame(NSRect(x: 80, y: 80, width: 900, height: 600), display: true)
+            cancellable.showWindow(nil)
+            cancellable.navigate(denied)
+            let hadStopLabel = cancellable.refreshButton.accessibilityLabel() == L("읽기 중단", "Stop Loading")
+            cancellable.refreshButton.performClick(nil)
+            checks["stopButtonCancels"] = hadStopLabel && cancellable.model.wasCancelled && !cancellable.model.isLoading
+                && cancellable.refreshButton.accessibilityLabel() == L("새로고침", "Refresh")
+            try capture("cancelled", view: cancellable.window?.contentView)
+            try await Task.sleep(for: .milliseconds(400))
+            cancellable.requestWatcherRefresh(for: denied)
+            checks["cancelledReadStaysStopped"] = cancellable.model.wasCancelled && !cancellable.model.isLoading
+                && cancellable.model.items.isEmpty && !cancellable.message.isHidden
+            cancellable.refreshButton.performClick(nil)
+            try await Task.sleep(for: .milliseconds(400))
+            checks["cancelledReadRetries"] = !cancellable.model.isLoading && !cancellable.model.wasCancelled
+                && cancellable.model.items.map(\.name) == ["ready.txt"]
+            cancellable.close()
             let report: [String: Any] = ["checks": checks, "metrics": metrics,
                 "samples": ["multiwindowCycleSeconds": durations, "scrollStepSeconds": scrollDurations],
                 "cycles": cycleChecks,

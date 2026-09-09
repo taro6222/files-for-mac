@@ -49,6 +49,7 @@ public final class BrowserModel {
     public private(set) var history = NavigationHistory()
     public private(set) var items: [FileItem] = []
     public private(set) var isLoading = false
+    public private(set) var wasCancelled = false
     public private(set) var error: String?
     public private(set) var failure: DirectoryFailure?
     public var showHidden = false
@@ -68,10 +69,17 @@ public final class BrowserModel {
     }
     public func back() { history.goBack(); reload() }
     public func forward() { history.goForward(); reload() }
+    public func cancelLoad() {
+        guard isLoading else { return }
+        generation += 1
+        task?.cancel(); task = nil
+        isLoading = false; wasCancelled = true
+        onChange?()
+    }
     public func reload() {
         generation += 1
         let request = generation
-        task?.cancel(); error = nil; failure = nil
+        task?.cancel(); error = nil; failure = nil; wasCancelled = false
         let previousItems = loadedLocation == location ? items : []
         if loadedLocation != location { items = [] }
         guard let url = location else { items = []; loadedLocation = nil; isLoading = false; onChange?(); return }
