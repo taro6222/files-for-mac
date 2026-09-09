@@ -21,7 +21,7 @@ public struct LocalFileSystem: DirectoryStreaming {
                 do {
                     // Validate the root first; a missing/unreadable directory is never empty success.
                     guard try url.resourceValues(forKeys: [.isDirectoryKey]).isDirectory == true else {
-                        throw CocoaError(.fileReadUnknown)
+                        throw POSIXError(.ENOTDIR)
                     }
                     var rootError: Error?
                     let keys: Set<URLResourceKey> = [.isDirectoryKey, .isPackageKey, .isSymbolicLinkKey,

@@ -289,3 +289,40 @@ private struct ChunkedLoader: DirectoryStreaming {
         _ = try await LocalFileSystem().contents(of: root, showHidden: false)
     }
 }
+
+@Test func directoryFailuresClassifyWrappedErrorsWithoutLeakingSystemMessages() {
+    let wrapped = NSError(domain: NSCocoaErrorDomain, code: NSFileReadUnknownError,
+        userInfo: [NSUnderlyingErrorKey: POSIXError(.EACCES)])
+    #expect(DirectoryFailure(wrapped) == .permissionDenied)
+    #expect(DirectoryFailure(POSIXError(.ENOTDIR)) == .notDirectory)
+    #expect(DirectoryFailure(CocoaError(.fileReadNoSuchFile)) == .notFound)
+    #expect(DirectoryFailure(POSIXError(.ENETUNREACH)) == .unavailable)
+    let unknown = DirectoryFailure(NSError(domain: "test", code: 42,
+        userInfo: [NSLocalizedDescriptionKey: "private diagnostic /secret/path"]))
+    #expect(unknown == .unknown)
+    #expect(!unknown.message(korean: true).contains("/secret/path"))
+    #expect(unknown.message(korean: true) != unknown.message(korean: false))
+}
+
+@Test @MainActor func failureClearsAfterRecoveryAndHomeNavigation() async throws {
+    let root = try fixture(); defer { try? FileManager.default.removeItem(at: root) }
+    let missing = root.appendingPathComponent("recovered")
+    let model = BrowserModel()
+    func settle() async throws {
+        for _ in 0..<100 {
+            if !model.isLoading { return }
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        #expect(!model.isLoading)
+    }
+    model.navigate(missing); try await settle()
+    #expect(model.failure == .notFound)
+    try FileManager.default.createDirectory(at: missing, withIntermediateDirectories: true)
+    model.reload(); #expect(model.failure == nil); try await settle()
+    #expect(model.failure == nil); #expect(model.error == nil); #expect(model.items.isEmpty)
+    let file = root.appendingPathComponent("file.txt"); try Data().write(to: file)
+    model.navigate(file); try await settle()
+    #expect(model.failure == .notDirectory)
+    model.navigate(nil)
+    #expect(model.failure == nil); #expect(model.error == nil)
+}

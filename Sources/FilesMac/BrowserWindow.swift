@@ -358,7 +358,10 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
             if model.history.current.scrollOffset == 0 && !model.items.isEmpty { table.scrollRowToVisible(0) }
         }
         if model.isLoading && model.items.isEmpty { message.stringValue = L("폴더를 읽는 중…", "Loading folder…") }
-        else if let error = model.error { message.stringValue = L("폴더를 열 수 없습니다.\n", "Unable to open this folder.\n") + error }
+        else if let failure = model.failure {
+            message.stringValue = L("폴더를 열 수 없습니다.\n", "Unable to open this folder.\n")
+                + failure.message(korean: Locale.preferredLanguages.first?.hasPrefix("ko") == true)
+        }
         else if model.location != nil && model.items.isEmpty { message.stringValue = L("이 폴더는 비어 있습니다.", "This folder is empty.") }
         else { message.stringValue = "" }
         message.isHidden = message.stringValue.isEmpty
@@ -746,8 +749,57 @@ extension BrowserWindow {
                 try await Task.sleep(for: .milliseconds(10))
             }
             checks["permissionDeniedShowsError"] = controller.model.error != nil && !controller.message.isHidden && controller.table.numberOfRows == 0
+            checks["permissionErrorLocalized"] = controller.message.stringValue.contains(DirectoryFailure.permissionDenied.message(korean: Locale.preferredLanguages.first?.hasPrefix("ko") == true))
             try capture("permission-error")
             try fm.setAttributes([.posixPermissions: 0o700], ofItemAtPath: denied.path)
+            try Data().write(to: denied.appendingPathComponent("visible.txt"))
+            try Data().write(to: denied.appendingPathComponent(".hidden"))
+            var peer: BrowserWindow? = BrowserWindow(preferences: preferences, restoresFrame: false)
+            weak let releasedPeer = peer
+            peer?.showWindow(nil)
+            peer?.navigate(denied)
+            controller.navigate(fixture)
+            func settleWindows() async throws {
+                let start = ContinuousClock.now
+                while (controller.model.isLoading || peer?.model.isLoading == true) && elapsed(start) < 30 {
+                    try await Task.sleep(for: .milliseconds(10))
+                }
+                if controller.model.isLoading || peer?.model.isLoading == true { throw CocoaError(.validationMissingMandatoryProperty) }
+            }
+            try await settleWindows()
+            controller.table.selectRowIndexes(IndexSet(integer: controller.table.numberOfRows - 1), byExtendingSelection: false)
+            peer?.table.selectRowIndexes(IndexSet(integer: 0), byExtendingSelection: false)
+            let primarySelection = controller.model.history.current.selection
+            let peerSelection = peer?.model.history.current.selection
+            var repeatsPassed = true
+            var durations: [Double] = []
+            for iteration in 0..<5 {
+                let cycleStart = ContinuousClock.now
+                preferences.setShowHidden(iteration.isMultiple(of: 2))
+                preferences.setShowExtensions(!iteration.isMultiple(of: 2))
+                try await settleWindows()
+                peer?.window?.contentView?.layoutSubtreeIfNeeded()
+                let visibleRow = peer?.model.items.firstIndex { $0.name == "visible.txt" } ?? -1
+                let visibleCell = visibleRow >= 0 ? peer?.table.view(atColumn: 0, row: visibleRow, makeIfNecessary: true) as? NSTableCellView : nil
+                repeatsPassed = repeatsPassed && peer?.table.numberOfRows == (preferences.showHidden ? 2 : 1)
+                    && visibleCell?.textField?.stringValue == (preferences.showExtensions ? "visible.txt" : "visible")
+                    && controller.model.history.current.selection == primarySelection
+                    && peer?.model.history.current.selection == peerSelection
+                    && peer?.model.location == denied && controller.model.location == fixture
+                controller.goHome(nil); controller.goBack(nil)
+                try await settleWindows()
+                repeatsPassed = repeatsPassed && controller.model.history.current.selection == primarySelection
+                    && controller.table.numberOfRows == 10_001 && controller.model.failure == nil
+                durations.append(elapsed(cycleStart))
+            }
+            checks["fiveMultiwindowCycles"] = repeatsPassed && !primarySelection.isEmpty && peerSelection?.isEmpty == false
+            metrics["multiwindowCycleMinimumSeconds"] = durations.min()
+            metrics["multiwindowCycleMaximumSeconds"] = durations.max()
+            peer?.close(); peer = nil
+            try await Task.sleep(for: .milliseconds(100))
+            checks["closedWindowReleased"] = releasedPeer == nil
+            controller.focusFiles(nil)
+            checks["remainingWindowUsable"] = window.firstResponder === controller.table && controller.model.items.count == 10_001
             let report: [String: Any] = ["checks": checks, "metrics": metrics,
                 "language": Locale.preferredLanguages.first ?? "unknown", "theme": dark ? "dark" : "light",
                 "os": ProcessInfo.processInfo.operatingSystemVersionString,
