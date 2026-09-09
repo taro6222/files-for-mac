@@ -1,0 +1,23 @@
+// !$*UTF8*$!
+{ archiveVersion = 1; classes = {}; objectVersion = 56; objects = {
+26EF1F661360BB428EDC3B6D = { isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Sources/FilesCore/BrowserModel.swift"; sourceTree = SOURCE_ROOT; };
+40AB3A975D857ACEDDA3E6A8 = { isa = PBXBuildFile; fileRef = 26EF1F661360BB428EDC3B6D; };
+3478E15243CD7E37315B047F = { isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Sources/FilesCore/FileItem.swift"; sourceTree = SOURCE_ROOT; };
+6F365B7C398C2694E2090E5A = { isa = PBXBuildFile; fileRef = 3478E15243CD7E37315B047F; };
+60F55B51DB3F8D1B4B577E66 = { isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Sources/FilesCore/LocalFileSystem.swift"; sourceTree = SOURCE_ROOT; };
+7C9BF9E507522BA416507BFF = { isa = PBXBuildFile; fileRef = 60F55B51DB3F8D1B4B577E66; };
+1ECAC4550A4421F0A5687790 = { isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Sources/FilesMac/BrowserWindow.swift"; sourceTree = SOURCE_ROOT; };
+BDA28D8DC7EFB786BA829D92 = { isa = PBXBuildFile; fileRef = 1ECAC4550A4421F0A5687790; };
+9E9652DE09AA57ED4D8A07A0 = { isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Sources/FilesMac/main.swift"; sourceTree = SOURCE_ROOT; };
+D5D03799EBFC4FF41EE1FE19 = { isa = PBXBuildFile; fileRef = 9E9652DE09AA57ED4D8A07A0; };
+38A007151ABE87CC01A5B6E9 = { isa = PBXFileReference; explicitFileType = wrapper.application; path = "Files macOS.app"; sourceTree = BUILT_PRODUCTS_DIR; };
+FBDC4F23F93125BBEEAE800C = { isa = PBXGroup; children = (38A007151ABE87CC01A5B6E9,); name = Products; sourceTree = "<group>"; };
+64292B1C2B2E13EAD8788FC8 = { isa = PBXGroup; children = (26EF1F661360BB428EDC3B6D,3478E15243CD7E37315B047F,60F55B51DB3F8D1B4B577E66,1ECAC4550A4421F0A5687790,9E9652DE09AA57ED4D8A07A0,FBDC4F23F93125BBEEAE800C,); sourceTree = "<group>"; };
+BCE16DD0260827ECF338C787 = { isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (40AB3A975D857ACEDDA3E6A8,6F365B7C398C2694E2090E5A,7C9BF9E507522BA416507BFF,BDA28D8DC7EFB786BA829D92,D5D03799EBFC4FF41EE1FE19,); runOnlyForDeploymentPostprocessing = 0; };
+7561BFB015D8F536760CB671 = { isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
+A5A76368A6E498576C4EEF98 = { isa = XCBuildConfiguration; name = Debug; buildSettings = { ALWAYS_SEARCH_USER_PATHS = NO; PRODUCT_NAME = "Files macOS"; PRODUCT_BUNDLE_IDENTIFIER = "org.taro6222.files-for-mac"; SWIFT_VERSION = 6.0; MACOSX_DEPLOYMENT_TARGET = 14.0; SDKROOT = macosx; GENERATE_INFOPLIST_FILE = YES; INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities"; CODE_SIGN_IDENTITY = "-"; CODE_SIGN_STYLE = Manual; ENABLE_APP_SANDBOX = NO; COMBINE_HIDPI_IMAGES = YES; MARKETING_VERSION = 0.1.0; CURRENT_PROJECT_VERSION = 1; SWIFT_OPTIMIZATION_LEVEL = "-Onone"; }; };
+A5BD66D3C03A0FAF1A0386D5 = { isa = XCBuildConfiguration; name = Release; buildSettings = { ALWAYS_SEARCH_USER_PATHS = NO; PRODUCT_NAME = "Files macOS"; PRODUCT_BUNDLE_IDENTIFIER = "org.taro6222.files-for-mac"; SWIFT_VERSION = 6.0; MACOSX_DEPLOYMENT_TARGET = 14.0; SDKROOT = macosx; GENERATE_INFOPLIST_FILE = YES; INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities"; CODE_SIGN_IDENTITY = "-"; CODE_SIGN_STYLE = Manual; ENABLE_APP_SANDBOX = NO; COMBINE_HIDPI_IMAGES = YES; MARKETING_VERSION = 0.1.0; CURRENT_PROJECT_VERSION = 1; SWIFT_OPTIMIZATION_LEVEL = "-O"; }; };
+E30856D4D988D9571DE7D610 = { isa = XCConfigurationList; buildConfigurations = (A5A76368A6E498576C4EEF98,A5BD66D3C03A0FAF1A0386D5,); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
+0E8A3AD980EC179856012B7E = { isa = PBXNativeTarget; name = "Files macOS"; productName = "Files macOS"; productType = "com.apple.product-type.application"; productReference = 38A007151ABE87CC01A5B6E9; buildConfigurationList = E30856D4D988D9571DE7D610; buildPhases = (BCE16DD0260827ECF338C787,7561BFB015D8F536760CB671,); buildRules = (); dependencies = (); };
+98F54143AB4E86B28C3AFEE0 = { isa = PBXProject; attributes = { LastUpgradeCheck = 2660; }; buildConfigurationList = E30856D4D988D9571DE7D610; compatibilityVersion = "Xcode 14.0"; developmentRegion = en; knownRegions = (en,ko,Base,); mainGroup = 64292B1C2B2E13EAD8788FC8; productRefGroup = FBDC4F23F93125BBEEAE800C; projectDirPath = ""; projectRoot = ""; targets = (0E8A3AD980EC179856012B7E,); };
+}; rootObject = 98F54143AB4E86B28C3AFEE0; }
