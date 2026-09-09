@@ -535,10 +535,41 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         let panel = NSOpenPanel()
         panel.canChooseDirectories = true; panel.canChooseFiles = false; panel.allowsMultipleSelection = false
         panel.prompt = L("여기에 복사", "Copy Here")
-        panel.message = L("복사할 대상 폴더를 선택하세요. 같은 이름은 덮어쓰지 않고 건너뜁니다.", "Choose the destination folder. Existing names will be skipped.")
+        panel.message = L("복사할 대상 폴더를 선택하세요. 다음 화면에서 이름 충돌 정책을 선택합니다.", "Choose the destination folder. Choose the conflict policy next.")
         panel.beginSheetModal(for: window) { [weak self] response in
             guard response == .OK, let destination = panel.url else { return }
-            CopyWindow.start(sources: sources, destination: destination) { [weak self] in
+            self?.prepareCopy(sources: sources, destination: destination)
+        }
+    }
+    func copyFilesToClipboard() {
+        guard !model.isLoading else { return }
+        let urls = table.selectedRowIndexes.compactMap { model.items.indices.contains($0) ? model.items[$0].url as NSURL : nil }
+        guard !urls.isEmpty else { return }
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.writeObjects(urls)
+    }
+    private var clipboardFiles: [URL] {
+        (NSPasteboard.general.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL]) ?? []
+    }
+    var canCopyFiles: Bool { !model.isLoading && !table.selectedRowIndexes.isEmpty }
+    var canPasteFiles: Bool { model.location != nil && !model.isLoading && !CopyWindow.isRunning && !clipboardFiles.isEmpty }
+    func pasteFilesFromClipboard() {
+        guard canPasteFiles, let destination = model.location else { return }
+        prepareCopy(sources: clipboardFiles, destination: destination)
+    }
+    private func prepareCopy(sources: [URL], destination: URL) {
+        guard !CopyWindow.isRunning, let window else { return }
+        let alert = NSAlert()
+        alert.messageText = L("복사 시 이름 충돌 처리", "Copy conflict policy")
+        alert.informativeText = L("대상: ", "Destination: ") + destination.path + "\n" +
+            L("\(sources.count)개 항목을 복사합니다. 이번 작업에서 이름이 겹치면 적용할 정책을 선택하세요. 기존 항목은 덮어쓰지 않습니다.", "Copy \(sources.count) items. Choose how this job handles conflicting names. Existing items are never overwritten.")
+        alert.addButton(withTitle: L("양쪽 유지", "Keep Both"))
+        alert.addButton(withTitle: L("건너뛰기", "Skip Conflicts"))
+        alert.addButton(withTitle: L("취소", "Cancel"))
+        alert.beginSheetModal(for: window) { [weak self] response in
+            guard response == .alertFirstButtonReturn || response == .alertSecondButtonReturn else { return }
+            CopyWindow.start(sources: sources, destination: destination,
+                             conflictPolicy: response == .alertFirstButtonReturn ? .keepBoth : .skip) { [weak self] in
                 if self?.model.location?.resolvingSymlinksInPath() == destination.resolvingSymlinksInPath() {
                     self?.refresh(nil)
                 }
@@ -593,7 +624,15 @@ final class LocationButton: SidebarKeyboardButton { var url: URL? }
 final class FlippedView: NSView { override var isFlipped: Bool { true } }
 
 @MainActor
-private final class BrowserFileTable: NSTableView {
+private final class BrowserFileTable: NSTableView, NSMenuItemValidation {
+    @objc func copy(_ sender: Any?) { (window?.windowController as? BrowserWindow)?.copyFilesToClipboard() }
+    @objc func paste(_ sender: Any?) { (window?.windowController as? BrowserWindow)?.pasteFilesFromClipboard() }
+    func validateMenuItem(_ item: NSMenuItem) -> Bool {
+        let browser = window?.windowController as? BrowserWindow
+        if item.action == #selector(copy(_:)) { return browser?.canCopyFiles == true }
+        if item.action == #selector(paste(_:)) { return browser?.canPasteFiles == true }
+        return true
+    }
     override func keyDown(with event: NSEvent) {
         if event.keyCode == 53 && event.modifierFlags.intersection([.command, .control, .option]).isEmpty {
             (window?.windowController as? BrowserWindow)?.stopLoading(nil)

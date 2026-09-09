@@ -20,7 +20,7 @@ public struct CopyProgress: Sendable {
 
 public struct CopyRecord: Codable, Sendable {
     public let source: URL
-    public let target: URL
+    public var target: URL
     public var state: String = "queued"
     public var message: String? = nil
     public var temporary: URL? = nil
@@ -48,24 +48,27 @@ private final class CopyDelegate: NSObject, FileManagerDelegate, @unchecked Send
     }
 }
 
+public enum CopyConflictPolicy: Sendable { case skip, keepBoth }
+
 public enum CopyEngine {
     public static func run(sources: [URL], destination: URL, journalDirectory: URL,
-                           cancellation: CopyCancellation,
+                           cancellation: CopyCancellation, conflictPolicy: CopyConflictPolicy = .skip,
                            progress: @escaping @Sendable (CopyProgress) -> Void = { _ in }) async -> CopyReport {
         await withTaskCancellationHandler {
             await Task.detached(priority: .userInitiated) {
                 execute(sources: sources, destination: destination, journalDirectory: journalDirectory,
-                        cancellation: cancellation, progress: progress)
+                        cancellation: cancellation, conflictPolicy: conflictPolicy, progress: progress)
             }.value
         } onCancel: { cancellation.cancel() }
     }
 
     private static func execute(sources: [URL], destination: URL, journalDirectory: URL,
-                                cancellation: CopyCancellation,
+                                cancellation: CopyCancellation, conflictPolicy: CopyConflictPolicy,
                                 progress: @Sendable (CopyProgress) -> Void) -> CopyReport {
         let fm = FileManager()
         let delegate = CopyDelegate(cancellation)
         fm.delegate = delegate
+        defer { withExtendedLifetime(delegate) {} }
         let destination = destination.resolvingSymlinksInPath().standardizedFileURL
         var report = CopyReport(version: 1, id: UUID(), state: "running", items: sources.map {
             CopyRecord(source: $0, target: destination.appendingPathComponent($0.lastPathComponent))
@@ -104,11 +107,13 @@ public enum CopyEngine {
                     }
                 }
                 var existing = stat()
-                if fstatat(destinationFD, source.lastPathComponent, &existing, AT_SYMLINK_NOFOLLOW) == 0 {
+                let exists = fstatat(destinationFD, source.lastPathComponent, &existing, AT_SYMLINK_NOFOLLOW) == 0
+                let lookupError = errno
+                if exists && conflictPolicy == .skip {
                     report.items[index].state = "conflict"
                     report.items[index].message = "An item with this name already exists; skipped."
                 } else {
-                    guard errno == ENOENT else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
+                    guard exists || lookupError == ENOENT else { throw POSIXError(POSIXErrorCode(rawValue: lookupError) ?? .EIO) }
                     let before = try snapshot(source, cancellation: cancellation)
                     let temporary = destination.appendingPathComponent(".files-copy-" + report.id.uuidString + "-\(index)")
                     report.items[index].temporary = temporary
@@ -135,12 +140,24 @@ public enum CopyEngine {
                         throw CopyFailure(text: "Destination identity changed before commit.")
                     }
                     // Atomic, descriptor-relative publication: never replace even a racing/broken symlink.
-                    if renameatx_np(stageFD, "payload", destinationFD, source.lastPathComponent, UInt32(RENAME_EXCL)) != 0 {
-                        if errno == EEXIST {
+                    var suffix = 0
+                    while true {
+                        try cancellation.check()
+                        let name = copyName(source, isDirectory: attrs[.type] as? FileAttributeType == .typeDirectory, suffix: suffix)
+                        report.items[index].target = destination.appendingPathComponent(name)
+                        try save() // Persist the actual proposed name before publishing it.
+                        if renameatx_np(stageFD, "payload", destinationFD, name, UInt32(RENAME_EXCL)) == 0 {
+                            report.items[index].state = "completed"; break
+                        }
+                        guard errno == EEXIST else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
+                        if conflictPolicy == .skip {
                             report.items[index].state = "conflict"
                             report.items[index].message = "Destination appeared during copying; skipped."
-                        } else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
-                    } else { report.items[index].state = "completed" }
+                            break
+                        }
+                        suffix += 1
+                        guard suffix <= 10_000 else { throw CopyFailure(text: "Too many conflicting names.") }
+                    }
                 }
             } catch {
                 report.items[index].state = cancellation.isCancelled ? "cancelled" : "failed"
@@ -166,6 +183,13 @@ public enum CopyEngine {
             (completed == sources.count && report.journalError == nil ? "completed" : (completed > 0 ? "partiallyCompleted" : "failed"))
         do { try save() } catch { report.journalError = error.localizedDescription }
         return report
+    }
+
+    private static func copyName(_ source: URL, isDirectory: Bool, suffix: Int) -> String {
+        guard suffix > 0 else { return source.lastPathComponent }
+        let ext = isDirectory ? "" : source.pathExtension
+        let stem = ext.isEmpty ? source.lastPathComponent : source.deletingPathExtension().lastPathComponent
+        return stem + " (\(suffix + 1))" + (ext.isEmpty ? "" : "." + ext)
     }
 
     private static func matches(_ url: URL, descriptor: Int32) -> Bool {

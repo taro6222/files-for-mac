@@ -18,10 +18,10 @@ private struct CopyFixture {
     func file(_ name: String, text: String = "original") throws -> URL {
         let url = source.appendingPathComponent(name); try Data(text.utf8).write(to: url); return url
     }
-    func run(_ sources: [URL], cancellation: CopyCancellation = CopyCancellation(),
+    func run(_ sources: [URL], policy: CopyConflictPolicy = .skip, cancellation: CopyCancellation = CopyCancellation(),
              progress: @escaping @Sendable (CopyProgress) -> Void = { _ in }) async -> CopyReport {
         await CopyEngine.run(sources: sources, destination: destination, journalDirectory: journal,
-                             cancellation: cancellation, progress: progress)
+                             cancellation: cancellation, conflictPolicy: policy, progress: progress)
     }
     func noTemporaryOutput() throws -> Bool {
         try FileManager.default.contentsOfDirectory(atPath: destination.path).allSatisfy { !$0.hasPrefix(".files-copy-") }
@@ -112,4 +112,43 @@ private struct CopyFixture {
     let report = await f.run([f.source.appendingPathComponent("missing"), a])
     #expect(report.items.map(\.state) == ["failed", "completed"])
     #expect(report.state == "partiallyCompleted")
+}
+
+@Test func keepBothPreservesExistingNamesAndRecordsActualTarget() async throws {
+    let f = try CopyFixture(); defer { f.clean() }
+    let source = try f.file("한글.txt")
+    for name in ["한글.txt", "한글 (2).txt"] {
+        try Data("existing".utf8).write(to: f.destination.appendingPathComponent(name))
+    }
+    let report = await f.run([source], policy: .keepBoth)
+    #expect(report.state == "completed")
+    #expect(report.items[0].target.lastPathComponent == "한글 (3).txt")
+    #expect(try String(contentsOf: report.items[0].target, encoding: .utf8) == "original")
+    #expect(try String(contentsOf: f.destination.appendingPathComponent("한글.txt"), encoding: .utf8) == "existing")
+    let disk = try JSONDecoder().decode(CopyReport.self, from: Data(contentsOf: f.journal.appendingPathComponent(report.id.uuidString + ".json")))
+    #expect(disk.items[0].target == report.items[0].target)
+}
+
+@Test func keepBothHandlesCommitRaceAndFolderNames() async throws {
+    let f = try CopyFixture(); defer { f.clean() }
+    let folder = f.source.appendingPathComponent("folder.v1")
+    try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+    let target = f.destination.appendingPathComponent("folder.v1")
+    let report = await f.run([folder], policy: .keepBoth) { update in
+        if update.phase == "committing" { try? Data("racing file".utf8).write(to: target) }
+    }
+    #expect(report.state == "completed")
+    #expect(report.items[0].target.lastPathComponent == "folder.v1 (2)")
+    #expect(try String(contentsOf: target, encoding: .utf8) == "racing file")
+    #expect(try f.noTemporaryOutput())
+}
+
+@Test func keepBothCopiesWithinSameFolderAndSupportsDotfiles() async throws {
+    let f = try CopyFixture(); defer { f.clean() }
+    let source = try f.file(".config")
+    let report = await CopyEngine.run(sources: [source], destination: f.source, journalDirectory: f.journal,
+                                      cancellation: CopyCancellation(), conflictPolicy: .keepBoth)
+    #expect(report.state == "completed")
+    #expect(report.items[0].target.lastPathComponent == ".config (2)")
+    #expect(try Data(contentsOf: report.items[0].target) == Data(contentsOf: source))
 }

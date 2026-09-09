@@ -14,9 +14,9 @@ final class CopyWindow: NSWindowController, NSWindowDelegate {
     private let details = NSTextView()
     private let cancel = NSButton(title: L("취소", "Cancel"), target: nil, action: #selector(cancelCopy(_:)))
 
-    static func start(sources: [URL], destination: URL, completion: @escaping @MainActor () -> Void) {
+    static func start(sources: [URL], destination: URL, conflictPolicy: CopyConflictPolicy = .skip, completion: @escaping @MainActor () -> Void) {
         guard !isRunning else { return }
-        let controller = CopyWindow(sources: sources, destination: destination)
+        let controller = CopyWindow(sources: sources, destination: destination, conflictPolicy: conflictPolicy)
         operations.append(controller)
         controller.showWindow(nil)
         controller.window?.makeKeyAndOrderFront(nil)
@@ -25,7 +25,7 @@ final class CopyWindow: NSWindowController, NSWindowDelegate {
             .appendingPathComponent("operations")
         Task {
             let report = await CopyEngine.run(sources: sources, destination: destination, journalDirectory: journals,
-                                              cancellation: controller.cancellation) { [weak controller] update in
+                                              cancellation: controller.cancellation, conflictPolicy: conflictPolicy) { [weak controller] update in
                 Task { @MainActor in controller?.update(update) }
             }
             controller.finish(report)
@@ -33,7 +33,7 @@ final class CopyWindow: NSWindowController, NSWindowDelegate {
         }
     }
 
-    private init(sources: [URL], destination: URL) {
+    private init(sources: [URL], destination: URL, conflictPolicy: CopyConflictPolicy) {
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 640, height: 380),
                               styleMask: [.titled, .closable, .miniaturizable, .resizable], backing: .buffered, defer: false)
         super.init(window: window)
@@ -56,7 +56,7 @@ final class CopyWindow: NSWindowController, NSWindowDelegate {
         let scroll = NSScrollView(); scroll.hasVerticalScroller = true; scroll.borderType = .bezelBorder
         details.isEditable = false; details.isSelectable = true; details.font = .systemFont(ofSize: 12)
         details.autoresizingMask = [.width]; details.textContainer?.widthTracksTextView = true
-        details.string = L("같은 이름은 건너뜁니다. 완료된 복사는 취소해도 유지됩니다.\n\n", "Existing names are skipped. Completed copies remain when cancelled.\n\n") + sources.map(\.path).joined(separator: "\n")
+        details.string = (conflictPolicy == .keepBoth ? L("같은 이름은 번호를 붙여 양쪽을 유지합니다.\n", "Conflicting names receive a number; both items are kept.\n") : "") + L("완료된 복사는 취소해도 유지됩니다.\n\n", "Completed copies remain when cancelled.\n\n") + sources.map(\.path).joined(separator: "\n")
         scroll.documentView = details; stack.addArrangedSubview(scroll)
         cancel.target = self; stack.addArrangedSubview(cancel)
         for view in [target, label, progress, scroll] {
