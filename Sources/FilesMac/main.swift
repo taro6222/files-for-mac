@@ -26,10 +26,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
-        guard CopyWindow.isRunning else { return .terminateNow }
+        guard CopyWindow.isRunning || BrowserWindow.entryOperationRunning else { return .terminateNow }
         let alert = NSAlert()
-        alert.messageText = L("파일 복사가 진행 중입니다", "A file copy is running")
-        alert.informativeText = L("복사 창에서 취소하고 정리가 끝날 때까지 기다리거나, 복사가 끝난 뒤 종료하세요.", "Cancel in the copy window and wait for cleanup, or quit after copying finishes.")
+        alert.messageText = L("파일 작업이 진행 중입니다", "A file operation is running")
+        alert.informativeText = L("작업 완료 후 종료하세요. 복사는 복사 창에서 취소할 수 있습니다.", "Quit after the operation finishes. Copies can be cancelled in the copy window.")
         alert.runModal()
         return .terminateCancel
     }
@@ -43,6 +43,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let new = file.addItem(withTitle: L("새 창", "New Window"), action: #selector(newWindow(_:)), keyEquivalent: "n"); new.target = self
         file.addItem(withTitle: L("폴더 열기…", "Open Folder…"), action: #selector(BrowserWindow.chooseFolder(_:)), keyEquivalent: "o")
         file.addItem(withTitle: L("선택 항목 열기", "Open Selection"), action: #selector(BrowserWindow.openSelection(_:)), keyEquivalent: "\u{f701}")
+        let folder = file.addItem(withTitle: L("새 폴더…", "New Folder…"), action: #selector(BrowserWindow.createFolder(_:)), keyEquivalent: "n")
+        folder.keyEquivalentModifierMask = [.command, .shift]
+        file.addItem(withTitle: L("이름 변경…", "Rename…"), action: #selector(BrowserWindow.renameSelection(_:)), keyEquivalent: "")
         let copy = file.addItem(withTitle: L("선택 항목 복사…", "Copy Selection To…"), action: #selector(BrowserWindow.copySelection(_:)), keyEquivalent: "c")
         copy.keyEquivalentModifierMask = [.command, .shift]
         file.addItem(withTitle: L("창 닫기", "Close Window"), action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w")

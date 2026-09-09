@@ -36,6 +36,8 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
     private var lastRecordedLocation: URL?
     private var volumes: [VolumeSummary] = []
     private var volumeTask: Task<Void, Never>?
+    static private(set) var entryOperationRunning = false
+    private var pendingEntrySelection: URL?
     private var rendering = false
     private var watcher: DirectoryWatcher?
     private enum WatcherStatus { case idle, connecting, active, unavailable }
@@ -232,6 +234,8 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         scroll.translatesAutoresizingMaskIntoConstraints = false; content.addSubview(scroll)
         NSLayoutConstraint.activate([scroll.leadingAnchor.constraint(equalTo: content.leadingAnchor), scroll.trailingAnchor.constraint(equalTo: content.trailingAnchor), scroll.topAnchor.constraint(equalTo: content.topAnchor), scroll.bottomAnchor.constraint(equalTo: content.bottomAnchor)])
         let menu = NSMenu()
+        let folder = menu.addItem(withTitle: L("새 폴더…", "New Folder…"), action: #selector(createFolder(_:)), keyEquivalent: ""); folder.target = self
+        let rename = menu.addItem(withTitle: L("이름 변경…", "Rename…"), action: #selector(renameSelection(_:)), keyEquivalent: ""); rename.target = self
         let open = menu.addItem(withTitle: L("열기", "Open"), action: #selector(openSelection(_:)), keyEquivalent: ""); open.target = self
         let copy = menu.addItem(withTitle: L("선택 항목 복사…", "Copy Selection To…"), action: #selector(copySelection(_:)), keyEquivalent: ""); copy.target = self
         let reveal = menu.addItem(withTitle: L("Finder에서 보기", "Reveal in Finder"), action: #selector(revealSelection(_:)), keyEquivalent: ""); reveal.target = self
@@ -388,13 +392,22 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         refreshButton.toolTip = refreshTitle; refreshButton.setAccessibilityLabel(refreshTitle)
         scroll.isHidden = model.location == nil; homeScroll.isHidden = model.location != nil
         if model.location == nil { lastRecordedLocation = nil; buildHome() }
+        var revealEntry = false
+        if let target = pendingEntrySelection, !model.isLoading {
+            pendingEntrySelection = nil
+            if target.deletingLastPathComponent().standardizedFileURL == model.location {
+                revealEntry = true
+                model.savePosition(selection: [target.path], scrollOffset: model.history.current.scrollOffset)
+            }
+        }
         table.reloadData()
         let selected = IndexSet(model.items.indices.filter { model.history.current.selection.contains(model.items[$0].id) })
         table.selectRowIndexes(selected, byExtendingSelection: false)
         if !model.isLoading {
             scroll.contentView.scroll(to: NSPoint(x: 0, y: model.history.current.scrollOffset))
             scroll.reflectScrolledClipView(scroll.contentView)
-            if model.history.current.scrollOffset == 0 && !model.items.isEmpty { table.scrollRowToVisible(0) }
+            if revealEntry, let row = selected.first { table.scrollRowToVisible(row) }
+            else if model.history.current.scrollOffset == 0 && !model.items.isEmpty { table.scrollRowToVisible(0) }
         }
         if model.isLoading && model.items.isEmpty { message.stringValue = L("폴더를 읽는 중…", "Loading folder…") }
         else if let failure = model.failure {
@@ -528,8 +541,67 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         if item.isBrowsable { navigate(item.url) }
         else { NSWorkspace.shared.open(item.url) }
     }
+    @objc func createFolder(_ sender: Any?) { promptForEntryName(source: nil) }
+    @objc func renameSelection(_ sender: Any?) {
+        guard table.selectedRowIndexes.count == 1, let index = table.selectedRowIndexes.first,
+              model.items.indices.contains(index) else { return }
+        promptForEntryName(source: model.items[index])
+    }
+    private func promptForEntryName(source: FileItem?) {
+        guard !Self.entryOperationRunning, !CopyWindow.isRunning, !model.isLoading,
+              let parent = model.location, let window else { return }
+        let alert = NSAlert()
+        alert.messageText = source == nil ? L("새 폴더", "New Folder") : L("이름 변경", "Rename")
+        alert.informativeText = source?.url.path ?? parent.path
+        let field = NSTextField(string: source?.name ?? L("새 폴더", "New Folder"))
+        field.frame = NSRect(x: 0, y: 0, width: 360, height: 26)
+        field.setAccessibilityLabel(L("항목 이름", "Item name"))
+        alert.accessoryView = field
+        alert.addButton(withTitle: source == nil ? L("만들기", "Create") : L("변경", "Rename"))
+        alert.addButton(withTitle: L("취소", "Cancel"))
+        alert.window.initialFirstResponder = field
+        alert.beginSheetModal(for: window) { [self] response in
+            guard response == .alertFirstButtonReturn, !Self.entryOperationRunning, !CopyWindow.isRunning else { return }
+            let name = field.stringValue
+            Self.entryOperationRunning = true
+            Task {
+                defer { Self.entryOperationRunning = false }
+                do {
+                    let journal = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+                        .appendingPathComponent(Bundle.main.bundleIdentifier ?? "org.taro6222.files-for-mac")
+                        .appendingPathComponent("operations")
+                    let result: EntryOperationResult
+                    if let source {
+                        result = try await EntryOperations.rename(source.url, to: name, expectedIdentity: source.identity, journalDirectory: journal)
+                    } else {
+                        result = try await EntryOperations.createFolder(in: parent, name: name, journalDirectory: journal)
+                    }
+                    if model.location == parent {
+                        pendingEntrySelection = result.target.standardizedFileURL
+                        if name.hasPrefix(".") { preferences.setShowHidden(true) }
+                        model.reload()
+                    }
+                    if let warning = result.journalWarning { showEntryError(warning) }
+                } catch {
+                    let message: String
+                    switch error {
+                    case EntryOperationError.invalidName: message = L("이름을 입력하세요. /, :, NUL 및 . 또는 .. 이름은 사용할 수 없습니다.", "Enter a name without /, :, NUL; . and .. are not allowed.")
+                    case EntryOperationError.conflict: message = L("같은 이름의 항목이 있습니다. 기존 항목은 변경하지 않았습니다.", "An item with this name exists. It was not changed.")
+                    case EntryOperationError.sourceChanged: message = L("원본 또는 상위 폴더가 변경됐습니다. 새로고침 후 다시 시도하세요.", "The source or parent changed. Refresh and try again.")
+                    default: message = error.localizedDescription
+                    }
+                    showEntryError(message)
+                }
+            }
+        }
+    }
+    private func showEntryError(_ message: String) {
+        guard let window, window.isVisible else { return }
+        let alert = NSAlert(); alert.messageText = L("파일 작업 안내", "File operation notice")
+        alert.informativeText = message; alert.beginSheetModal(for: window)
+    }
     @objc func copySelection(_ sender: Any?) {
-        guard !CopyWindow.isRunning, !model.isLoading, let window else { return }
+        guard !Self.entryOperationRunning, !CopyWindow.isRunning, !model.isLoading, let window else { return }
         let sources = table.selectedRowIndexes.compactMap { model.items.indices.contains($0) ? model.items[$0].url : nil }
         guard !sources.isEmpty else { return }
         let panel = NSOpenPanel()
@@ -552,13 +624,13 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         (NSPasteboard.general.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL]) ?? []
     }
     var canCopyFiles: Bool { !model.isLoading && !table.selectedRowIndexes.isEmpty }
-    var canPasteFiles: Bool { model.location != nil && !model.isLoading && !CopyWindow.isRunning && !clipboardFiles.isEmpty }
+    var canPasteFiles: Bool { model.location != nil && !model.isLoading && !CopyWindow.isRunning && !Self.entryOperationRunning && !clipboardFiles.isEmpty }
     func pasteFilesFromClipboard() {
         guard canPasteFiles, let destination = model.location else { return }
         prepareCopy(sources: clipboardFiles, destination: destination)
     }
     private func prepareCopy(sources: [URL], destination: URL) {
-        guard !CopyWindow.isRunning, let window else { return }
+        guard !Self.entryOperationRunning, !CopyWindow.isRunning, let window else { return }
         let alert = NSAlert()
         alert.messageText = L("복사 시 이름 충돌 처리", "Copy conflict policy")
         alert.informativeText = L("대상: ", "Destination: ") + destination.path + "\n" +
@@ -774,6 +846,8 @@ extension BrowserWindow {
     }
     func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
         switch menuItem.action {
+        case #selector(createFolder(_:)): return model.location != nil && !model.isLoading && !Self.entryOperationRunning && !CopyWindow.isRunning
+        case #selector(renameSelection(_:)): return model.location != nil && table.selectedRowIndexes.count == 1 && !model.isLoading && !Self.entryOperationRunning && !CopyWindow.isRunning
         case #selector(retryAutomaticRefresh(_:)): return model.location != nil && watcherStatus != .active
         case #selector(copySelection(_:)): return !CopyWindow.isRunning && !model.isLoading && !table.selectedRowIndexes.isEmpty
         case #selector(stopLoading(_:)): return model.isLoading
