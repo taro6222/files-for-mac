@@ -37,6 +37,11 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
     private var volumes: [VolumeSummary] = []
     private var volumeTask: Task<Void, Never>?
     static private(set) var entryOperationRunning = false
+    private static var operationJournalDirectory: URL {
+        FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent(Bundle.main.bundleIdentifier ?? "org.taro6222.files-for-mac")
+            .appendingPathComponent("operations")
+    }
     private var pendingEntrySelection: URL?
     private var rendering = false
     private var watcher: DirectoryWatcher?
@@ -718,6 +723,43 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
             self?.prepareMove(sources: selected, destination: destination)
         }
     }
+    @objc func undoLastMove(_ sender: Any?) {
+        guard !Self.entryOperationRunning, !MoveWindow.isRunning,
+              let record = EntryOperations.latestUndoMove(journalDirectory: Self.operationJournalDirectory),
+              let window else { return }
+        let alert = NSAlert()
+        alert.messageText = L("마지막 이동 실행 취소", "Undo Last Move")
+        alert.informativeText = L("이동한 항목을 원래 위치로 되돌립니다. 이동 후 변경됐거나 원래 위치에 충돌이 있는 항목은 건너뜁니다.",
+                                  "Return moved items to their original locations. Items changed after the move or whose original location now conflicts will be skipped.") +
+            "\n\n" + L("항목: ", "Items: ") + "\(record.items.count)"
+        alert.addButton(withTitle: L("실행 취소", "Undo"))
+        alert.addButton(withTitle: L("취소", "Cancel"))
+        alert.beginSheetModal(for: window) { [weak self] response in
+            guard response == .alertFirstButtonReturn, let self else { return }
+            Self.entryOperationRunning = true
+            Task {
+                let report = await EntryOperations.undoMove(record, journalDirectory: Self.operationJournalDirectory)
+                Self.entryOperationRunning = false
+                self.refresh(nil)
+                self.showMoveUndoResult(report)
+            }
+        }
+    }
+    private func showMoveUndoResult(_ report: MoveUndoResult) {
+        guard let window, window.isVisible else { return }
+        let completed = report.items.filter { $0.state == "completed" }.count
+        let alert = NSAlert()
+        alert.messageText = report.state == "completed"
+            ? L("이동 실행 취소 완료", "Move Undo Complete")
+            : L("일부 항목을 되돌리지 못했습니다", "Some Items Could Not Be Restored")
+        let details = report.items.filter { $0.state != "completed" }.map {
+            $0.source.path + "\n" + ($0.message ?? L("알 수 없는 오류", "Unknown error"))
+        }.joined(separator: "\n\n")
+        alert.informativeText = L("복원: ", "Restored: ") + "\(completed)/\(report.items.count)" +
+            (details.isEmpty ? "" : "\n\n" + details) +
+            (report.journalError.map { "\n\n" + L("저널 저장 오류: ", "Journal error: ") + $0 } ?? "")
+        alert.beginSheetModal(for: window)
+    }
     func copyFilesToClipboard() {
         guard !model.isLoading else { return }
         let urls = table.selectedRowIndexes.compactMap { model.items.indices.contains($0) ? model.items[$0].url as NSURL : nil }
@@ -968,6 +1010,9 @@ extension BrowserWindow {
     }
     func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
         switch menuItem.action {
+        case #selector(undoLastMove(_:)):
+            return !Self.entryOperationRunning && !MoveWindow.isRunning &&
+                EntryOperations.latestUndoMove(journalDirectory: Self.operationJournalDirectory) != nil
         case #selector(deleteSelection(_:)): return canDeleteSelection
         case #selector(restoreSelection(_:)): return canRestoreSelection
         case #selector(permanentlyDeleteSelection(_:)): return canPermanentDeleteSelection

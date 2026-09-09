@@ -65,17 +65,72 @@ public struct MoveOperationResult: Sendable {
     public let journalError: String?
 }
 
+public struct MoveUndoItem: Codable, Sendable {
+    public let source: URL
+    public let target: URL
+    public let targetIdentity: String
+}
+
+public struct MoveUndoRecord: Codable, Sendable {
+    public let operationId: String
+    public let items: [MoveUndoItem]
+    public let createdAt: Date
+}
+
+public struct MoveUndoItemResult: Sendable {
+    public let source: URL
+    public let target: URL
+    public let state: String
+    public let message: String?
+}
+
+public struct MoveUndoResult: Sendable {
+    public let operationId: String
+    public let state: String
+    public let items: [MoveUndoItemResult]
+    public let journalError: String?
+}
+
 public enum MoveConflictPolicy: String, Sendable {
     case skip
     case replace
 }
 
-/// Single directory-entry operations. No replacement, recursive rename, or undo.
+/// Local directory-entry operations with durable operation records.
 public enum EntryOperations {
     private static func operationDateFormatter() -> ISO8601DateFormatter {
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
         return formatter
+    }
+
+    private static func snapshotIdentity(_ url: URL, fileManager: FileManager = .default) throws -> String {
+        let values = try fileManager.attributesOfItem(atPath: url.path)
+        guard let device = values[.systemNumber] as? NSNumber,
+              let inode = values[.systemFileNumber] as? NSNumber else { throw EntryOperationError.sourceChanged }
+        let created = (values[.creationDate] as? Date)?.timeIntervalSince1970 ?? 0
+        let modified = (values[.modificationDate] as? Date)?.timeIntervalSince1970 ?? 0
+        let size = (values[.size] as? NSNumber)?.uint64Value ?? 0
+        return "\(device):\(inode):\(created):\(modified):\(size)"
+    }
+
+    private static func entryExists(_ url: URL) -> Bool {
+        var info = stat()
+        return lstat(url.path, &info) == 0
+    }
+
+    public static func latestUndoMove(journalDirectory: URL) -> MoveUndoRecord? {
+        let fm = FileManager.default
+        guard let candidates = try? fm.contentsOfDirectory(at: journalDirectory,
+            includingPropertiesForKeys: [.contentModificationDateKey], options: [.skipsHiddenFiles]) else { return nil }
+        return candidates
+            .filter { $0.lastPathComponent.hasPrefix("undo-move-") && $0.pathExtension == "json" }
+            .sorted {
+                let lhs = (try? $0.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
+                let rhs = (try? $1.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
+                return lhs > rhs
+            }
+            .lazy.compactMap { try? JSONDecoder().decode(MoveUndoRecord.self, from: Data(contentsOf: $0)) }.first
     }
 
     public static func validateName(_ name: String) throws {
@@ -457,7 +512,71 @@ public enum EntryOperations {
                 try? save(state: finalState)
             }
 
+            if conflictPolicy == .skip {
+                let completed = itemStates.filter { $0.state == "completed" }
+                if !completed.isEmpty {
+                    do {
+                        let undoItems = try completed.map {
+                            MoveUndoItem(source: $0.source, target: $0.target,
+                                targetIdentity: try snapshotIdentity($0.target, fileManager: fm))
+                        }
+                        let record = MoveUndoRecord(operationId: operationId, items: undoItems, createdAt: Date())
+                        try JSONEncoder().encode(record).write(
+                            to: journalDirectory.appendingPathComponent("undo-move-\(operationId).json"), options: .atomic)
+                    } catch {
+                        journalError = error.localizedDescription
+                        try? save(state: finalState)
+                    }
+                }
+            }
+
             return MoveOperationResult(id: operationId, state: finalState, items: itemStates, journalError: journalError)
+        }.value
+    }
+
+    public static func undoMove(_ record: MoveUndoRecord, journalDirectory: URL) async -> MoveUndoResult {
+        await Task.detached(priority: .userInitiated) {
+            let fm = FileManager.default
+            var results: [MoveUndoItemResult] = []
+            for item in record.items.reversed() {
+                let result: MoveUndoItemResult
+                do {
+                    guard entryExists(item.target) else {
+                        results.append(MoveUndoItemResult(source: item.source, target: item.target, state: "notFound", message: LString.undoTargetMissing)); continue
+                    }
+                    guard try snapshotIdentity(item.target, fileManager: fm) == item.targetIdentity else {
+                        results.append(MoveUndoItemResult(source: item.source, target: item.target, state: "changed", message: LString.undoTargetChanged)); continue
+                    }
+                    guard !entryExists(item.source) else {
+                        results.append(MoveUndoItemResult(source: item.source, target: item.target, state: "conflict", message: LString.undoSourceConflict)); continue
+                    }
+                    guard fm.fileExists(atPath: item.source.deletingLastPathComponent().path) else {
+                        results.append(MoveUndoItemResult(source: item.source, target: item.target, state: "notFound", message: LString.undoSourceParentMissing)); continue
+                    }
+                    try fm.moveItem(at: item.target, to: item.source)
+                    result = MoveUndoItemResult(source: item.source, target: item.target, state: "completed", message: nil)
+                } catch {
+                    result = MoveUndoItemResult(source: item.source, target: item.target, state: "failed", message: error.localizedDescription)
+                }
+                results.append(result)
+            }
+            results.reverse()
+            let state = results.allSatisfy { $0.state == "completed" } ? "completed" : "partial"
+            var journalError: String?
+            struct UndoItem: Encodable { let source: URL; let target: URL; let state: String; let message: String? }
+            struct UndoJournal: Encodable {
+                let version = 1; let operation = "undoMove"; let operationId: String; let state: String; let items: [UndoItem]
+            }
+            do {
+                let journal = UndoJournal(operationId: record.operationId, state: state,
+                    items: results.map { UndoItem(source: $0.source, target: $0.target, state: $0.state, message: $0.message) })
+                try JSONEncoder().encode(journal).write(
+                    to: journalDirectory.appendingPathComponent("undo-result-\(record.operationId).json"), options: .atomic)
+                let pending = journalDirectory.appendingPathComponent("undo-move-\(record.operationId).json")
+                let consumed = journalDirectory.appendingPathComponent("undo-consumed-\(record.operationId).json")
+                if fm.fileExists(atPath: pending.path) { try fm.moveItem(at: pending, to: consumed) }
+            } catch { journalError = error.localizedDescription }
+            return MoveUndoResult(operationId: record.operationId, state: state, items: results, journalError: journalError)
         }.value
     }
 
@@ -528,4 +647,8 @@ private enum LString {
     static let fileMissing = "원본 항목이 없습니다."
     static let restoreSourceNotInTrash = "휴지통에 없는 항목입니다."
     static let pathConflictMessage = "대상 폴더에 같은 이름의 항목이 이미 존재합니다."
+    static let undoTargetMissing = "이동된 항목이 대상 위치에 없습니다."
+    static let undoTargetChanged = "이동 후 항목이 변경되어 실행 취소하지 않았습니다."
+    static let undoSourceConflict = "원래 위치에 같은 이름의 항목이 있어 실행 취소하지 않았습니다."
+    static let undoSourceParentMissing = "원래 상위 폴더가 없어 실행 취소하지 않았습니다."
 }

@@ -57,6 +57,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         file.addItem(withTitle: L("창 닫기", "Close Window"), action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w")
         let editItem = NSMenuItem(); editItem.title = L("편집", "Edit"); menu.addItem(editItem)
         let edit = NSMenu(title: editItem.title); editItem.submenu = edit
+        edit.addItem(withTitle: L("마지막 이동 실행 취소", "Undo Last Move"), action: #selector(BrowserWindow.undoLastMove(_:)), keyEquivalent: "z")
+        edit.addItem(.separator())
         edit.addItem(withTitle: L("복사", "Copy"), action: #selector(NSText.copy(_:)), keyEquivalent: "c")
         edit.addItem(withTitle: L("붙여넣기", "Paste"), action: #selector(NSText.paste(_:)), keyEquivalent: "v")
         edit.addItem(withTitle: L("모두 선택", "Select All"), action: #selector(NSResponder.selectAll(_:)), keyEquivalent: "a")

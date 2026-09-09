@@ -178,3 +178,59 @@ private func entryFixture() throws -> URL {
     #expect(FileManager.default.fileExists(atPath: source.path))
     #expect(FileManager.default.fileExists(atPath: destination.appendingPathComponent("move.txt").path))
 }
+
+@Test func entryMoveUndoRestoresOriginalLocation() async throws {
+    let root = try entryFixture(); defer { try? FileManager.default.removeItem(at: root) }
+    let journal = root.appendingPathComponent("journal")
+    let destination = root.appendingPathComponent("dest")
+    let source = root.appendingPathComponent("move.txt")
+    try FileManager.default.createDirectory(at: destination, withIntermediateDirectories: true)
+    try Data("move".utf8).write(to: source)
+    _ = try await EntryOperations.move([source], to: destination, conflictPolicy: .skip, journalDirectory: journal)
+    let record = try #require(EntryOperations.latestUndoMove(journalDirectory: journal))
+    let undo = await EntryOperations.undoMove(record, journalDirectory: journal)
+    #expect(undo.state == "completed")
+    #expect(undo.items[0].state == "completed")
+    #expect(FileManager.default.fileExists(atPath: source.path))
+    #expect(!FileManager.default.fileExists(atPath: destination.appendingPathComponent("move.txt").path))
+    #expect(EntryOperations.latestUndoMove(journalDirectory: journal) == nil)
+}
+
+@Test func entryMoveUndoRejectsExternallyChangedTarget() async throws {
+    let root = try entryFixture(); defer { try? FileManager.default.removeItem(at: root) }
+    let journal = root.appendingPathComponent("journal")
+    let destination = root.appendingPathComponent("dest")
+    let source = root.appendingPathComponent("move.txt")
+    let target = destination.appendingPathComponent("move.txt")
+    try FileManager.default.createDirectory(at: destination, withIntermediateDirectories: true)
+    try Data("move".utf8).write(to: source)
+    _ = try await EntryOperations.move([source], to: destination, conflictPolicy: .skip, journalDirectory: journal)
+    let record = try #require(EntryOperations.latestUndoMove(journalDirectory: journal))
+    try Data(" changed".utf8).append(to: target)
+    let undo = await EntryOperations.undoMove(record, journalDirectory: journal)
+    #expect(undo.state == "partial")
+    #expect(undo.items[0].state == "changed")
+    #expect(!FileManager.default.fileExists(atPath: source.path))
+    #expect(try String(contentsOf: target, encoding: .utf8) == "move changed")
+}
+
+@Test func entryMoveReplaceDoesNotOfferUnsafeUndo() async throws {
+    let root = try entryFixture(); defer { try? FileManager.default.removeItem(at: root) }
+    let journal = root.appendingPathComponent("journal")
+    let destination = root.appendingPathComponent("dest")
+    let source = root.appendingPathComponent("move.txt")
+    try FileManager.default.createDirectory(at: destination, withIntermediateDirectories: true)
+    try Data("new".utf8).write(to: source)
+    try Data("old".utf8).write(to: destination.appendingPathComponent("move.txt"))
+    _ = try await EntryOperations.move([source], to: destination, conflictPolicy: .replace, journalDirectory: journal)
+    #expect(EntryOperations.latestUndoMove(journalDirectory: journal) == nil)
+}
+
+private extension Data {
+    func append(to url: URL) throws {
+        let handle = try FileHandle(forWritingTo: url)
+        defer { try? handle.close() }
+        try handle.seekToEnd()
+        try handle.write(contentsOf: self)
+    }
+}
