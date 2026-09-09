@@ -2,7 +2,7 @@ import Foundation
 import Darwin
 
 public enum EntryOperationError: Error, Sendable {
-    case invalidName, conflict, sourceChanged
+    case invalidName, conflict, sourceChanged, noSources
 }
 
 public struct EntryOperationResult: Sendable {
@@ -10,8 +10,28 @@ public struct EntryOperationResult: Sendable {
     public let journalWarning: String?
 }
 
+public struct TrashItemOperationResult: Sendable {
+    public let source: URL
+    public let trashed: URL?
+    public let state: String
+    public let message: String?
+}
+
+public struct TrashOperationResult: Sendable {
+    public let id: String
+    public let state: String
+    public let items: [TrashItemOperationResult]
+    public let journalError: String?
+}
+
 /// Single directory-entry operations. No replacement, recursive rename, or undo.
 public enum EntryOperations {
+    private static func operationDateFormatter() -> ISO8601DateFormatter {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return formatter
+    }
+
     public static func validateName(_ name: String) throws {
         guard !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
               name != ".", name != "..", !name.contains("/"), !name.contains(":"),
@@ -26,6 +46,89 @@ public enum EntryOperations {
                               journalDirectory: URL) async throws -> EntryOperationResult {
         try await perform(parent: source.deletingLastPathComponent(), source: source,
                           expectedIdentity: expectedIdentity, name: name, journalDirectory: journalDirectory)
+    }
+
+    public static func moveToTrash(_ sources: [URL], journalDirectory: URL) async throws -> TrashOperationResult {
+        let normalizedSources = sources.map(\.standardizedFileURL)
+        guard !normalizedSources.isEmpty else { throw EntryOperationError.noSources }
+        return try await Task.detached(priority: .userInitiated) {
+            let fm = FileManager.default
+            let operationId = UUID().uuidString
+            let journalURL = journalDirectory.appendingPathComponent("trash-\(operationId).json")
+
+            struct TrashItemJournal: Codable {
+                let source: URL
+                let state: String
+                let trashed: URL?
+                let message: String?
+                let updatedAt: String
+            }
+
+            struct TrashJournal: Codable {
+                let version = 1
+                let operation = "moveToTrash"
+                let operationId: String
+                let state: String
+                let items: [TrashItemJournal]
+                let journalError: String?
+            }
+
+            let dateFormatter = operationDateFormatter()
+            var itemStates = normalizedSources.map {
+                TrashItemOperationResult(source: $0, trashed: nil, state: "queued", message: nil)
+            }
+            var finalState = "completed"
+            var journalError: String?
+
+            func currentItemStates() -> [TrashItemJournal] {
+                return itemStates.enumerated().map { index, item in
+                    return TrashItemJournal(source: item.source, state: item.state, trashed: item.trashed, message: item.message,
+                                            updatedAt: dateFormatter.string(from: Date()))
+                }
+            }
+
+            func save(state: String) throws {
+                try fm.createDirectory(at: journalDirectory, withIntermediateDirectories: true)
+                let journal = TrashJournal(operationId: operationId, state: state, items: currentItemStates(), journalError: journalError)
+                try JSONEncoder().encode(journal).write(to: journalURL, options: .atomic)
+            }
+
+            do {
+                try save(state: "queued")
+            for index in normalizedSources.indices {
+                let source = normalizedSources[index]
+                do {
+                    guard fm.fileExists(atPath: source.path) else {
+                        itemStates[index] = TrashItemOperationResult(source: source, trashed: nil, state: "notFound", message: LString.fileMissing)
+                        finalState = "partial"
+                        continue
+                    }
+
+                    var trashedURL: NSURL?
+                    try fm.trashItem(at: source, resultingItemURL: &trashedURL)
+                    itemStates[index] = TrashItemOperationResult(source: source, trashed: trashedURL as URL?, state: "completed", message: nil)
+                    } catch {
+                        itemStates[index] = TrashItemOperationResult(source: source, trashed: nil, state: "failed", message: error.localizedDescription)
+                        finalState = "partial"
+                    }
+                    try save(state: finalState)
+                }
+            } catch {
+                finalState = "failed"
+                journalError = error.localizedDescription
+                try? save(state: finalState)
+                throw error
+            }
+
+            do {
+                try save(state: finalState)
+            } catch {
+                journalError = error.localizedDescription
+                try? save(state: finalState)
+            }
+
+            return TrashOperationResult(id: operationId, state: finalState, items: itemStates, journalError: journalError)
+        }.value
     }
 
     private struct Journal: Encodable {
@@ -89,4 +192,8 @@ public enum EntryOperations {
             catch { return EntryOperationResult(target: target, journalWarning: error.localizedDescription) }
         }.value
     }
+}
+
+private enum LString {
+    static let fileMissing = "원본 항목이 없습니다."
 }

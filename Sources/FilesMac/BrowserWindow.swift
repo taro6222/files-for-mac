@@ -238,6 +238,9 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         let rename = menu.addItem(withTitle: L("이름 변경…", "Rename…"), action: #selector(renameSelection(_:)), keyEquivalent: ""); rename.target = self
         let open = menu.addItem(withTitle: L("열기", "Open"), action: #selector(openSelection(_:)), keyEquivalent: ""); open.target = self
         let copy = menu.addItem(withTitle: L("선택 항목 복사…", "Copy Selection To…"), action: #selector(copySelection(_:)), keyEquivalent: ""); copy.target = self
+        menu.addItem(NSMenuItem.separator())
+        let delete = menu.addItem(withTitle: L("휴지통으로 이동", "Move to Trash"), action: #selector(deleteSelection(_:)), keyEquivalent: ""); delete.target = self
+        delete.isEnabled = false
         let reveal = menu.addItem(withTitle: L("Finder에서 보기", "Reveal in Finder"), action: #selector(revealSelection(_:)), keyEquivalent: ""); reveal.target = self
         table.menu = menu
     }
@@ -547,6 +550,32 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
               model.items.indices.contains(index) else { return }
         promptForEntryName(source: model.items[index])
     }
+    @objc func deleteSelection(_ sender: Any?) {
+        guard canDeleteSelection else { return }
+        guard let window else { return }
+        let selected = table.selectedRowIndexes.compactMap { model.items.indices.contains($0) ? model.items[$0].url : nil }
+        guard !selected.isEmpty else { return }
+        let current = model.location?.standardizedFileURL
+        let names = selected.map(\.lastPathComponent).joined(separator: ", ")
+        let alert = NSAlert()
+        alert.messageText = L("휴지통으로 이동", "Move to Trash")
+        alert.informativeText = L("선택한 항목을 휴지통으로 이동합니다.\n\n", "Move the selected items to the Trash.\n\n") + names
+        alert.addButton(withTitle: L("삭제", "Move to Trash"))
+        alert.addButton(withTitle: L("취소", "Cancel"))
+        alert.beginSheetModal(for: window) { [weak self] response in
+            guard response == .alertFirstButtonReturn else { return }
+            guard let self else { return }
+            DeletionWindow.start(sources: selected) { [weak self] in
+                if self?.model.location?.standardizedFileURL == current {
+                    self?.refresh(nil)
+                }
+            }
+        }
+    }
+    private var canDeleteSelection: Bool {
+        !model.isLoading && !Self.entryOperationRunning && !CopyWindow.isRunning &&
+        !DeletionWindow.isRunning && !table.selectedRowIndexes.isEmpty
+    }
     private func promptForEntryName(source: FileItem?) {
         guard !Self.entryOperationRunning, !CopyWindow.isRunning, !model.isLoading,
               let parent = model.location, let window else { return }
@@ -846,6 +875,7 @@ extension BrowserWindow {
     }
     func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
         switch menuItem.action {
+        case #selector(deleteSelection(_:)): return canDeleteSelection
         case #selector(createFolder(_:)): return model.location != nil && !model.isLoading && !Self.entryOperationRunning && !CopyWindow.isRunning
         case #selector(renameSelection(_:)): return model.location != nil && table.selectedRowIndexes.count == 1 && !model.isLoading && !Self.entryOperationRunning && !CopyWindow.isRunning
         case #selector(retryAutomaticRefresh(_:)): return model.location != nil && watcherStatus != .active

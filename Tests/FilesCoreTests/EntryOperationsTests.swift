@@ -64,3 +64,25 @@ private func entryFixture() throws -> URL {
     await #expect(throws: (any Error).self) { try await EntryOperations.createFolder(in: root, name: "new", journalDirectory: journal) }
     #expect(!FileManager.default.fileExists(atPath: root.appendingPathComponent("new").path))
 }
+
+@Test func entryTrashMovesAndReportsPerItem() async throws {
+    let root = try entryFixture(); defer { try? FileManager.default.removeItem(at: root) }
+    let journal = root.appendingPathComponent("journal")
+    let sourceFile = root.appendingPathComponent("source.txt")
+    let sourceFolder = root.appendingPathComponent("src")
+    try Data("move".utf8).write(to: sourceFile)
+    try FileManager.default.createDirectory(at: sourceFolder, withIntermediateDirectories: true)
+    try Data("inner".utf8).write(to: sourceFolder.appendingPathComponent("inner.txt"))
+    let missing = root.appendingPathComponent("missing.txt")
+    let report = try await EntryOperations.moveToTrash([sourceFile, sourceFolder, missing], journalDirectory: journal)
+    #expect(report.state == "partial")
+    #expect(report.items.count == 3)
+    #expect(report.items[0].state == "completed" || report.items[0].state == "failed")
+    #expect(report.items[1].state == "completed" || report.items[1].state == "failed")
+    #expect(report.items[2].state == "notFound")
+    let journalRecords = try FileManager.default.contentsOfDirectory(at: journal, includingPropertiesForKeys: nil)
+    #expect(journalRecords.count == 1)
+    let raw = try JSONSerialization.jsonObject(with: Data(contentsOf: journalRecords[0])) as! [String: Any]
+    #expect(raw["operation"] as? String == "moveToTrash")
+    #expect(raw["state"] as? String == "partial")
+}
