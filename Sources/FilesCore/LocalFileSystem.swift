@@ -4,36 +4,70 @@ public protocol DirectoryLoading: Sendable {
     func contents(of url: URL, showHidden: Bool) async throws -> [FileItem]
 }
 
-public struct LocalFileSystem: DirectoryLoading {
+public protocol DirectoryStreaming: DirectoryLoading {
+    func batches(of url: URL, showHidden: Bool) -> AsyncThrowingStream<[FileItem], Error>
+}
+
+public struct LocalFileSystem: DirectoryStreaming {
     public init() {}
     public func contents(of url: URL, showHidden: Bool) async throws -> [FileItem] {
-        let worker = Task.detached(priority: .userInitiated) {
-            let keys: Set<URLResourceKey> = [.isDirectoryKey, .isPackageKey, .isSymbolicLinkKey,
-                .isHiddenKey, .fileSizeKey, .contentModificationDateKey]
-            let urls = try FileManager.default.contentsOfDirectory(at: url,
-                includingPropertiesForKeys: Array(keys), options: showHidden ? [] : [.skipsHiddenFiles])
-            var result: [FileItem] = []
-            result.reserveCapacity(urls.count)
-            for child in urls {
-                try Task.checkCancellation()
-                // A concurrent deletion is omitted; other metadata failures remain visible.
+        var result: [FileItem] = []
+        for try await batch in batches(of: url, showHidden: showHidden) { result.append(contentsOf: batch) }
+        return result
+    }
+    public func batches(of url: URL, showHidden: Bool) -> AsyncThrowingStream<[FileItem], Error> {
+        AsyncThrowingStream { continuation in
+            let worker = Task.detached(priority: .userInitiated) {
                 do {
-                    let v = try child.resourceValues(forKeys: keys)
-                    result.append(FileItem(url: child, name: child.lastPathComponent,
-                        isDirectory: v.isDirectory ?? false, isPackage: v.isPackage ?? false,
-                        isSymbolicLink: v.isSymbolicLink ?? false, isHidden: v.isHidden ?? false,
-                        size: v.fileSize.map(Int64.init), modified: v.contentModificationDate,
-                        kind: v.isDirectory == true ? "Folder" : (child.pathExtension.isEmpty ? "File" : child.pathExtension.uppercased())))
-                } catch {
-                    let e = error as NSError
-                    if e.domain == NSCocoaErrorDomain && e.code == NSFileReadNoSuchFileError { continue }
-                    result.append(FileItem(url: child, name: child.lastPathComponent, isDirectory: false,
-                        kind: "—"))
-                }
+                    // Validate the root first; a missing/unreadable directory is never empty success.
+                    guard try url.resourceValues(forKeys: [.isDirectoryKey]).isDirectory == true else {
+                        throw CocoaError(.fileReadUnknown)
+                    }
+                    var rootError: Error?
+                    let keys: Set<URLResourceKey> = [.isDirectoryKey, .isPackageKey, .isSymbolicLinkKey,
+                        .isHiddenKey, .fileSizeKey, .contentModificationDateKey]
+                    var options: FileManager.DirectoryEnumerationOptions = [.skipsSubdirectoryDescendants]
+                    if !showHidden { options.insert(.skipsHiddenFiles) }
+                    guard let enumerator = FileManager.default.enumerator(at: url,
+                        includingPropertiesForKeys: Array(keys), options: options,
+                        errorHandler: { _, error in rootError = error; return false }) else {
+                        throw CocoaError(.fileReadUnknown)
+                    }
+                    var batch: [FileItem] = []
+                    var first = true
+                    while let enumerated = enumerator.nextObject() as? URL {
+                        let child = url.appendingPathComponent(enumerated.lastPathComponent)
+                        try Task.checkCancellation()
+                        do {
+                            let v = try child.resourceValues(forKeys: keys)
+                            let attributes = try? FileManager.default.attributesOfItem(atPath: child.path)
+                            let identity: String?
+                            if let device = attributes?[.systemNumber] as? NSNumber,
+                               let inode = attributes?[.systemFileNumber] as? NSNumber,
+                               let birth = attributes?[.creationDate] as? Date {
+                                identity = "\(device):\(inode):\(birth.timeIntervalSince1970)"
+                            } else { identity = nil }
+                            batch.append(FileItem(url: child, name: child.lastPathComponent,
+                                isDirectory: v.isDirectory ?? false, identity: identity, isPackage: v.isPackage ?? false,
+                                isSymbolicLink: v.isSymbolicLink ?? false, isHidden: v.isHidden ?? false,
+                                size: v.fileSize.map(Int64.init), modified: v.contentModificationDate,
+                                kind: v.isDirectory == true ? "Folder" : (child.pathExtension.isEmpty ? "File" : child.pathExtension.uppercased())))
+                        } catch {
+                            let e = error as NSError
+                            if e.domain == NSCocoaErrorDomain && e.code == NSFileReadNoSuchFileError { continue }
+                            batch.append(FileItem(url: child, name: child.lastPathComponent, isDirectory: false, kind: "—"))
+                        }
+                        if batch.count >= (first ? 128 : 1024) {
+                            continuation.yield(batch); batch.removeAll(keepingCapacity: true); first = false
+                        }
+                    }
+                    if let rootError { throw rootError }
+                    if !batch.isEmpty { continuation.yield(batch) }
+                    continuation.finish()
+                } catch { continuation.finish(throwing: error) }
             }
-            return result
+            continuation.onTermination = { _ in worker.cancel() }
         }
-        return try await withTaskCancellationHandler(operation: { try await worker.value }, onCancel: { worker.cancel() })
     }
 }
 

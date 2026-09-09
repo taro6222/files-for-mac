@@ -3,6 +3,7 @@ import Foundation
 public struct FileItem: Identifiable, Sendable, Equatable {
     // Directory entries, rather than inodes: two hard links in one folder must stay distinct.
     public var id: String { url.path }
+    public let identity: String?
     public let url: URL
     public let name: String
     public let isDirectory: Bool
@@ -13,12 +14,17 @@ public struct FileItem: Identifiable, Sendable, Equatable {
     public let modified: Date?
     public let kind: String
 
-    public init(url: URL, name: String, isDirectory: Bool, isPackage: Bool = false,
+    public init(url: URL, name: String, isDirectory: Bool, identity: String? = nil, isPackage: Bool = false,
                 isSymbolicLink: Bool = false, isHidden: Bool = false,
                 size: Int64? = nil, modified: Date? = nil, kind: String = "") {
+        self.identity = identity
         self.url = url; self.name = name; self.isDirectory = isDirectory
         self.isPackage = isPackage; self.isSymbolicLink = isSymbolicLink
         self.isHidden = isHidden; self.size = size; self.modified = modified; self.kind = kind
+    }
+    public func displayName(showExtensions: Bool) -> String {
+        guard !showExtensions, !isDirectory, !name.hasPrefix("."), !url.pathExtension.isEmpty else { return name }
+        return (name as NSString).deletingPathExtension
     }
     public var isBrowsable: Bool { isDirectory && !isPackage }
 }
@@ -54,5 +60,30 @@ public struct SortOrder: Sendable {
         case (_, nil): return .orderedDescending
         case let (a?, b?): return a == b ? .orderedSame : (a < b ? .orderedAscending : .orderedDescending)
         }
+    }
+}
+
+public enum SelectionRestoration {
+    /// Preserve a directory entry first; follow a renamed identity only when it is
+    /// unambiguous on both sides (hard links must not acquire each other's selection).
+    public static func restore(_ selected: Set<String>, from old: [FileItem], to new: [FileItem]) -> Set<String> {
+        let oldByPath = Dictionary(uniqueKeysWithValues: old.map { ($0.id, $0) })
+        let newByPath = Dictionary(uniqueKeysWithValues: new.map { ($0.id, $0) })
+        let oldByIdentity = Dictionary(grouping: old.filter { $0.identity != nil }, by: { $0.identity! })
+        let newByIdentity = Dictionary(grouping: new.filter { $0.identity != nil }, by: { $0.identity! })
+        var result = Set<String>()
+        for id in selected {
+            guard let previous = oldByPath[id] else {
+                if newByPath[id] != nil { result.insert(id) }; continue
+            }
+            if let current = newByPath[id], previous.identity == current.identity {
+                result.insert(id); continue
+            }
+            if let identity = previous.identity, oldByIdentity[identity]?.count == 1,
+               let candidates = newByIdentity[identity], candidates.count == 1 {
+                result.insert(candidates[0].id)
+            }
+        }
+        return result
     }
 }

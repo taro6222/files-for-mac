@@ -4,11 +4,12 @@ import FilesCore
 #endif
 
 @MainActor
-final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableViewDelegate, NSTextFieldDelegate {
+final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableViewDelegate, NSComboBoxDelegate, NSMenuDelegate {
+    var onClose: (() -> Void)?
     private let model = BrowserModel()
     private let table = NSTableView()
     private let scroll = NSScrollView()
-    private let pathField = NSTextField()
+    private let pathField = NSComboBox()
     private let status = NSTextField(labelWithString: "")
     private let message = NSTextField(wrappingLabelWithString: "")
     private let titleLabel = NSTextField(labelWithString: "")
@@ -19,12 +20,23 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
     private let homeView = NSStackView()
     private let sidebar = NSStackView()
     private let content = NSView()
-    private var favorites: [URL] = []
-    private var recent: [String] = []
+    private let preferences = BrowserPreferences.shared
+    private var preferencesToken: UUID?
+    private var favorites: [URL] { preferences.favorites }
+    private var recent: [URL] { preferences.recent }
+    private let homeScroll = NSScrollView()
+    private let optionsMenu = NSMenu()
+    private var completionTask: Task<Void, Never>?
+    private var completionGeneration = 0
+    private var suggestions: [String] = []
+    private var lastRecordedLocation: URL?
+    private var volumes: [VolumeSummary] = []
+    private var volumeTask: Task<Void, Never>?
     private var rendering = false
-    private var watchTimer: Timer?
-    private var lastModified: Date?
-    private var observedLocation: URL?
+    private var watcher: DirectoryWatcher?
+    private var watcherTask: Task<Void, Never>?
+    private var watchedURL: URL?
+    private var pendingRefresh = false
     private var observerTokens: [NSObjectProtocol] = []
     private var iconCache: [String: NSImage] = [:]
     private let dateFormatter: DateFormatter = {
@@ -38,22 +50,28 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         w.title = "Files macOS"; w.minSize = NSSize(width: 900, height: 600)
         w.center(); w.setFrameAutosaveName("BrowserWindow"); w.titlebarAppearsTransparent = true
         w.isReleasedWhenClosed = false
-        let defaults = UserDefaults.standard
-        favorites = (defaults.stringArray(forKey: "favorites") ?? [
-            FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Downloads").path,
-            FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Documents").path,
-            FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Desktop").path
-        ]).map { URL(fileURLWithPath: $0) }
-        recent = defaults.stringArray(forKey: "recent") ?? []
-        model.showHidden = defaults.bool(forKey: "showHidden")
+        model.showHidden = preferences.showHidden
         setupUI()
         model.onChange = { [weak self] in self?.render() }
+        preferencesToken = preferences.observe { [weak self] in self?.preferencesChanged() }
         model.navigate(nil)
-        watchTimer = Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { [weak self] _ in
-            Task { @MainActor in self?.checkChanges() }
+        refreshVolumes()
+        for name in [NSWorkspace.didMountNotification, NSWorkspace.didUnmountNotification] {
+            observerTokens.append(NSWorkspace.shared.notificationCenter.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
+                Task { @MainActor in self?.refreshVolumes() }
+            })
         }
         observerTokens.append(NotificationCenter.default.addObserver(forName: NSWindow.willCloseNotification, object: w, queue: .main) { [weak self] _ in
-            Task { @MainActor in self?.watchTimer?.invalidate() }
+            Task { @MainActor in
+                guard let self else { return }
+                self.watcherTask?.cancel(); self.watcher?.stop(); self.completionTask?.cancel(); self.volumeTask?.cancel()
+                if let token = self.preferencesToken { self.preferences.removeObserver(token) }
+                for token in self.observerTokens {
+                    NotificationCenter.default.removeObserver(token)
+                    NSWorkspace.shared.notificationCenter.removeObserver(token)
+                }
+                self.observerTokens.removeAll(); self.onClose?()
+            }
         })
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
@@ -108,6 +126,9 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         configure(upButton, "arrow.up", L("상위 폴더", "Enclosing Folder"), #selector(goUp(_:)))
         toolbar.addArrangedSubview(backButton); toolbar.addArrangedSubview(forwardButton); toolbar.addArrangedSubview(upButton)
         toolbar.addArrangedSubview(button("arrow.clockwise", L("새로고침", "Refresh"), #selector(refresh(_:))))
+        pathField.numberOfVisibleItems = 8
+        pathField.completes = false
+        pathField.toolTip = L("경로 입력 후 아래 화살표로 추천 폴더를 선택하거나 Tab으로 완성", "Type a path, then use the dropdown or Tab to complete")
         pathField.font = .systemFont(ofSize: 13); pathField.bezelStyle = .roundedBezel
         pathField.placeholderString = L("폴더 경로 입력", "Enter a folder path")
         pathField.target = self; pathField.action = #selector(submitPath(_:)); pathField.delegate = self
@@ -117,6 +138,8 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         configure(hiddenButton, "eye.slash", L("숨김 항목 표시", "Show Hidden Files"), #selector(toggleHidden(_:)))
         toolbar.addArrangedSubview(hiddenButton)
         toolbar.addArrangedSubview(button("pin", L("즐겨찾기 전환", "Toggle Favorite"), #selector(toggleFavorite(_:))))
+        optionsMenu.delegate = self
+        toolbar.addArrangedSubview(button("slider.horizontal.3", L("보기 옵션", "View Options"), #selector(showOptions(_:))))
         main.addArrangedSubview(toolbar)
         let divider = NSBox(); divider.boxType = .separator; main.addArrangedSubview(divider)
         main.addArrangedSubview(content)
@@ -125,8 +148,18 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         setupTable()
         homeView.orientation = .vertical; homeView.alignment = .leading; homeView.spacing = 16
         homeView.edgeInsets = NSEdgeInsets(top: 32, left: 32, bottom: 32, right: 32)
-        homeView.translatesAutoresizingMaskIntoConstraints = false; content.addSubview(homeView)
-        NSLayoutConstraint.activate([homeView.topAnchor.constraint(equalTo: content.topAnchor), homeView.leadingAnchor.constraint(equalTo: content.leadingAnchor), homeView.trailingAnchor.constraint(equalTo: content.trailingAnchor)])
+        homeView.translatesAutoresizingMaskIntoConstraints = false
+        homeScroll.drawsBackground = false; homeScroll.hasVerticalScroller = true
+        homeScroll.translatesAutoresizingMaskIntoConstraints = false; content.addSubview(homeScroll)
+        let homeDocument = FlippedView(); homeDocument.translatesAutoresizingMaskIntoConstraints = false
+        homeScroll.documentView = homeDocument; homeDocument.addSubview(homeView)
+        NSLayoutConstraint.activate([
+            homeScroll.topAnchor.constraint(equalTo: content.topAnchor), homeScroll.bottomAnchor.constraint(equalTo: content.bottomAnchor),
+            homeScroll.leadingAnchor.constraint(equalTo: content.leadingAnchor), homeScroll.trailingAnchor.constraint(equalTo: content.trailingAnchor),
+            homeDocument.widthAnchor.constraint(equalTo: homeScroll.contentView.widthAnchor),
+            homeView.topAnchor.constraint(equalTo: homeDocument.topAnchor), homeView.bottomAnchor.constraint(equalTo: homeDocument.bottomAnchor),
+            homeView.leadingAnchor.constraint(equalTo: homeDocument.leadingAnchor), homeView.trailingAnchor.constraint(equalTo: homeDocument.trailingAnchor)
+        ])
         message.font = .systemFont(ofSize: 14); message.textColor = .secondaryLabelColor
         message.alignment = .center; message.translatesAutoresizingMaskIntoConstraints = false
         content.addSubview(message)
@@ -185,6 +218,20 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         b.image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)
         b.imagePosition = .imageLeading; b.imageHugsTitle = true
         b.toolTip = url?.path ?? title; b.setAccessibilityLabel(title)
+        if let url, favorites.contains(url) {
+            let menu = NSMenu(); menu.autoenablesItems = false
+            for (label, action) in [(L("위로 이동", "Move Up"), #selector(moveFavoriteUp(_:))),
+                                    (L("아래로 이동", "Move Down"), #selector(moveFavoriteDown(_:))),
+                                    (L("즐겨찾기에서 제거", "Remove Favorite"), #selector(removeFavorite(_:)))] {
+                let item = menu.addItem(withTitle: label, action: action, keyEquivalent: "")
+                item.target = self; item.representedObject = url
+            }
+            if let index = favorites.firstIndex(of: url) {
+                menu.items[0].isEnabled = index > 0
+                menu.items[1].isEnabled = index < favorites.count - 1
+            }
+            b.menu = menu
+        }
         stack.addArrangedSubview(b)
         b.heightAnchor.constraint(equalToConstant: 32).isActive = true
         b.widthAnchor.constraint(equalTo: stack.widthAnchor, constant: -(stack.edgeInsets.left + stack.edgeInsets.right)).isActive = true
@@ -197,8 +244,8 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         section(L("위치", "Locations"), in: sidebar)
         locationButton(L("사용자 폴더", "User Folder"), symbol: "person.crop.circle", url: FileManager.default.homeDirectoryForCurrentUser, in: sidebar)
         locationButton(L("응용 프로그램", "Applications"), symbol: "square.grid.2x2", url: URL(fileURLWithPath: "/Applications"), in: sidebar)
-        for url in FileManager.default.mountedVolumeURLs(includingResourceValuesForKeys: nil, options: [.skipHiddenVolumes]) ?? [] {
-            locationButton(url.path == "/" ? "Macintosh HD" : displayName(url), symbol: "externaldrive", url: url, in: sidebar)
+        for volume in volumes {
+            locationButton(volume.name, symbol: "externaldrive", url: volume.url, in: sidebar)
         }
     }
     private func buildHome() {
@@ -207,13 +254,40 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         homeView.addArrangedSubview(heading)
         let subtitle = NSTextField(labelWithString: L("파일과 폴더를 한곳에서 탐색하세요.", "Your files and folders, in one place."))
         subtitle.textColor = .secondaryLabelColor; homeView.addArrangedSubview(subtitle)
-        section(L("빠른 접근", "Quick Access"), in: homeView)
-        for url in favorites.prefix(5) { locationButton(displayName(url), symbol: "folder.fill", url: url, in: homeView) }
-        section(L("최근 위치", "Recent Locations"), in: homeView)
-        if recent.isEmpty {
-            homeView.addArrangedSubview(NSTextField(labelWithString: L("방문한 폴더가 여기에 표시됩니다.", "Folders you visit will appear here.")))
-        } else {
-            for path in recent.prefix(4) { locationButton(path, symbol: "clock", url: URL(fileURLWithPath: path), in: homeView) }
+        if preferences.showHomeFavorites {
+            section(L("빠른 접근", "Quick Access"), in: homeView)
+            for url in favorites { locationButton(displayName(url), symbol: "folder.fill", url: url, in: homeView) }
+        }
+        if preferences.showHomeVolumes {
+            section(L("드라이브", "Drives"), in: homeView)
+            for volume in volumes {
+                let card = NSStackView(); card.orientation = .vertical; card.alignment = .leading; card.spacing = 6
+                card.edgeInsets = NSEdgeInsets(top: 12, left: 14, bottom: 12, right: 14)
+                card.wantsLayer = true; card.layer?.cornerRadius = 8
+                card.layer?.backgroundColor = NSColor.quaternaryLabelColor.withAlphaComponent(0.08).cgColor
+                homeView.addArrangedSubview(card)
+                card.widthAnchor.constraint(equalTo: homeView.widthAnchor, constant: -64).isActive = true
+                locationButton(volume.name, symbol: "externaldrive.fill", url: volume.url, in: card)
+                let description = NSTextField(labelWithString: volume.capacityDescription)
+                description.font = .systemFont(ofSize: 11); description.textColor = .secondaryLabelColor
+                card.addArrangedSubview(description)
+                if let total = volume.total, let available = volume.available, total > 0 {
+                    let meter = NSLevelIndicator(); meter.levelIndicatorStyle = .continuousCapacity
+                    meter.minValue = 0; meter.maxValue = 1; meter.doubleValue = min(1, max(0, 1 - Double(available) / Double(total)))
+                    meter.setAccessibilityLabel(L("사용한 공간 비율", "Used capacity"))
+                    card.addArrangedSubview(meter); meter.widthAnchor.constraint(equalTo: card.widthAnchor, constant: -28).isActive = true
+                }
+            }
+        }
+        if preferences.showHomeRecent {
+            section(L("최근 위치", "Recent Locations"), in: homeView)
+            if recent.isEmpty {
+                homeView.addArrangedSubview(NSTextField(labelWithString: L("방문한 폴더가 여기에 표시됩니다.", "Folders you visit will appear here.")))
+            } else {
+                for url in recent { locationButton(url.path, symbol: "clock", url: url, in: homeView) }
+                let clear = NSButton(title: L("최근 기록 지우기", "Clear Recent Locations"), target: self, action: #selector(clearRecent(_:)))
+                clear.bezelStyle = .rounded; homeView.addArrangedSubview(clear)
+            }
         }
     }
     private func displayName(_ url: URL) -> String { FileManager.default.displayName(atPath: url.path) }
@@ -222,17 +296,30 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         let ids = Set(table.selectedRowIndexes.compactMap { model.items.indices.contains($0) ? model.items[$0].id : nil })
         model.savePosition(selection: ids, scrollOffset: scroll.contentView.bounds.origin.y)
     }
-    private func navigate(_ url: URL?) { savePosition(); model.navigate(url) }
+    private func navigate(_ url: URL?) {
+        completionTask?.cancel(); completionGeneration += 1
+        suggestions = []; pathField.removeAllItems()
+        pathField.stringValue = url?.path ?? ""
+        window?.makeFirstResponder(nil)
+        savePosition(); model.navigate(url)
+    }
     private func render() {
-        rendering = true; defer { rendering = false }
+        rendering = true; defer {
+            rendering = false
+            updateWatcher()
+            if pendingRefresh && !model.isLoading {
+                pendingRefresh = false
+                Task { @MainActor [weak self] in self?.refresh(nil) }
+            }
+        }
         titleLabel.stringValue = model.location.map(displayName) ?? L("홈", "Home")
         window?.title = "\(titleLabel.stringValue) — Files macOS"
-        pathField.stringValue = model.location?.path ?? ""
+        if pathField.currentEditor() == nil { pathField.stringValue = model.location?.path ?? "" }
         backButton.isEnabled = !model.history.back.isEmpty; forwardButton.isEnabled = !model.history.forward.isEmpty
         upButton.isEnabled = model.location != nil && model.location?.path != "/"
         hiddenButton.contentTintColor = model.showHidden ? .systemBlue : .labelColor
-        scroll.isHidden = model.location == nil; homeView.isHidden = model.location != nil
-        if model.location == nil { buildHome() }
+        scroll.isHidden = model.location == nil; homeScroll.isHidden = model.location != nil
+        if model.location == nil { lastRecordedLocation = nil; buildHome() }
         table.reloadData()
         let selected = IndexSet(model.items.indices.filter { model.history.current.selection.contains(model.items[$0].id) })
         table.selectRowIndexes(selected, byExtendingSelection: false)
@@ -240,21 +327,29 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
             scroll.contentView.scroll(to: NSPoint(x: 0, y: model.history.current.scrollOffset))
             scroll.reflectScrolledClipView(scroll.contentView)
         }
-        if model.isLoading { message.stringValue = L("폴더를 읽는 중…", "Loading folder…") }
+        if model.isLoading && model.items.isEmpty { message.stringValue = L("폴더를 읽는 중…", "Loading folder…") }
         else if let error = model.error { message.stringValue = L("폴더를 열 수 없습니다.\n", "Unable to open this folder.\n") + error }
         else if model.location != nil && model.items.isEmpty { message.stringValue = L("이 폴더는 비어 있습니다.", "This folder is empty.") }
         else { message.stringValue = "" }
         message.isHidden = message.stringValue.isEmpty
-        if !model.isLoading && model.error == nil, let url = model.location {
-            recent.removeAll { $0 == url.path }; recent.insert(url.path, at: 0); recent = Array(recent.prefix(10))
-            UserDefaults.standard.set(recent, forKey: "recent")
+        if !model.isLoading && model.error == nil, let url = model.location, url != lastRecordedLocation {
+            lastRecordedLocation = url; preferences.recordVisit(url)
         }
         updateStatus()
     }
     private func updateStatus() {
         if model.location == nil { status.stringValue = L("준비됨", "Ready"); return }
         status.stringValue = "\(model.items.count) " + L("개 항목", "items")
-        if !table.selectedRowIndexes.isEmpty { status.stringValue += "  ·  \(table.selectedRowIndexes.count) " + L("개 선택", "selected") }
+        if !table.selectedRowIndexes.isEmpty {
+            status.stringValue += "  ·  \(table.selectedRowIndexes.count) " + L("개 선택", "selected")
+            let bytes = table.selectedRowIndexes.reduce(Int64(0)) { total, index in
+                guard model.items.indices.contains(index), !model.items[index].isDirectory else { return total }
+                return total + (model.items[index].size ?? 0)
+            }
+            status.stringValue += " · " + ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file)
+        }
+        if model.isLoading { status.stringValue += " · " + L("읽는 중…", "Loading…") }
+        if model.location != nil && watcher == nil { status.stringValue += " · " + L("자동 갱신 사용 불가", "Automatic refresh unavailable") }
     }
     func numberOfRows(in tableView: NSTableView) -> Int { model.items.count }
     func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
@@ -264,7 +359,8 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         let cell = (tableView.makeView(withIdentifier: id, owner: self) as? NSTableCellView) ?? makeCell(id, icon: key == "name")
         switch key {
         case "name":
-            cell.textField?.stringValue = item.name
+            cell.textField?.stringValue = item.displayName(showExtensions: preferences.showExtensions)
+            cell.toolTip = item.name
             let cacheKey = item.isDirectory ? (item.isPackage ? item.url.path : "folder") : item.url.pathExtension
             if iconCache[cacheKey] == nil { iconCache[cacheKey] = NSWorkspace.shared.icon(forFile: item.url.path) }
             cell.imageView?.image = iconCache[cacheKey]
@@ -297,8 +393,8 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         savePosition(); model.sort(SortOrder(field: field, ascending: descriptor.ascending))
     }
     @objc func openLocation(_ sender: LocationButton) { navigate(sender.url) }
-    @objc func goBack(_ sender: Any?) { savePosition(); model.back() }
-    @objc func goForward(_ sender: Any?) { savePosition(); model.forward() }
+    @objc func goBack(_ sender: Any?) { window?.makeFirstResponder(nil); savePosition(); model.back() }
+    @objc func goForward(_ sender: Any?) { window?.makeFirstResponder(nil); savePosition(); model.forward() }
     @objc func goUp(_ sender: Any?) { if let url = model.location { navigate(url.deletingLastPathComponent()) } }
     @objc func refresh(_ sender: Any?) { savePosition(); model.reload() }
     @objc func focusPath(_ sender: Any?) { window?.makeFirstResponder(pathField); pathField.selectText(nil) }
@@ -318,12 +414,11 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         }
     }
     @objc func toggleHidden(_ sender: Any?) {
-        savePosition(); model.showHidden.toggle(); UserDefaults.standard.set(model.showHidden, forKey: "showHidden"); model.reload()
+        preferences.setShowHidden(!preferences.showHidden)
     }
     @objc func toggleFavorite(_ sender: Any?) {
         guard let url = model.location else { return }
-        if favorites.contains(url) { favorites.removeAll { $0 == url } } else { favorites.append(url) }
-        UserDefaults.standard.set(favorites.map(\.path), forKey: "favorites"); buildSidebar()
+        preferences.toggleFavorite(url)
     }
     @objc func openSelection(_ sender: Any?) {
         let rows = table.selectedRowIndexes
@@ -336,13 +431,23 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         let urls = table.selectedRowIndexes.compactMap { model.items.indices.contains($0) ? model.items[$0].url : nil }
         if !urls.isEmpty { NSWorkspace.shared.activateFileViewerSelecting(urls) }
     }
-    private func checkChanges() {
-        guard let url = model.location, !model.isLoading else { return }
-        // Poll only this window's visible directory. No recursive scans.
-        let modified = try? url.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate
-        if observedLocation != url { observedLocation = url; lastModified = modified; return }
-        if modified != lastModified { lastModified = modified; refresh(nil) }
+    private func updateWatcher() {
+        guard watchedURL != model.location else { return }
+        watcherTask?.cancel(); watcher?.stop(); watcher = nil; watchedURL = model.location
+        pendingRefresh = false
+        guard let url = model.location else { return }
+        watcher = DirectoryWatcher(url: url)
+        updateStatus()
+        guard let watcher else { return }
+        watcherTask = Task { [weak self] in
+            for await _ in watcher.events {
+                guard let self, !Task.isCancelled, self.model.location == url else { return }
+                if self.model.isLoading { self.pendingRefresh = true }
+                else { self.refresh(nil) }
+            }
+        }
     }
+
 }
 
 @MainActor
@@ -350,3 +455,104 @@ final class LocationButton: NSButton { var url: URL? }
 
 @MainActor
 final class FlippedView: NSView { override var isFlipped: Bool { true } }
+
+private struct VolumeSummary: Sendable {
+    let url: URL
+    let name: String
+    let total: Int64?
+    let available: Int64?
+    var capacityDescription: String {
+        guard let total, let available else { return L("용량 정보 없음", "Capacity unavailable") }
+        return ByteCountFormatter.string(fromByteCount: available, countStyle: .file) + L(" 사용 가능 / ", " free of ") + ByteCountFormatter.string(fromByteCount: total, countStyle: .file)
+    }
+}
+
+extension BrowserWindow {
+    private func preferencesChanged() {
+        buildSidebar()
+        if model.location == nil { buildHome() }
+        if model.showHidden != preferences.showHidden {
+            savePosition(); model.showHidden = preferences.showHidden; model.reload()
+        } else if !rendering {
+            savePosition(); render()
+        }
+    }
+    @objc private func clearRecent(_ sender: Any?) { preferences.clearRecent() }
+    @objc private func moveFavoriteUp(_ sender: NSMenuItem) {
+        if let url = sender.representedObject as? URL { preferences.moveFavorite(url, by: -1) }
+    }
+    @objc private func moveFavoriteDown(_ sender: NSMenuItem) {
+        if let url = sender.representedObject as? URL { preferences.moveFavorite(url, by: 1) }
+    }
+    @objc private func removeFavorite(_ sender: NSMenuItem) {
+        if let url = sender.representedObject as? URL, favorites.contains(url) { preferences.toggleFavorite(url) }
+    }
+    @objc private func showOptions(_ sender: NSButton) {
+        optionsMenu.popUp(positioning: nil, at: NSPoint(x: 0, y: sender.bounds.maxY), in: sender)
+    }
+    func menuNeedsUpdate(_ menu: NSMenu) {
+        guard menu === optionsMenu else { return }
+        menu.removeAllItems()
+        let entries: [(String, Selector, Bool)] = [
+            (L("파일 확장자 표시", "Show File Extensions"), #selector(toggleExtensions(_:)), preferences.showExtensions),
+            (L("숨김 항목 표시", "Show Hidden Files"), #selector(toggleHidden(_:)), preferences.showHidden),
+            (L("홈: 빠른 접근", "Home: Quick Access"), #selector(toggleHomeFavorites(_:)), preferences.showHomeFavorites),
+            (L("홈: 드라이브", "Home: Drives"), #selector(toggleHomeVolumes(_:)), preferences.showHomeVolumes),
+            (L("홈: 최근 위치", "Home: Recent Locations"), #selector(toggleHomeRecent(_:)), preferences.showHomeRecent)
+        ]
+        for (label, action, selected) in entries {
+            let item = menu.addItem(withTitle: label, action: action, keyEquivalent: "")
+            item.target = self; item.state = selected ? .on : .off
+        }
+    }
+    @objc private func toggleExtensions(_ sender: Any?) { preferences.setShowExtensions(!preferences.showExtensions) }
+    @objc private func toggleHomeFavorites(_ sender: Any?) { preferences.toggleSection(.favorites) }
+    @objc private func toggleHomeVolumes(_ sender: Any?) { preferences.toggleSection(.volumes) }
+    @objc private func toggleHomeRecent(_ sender: Any?) { preferences.toggleSection(.recent) }
+
+    func controlTextDidChange(_ notification: Notification) {
+        guard notification.object as? NSComboBox === pathField else { return }
+        completionTask?.cancel(); completionGeneration += 1
+        suggestions = []; pathField.removeAllItems()
+        let request = completionGeneration, input = pathField.stringValue
+        let base = model.location ?? FileManager.default.homeDirectoryForCurrentUser
+        let hidden = preferences.showHidden
+        completionTask = Task { [weak self] in
+            do {
+                try await Task.sleep(for: .milliseconds(120))
+                let values = try await PathCompletion().suggestions(for: input, relativeTo: base, showHidden: hidden)
+                guard let self, request == self.completionGeneration, !Task.isCancelled else { return }
+                self.suggestions = values
+                self.pathField.removeAllItems(); self.pathField.addItems(withObjectValues: values)
+            } catch {
+                guard let self, request == self.completionGeneration, !Task.isCancelled else { return }
+                self.suggestions = []; self.pathField.removeAllItems()
+            }
+        }
+    }
+    func control(_ control: NSControl, textView: NSTextView, doCommandBy commandSelector: Selector) -> Bool {
+        if control === pathField && commandSelector == #selector(NSResponder.insertTab(_:)), let first = suggestions.first {
+            pathField.stringValue = first; textView.string = first
+            textView.setSelectedRange(NSRange(location: (first as NSString).length, length: 0))
+            controlTextDidChange(Notification(name: NSControl.textDidChangeNotification, object: pathField))
+            return true
+        }
+        return false
+    }
+    private func refreshVolumes() {
+        volumeTask?.cancel()
+        volumeTask = Task { [weak self] in
+            let result = await Task.detached(priority: .utility) {
+                let keys: Set<URLResourceKey> = [.volumeNameKey, .volumeTotalCapacityKey, .volumeAvailableCapacityKey]
+                return (FileManager.default.mountedVolumeURLs(includingResourceValuesForKeys: Array(keys), options: [.skipHiddenVolumes]) ?? []).map { url in
+                    let values = try? url.resourceValues(forKeys: keys)
+                    return VolumeSummary(url: url, name: values?.volumeName ?? url.lastPathComponent,
+                        total: values?.volumeTotalCapacity.map(Int64.init), available: values?.volumeAvailableCapacity.map(Int64.init))
+                }
+            }.value
+            guard let self, !Task.isCancelled else { return }
+            self.volumes = result; self.buildSidebar()
+            if self.model.location == nil { self.buildHome() }
+        }
+    }
+}

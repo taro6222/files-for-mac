@@ -88,7 +88,165 @@ private struct DelayedLoader: DirectoryLoading {
     let root = try fixture(); defer { try? FileManager.default.removeItem(at: root) }
     for i in 0..<10_000 { try Data().write(to: root.appendingPathComponent("file-\(i).txt")) }
     let clock = ContinuousClock(); let start = clock.now
-    let items = try await LocalFileSystem().contents(of: root, showHidden: false)
-    #expect(items.count == 10_000)
+    var count = 0
+    for try await batch in LocalFileSystem().batches(of: root, showHidden: false) {
+        if count == 0 { print("10k first batch (\(batch.count)): \(start.duration(to: clock.now))") }
+        count += batch.count
+    }
+    #expect(count == 10_000)
     print("10k listing duration: \(start.duration(to: clock.now))")
+}
+
+@Test func completionHandlesRelativeUnicodeHiddenAndOnlyDirectories() async throws {
+    let root = try fixture(); defer { try? FileManager.default.removeItem(at: root) }
+    for name in ["문서", "Documents", "Downloads", ".hidden"] {
+        try FileManager.default.createDirectory(at: root.appendingPathComponent(name), withIntermediateDirectories: true)
+    }
+    try Data().write(to: root.appendingPathComponent("Download.txt"))
+    let completion = PathCompletion()
+    let paths = try await completion.suggestions(for: "Do", relativeTo: root, showHidden: false)
+    #expect(paths.count == 2); #expect(paths.allSatisfy { $0.hasSuffix("/") })
+    #expect(paths[0].hasSuffix("Documents/"))
+    let unicode = try await completion.suggestions(for: "문", relativeTo: root, showHidden: false)
+    #expect(unicode.count == 1)
+    let hidden = try await completion.suggestions(for: ".h", relativeTo: root, showHidden: false)
+    #expect(hidden.count == 1)
+    let all = try await completion.suggestions(for: root.path + "/", relativeTo: root, showHidden: false)
+    #expect(all.count == 3)
+}
+
+@Test func extensionDisplayNeverChangesIdentityOrDotfiles() {
+    let url = URL(fileURLWithPath: "/folder/report.tar.gz")
+    let file = FileItem(url: url, name: url.lastPathComponent, isDirectory: false)
+    #expect(file.displayName(showExtensions: false) == "report.tar")
+    #expect(file.id == url.path)
+    let hidden = FileItem(url: URL(fileURLWithPath: "/.env.local"), name: ".env.local", isDirectory: false)
+    #expect(hidden.displayName(showExtensions: false) == ".env.local")
+    let folder = FileItem(url: URL(fileURLWithPath: "/folder.backup"), name: "folder.backup", isDirectory: true)
+    #expect(folder.displayName(showExtensions: false) == "folder.backup")
+}
+
+@Test @MainActor func sharedPreferencesPersistOrderAndNotifyAllWindows() {
+    let suite = "files-preferences-tests-\(UUID())"
+    let defaults = UserDefaults(suiteName: suite)!
+    defer { defaults.removePersistentDomain(forName: suite) }
+    let a = URL(fileURLWithPath: "/a"), b = URL(fileURLWithPath: "/b")
+    let preferences = BrowserPreferences(defaults: defaults, initialFavorites: [a, b])
+    var firstWindow = 0, secondWindow = 0
+    let token = preferences.observe { firstWindow += 1 }
+    preferences.observe { secondWindow += 1 }
+    preferences.moveFavorite(b, by: -1)
+    #expect(preferences.favorites == [b, a]); #expect(firstWindow == 1 && secondWindow == 1)
+    preferences.removeObserver(token)
+    preferences.setShowExtensions(false); preferences.toggleSection(.volumes)
+    #expect(firstWindow == 1 && secondWindow == 3)
+    let restored = BrowserPreferences(defaults: defaults)
+    #expect(restored.favorites == [b, a]); #expect(!restored.showExtensions); #expect(!restored.showHomeVolumes)
+}
+
+@Test @MainActor func recentLocationsDeduplicateCapAndClearAcrossReload() {
+    let suite = "files-recent-tests-\(UUID())", defaults: UserDefaults
+    defaults = UserDefaults(suiteName: suite)!
+    defer { defaults.removePersistentDomain(forName: suite) }
+    let preferences = BrowserPreferences(defaults: defaults, initialFavorites: [])
+    for i in 0..<12 { preferences.recordVisit(URL(fileURLWithPath: "/\(i)")) }
+    preferences.recordVisit(URL(fileURLWithPath: "/9"))
+    #expect(preferences.recent.count == 10); #expect(preferences.recent.first?.path == "/9")
+    preferences.clearRecent()
+    #expect(BrowserPreferences(defaults: defaults).recent.isEmpty)
+}
+
+@Test func renameRestoresSelectionButHardLinksAndReplacementsDoNotConfuseIt() {
+    func item(_ path: String, _ identity: String) -> FileItem {
+        FileItem(url: URL(fileURLWithPath: path), name: path, isDirectory: false, identity: identity)
+    }
+    #expect(SelectionRestoration.restore(["/a"], from: [item("/a", "1")], to: [item("/b", "1")]) == ["/b"])
+    #expect(SelectionRestoration.restore(["/a"], from: [item("/a", "1")], to: [item("/a", "2")]).isEmpty)
+    #expect(SelectionRestoration.restore(["/a"], from: [item("/a", "1"), item("/b", "1")], to: [item("/c", "1"), item("/b", "1")]).isEmpty)
+}
+
+@Test func localIdentitySurvivesRename() async throws {
+    let root = try fixture(); defer { try? FileManager.default.removeItem(at: root) }
+    let a = root.appendingPathComponent("a"), b = root.appendingPathComponent("b")
+    try Data([1]).write(to: a)
+    let before = try await LocalFileSystem().contents(of: root, showHidden: false)
+    try FileManager.default.moveItem(at: a, to: b)
+    let after = try await LocalFileSystem().contents(of: root, showHidden: false)
+    #expect(before[0].identity != nil); #expect(before[0].identity == after[0].identity)
+    #expect(SelectionRestoration.restore([a.path], from: before, to: after) == [b.path])
+}
+
+@Test func batchesAreShallowAndArriveBeforeCompleteListing() async throws {
+    let root = try fixture(); defer { try? FileManager.default.removeItem(at: root) }
+    let nested = root.appendingPathComponent("nested")
+    try FileManager.default.createDirectory(at: nested, withIntermediateDirectories: true)
+    try Data().write(to: nested.appendingPathComponent("must-not-appear"))
+    for i in 0..<300 { try Data().write(to: root.appendingPathComponent("file-\(i)")) }
+    var sizes: [Int] = []; var names: [String] = []
+    for try await batch in LocalFileSystem().batches(of: root, showHidden: false) {
+        sizes.append(batch.count); names.append(contentsOf: batch.map(\.name))
+    }
+    #expect(sizes.first == 128); #expect(sizes.count == 2)
+    #expect(names.count == 301); #expect(!names.contains("must-not-appear"))
+}
+
+@Test func watcherReportsExternalChildEditAndStops() async throws {
+    let root = try fixture(); defer { try? FileManager.default.removeItem(at: root) }
+    let file = root.appendingPathComponent("file")
+    try Data([1]).write(to: file)
+    let watcher = try #require(DirectoryWatcher(url: root))
+    defer { watcher.stop() }
+    let result = await withTaskGroup(of: Bool.self) { group in
+        group.addTask {
+            for await _ in watcher.events {
+                if (try? Data(contentsOf: file).count) == 3 { return true }
+            }
+            return false
+        }
+        group.addTask {
+            try? await Task.sleep(for: .milliseconds(400))
+            try? Data([1,2,3]).write(to: file)
+            try? await Task.sleep(for: .seconds(4))
+            return false
+        }
+        let first = await group.next() ?? false
+        watcher.stop(); group.cancelAll(); return first
+    }
+    #expect(result)
+}
+
+@Test func openingFileAsDirectoryFails() async throws {
+    let root = try fixture(); defer { try? FileManager.default.removeItem(at: root) }
+    let file = root.appendingPathComponent("file"); try Data().write(to: file)
+    await #expect(throws: (any Error).self) {
+        _ = try await LocalFileSystem().contents(of: file, showHidden: false)
+    }
+}
+
+private struct ChunkedLoader: DirectoryStreaming {
+    func contents(of url: URL, showHidden: Bool) async throws -> [FileItem] { [] }
+    func batches(of url: URL, showHidden: Bool) -> AsyncThrowingStream<[FileItem], Error> {
+        AsyncThrowingStream { continuation in
+            let task = Task {
+                continuation.yield([FileItem(url: url.appendingPathComponent("first"), name: "first", isDirectory: false)])
+                try? await Task.sleep(for: .milliseconds(150))
+                continuation.yield([FileItem(url: url.appendingPathComponent("second"), name: "second", isDirectory: false)])
+                continuation.finish()
+            }
+            continuation.onTermination = { _ in task.cancel() }
+        }
+    }
+}
+
+@Test @MainActor func modelPublishesFirstBatchAndCancelsItOnNavigation() async throws {
+    let model = BrowserModel(loader: ChunkedLoader())
+    model.navigate(URL(fileURLWithPath: "/chunked"))
+    for _ in 0..<50 {
+        if !model.items.isEmpty { break }
+        try await Task.sleep(for: .milliseconds(2))
+    }
+    #expect(model.isLoading); #expect(model.items.count == 1)
+    model.navigate(nil)
+    try await Task.sleep(for: .milliseconds(200))
+    #expect(model.items.isEmpty); #expect(!model.isLoading)
 }

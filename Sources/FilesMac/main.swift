@@ -11,7 +11,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
     @objc func newWindow(_ sender: Any?) {
         let controller = BrowserWindow()
-        windows.append(controller); controller.showWindow(nil)
+        windows.append(controller)
+        controller.onClose = { [weak self, weak controller] in
+            self?.windows.removeAll { $0 === controller }
+        }
+        controller.showWindow(nil)
     }
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
     private func buildMenu() {
