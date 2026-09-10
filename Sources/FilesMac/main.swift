@@ -30,7 +30,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
               PermanentDeleteWindow.isRunning || BrowserWindow.entryOperationRunning else { return .terminateNow }
         let alert = NSAlert()
         alert.messageText = L("파일 작업이 진행 중입니다", "A file operation is running")
-        alert.informativeText = L("작업 완료 후 종료하세요. 복사는 복사 창에서 취소할 수 있습니다.", "Quit after the operation finishes. Copies can be cancelled in the copy window.")
+        alert.informativeText = L("작업 완료 후 종료하세요. 복사와 이동은 작업 창에서 취소할 수 있습니다.", "Quit after the operation finishes. Copies and moves can be cancelled in their operation windows.")
         alert.runModal()
         return .terminateCancel
     }

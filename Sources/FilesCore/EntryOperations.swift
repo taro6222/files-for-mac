@@ -65,6 +65,13 @@ public struct MoveOperationResult: Sendable {
     public let journalError: String?
 }
 
+public struct MoveProgress: Sendable {
+    public let index: Int
+    public let total: Int
+    public let name: String
+    public let phase: String
+}
+
 public struct MoveUndoItem: Codable, Sendable {
     public let source: URL
     public let target: URL
@@ -464,20 +471,25 @@ public enum EntryOperations {
     }
 
     public static func move(_ sources: [URL], to destination: URL, conflictPolicy: MoveConflictPolicy = .skip,
-                            journalDirectory: URL) async throws -> MoveOperationResult {
+                            journalDirectory: URL, cancellation: CopyCancellation = CopyCancellation(),
+                            progress: @escaping @Sendable (MoveProgress) -> Void = { _ in }) async throws -> MoveOperationResult {
         try await moveImpl(sources, to: destination, conflictPolicy: conflictPolicy,
-                           journalDirectory: journalDirectory, forceCrossVolume: false)
+                           journalDirectory: journalDirectory, forceCrossVolume: false,
+                           cancellation: cancellation, progress: progress)
     }
 
     static func moveAcrossVolumeForTesting(_ sources: [URL], to destination: URL,
                                            conflictPolicy: MoveConflictPolicy = .skip,
-                                           journalDirectory: URL) async throws -> MoveOperationResult {
+                                           journalDirectory: URL, cancellation: CopyCancellation = CopyCancellation(),
+                                           progress: @escaping @Sendable (MoveProgress) -> Void = { _ in }) async throws -> MoveOperationResult {
         try await moveImpl(sources, to: destination, conflictPolicy: conflictPolicy,
-                           journalDirectory: journalDirectory, forceCrossVolume: true)
+                           journalDirectory: journalDirectory, forceCrossVolume: true,
+                           cancellation: cancellation, progress: progress)
     }
 
     private static func moveImpl(_ sources: [URL], to destination: URL, conflictPolicy: MoveConflictPolicy,
-                                 journalDirectory: URL, forceCrossVolume: Bool) async throws -> MoveOperationResult {
+                                 journalDirectory: URL, forceCrossVolume: Bool, cancellation: CopyCancellation,
+                                 progress: @escaping @Sendable (MoveProgress) -> Void) async throws -> MoveOperationResult {
         let normalizedSources = sources.map(\.standardizedFileURL)
         guard !normalizedSources.isEmpty else { throw EntryOperationError.noSources }
         return try await Task.detached(priority: .userInitiated) {
@@ -537,7 +549,18 @@ public enum EntryOperations {
                     let source = normalizedSources[index]
                     let target = normalizedDestination.appendingPathComponent(source.lastPathComponent)
                     var backup: URL?
+                    func emit(_ phase: String) {
+                        progress(MoveProgress(index: index, total: normalizedSources.count,
+                                              name: source.lastPathComponent, phase: phase))
+                    }
+                    if cancellation.isCancelled {
+                        itemStates[index] = MoveItemOperationResult(source: source, target: target, state: "cancelled", message: nil)
+                        finalState = "cancelled"
+                        try save(state: finalState)
+                        continue
+                    }
                     do {
+                        try cancellation.check(); emit("planning")
                         guard entryExists(source) else {
                             itemStates[index] = MoveItemOperationResult(source: source, target: target, state: "notFound", message: LString.fileMissing)
                             finalState = "partial"
@@ -562,7 +585,7 @@ public enum EntryOperations {
                                 let proposedBackup = normalizedDestination.appendingPathComponent(".files-move-backup-\(operationId)-\(index)")
                                 backupURLs[index] = proposedBackup
                                 itemStates[index] = MoveItemOperationResult(source: source, target: target, state: "backingUp", message: nil)
-                                try save(state: finalState)
+                                try save(state: finalState); emit("backingUp"); try cancellation.check()
                                 guard renameatx_np(destinationFD, target.lastPathComponent, destinationFD,
                                                    proposedBackup.lastPathComponent, UInt32(RENAME_EXCL)) == 0 else {
                                     throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
@@ -571,20 +594,22 @@ public enum EntryOperations {
                                 backupURLs[index] = proposedBackup
                             }
                             if crossVolume {
-                                let before = try CopyEngine.verifiedSnapshot(source)
+                                let before = try CopyEngine.verifiedSnapshot(source, cancellation: cancellation)
                                 let stage = normalizedDestination.appendingPathComponent(".files-move-\(operationId)-\(index)")
                                 try fm.createDirectory(at: stage, withIntermediateDirectories: false)
                                 defer { if entryExists(stage) { try? fm.removeItem(at: stage) } }
                                 let payload = stage.appendingPathComponent("payload")
                                 itemStates[index] = MoveItemOperationResult(source: source, target: target, state: "copying", message: nil)
-                                try save(state: finalState)
+                                try save(state: finalState); emit("copying"); try cancellation.check()
                                 try fm.copyItem(at: source, to: payload)
+                                try cancellation.check()
                                 itemStates[index] = MoveItemOperationResult(source: source, target: target, state: "verifying", message: nil)
-                                try save(state: finalState)
-                                guard try CopyEngine.verifiedSnapshot(payload) == before,
-                                      try CopyEngine.verifiedSnapshot(source) == before else {
+                                try save(state: finalState); emit("verifying")
+                                guard try CopyEngine.verifiedSnapshot(payload, cancellation: cancellation) == before,
+                                      try CopyEngine.verifiedSnapshot(source, cancellation: cancellation) == before else {
                                     throw MoveFailure(text: LString.crossVolumeVerificationFailed)
                                 }
+                                try cancellation.check(); emit("committing")
                                 let stageFD = open(stage.path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
                                 guard stageFD >= 0 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
                                 defer { close(stageFD) }
@@ -593,7 +618,8 @@ public enum EntryOperations {
                                     throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
                                 }
                                 do {
-                                    guard try CopyEngine.verifiedSnapshot(source) == before else {
+                                    try cancellation.check(); emit("removingSource")
+                                    guard try CopyEngine.verifiedSnapshot(source, cancellation: cancellation) == before else {
                                         throw MoveFailure(text: LString.crossVolumeSourceChanged)
                                     }
                                     try fm.removeItem(at: source)
@@ -603,10 +629,15 @@ public enum EntryOperations {
                                     throw originalError
                                 }
                             } else {
+                                try cancellation.check(); emit("committing")
                                 try fm.moveItem(at: source, to: target)
                             }
                             undoEligible[index] = true
                             itemStates[index] = MoveItemOperationResult(source: source, target: target, state: "completed", message: nil)
+                        } catch is CancellationError {
+                            if let backup, !entryExists(target) { try? fm.moveItem(at: backup, to: target); backupURLs[index] = nil }
+                            itemStates[index] = MoveItemOperationResult(source: source, target: target, state: "cancelled", message: nil)
+                            finalState = "cancelled"
                         } catch EntryOperationError.conflict {
                             if let backup, !entryExists(target) { try? fm.moveItem(at: backup, to: target); backupURLs[index] = nil }
                             itemStates[index] = MoveItemOperationResult(source: source, target: target, state: "conflict", message: LString.pathConflictMessage)

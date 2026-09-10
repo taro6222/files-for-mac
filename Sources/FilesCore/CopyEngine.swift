@@ -8,7 +8,7 @@ public final class CopyCancellation: @unchecked Sendable {
     public init() {}
     public func cancel() { lock.withLock { cancelled = true } }
     public var isCancelled: Bool { lock.withLock { cancelled } }
-    fileprivate func check() throws { if isCancelled { throw CancellationError() } }
+    func check() throws { if isCancelled { throw CancellationError() } }
 }
 
 public struct CopyProgress: Sendable {
@@ -199,8 +199,8 @@ public enum CopyEngine {
     }
 
     /// No traversal through symlinks; reject special files before FileManager can block on them.
-    static func verifiedSnapshot(_ root: URL) throws -> [String: String] {
-        try snapshot(root, cancellation: CopyCancellation())
+    static func verifiedSnapshot(_ root: URL, cancellation: CopyCancellation = CopyCancellation()) throws -> [String: String] {
+        try snapshot(root, cancellation: cancellation)
     }
 
     private static func snapshot(_ root: URL, cancellation: CopyCancellation) throws -> [String: String] {

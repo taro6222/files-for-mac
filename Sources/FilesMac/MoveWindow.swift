@@ -8,9 +8,11 @@ final class MoveWindow: NSWindowController, NSWindowDelegate {
     private static var operations: [MoveWindow] = []
     static var isRunning: Bool { operations.contains { $0.running } }
     private var running = true
+    private let cancellation = CopyCancellation()
     private let label = NSTextField(wrappingLabelWithString: "")
+    private let progress = NSProgressIndicator()
     private let details = NSTextView()
-    private let close = NSButton(title: L("닫기", "Close"), target: nil, action: #selector(closeWindow(_:)))
+    private let close = NSButton(title: L("취소", "Cancel"), target: nil, action: #selector(cancelMove(_:)))
 
     static func start(sources: [URL], destination: URL, conflictPolicy: MoveConflictPolicy = .skip,
                       completion: @escaping @MainActor () -> Void) {
@@ -24,7 +26,10 @@ final class MoveWindow: NSWindowController, NSWindowDelegate {
             .appendingPathComponent("operations")
         Task {
             do {
-                let report = try await EntryOperations.move(sources, to: destination, conflictPolicy: conflictPolicy, journalDirectory: journals)
+                let report = try await EntryOperations.move(sources, to: destination, conflictPolicy: conflictPolicy,
+                    journalDirectory: journals, cancellation: controller.cancellation) { [weak controller] update in
+                    Task { @MainActor in controller?.update(update) }
+                }
                 await MainActor.run { controller.finish(report) }
             } catch {
                 await MainActor.run { controller.fail(error) }
@@ -64,6 +69,11 @@ final class MoveWindow: NSWindowController, NSWindowDelegate {
         stack.addArrangedSubview(policy)
         label.stringValue = L("항목을 이동 중…", "Moving items…")
         stack.addArrangedSubview(label)
+        progress.isIndeterminate = false
+        progress.minValue = 0
+        progress.maxValue = Double(sources.count)
+        progress.style = .bar
+        stack.addArrangedSubview(progress)
         let scroll = NSScrollView()
         scroll.hasVerticalScroller = true
         scroll.borderType = .bezelBorder
@@ -74,25 +84,40 @@ final class MoveWindow: NSWindowController, NSWindowDelegate {
         scroll.documentView = details
         stack.addArrangedSubview(scroll)
         close.target = self
-        close.isEnabled = false
         close.bezelStyle = .rounded
         stack.addArrangedSubview(close)
         scroll.heightAnchor.constraint(greaterThanOrEqualToConstant: 180).isActive = true
-        for view in [target, policy, label, scroll] { view.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true }
+        for view in [target, policy, label, progress, scroll] { view.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true }
     }
 
     required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
+
+    private func update(_ update: MoveProgress) {
+        guard running, !cancellation.isCancelled else { return }
+        let phase: String
+        switch update.phase {
+        case "planning": phase = L("원본 확인", "Checking source")
+        case "backingUp": phase = L("기존 항목 백업", "Backing up existing item")
+        case "copying": phase = L("교차 볼륨 복사", "Copying across volumes")
+        case "verifying": phase = L("내용 검증", "Verifying contents")
+        case "removingSource": phase = L("원본 정리", "Removing source")
+        default: phase = L("결과 확정", "Committing")
+        }
+        label.stringValue = "\(update.index + 1)/\(update.total) · \(phase) · \(update.name)"
+        progress.doubleValue = Double(update.index)
+    }
 
     private func finish(_ report: MoveOperationResult) {
         running = false
         let completed = report.items.filter { $0.state == "completed" }.count
         let failed = report.items.filter { $0.state == "failed" || $0.state == "conflict" || $0.state == "notFound" }.count
-        label.stringValue = L("작업 완료", "Finished") + " · " +
+        label.stringValue = (report.state == "cancelled" ? L("취소됨", "Cancelled") : L("작업 완료", "Finished")) + " · " +
             L("이동 완료 ", "Moved ") + "\(completed)/\(report.items.count)" +
             L("개 항목", " items")
         if failed > 0 {
             label.stringValue += L(" · 실패 ", " · Failed ") + "\(failed)/\(report.items.count)"
         }
+        progress.doubleValue = Double(report.items.count)
         details.string = report.items.map { item in
             let status: String
             switch item.state {
@@ -104,6 +129,8 @@ final class MoveWindow: NSWindowController, NSWindowDelegate {
                 status = L("원본 없음", "Source missing")
             case "failed":
                 status = L("실패", "Failed")
+            case "cancelled":
+                status = L("취소됨", "Cancelled")
             default:
                 status = L("미처리", "Not attempted")
             }
@@ -123,8 +150,13 @@ final class MoveWindow: NSWindowController, NSWindowDelegate {
         close.isEnabled = true
     }
 
-    @objc private func closeWindow(_ sender: Any?) { close() }
+    @objc private func cancelMove(_ sender: Any?) {
+        if !running { close(); return }
+        cancellation.cancel()
+        close.isEnabled = false
+        label.stringValue = L("취소 요청됨 — 현재 파일 작업이 안전 지점에 도달하면 중단합니다.",
+                              "Cancellation requested — stopping when the current file operation reaches a safe point.")
+    }
     func windowShouldClose(_ sender: NSWindow) -> Bool { !running }
     func windowWillClose(_ notification: Notification) { Self.operations.removeAll { $0 === self } }
 }
-

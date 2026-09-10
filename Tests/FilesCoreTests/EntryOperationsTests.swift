@@ -319,6 +319,26 @@ private func entryFixture() throws -> URL {
     #expect(try String(contentsOf: target, encoding: .utf8) == "target")
 }
 
+@Test func entryCrossVolumeMoveCancellationPreservesSourceAndCleansStaging() async throws {
+    let root = try entryFixture(); defer { try? FileManager.default.removeItem(at: root) }
+    let journal = root.appendingPathComponent("journal")
+    let destination = root.appendingPathComponent("dest")
+    let source = root.appendingPathComponent("move.txt")
+    try FileManager.default.createDirectory(at: destination, withIntermediateDirectories: true)
+    try Data(repeating: 0x41, count: 1024 * 1024).write(to: source)
+    let cancellation = CopyCancellation()
+    let report = try await EntryOperations.moveAcrossVolumeForTesting(
+        [source], to: destination, journalDirectory: journal, cancellation: cancellation
+    ) { update in
+        if update.phase == "verifying" { cancellation.cancel() }
+    }
+    #expect(report.state == "cancelled")
+    #expect(report.items[0].state == "cancelled")
+    #expect(FileManager.default.fileExists(atPath: source.path))
+    #expect(!FileManager.default.fileExists(atPath: destination.appendingPathComponent("move.txt").path))
+    #expect((try FileManager.default.contentsOfDirectory(atPath: destination.path)).allSatisfy { !$0.hasPrefix(".files-move-") })
+}
+
 private extension Data {
     func append(to url: URL) throws {
         let handle = try FileHandle(forWritingTo: url)
