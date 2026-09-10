@@ -226,6 +226,61 @@ private func entryFixture() throws -> URL {
     #expect(EntryOperations.latestUndoMove(journalDirectory: journal) == nil)
 }
 
+@Test func entryCrossVolumeMoveCopiesVerifiesThenRemovesSource() async throws {
+    let root = try entryFixture(); defer { try? FileManager.default.removeItem(at: root) }
+    let journal = root.appendingPathComponent("journal")
+    let destination = root.appendingPathComponent("dest")
+    let source = root.appendingPathComponent("folder")
+    try FileManager.default.createDirectory(at: destination, withIntermediateDirectories: true)
+    try FileManager.default.createDirectory(at: source, withIntermediateDirectories: true)
+    try Data("contents".utf8).write(to: source.appendingPathComponent("file.txt"))
+    try FileManager.default.createSymbolicLink(atPath: source.appendingPathComponent("link").path, withDestinationPath: "file.txt")
+    let report = try await EntryOperations.moveAcrossVolumeForTesting(
+        [source], to: destination, journalDirectory: journal)
+    let target = destination.appendingPathComponent("folder")
+    #expect(report.state == "completed")
+    #expect(report.items[0].state == "completed")
+    #expect(!FileManager.default.fileExists(atPath: source.path))
+    #expect(try String(contentsOf: target.appendingPathComponent("file.txt"), encoding: .utf8) == "contents")
+    #expect(try FileManager.default.destinationOfSymbolicLink(atPath: target.appendingPathComponent("link").path) == "file.txt")
+    #expect((try FileManager.default.contentsOfDirectory(atPath: destination.path)).allSatisfy { !$0.hasPrefix(".files-move-") })
+    #expect(EntryOperations.latestUndoMove(journalDirectory: journal) == nil)
+}
+
+@Test func entryCrossVolumeMoveConflictPreservesSourceAndTarget() async throws {
+    let root = try entryFixture(); defer { try? FileManager.default.removeItem(at: root) }
+    let journal = root.appendingPathComponent("journal")
+    let destination = root.appendingPathComponent("dest")
+    let source = root.appendingPathComponent("move.txt")
+    let target = destination.appendingPathComponent("move.txt")
+    try FileManager.default.createDirectory(at: destination, withIntermediateDirectories: true)
+    try Data("source".utf8).write(to: source)
+    try Data("target".utf8).write(to: target)
+    let report = try await EntryOperations.moveAcrossVolumeForTesting(
+        [source], to: destination, conflictPolicy: .skip, journalDirectory: journal)
+    #expect(report.state == "partial")
+    #expect(report.items[0].state == "conflict")
+    #expect(try String(contentsOf: source, encoding: .utf8) == "source")
+    #expect(try String(contentsOf: target, encoding: .utf8) == "target")
+}
+
+@Test func entryCrossVolumeReplaceWaitsForBackupSupport() async throws {
+    let root = try entryFixture(); defer { try? FileManager.default.removeItem(at: root) }
+    let journal = root.appendingPathComponent("journal")
+    let destination = root.appendingPathComponent("dest")
+    let source = root.appendingPathComponent("move.txt")
+    let target = destination.appendingPathComponent("move.txt")
+    try FileManager.default.createDirectory(at: destination, withIntermediateDirectories: true)
+    try Data("source".utf8).write(to: source)
+    try Data("target".utf8).write(to: target)
+    let report = try await EntryOperations.moveAcrossVolumeForTesting(
+        [source], to: destination, conflictPolicy: .replace, journalDirectory: journal)
+    #expect(report.state == "partial")
+    #expect(report.items[0].state == "failed")
+    #expect(try String(contentsOf: source, encoding: .utf8) == "source")
+    #expect(try String(contentsOf: target, encoding: .utf8) == "target")
+}
+
 private extension Data {
     func append(to url: URL) throws {
         let handle = try FileHandle(forWritingTo: url)

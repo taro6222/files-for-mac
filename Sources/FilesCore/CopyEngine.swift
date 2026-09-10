@@ -199,6 +199,10 @@ public enum CopyEngine {
     }
 
     /// No traversal through symlinks; reject special files before FileManager can block on them.
+    static func verifiedSnapshot(_ root: URL) throws -> [String: String] {
+        try snapshot(root, cancellation: CopyCancellation())
+    }
+
     private static func snapshot(_ root: URL, cancellation: CopyCancellation) throws -> [String: String] {
         let fm = FileManager()
         var result: [String: String] = [:]

@@ -419,6 +419,19 @@ public enum EntryOperations {
 
     public static func move(_ sources: [URL], to destination: URL, conflictPolicy: MoveConflictPolicy = .skip,
                             journalDirectory: URL) async throws -> MoveOperationResult {
+        try await moveImpl(sources, to: destination, conflictPolicy: conflictPolicy,
+                           journalDirectory: journalDirectory, forceCrossVolume: false)
+    }
+
+    static func moveAcrossVolumeForTesting(_ sources: [URL], to destination: URL,
+                                           conflictPolicy: MoveConflictPolicy = .skip,
+                                           journalDirectory: URL) async throws -> MoveOperationResult {
+        try await moveImpl(sources, to: destination, conflictPolicy: conflictPolicy,
+                           journalDirectory: journalDirectory, forceCrossVolume: true)
+    }
+
+    private static func moveImpl(_ sources: [URL], to destination: URL, conflictPolicy: MoveConflictPolicy,
+                                 journalDirectory: URL, forceCrossVolume: Bool) async throws -> MoveOperationResult {
         let normalizedSources = sources.map(\.standardizedFileURL)
         guard !normalizedSources.isEmpty else { throw EntryOperationError.noSources }
         return try await Task.detached(priority: .userInitiated) {
@@ -426,6 +439,9 @@ public enum EntryOperations {
             let operationId = UUID().uuidString
             let journalURL = journalDirectory.appendingPathComponent("move-\(operationId).json")
             let normalizedDestination = destination.standardizedFileURL
+            let destinationFD = open(normalizedDestination.path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
+            guard destinationFD >= 0 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
+            defer { close(destinationFD) }
 
             struct MoveItemJournal: Codable {
                 let source: URL
@@ -449,6 +465,7 @@ public enum EntryOperations {
                 MoveItemOperationResult(source: $0, target: normalizedDestination.appendingPathComponent($0.lastPathComponent),
                                        state: "queued", message: nil)
             }
+            var undoEligible = Array(repeating: false, count: normalizedSources.count)
             var finalState = "completed"
             var journalError: String?
 
@@ -471,7 +488,7 @@ public enum EntryOperations {
                     let source = normalizedSources[index]
                     let target = normalizedDestination.appendingPathComponent(source.lastPathComponent)
                     do {
-                        guard fm.fileExists(atPath: source.path) else {
+                        guard entryExists(source) else {
                             itemStates[index] = MoveItemOperationResult(source: source, target: target, state: "notFound", message: LString.fileMissing)
                             finalState = "partial"
                             try save(state: finalState)
@@ -479,18 +496,61 @@ public enum EntryOperations {
                         }
 
                         do {
-                            let conflictInfo = fm.fileExists(atPath: target.path)
-                            if conflictInfo {
+                            guard let sourceDevice = (try fm.attributesOfItem(atPath: source.path)[.systemNumber] as? NSNumber)?.uint64Value,
+                                  let destinationDevice = (try fm.attributesOfItem(atPath: normalizedDestination.path)[.systemNumber] as? NSNumber)?.uint64Value else {
+                                throw EntryOperationError.sourceChanged
+                            }
+                            let crossVolume = forceCrossVolume || sourceDevice != destinationDevice
+                            if entryExists(target) {
                                 if conflictPolicy == .skip {
                                     itemStates[index] = MoveItemOperationResult(source: source, target: target, state: "conflict", message: LString.pathConflictMessage)
                                     finalState = "partial"
                                     try save(state: finalState)
                                     continue
                                 }
+                                guard !crossVolume else { throw MoveFailure(text: LString.crossVolumeReplaceRequiresBackup) }
                                 try fm.removeItem(at: target)
                             }
-                            try fm.moveItem(at: source, to: target)
+                            if crossVolume {
+                                let before = try CopyEngine.verifiedSnapshot(source)
+                                let stage = normalizedDestination.appendingPathComponent(".files-move-\(operationId)-\(index)")
+                                try fm.createDirectory(at: stage, withIntermediateDirectories: false)
+                                defer { if entryExists(stage) { try? fm.removeItem(at: stage) } }
+                                let payload = stage.appendingPathComponent("payload")
+                                itemStates[index] = MoveItemOperationResult(source: source, target: target, state: "copying", message: nil)
+                                try save(state: finalState)
+                                try fm.copyItem(at: source, to: payload)
+                                itemStates[index] = MoveItemOperationResult(source: source, target: target, state: "verifying", message: nil)
+                                try save(state: finalState)
+                                guard try CopyEngine.verifiedSnapshot(payload) == before,
+                                      try CopyEngine.verifiedSnapshot(source) == before else {
+                                    throw MoveFailure(text: LString.crossVolumeVerificationFailed)
+                                }
+                                let stageFD = open(stage.path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
+                                guard stageFD >= 0 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
+                                defer { close(stageFD) }
+                                guard renameatx_np(stageFD, "payload", destinationFD, target.lastPathComponent, UInt32(RENAME_EXCL)) == 0 else {
+                                    if errno == EEXIST { throw EntryOperationError.conflict }
+                                    throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
+                                }
+                                do {
+                                    guard try CopyEngine.verifiedSnapshot(source) == before else {
+                                        throw MoveFailure(text: LString.crossVolumeSourceChanged)
+                                    }
+                                    try fm.removeItem(at: source)
+                                } catch {
+                                    let originalError = error
+                                    if entryExists(target), (try? CopyEngine.verifiedSnapshot(target)) == before { try? fm.removeItem(at: target) }
+                                    throw originalError
+                                }
+                            } else {
+                                try fm.moveItem(at: source, to: target)
+                                undoEligible[index] = true
+                            }
                             itemStates[index] = MoveItemOperationResult(source: source, target: target, state: "completed", message: nil)
+                        } catch EntryOperationError.conflict {
+                            itemStates[index] = MoveItemOperationResult(source: source, target: target, state: "conflict", message: LString.pathConflictMessage)
+                            finalState = "partial"
                         } catch {
                             itemStates[index] = MoveItemOperationResult(source: source, target: target, state: "failed", message: error.localizedDescription)
                             finalState = "partial"
@@ -513,7 +573,9 @@ public enum EntryOperations {
             }
 
             if conflictPolicy == .skip {
-                let completed = itemStates.filter { $0.state == "completed" }
+                let completed = itemStates.enumerated().filter {
+                    $0.element.state == "completed" && undoEligible[$0.offset]
+                }.map(\.element)
                 if !completed.isEmpty {
                     do {
                         let undoItems = try completed.map {
@@ -651,4 +713,12 @@ private enum LString {
     static let undoTargetChanged = "이동 후 항목이 변경되어 실행 취소하지 않았습니다."
     static let undoSourceConflict = "원래 위치에 같은 이름의 항목이 있어 실행 취소하지 않았습니다."
     static let undoSourceParentMissing = "원래 상위 폴더가 없어 실행 취소하지 않았습니다."
+    static let crossVolumeReplaceRequiresBackup = "교차 볼륨 교체 이동은 기존 대상 백업이 필요합니다. 건너뛰기 정책을 사용하세요."
+    static let crossVolumeVerificationFailed = "복사 결과가 원본과 일치하지 않거나 복사 중 원본이 변경됐습니다."
+    static let crossVolumeSourceChanged = "복사 결과를 확정한 뒤 원본이 변경되어 원본 삭제를 중단했습니다."
+}
+
+private struct MoveFailure: LocalizedError {
+    let text: String
+    var errorDescription: String? { text }
 }
