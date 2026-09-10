@@ -69,6 +69,26 @@ public struct MoveUndoItem: Codable, Sendable {
     public let source: URL
     public let target: URL
     public let targetIdentity: String
+    public let backup: URL?
+    public let backupIdentity: String?
+    public let crossVolume: Bool
+
+    public init(source: URL, target: URL, targetIdentity: String, backup: URL? = nil,
+                backupIdentity: String? = nil, crossVolume: Bool = false) {
+        self.source = source; self.target = target; self.targetIdentity = targetIdentity
+        self.backup = backup; self.backupIdentity = backupIdentity; self.crossVolume = crossVolume
+    }
+
+    private enum CodingKeys: String, CodingKey { case source, target, targetIdentity, backup, backupIdentity, crossVolume }
+    public init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        source = try values.decode(URL.self, forKey: .source)
+        target = try values.decode(URL.self, forKey: .target)
+        targetIdentity = try values.decode(String.self, forKey: .targetIdentity)
+        backup = try values.decodeIfPresent(URL.self, forKey: .backup)
+        backupIdentity = try values.decodeIfPresent(String.self, forKey: .backupIdentity)
+        crossVolume = try values.decodeIfPresent(Bool.self, forKey: .crossVolume) ?? false
+    }
 }
 
 public struct MoveUndoRecord: Codable, Sendable {
@@ -117,6 +137,32 @@ public enum EntryOperations {
     private static func entryExists(_ url: URL) -> Bool {
         var info = stat()
         return lstat(url.path, &info) == 0
+    }
+
+    private static func transferForUndo(_ source: URL, to target: URL, crossVolume: Bool) throws {
+        let fm = FileManager.default
+        if !crossVolume { try fm.moveItem(at: source, to: target); return }
+        let before = try CopyEngine.verifiedSnapshot(source)
+        let stage = target.deletingLastPathComponent().appendingPathComponent(".files-undo-\(UUID().uuidString)")
+        try fm.createDirectory(at: stage, withIntermediateDirectories: false)
+        defer { if entryExists(stage) { try? fm.removeItem(at: stage) } }
+        let payload = stage.appendingPathComponent("payload")
+        try fm.copyItem(at: source, to: payload)
+        guard try CopyEngine.verifiedSnapshot(payload) == before,
+              try CopyEngine.verifiedSnapshot(source) == before else {
+            throw MoveFailure(text: LString.crossVolumeVerificationFailed)
+        }
+        try fm.moveItem(at: payload, to: target)
+        do {
+            guard try CopyEngine.verifiedSnapshot(source) == before else {
+                throw MoveFailure(text: LString.crossVolumeSourceChanged)
+            }
+            try fm.removeItem(at: source)
+        } catch {
+            let originalError = error
+            if entryExists(target), (try? CopyEngine.verifiedSnapshot(target)) == before { try? fm.removeItem(at: target) }
+            throw originalError
+        }
     }
 
     public static func latestUndoMove(journalDirectory: URL) -> MoveUndoRecord? {
@@ -446,6 +492,7 @@ public enum EntryOperations {
             struct MoveItemJournal: Codable {
                 let source: URL
                 let target: URL
+                let backup: URL?
                 let state: String
                 let message: String?
                 let updatedAt: String
@@ -466,12 +513,14 @@ public enum EntryOperations {
                                        state: "queued", message: nil)
             }
             var undoEligible = Array(repeating: false, count: normalizedSources.count)
+            var backupURLs = Array<URL?>(repeating: nil, count: normalizedSources.count)
+            var crossVolumeItems = Array(repeating: false, count: normalizedSources.count)
             var finalState = "completed"
             var journalError: String?
 
             func currentItemStates() -> [MoveItemJournal] {
                 return itemStates.enumerated().map { index, item in
-                    MoveItemJournal(source: item.source, target: item.target, state: item.state, message: item.message,
+                    MoveItemJournal(source: item.source, target: item.target, backup: backupURLs[index], state: item.state, message: item.message,
                                    updatedAt: dateFormatter.string(from: Date()))
                 }
             }
@@ -487,6 +536,7 @@ public enum EntryOperations {
                 for index in normalizedSources.indices {
                     let source = normalizedSources[index]
                     let target = normalizedDestination.appendingPathComponent(source.lastPathComponent)
+                    var backup: URL?
                     do {
                         guard entryExists(source) else {
                             itemStates[index] = MoveItemOperationResult(source: source, target: target, state: "notFound", message: LString.fileMissing)
@@ -501,6 +551,7 @@ public enum EntryOperations {
                                 throw EntryOperationError.sourceChanged
                             }
                             let crossVolume = forceCrossVolume || sourceDevice != destinationDevice
+                            crossVolumeItems[index] = crossVolume
                             if entryExists(target) {
                                 if conflictPolicy == .skip {
                                     itemStates[index] = MoveItemOperationResult(source: source, target: target, state: "conflict", message: LString.pathConflictMessage)
@@ -508,8 +559,16 @@ public enum EntryOperations {
                                     try save(state: finalState)
                                     continue
                                 }
-                                guard !crossVolume else { throw MoveFailure(text: LString.crossVolumeReplaceRequiresBackup) }
-                                try fm.removeItem(at: target)
+                                let proposedBackup = normalizedDestination.appendingPathComponent(".files-move-backup-\(operationId)-\(index)")
+                                backupURLs[index] = proposedBackup
+                                itemStates[index] = MoveItemOperationResult(source: source, target: target, state: "backingUp", message: nil)
+                                try save(state: finalState)
+                                guard renameatx_np(destinationFD, target.lastPathComponent, destinationFD,
+                                                   proposedBackup.lastPathComponent, UInt32(RENAME_EXCL)) == 0 else {
+                                    throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
+                                }
+                                backup = proposedBackup
+                                backupURLs[index] = proposedBackup
                             }
                             if crossVolume {
                                 let before = try CopyEngine.verifiedSnapshot(source)
@@ -545,13 +604,15 @@ public enum EntryOperations {
                                 }
                             } else {
                                 try fm.moveItem(at: source, to: target)
-                                undoEligible[index] = true
                             }
+                            undoEligible[index] = true
                             itemStates[index] = MoveItemOperationResult(source: source, target: target, state: "completed", message: nil)
                         } catch EntryOperationError.conflict {
+                            if let backup, !entryExists(target) { try? fm.moveItem(at: backup, to: target); backupURLs[index] = nil }
                             itemStates[index] = MoveItemOperationResult(source: source, target: target, state: "conflict", message: LString.pathConflictMessage)
                             finalState = "partial"
                         } catch {
+                            if let backup, !entryExists(target) { try? fm.moveItem(at: backup, to: target); backupURLs[index] = nil }
                             itemStates[index] = MoveItemOperationResult(source: source, target: target, state: "failed", message: error.localizedDescription)
                             finalState = "partial"
                         }
@@ -572,24 +633,26 @@ public enum EntryOperations {
                 try? save(state: finalState)
             }
 
-            if conflictPolicy == .skip {
+            do {
                 let completed = itemStates.enumerated().filter {
                     $0.element.state == "completed" && undoEligible[$0.offset]
-                }.map(\.element)
+                }
                 if !completed.isEmpty {
-                    do {
-                        let undoItems = try completed.map {
-                            MoveUndoItem(source: $0.source, target: $0.target,
-                                targetIdentity: try snapshotIdentity($0.target, fileManager: fm))
+                        let undoItems = try completed.map { indexed in
+                            let item = indexed.element
+                            let backup = backupURLs[indexed.offset]
+                            return MoveUndoItem(source: item.source, target: item.target,
+                                targetIdentity: try snapshotIdentity(item.target, fileManager: fm), backup: backup,
+                                backupIdentity: try backup.map { try snapshotIdentity($0, fileManager: fm) },
+                                crossVolume: crossVolumeItems[indexed.offset])
                         }
                         let record = MoveUndoRecord(operationId: operationId, items: undoItems, createdAt: Date())
                         try JSONEncoder().encode(record).write(
                             to: journalDirectory.appendingPathComponent("undo-move-\(operationId).json"), options: .atomic)
-                    } catch {
-                        journalError = error.localizedDescription
-                        try? save(state: finalState)
-                    }
                 }
+            } catch {
+                journalError = error.localizedDescription
+                try? save(state: finalState)
             }
 
             return MoveOperationResult(id: operationId, state: finalState, items: itemStates, journalError: journalError)
@@ -603,6 +666,12 @@ public enum EntryOperations {
             for item in record.items.reversed() {
                 let result: MoveUndoItemResult
                 do {
+                    if let backup = item.backup {
+                        guard entryExists(backup), let expected = item.backupIdentity,
+                              try snapshotIdentity(backup, fileManager: fm) == expected else {
+                            results.append(MoveUndoItemResult(source: item.source, target: item.target, state: "changed", message: LString.undoBackupChanged)); continue
+                        }
+                    }
                     guard entryExists(item.target) else {
                         results.append(MoveUndoItemResult(source: item.source, target: item.target, state: "notFound", message: LString.undoTargetMissing)); continue
                     }
@@ -615,7 +684,8 @@ public enum EntryOperations {
                     guard fm.fileExists(atPath: item.source.deletingLastPathComponent().path) else {
                         results.append(MoveUndoItemResult(source: item.source, target: item.target, state: "notFound", message: LString.undoSourceParentMissing)); continue
                     }
-                    try fm.moveItem(at: item.target, to: item.source)
+                    try transferForUndo(item.target, to: item.source, crossVolume: item.crossVolume)
+                    if let backup = item.backup { try fm.moveItem(at: backup, to: item.target) }
                     result = MoveUndoItemResult(source: item.source, target: item.target, state: "completed", message: nil)
                 } catch {
                     result = MoveUndoItemResult(source: item.source, target: item.target, state: "failed", message: error.localizedDescription)
@@ -636,7 +706,15 @@ public enum EntryOperations {
                     to: journalDirectory.appendingPathComponent("undo-result-\(record.operationId).json"), options: .atomic)
                 let pending = journalDirectory.appendingPathComponent("undo-move-\(record.operationId).json")
                 let consumed = journalDirectory.appendingPathComponent("undo-consumed-\(record.operationId).json")
-                if fm.fileExists(atPath: pending.path) { try fm.moveItem(at: pending, to: consumed) }
+                if state == "completed" {
+                    if fm.fileExists(atPath: pending.path) { try fm.moveItem(at: pending, to: consumed) }
+                } else {
+                    let remaining = zip(record.items, results).compactMap { item, result in
+                        result.state == "completed" ? nil : item
+                    }
+                    let retryRecord = MoveUndoRecord(operationId: record.operationId, items: remaining, createdAt: record.createdAt)
+                    try JSONEncoder().encode(retryRecord).write(to: pending, options: .atomic)
+                }
             } catch { journalError = error.localizedDescription }
             return MoveUndoResult(operationId: record.operationId, state: state, items: results, journalError: journalError)
         }.value
@@ -713,7 +791,7 @@ private enum LString {
     static let undoTargetChanged = "이동 후 항목이 변경되어 실행 취소하지 않았습니다."
     static let undoSourceConflict = "원래 위치에 같은 이름의 항목이 있어 실행 취소하지 않았습니다."
     static let undoSourceParentMissing = "원래 상위 폴더가 없어 실행 취소하지 않았습니다."
-    static let crossVolumeReplaceRequiresBackup = "교차 볼륨 교체 이동은 기존 대상 백업이 필요합니다. 건너뛰기 정책을 사용하세요."
+    static let undoBackupChanged = "교체 전 백업이 없거나 변경되어 실행 취소하지 않았습니다."
     static let crossVolumeVerificationFailed = "복사 결과가 원본과 일치하지 않거나 복사 중 원본이 변경됐습니다."
     static let crossVolumeSourceChanged = "복사 결과를 확정한 뒤 원본이 변경되어 원본 삭제를 중단했습니다."
 }
