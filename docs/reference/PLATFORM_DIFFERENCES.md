@@ -6,6 +6,7 @@
 | Windows 재질·창 제어 | macOS sidebar material·traffic lights | 원본 Windows 이미지와의 시각 비교 대기 |
 | Windows 전용 실행·셸 | INF 드라이버 설치, 관리자/다른 사용자로 실행, PowerShell 실행, 관리자 Terminal은 macOS 파일 관리자 명령으로 제공하지 않는다. 앱 전체 또는 임의 파일을 root로 실행하지 않으며 Terminal에서 사용자가 명시적으로 권한을 올리는 시스템 흐름을 침범하지 않는다. | M6 `platform-excluded`; 명령 UI에 노출하지 않음 |
 | Windows 전용 저장 모델 | NTFS alternate data stream 생성과 Start 메뉴 pin/unpin은 macOS에 동일한 셸 개념이 없어 제공하지 않는다. xattr·Dock/Finder 즐겨찾기를 이름만 같은 기능으로 대체하지 않는다. | M6 `platform-excluded` |
+| Windows 셸 확장 메뉴 | Explorer shell extension verb를 앱 컨텍스트 메뉴의 하위 메뉴로 이동하는 설정은 macOS 앱 메뉴 모델에 적용되지 않는다. FilesMac 명령은 앱이 소유하고 공유 목적지는 `NSSharingServicePicker`가 런타임에 제공하므로 Windows 셸 확장 계층을 복제하지 않는다. | M6 `platform-excluded`; 앱 명령과 네이티브 공유 메뉴 검증 |
 | Windows 실행 환경·상주 기능 | 관리자 실행 경고와 WSL 섹션은 Windows 실행 환경에만 해당한다. FilesMac은 별도 백그라운드 agent나 메뉴 막대 상주 항목을 만들지 않으며 텔레메트리용 영구 사용자 ID도 생성하지 않는다. | M6 `platform-excluded`; lifecycle 또는 분석 기능을 향후 추가하려면 별도 개인정보·배포 설계 필요 |
 | 상태센터·요청 프롬프트 | Windows Files의 상태센터 teaching tip과 백그라운드 실행 알림은 제공하지 않는다. 작업 진행은 활성 네이티브 작업 창에서 표시하며 앱 종료 뒤 계속된다고 주장하지 않는다. 리뷰·후원 요청 팝업과 클릭 추적 값도 만들지 않는다. | M6 `platform-excluded`; 별도 background agent나 solicitation UX 없음 |
 | 날짜·앱 인스턴스 | 파일 날짜는 별도 앱 형식 목록 대신 macOS 언어·지역 형식을 사용한다. 새 탭은 단일 `NSApplication`의 현재 브라우저 창에 네이티브 탭으로 추가한다. | M6 `platform-alternative`; 한/영 UI 4조합과 탭 UI 검증 |
