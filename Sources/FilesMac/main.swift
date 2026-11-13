@@ -333,6 +333,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     func qaToggleGeneralScrollToPreviousFolderOnUp() { generalSettingsWindow?.qaToggleScrollToPreviousFolderOnUp() }
     var qaGeneralShowFileExtensionWarning: Bool? { generalSettingsWindow?.qaShowFileExtensionWarning }
     func qaToggleGeneralShowFileExtensionWarning() { generalSettingsWindow?.qaToggleShowFileExtensionWarning() }
+    var qaGeneralContextMenuStates: (Bool, Bool, Bool)? { generalSettingsWindow?.qaContextMenuStates }
+    func qaToggleGeneralContextMenuItems() { generalSettingsWindow?.qaToggleContextMenuItems() }
     func qaCreateRemoteProfile() { remoteConnectionsWindow?.qaCreateProfile() }
 #endif
 }

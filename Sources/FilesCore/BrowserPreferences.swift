@@ -34,6 +34,9 @@ public struct BrowserPreferencesArchive: Codable, Equatable, Sendable {
     public let showTypeColumn: Bool?
     public let showSizeColumn: Bool?
     public let showGitStatusColumn: Bool?
+    public let showCompressionOptions: Bool?
+    public let showOpenTerminal: Bool?
+    public let showCreateFolderWithSelection: Bool?
     public let showHomeFavorites: Bool
     public let showHomeVolumes: Bool
     public let showHomeRecent: Bool
@@ -77,6 +80,9 @@ public final class BrowserPreferences {
     public private(set) var showTypeColumn: Bool
     public private(set) var showSizeColumn: Bool
     public private(set) var showGitStatusColumn: Bool
+    public private(set) var showCompressionOptions: Bool
+    public private(set) var showOpenTerminal: Bool
+    public private(set) var showCreateFolderWithSelection: Bool
     public private(set) var showHomeFavorites: Bool
     public private(set) var showHomeVolumes: Bool
     public private(set) var showHomeRecent: Bool
@@ -114,6 +120,9 @@ public final class BrowserPreferences {
         showTypeColumn = defaults.object(forKey: "showTypeColumn") as? Bool ?? true
         showSizeColumn = defaults.object(forKey: "showSizeColumn") as? Bool ?? true
         showGitStatusColumn = defaults.object(forKey: "showGitStatusColumn") as? Bool ?? false
+        showCompressionOptions = defaults.object(forKey: "showCompressionOptions") as? Bool ?? true
+        showOpenTerminal = defaults.object(forKey: "showOpenTerminal") as? Bool ?? true
+        showCreateFolderWithSelection = defaults.object(forKey: "showCreateFolderWithSelection") as? Bool ?? true
         showHomeFavorites = defaults.object(forKey: "showHomeFavorites") as? Bool ?? true
         showHomeVolumes = defaults.object(forKey: "showHomeVolumes") as? Bool ?? true
         showHomeRecent = defaults.object(forKey: "showHomeRecent") as? Bool ?? true
@@ -191,6 +200,9 @@ public final class BrowserPreferences {
     public func setShowTypeColumn(_ value: Bool) { guard showTypeColumn != value else { return }; showTypeColumn = value; defaults.set(value, forKey: "showTypeColumn"); changed() }
     public func setShowSizeColumn(_ value: Bool) { guard showSizeColumn != value else { return }; showSizeColumn = value; defaults.set(value, forKey: "showSizeColumn"); changed() }
     public func setShowGitStatusColumn(_ value: Bool) { guard showGitStatusColumn != value else { return }; showGitStatusColumn = value; defaults.set(value, forKey: "showGitStatusColumn"); changed() }
+    public func setShowCompressionOptions(_ value: Bool) { guard showCompressionOptions != value else { return }; showCompressionOptions = value; defaults.set(value, forKey: "showCompressionOptions"); changed() }
+    public func setShowOpenTerminal(_ value: Bool) { guard showOpenTerminal != value else { return }; showOpenTerminal = value; defaults.set(value, forKey: "showOpenTerminal"); changed() }
+    public func setShowCreateFolderWithSelection(_ value: Bool) { guard showCreateFolderWithSelection != value else { return }; showCreateFolderWithSelection = value; defaults.set(value, forKey: "showCreateFolderWithSelection"); changed() }
     public func setViewSize(_ value: BrowserViewSize) {
         guard viewSize != value else { return }
         viewSize = value; defaults.set(value.rawValue, forKey: "viewSize"); changed()
@@ -239,6 +251,7 @@ public final class BrowserPreferences {
             collapsedSidebar: collapsedSidebar.map(\.rawValue).sorted(), favorites: favorites.map(\.path), recent: recent.map(\.path),
             showHidden: showHidden, showExtensions: showExtensions, showToolbar: showToolbar, showStatusBar: showStatusBar, showSidebar: showSidebar,
             showDateColumn: showDateColumn, showTypeColumn: showTypeColumn, showSizeColumn: showSizeColumn, showGitStatusColumn: showGitStatusColumn,
+            showCompressionOptions: showCompressionOptions, showOpenTerminal: showOpenTerminal, showCreateFolderWithSelection: showCreateFolderWithSelection,
             showHomeFavorites: showHomeFavorites, showHomeVolumes: showHomeVolumes, showHomeRecent: showHomeRecent,
             viewSize: viewSize.rawValue, appearance: appearance.rawValue, continueLastSession: continueLastSession, sizeUnit: sizeUnit.rawValue,
             openFoldersInNewTab: openFoldersInNewTab, scrollToPreviousFolderOnUp: scrollToPreviousFolderOnUp,
@@ -279,6 +292,8 @@ public final class BrowserPreferences {
         showHidden = archive.showHidden; showExtensions = archive.showExtensions; showToolbar = archive.showToolbar; showStatusBar = archive.showStatusBar; showSidebar = archive.showSidebar ?? true
         showDateColumn = archive.showDateColumn ?? true; showTypeColumn = archive.showTypeColumn ?? true
         showSizeColumn = archive.showSizeColumn ?? true; showGitStatusColumn = archive.showGitStatusColumn ?? false
+        showCompressionOptions = archive.showCompressionOptions ?? true; showOpenTerminal = archive.showOpenTerminal ?? true
+        showCreateFolderWithSelection = archive.showCreateFolderWithSelection ?? true
         showHomeFavorites = archive.showHomeFavorites; showHomeVolumes = archive.showHomeVolumes; showHomeRecent = archive.showHomeRecent
         viewSize = size; appearance = importedAppearance; continueLastSession = archive.continueLastSession; sizeUnit = importedSizeUnit
         openFoldersInNewTab = archive.openFoldersInNewTab ?? false; scrollToPreviousFolderOnUp = archive.scrollToPreviousFolderOnUp ?? true
@@ -291,6 +306,8 @@ public final class BrowserPreferences {
         defaults.set(showToolbar, forKey: "showToolbar"); defaults.set(showStatusBar, forKey: "showStatusBar"); defaults.set(showSidebar, forKey: "showSidebar")
         defaults.set(showDateColumn, forKey: "showDateColumn"); defaults.set(showTypeColumn, forKey: "showTypeColumn")
         defaults.set(showSizeColumn, forKey: "showSizeColumn"); defaults.set(showGitStatusColumn, forKey: "showGitStatusColumn")
+        defaults.set(showCompressionOptions, forKey: "showCompressionOptions"); defaults.set(showOpenTerminal, forKey: "showOpenTerminal")
+        defaults.set(showCreateFolderWithSelection, forKey: "showCreateFolderWithSelection")
         defaults.set(showHomeFavorites, forKey: "showHomeFavorites"); defaults.set(showHomeVolumes, forKey: "showHomeVolumes"); defaults.set(showHomeRecent, forKey: "showHomeRecent")
         defaults.set(viewSize.rawValue, forKey: "viewSize"); defaults.set(appearance.rawValue, forKey: "appearance"); defaults.set(continueLastSession, forKey: "continueLastSession"); defaults.set(sizeUnit.rawValue, forKey: "sizeUnit")
         defaults.set(openFoldersInNewTab, forKey: "openFoldersInNewTab"); defaults.set(scrollToPreviousFolderOnUp, forKey: "scrollToPreviousFolderOnUp"); defaults.set(showFileExtensionWarning, forKey: "showFileExtensionWarning")

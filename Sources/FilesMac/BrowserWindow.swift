@@ -72,6 +72,9 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
     private var recent: [URL] { preferences.recent }
     private let homeScroll = NSScrollView()
     private let optionsMenu = NSMenu()
+    private var compressionMenuItems: [NSMenuItem] = []
+    private var openTerminalMenuItem: NSMenuItem?
+    private var createFolderWithSelectionMenuItem: NSMenuItem?
     private lazy var commandPalette = CommandPaletteWindow()
     private var sharingPicker: NSSharingServicePicker?
     private var completionTask: Task<Void, Never>?
@@ -396,11 +399,13 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         let menu = NSMenu()
         let folder = menu.addItem(withTitle: L("새 폴더…", "New Folder…"), action: #selector(createFolder(_:)), keyEquivalent: ""); folder.target = self
         let folderFromSelection = menu.addItem(withTitle: L("선택 항목으로 새 폴더…", "New Folder with Selection…"), action: #selector(createFolderFromSelection(_:)), keyEquivalent: ""); folderFromSelection.target = self
+        createFolderWithSelectionMenuItem = folderFromSelection
         let rename = menu.addItem(withTitle: L("이름 변경…", "Rename…"), action: #selector(renameSelection(_:)), keyEquivalent: ""); rename.target = self
         let batchRename = menu.addItem(withTitle: L("일괄 이름 변경…", "Batch Rename…"), action: #selector(batchRenameSelection(_:)), keyEquivalent: ""); batchRename.target = self
         let open = menu.addItem(withTitle: L("열기", "Open"), action: #selector(openSelection(_:)), keyEquivalent: ""); open.target = self
         let archive = menu.addItem(withTitle: L("압축 파일 탐색", "Browse Archive"), action: #selector(openArchive(_:)), keyEquivalent: ""); archive.target = self
         let createArchive = menu.addItem(withTitle: L("선택 항목 압축…", "Compress Selection…"), action: #selector(createArchive(_:)), keyEquivalent: ""); createArchive.target = self
+        compressionMenuItems = [archive, createArchive]
         let cloudDownload = menu.addItem(withTitle: L("지금 다운로드", "Download Now"), action: #selector(downloadCloudSelection(_:)), keyEquivalent: ""); cloudDownload.target = self
         let cloudEvict = menu.addItem(withTitle: L("공간 비우기", "Free Up Space"), action: #selector(evictCloudSelection(_:)), keyEquivalent: ""); cloudEvict.target = self
         let copy = menu.addItem(withTitle: L("선택 항목 복사…", "Copy Selection To…"), action: #selector(copySelection(_:)), keyEquivalent: ""); copy.target = self
@@ -416,8 +421,10 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         let reveal = menu.addItem(withTitle: L("Finder에서 보기", "Reveal in Finder"), action: #selector(revealSelection(_:)), keyEquivalent: ""); reveal.target = self
         let share = menu.addItem(withTitle: L("공유…", "Share…"), action: #selector(shareSelection(_:)), keyEquivalent: ""); share.target = self
         let terminal = menu.addItem(withTitle: L("터미널에서 열기", "Open in Terminal"), action: #selector(openInTerminal(_:)), keyEquivalent: ""); terminal.target = self
+        openTerminalMenuItem = terminal
         let openWith = menu.addItem(withTitle: L("다른 앱으로 열기…", "Open With…"), action: #selector(openWithApplication(_:)), keyEquivalent: ""); openWith.target = self
         table.menu = menu; gridView.contextMenu = menu; listView.contextMenu = menu; columnView.contextMenu = menu
+        applyContextMenuVisibility()
     }
     private func configure(_ b: NSButton, _ symbol: String, _ title: String, _ action: Selector) {
         b.image = NSImage(systemSymbolName: symbol, accessibilityDescription: title)
@@ -1609,6 +1616,7 @@ extension BrowserWindow {
         bottom.isHidden = !preferences.showStatusBar
         sidebarContainer.isHidden = !preferences.showSidebar
         applyColumnVisibility()
+        applyContextMenuVisibility()
         rootSplit.adjustSubviews()
         rootSplit.layoutSubtreeIfNeeded()
         buildSidebar()
@@ -1688,6 +1696,11 @@ extension BrowserWindow {
         table.tableColumn(withIdentifier: .init("kind"))?.isHidden = !preferences.showTypeColumn
         table.tableColumn(withIdentifier: .init("size"))?.isHidden = !preferences.showSizeColumn
         table.tableColumn(withIdentifier: .init("git"))?.isHidden = !preferences.showGitStatusColumn
+    }
+    private func applyContextMenuVisibility() {
+        compressionMenuItems.forEach { $0.isHidden = !preferences.showCompressionOptions }
+        openTerminalMenuItem?.isHidden = !preferences.showOpenTerminal
+        createFolderWithSelectionMenuItem?.isHidden = !preferences.showCreateFolderWithSelection
     }
     @objc private func setViewSize(_ sender: NSMenuItem) {
         guard let raw = sender.representedObject as? String, let size = BrowserViewSize(rawValue: raw) else { return }
@@ -1917,6 +1930,7 @@ extension BrowserWindow {
     var qaGitMarkedRows: Int { model.items.filter { !gitStatus(for: $0).isEmpty }.count }
     var qaGitColumnVisible: Bool { table.tableColumns.contains { $0.identifier.rawValue == "git" && !$0.isHidden } }
     var qaVisibleDetailColumns: Set<String> { Set(table.tableColumns.filter { !$0.isHidden }.map { $0.identifier.rawValue }) }
+    var qaVisibleContextActions: Set<String> { Set((table.menu?.items ?? []).filter { !$0.isHidden }.compactMap { $0.action.map(NSStringFromSelector) }) }
 #endif
     static func runUIVerification(output: String) async {
         let fm = FileManager.default
@@ -2004,15 +2018,24 @@ extension BrowserWindow {
                 let sizeUnitBefore = delegate.qaGeneralSizeUnit; let newTabBefore = delegate.qaGeneralOpenFoldersInNewTab
                 let revealBefore = delegate.qaGeneralScrollToPreviousFolderOnUp
                 let extensionWarningBefore = delegate.qaGeneralShowFileExtensionWarning
-                delegate.qaToggleGeneralWidgets(); delegate.qaToggleGeneralSizeUnit(); delegate.qaToggleGeneralOpenFoldersInNewTab(); delegate.qaToggleGeneralScrollToPreviousFolderOnUp(); delegate.qaToggleGeneralShowFileExtensionWarning(); let widgetsAfter = delegate.qaGeneralWidgetStates
+                let contextMenuBefore = delegate.qaGeneralContextMenuStates
+                delegate.qaToggleGeneralWidgets(); delegate.qaToggleGeneralSizeUnit(); delegate.qaToggleGeneralOpenFoldersInNewTab(); delegate.qaToggleGeneralScrollToPreviousFolderOnUp(); delegate.qaToggleGeneralShowFileExtensionWarning(); delegate.qaToggleGeneralContextMenuItems(); let widgetsAfter = delegate.qaGeneralWidgetStates
                 checks["generalSettingsWindow"] = delegate.qaGeneralSettingsVisible && widgetsBefore != nil && widgetsAfter != nil
                     && widgetsAfter!.0 != widgetsBefore!.0 && widgetsAfter!.1 != widgetsBefore!.1 && widgetsAfter!.2 != widgetsBefore!.2
                     && delegate.qaGeneralSizeUnit != sizeUnitBefore
                     && delegate.qaGeneralOpenFoldersInNewTab != newTabBefore
                     && delegate.qaGeneralScrollToPreviousFolderOnUp != revealBefore
                     && delegate.qaGeneralShowFileExtensionWarning != extensionWarningBefore
+                    && delegate.qaGeneralContextMenuStates?.0 != contextMenuBefore?.0
+                    && delegate.qaGeneralContextMenuStates?.1 != contextMenuBefore?.1
+                    && delegate.qaGeneralContextMenuStates?.2 != contextMenuBefore?.2
+                preferences.setShowCompressionOptions(false); preferences.setShowOpenTerminal(false); preferences.setShowCreateFolderWithSelection(false)
+                checks["contextMenuCompressionVisibilityPreference"] = !controller.qaVisibleContextActions.contains(NSStringFromSelector(#selector(createArchive(_:))))
+                checks["contextMenuTerminalVisibilityPreference"] = !controller.qaVisibleContextActions.contains(NSStringFromSelector(#selector(openInTerminal(_:))))
+                checks["contextMenuFolderVisibilityPreference"] = !controller.qaVisibleContextActions.contains(NSStringFromSelector(#selector(createFolderFromSelection(_:))))
+                preferences.setShowCompressionOptions(true); preferences.setShowOpenTerminal(true); preferences.setShowCreateFolderWithSelection(true)
                 try capture("general-settings", view: delegate.qaGeneralSettingsContentView)
-                delegate.qaToggleGeneralWidgets(); delegate.qaToggleGeneralSizeUnit(); delegate.qaToggleGeneralOpenFoldersInNewTab(); delegate.qaToggleGeneralScrollToPreviousFolderOnUp(); delegate.qaToggleGeneralShowFileExtensionWarning(); delegate.qaGeneralSettingsContentView?.window?.close(); window.makeKeyAndOrderFront(nil)
+                delegate.qaToggleGeneralWidgets(); delegate.qaToggleGeneralSizeUnit(); delegate.qaToggleGeneralOpenFoldersInNewTab(); delegate.qaToggleGeneralScrollToPreviousFolderOnUp(); delegate.qaToggleGeneralShowFileExtensionWarning(); delegate.qaToggleGeneralContextMenuItems(); delegate.qaGeneralSettingsContentView?.window?.close(); window.makeKeyAndOrderFront(nil)
                 delegate.showArchiveCapabilities(nil); try await Task.sleep(for: .milliseconds(50))
                 checks["archiveCapabilitiesWindow"] = delegate.qaArchiveCapabilitiesVisible
                 try capture("archive-capabilities", view: delegate.qaArchiveCapabilitiesContentView)
