@@ -139,6 +139,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         files.keyEquivalentModifierMask = [.command, .shift]
         let sidebar = go.addItem(withTitle: L("사이드바에 초점", "Focus Sidebar"), action: #selector(BrowserWindow.focusSidebar(_:)), keyEquivalent: "s")
         sidebar.keyEquivalentModifierMask = [.command, .control]
+        let palette = go.addItem(withTitle: L("명령 팔레트…", "Command Palette…"), action: #selector(BrowserWindow.showCommandPalette(_:)), keyEquivalent: "p")
+        palette.keyEquivalentModifierMask = [.command, .shift]
         go.addItem(withTitle: L("보기 옵션…", "View Options…"), action: #selector(BrowserWindow.openViewOptions(_:)), keyEquivalent: ",")
         go.addItem(.separator())
         let splitVertical = go.addItem(withTitle: L("좌우 분할", "Split Vertically"), action: #selector(BrowserWindow.splitVertically(_:)), keyEquivalent: "d")

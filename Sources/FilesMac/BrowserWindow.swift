@@ -56,6 +56,7 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
     private var recent: [URL] { preferences.recent }
     private let homeScroll = NSScrollView()
     private let optionsMenu = NSMenu()
+    private lazy var commandPalette = CommandPaletteWindow()
     private var completionTask: Task<Void, Never>?
     private var completionGeneration = 0
     private var suggestions: [String] = []
@@ -1415,6 +1416,7 @@ extension BrowserWindow {
     @objc func openViewOptions(_ sender: Any?) {
         optionsMenu.popUp(positioning: nil, at: NSPoint(x: content.bounds.maxX - 200, y: content.bounds.maxY), in: content)
     }
+    @objc func showCommandPalette(_ sender: Any?) { commandPalette.present(relativeTo: window) }
     func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
         switch menuItem.action {
         case #selector(splitVertically(_:)), #selector(splitHorizontally(_:)): return true
@@ -1543,6 +1545,16 @@ extension BrowserWindow {
             try await Task.sleep(for: .milliseconds(500))
             try capture("home")
             checks["minimumWindow"] = window.frame.size == NSSize(width: 900, height: 600)
+            let paletteEntries = CommandPaletteCatalog.entries(from: NSApp.mainMenu)
+            checks["commandPaletteIndexesMenus"] = paletteEntries.count >= 20
+            checks["commandPaletteStableIDs"] = Set(paletteEntries.map(\.id)).count == paletteEntries.count
+            checks["commandPaletteSearch"] = CommandPaletteCatalog.filtered(paletteEntries, query: L("숨김", "hidden")).contains { $0.item.action == #selector(toggleHidden(_:)) }
+            controller.showCommandPalette(nil); try await Task.sleep(for: .milliseconds(50))
+            controller.commandPalette.qaSetQuery(L("숨김", "hidden"))
+            checks["commandPaletteWindow"] = controller.commandPalette.window?.isVisible == true
+                && controller.commandPalette.qaSearchFocused && controller.commandPalette.qaVisibleCount >= 1
+            try capture("command-palette", view: controller.commandPalette.window?.contentView)
+            controller.commandPalette.close(); window.makeKeyAndOrderFront(nil)
             checks["pathFieldUsableWidth"] = controller.pathField.frame.width >= 160
             controller.focusPath(nil)
             checks["pathFocus"] = controller.pathField.currentEditor() != nil
