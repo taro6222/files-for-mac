@@ -1,22 +1,45 @@
 import Foundation
 
+public enum BrowserViewMode: String, Codable, CaseIterable, Sendable {
+    case details
+    case list
+    case grid
+    case columns
+    case adaptive
+}
+
 public struct TabSnapshot: Codable, Equatable, Sendable {
     public var history: NavigationHistory
     public var sortOrder: SortOrder
     public var showHidden: Bool
+    public var viewMode: BrowserViewMode
 
     public var location: URL? { history.current.url }
 
-    public init(location: URL?, sortOrder: SortOrder = SortOrder(), showHidden: Bool = false) {
+    public init(location: URL?, sortOrder: SortOrder = SortOrder(), showHidden: Bool = false,
+                viewMode: BrowserViewMode = .details) {
         self.history = NavigationHistory(current: NavigationEntry(url: location))
         self.sortOrder = sortOrder
         self.showHidden = showHidden
+        self.viewMode = viewMode
     }
 
-    public init(history: NavigationHistory, sortOrder: SortOrder = SortOrder(), showHidden: Bool = false) {
+    public init(history: NavigationHistory, sortOrder: SortOrder = SortOrder(), showHidden: Bool = false,
+                viewMode: BrowserViewMode = .details) {
         self.history = history
         self.sortOrder = sortOrder
         self.showHidden = showHidden
+        self.viewMode = viewMode
+    }
+
+    private enum CodingKeys: String, CodingKey { case history, sortOrder, showHidden, viewMode }
+
+    public init(from decoder: any Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        history = try values.decode(NavigationHistory.self, forKey: .history)
+        sortOrder = try values.decode(SortOrder.self, forKey: .sortOrder)
+        showHidden = try values.decode(Bool.self, forKey: .showHidden)
+        viewMode = try values.decodeIfPresent(BrowserViewMode.self, forKey: .viewMode) ?? .details
     }
 }
 

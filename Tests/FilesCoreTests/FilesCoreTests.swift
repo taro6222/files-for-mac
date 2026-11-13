@@ -77,12 +77,40 @@ private func fixture() throws -> URL {
     history.save(selection: ["/first/item"], scrollOffset: 240)
     history.visit(URL(fileURLWithPath: "/second"))
     history.goBack()
-    let snapshot = TabSnapshot(history: history, sortOrder: SortOrder(field: .size, ascending: false), showHidden: true)
+    let snapshot = TabSnapshot(history: history, sortOrder: SortOrder(field: .size, ascending: false),
+                               showHidden: true, viewMode: .grid)
     let store = TabSessionStore(defaults: defaults)
 
     try store.save([snapshot])
 
     #expect(store.load() == [snapshot])
+}
+
+@Test func legacyTabSnapshotDefaultsToDetailsView() throws {
+    let snapshot = TabSnapshot(location: URL(fileURLWithPath: "/legacy"), showHidden: true)
+    var object = try #require(JSONSerialization.jsonObject(with: JSONEncoder().encode(snapshot)) as? [String: Any])
+    object.removeValue(forKey: "viewMode")
+
+    let restored = try JSONDecoder().decode(TabSnapshot.self,
+                                            from: JSONSerialization.data(withJSONObject: object))
+
+    #expect(restored.viewMode == .details)
+    #expect(restored.location?.path == "/legacy")
+    #expect(restored.showHidden)
+}
+
+@Test @MainActor func browserViewModeChangesWithoutReloadingLocation() {
+    let model = BrowserModel()
+    var changes = 0
+    model.onChange = { changes += 1 }
+
+    model.setViewMode(.columns)
+    model.setViewMode(.columns)
+
+    #expect(model.viewMode == .columns)
+    #expect(model.location == nil)
+    #expect(changes == 1)
+    #expect(model.snapshot.viewMode == .columns)
 }
 
 @Test func tabSessionStoreRejectsCorruptStateSafely() throws {
