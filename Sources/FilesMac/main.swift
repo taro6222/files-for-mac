@@ -318,6 +318,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         splitHorizontal.keyEquivalentModifierMask = [.command, .option, .shift]
         let closeSplit = go.addItem(withTitle: L("보조 pane 닫기", "Close Secondary Pane"), action: #selector(BrowserWindow.closeSecondaryPane(_:)), keyEquivalent: "w")
         closeSplit.keyEquivalentModifierMask = [.command, .option]
+        go.addItem(withTitle: L("pane 방향을 좌우로", "Arrange Panes Side by Side"), action: #selector(BrowserWindow.arrangePanesVertically(_:)), keyEquivalent: "")
+        go.addItem(withTitle: L("pane 방향을 상하로", "Arrange Panes Top and Bottom"), action: #selector(BrowserWindow.arrangePanesHorizontally(_:)), keyEquivalent: "")
+        go.addItem(withTitle: L("다른 pane에 초점", "Focus Other Pane"), action: #selector(BrowserWindow.focusOtherPane(_:)), keyEquivalent: "")
+        go.addItem(withTitle: L("현재 폴더를 다른 pane에서 열기", "Open Current Folder in Other Pane"), action: #selector(BrowserWindow.openCurrentFolderInOtherPane(_:)), keyEquivalent: "")
+        go.addItem(withTitle: L("dual pane 전환", "Toggle Dual Pane"), action: #selector(BrowserWindow.toggleDualPane(_:)), keyEquivalent: "")
         go.addItem(.separator())
         let fullScreen = go.addItem(withTitle: L("전체 화면 전환", "Toggle Full Screen"), action: #selector(BrowserWindow.toggleFullScreen(_:)), keyEquivalent: "f")
         fullScreen.keyEquivalentModifierMask = [.command, .control]

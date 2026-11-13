@@ -1693,6 +1693,28 @@ private func capacityDescription(_ volume: MountedVolume) -> String {
 extension BrowserWindow {
     @objc func splitVertically(_ sender: Any?) { installSecondaryPane(axis: .vertical) }
     @objc func splitHorizontally(_ sender: Any?) { installSecondaryPane(axis: .horizontal) }
+    @objc func arrangePanesVertically(_ sender: Any?) { arrangePanes(axis: .vertical) }
+    @objc func arrangePanesHorizontally(_ sender: Any?) { arrangePanes(axis: .horizontal) }
+    private func arrangePanes(axis: SplitAxis) {
+        guard secondaryPane != nil else { return }
+        workspaceSplit.isVertical = axis == .vertical; workspaceSplit.adjustSubviews()
+        let dimension = workspaceSplit.isVertical ? workspaceSplit.bounds.width : workspaceSplit.bounds.height
+        if dimension > 0 { workspaceSplit.setPosition(dimension * 0.5, ofDividerAt: 0) }
+    }
+    @objc func focusOtherPane(_ sender: Any?) {
+        guard secondaryPane != nil else { return }
+        setSecondaryActive(!secondaryActive)
+        if secondaryActive { secondaryPane?.focusFiles() } else { window?.makeFirstResponder(table) }
+    }
+    @objc func toggleDualPane(_ sender: Any?) {
+        if secondaryPane == nil { installSecondaryPane(axis: .vertical) } else { closeSecondaryPane(sender) }
+    }
+    @objc func openCurrentFolderInOtherPane(_ sender: Any?) {
+        guard let location = activeModel.location else { return }
+        if secondaryActive { setSecondaryActive(false); navigate(location) }
+        else if let secondaryPane { secondaryPane.openLocation(location); setSecondaryActive(true); secondaryPane.focusFiles() }
+        else { installSecondaryPane(axis: .vertical, snapshot: TabSnapshot(location: location, showHidden: preferences.showHidden, viewMode: model.viewMode)) }
+    }
     @objc func closeSecondaryPane(_ sender: Any?) {
         guard let secondaryPane else { return }
         secondaryPane.shutdown(); secondaryPane.removeFromSuperview()
@@ -1976,6 +1998,8 @@ extension BrowserWindow {
     func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
         switch menuItem.action {
         case #selector(splitVertically(_:)), #selector(splitHorizontally(_:)): return true
+        case #selector(arrangePanesVertically(_:)), #selector(arrangePanesHorizontally(_:)), #selector(focusOtherPane(_:)), #selector(openCurrentFolderInOtherPane(_:)): return secondaryPane != nil
+        case #selector(toggleDualPane(_:)): return true
         case #selector(closeSecondaryPane(_:)): return secondaryPane != nil
         case #selector(undoLastMove(_:)):
             return !Self.entryOperationRunning && !MoveWindow.isRunning &&
@@ -2206,6 +2230,16 @@ extension BrowserWindow {
                 controller.openInNewPane(nil); try await Task.sleep(for: .milliseconds(50))
                 let openedPaneState = controller.workspaceSnapshot()
                 checks["openCurrentFolderInNewPane"] = expectedPaneURL != nil && openedPaneState.panes.count == 2 && openedPaneState.panes[1].tab.location == expectedPaneURL
+                controller.arrangePanesHorizontally(nil); checks["arrangePanesHorizontally"] = controller.workspaceSnapshot().axis == .horizontal
+                controller.arrangePanesVertically(nil); checks["arrangePanesVertically"] = controller.workspaceSnapshot().axis == .vertical
+                let activePaneBeforeFocus = controller.workspaceSnapshot().activePaneID
+                controller.focusOtherPane(nil); checks["focusOtherPane"] = controller.workspaceSnapshot().activePaneID != activePaneBeforeFocus
+                controller.openCurrentFolderInOtherPane(nil); try await Task.sleep(for: .milliseconds(50))
+                let otherPaneState = controller.workspaceSnapshot()
+                checks["openCurrentFolderInOtherPane"] = otherPaneState.panes.count == 2
+                    && otherPaneState.panes[0].tab.location == otherPaneState.panes[1].tab.location
+                controller.toggleDualPane(nil); checks["toggleDualPaneCloses"] = !controller.workspaceSnapshot().isSplit
+                controller.toggleDualPane(nil); checks["toggleDualPaneOpens"] = controller.workspaceSnapshot().isSplit
                 controller.closeSecondaryPane(nil)
                 try capture("general-settings", view: delegate.qaGeneralSettingsContentView)
                 delegate.qaToggleGeneralWidgets(); delegate.qaToggleGeneralSizeUnit(); delegate.qaToggleGeneralOpenFoldersInNewTab(); delegate.qaToggleGeneralScrollToPreviousFolderOnUp(); delegate.qaToggleGeneralShowFileExtensionWarning(); delegate.qaToggleGeneralContextMenuItems(); delegate.qaGeneralSettingsContentView?.window?.close(); window.makeKeyAndOrderFront(nil)
