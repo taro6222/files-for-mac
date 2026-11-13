@@ -101,6 +101,16 @@ final class SecondaryBrowserPane: NSView, NSTableViewDataSource, NSTableViewDele
             table.selectRowIndexes(inverted, byExtendingSelection: false)
         }
     }
+    func toggleFocusedSelection() {
+        guard let item = selectedItems.first else { return }
+        var ids = Set(selectedItems.map(\.id)); ids.remove(item.id)
+        switch renderedViewMode {
+        case .grid: gridView.replaceSelection(with: ids)
+        case .list: listView.replaceSelection(with: ids)
+        case .columns: columnView.replaceSelection(with: ids)
+        default: table.selectRowIndexes(IndexSet(model.items.indices.filter { ids.contains(model.items[$0].id) }), byExtendingSelection: false)
+        }
+    }
     func focusFiles() {
         activate()
         if renderedViewMode == .grid { gridView.focus() }

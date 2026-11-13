@@ -48,6 +48,12 @@ final class SearchWindow: NSWindowController, NSTableViewDataSource, NSTableView
         stop.title = L("중단", "Stop"); stop.target = self; stop.action = #selector(cancel(_:)); footer.addArrangedSubview(stop); stack.addArrangedSubview(footer)
     }
     func present(root: URL, showHidden: Bool) { self.root = root; hidden.state = showHidden ? .on : .off; render(); window?.center(); showWindow(nil); window?.makeKeyAndOrderFront(nil); window?.makeFirstResponder(search) }
+    func presentTagSearch(tag value: String, root: URL, showHidden: Bool) {
+        present(root: root, showHidden: showHidden)
+        method.selectItem(at: 0); methodChanged(nil); search.stringValue = ""; tag.stringValue = value
+        scope.selectItem(at: 0); kind.selectItem(at: 0); minimumSize.stringValue = ""; maximumSize.stringValue = ""
+        start(nil)
+    }
     @objc private func methodChanged(_ sender: Any?) {
         let content = method.indexOfSelectedItem == 1
         search.placeholderString = content ? L("파일 콘텐츠 검색", "Search file contents") : L("파일 이름 검색", "Search file names")
@@ -100,6 +106,7 @@ final class SearchWindow: NSWindowController, NSTableViewDataSource, NSTableView
     var qaValidationError: Bool { status.stringValue.contains(L("파일 크기", "File sizes")) }
     var qaIsSearching: Bool { model.isSearching }
     var qaResultCount: Int { model.results.count }
+    var qaTagFilter: String { tag.stringValue }
     var qaShowsDirectEnumeration: Bool { status.stringValue.contains(L("직접 열거", "direct enumeration")) }
     var qaShowsSpotlight: Bool { status.stringValue.contains("Spotlight") }
     func qaContainsResult(named name: String) -> Bool { model.results.contains { $0.name == name } }

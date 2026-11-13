@@ -429,6 +429,9 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         let installCertificate = menu.addItem(withTitle: L("인증서 설치…", "Install Certificate…"), action: #selector(installCertificates(_:)), keyEquivalent: ""); installCertificate.target = self
         let installFont = menu.addItem(withTitle: L("글꼴 설치…", "Install Font…"), action: #selector(installFonts(_:)), keyEquivalent: ""); installFont.target = self
         let playAll = menu.addItem(withTitle: L("선택 미디어 모두 재생", "Play All Selected Media"), action: #selector(playAllMedia(_:)), keyEquivalent: ""); playAll.target = self
+        let toggleSelection = menu.addItem(withTitle: L("포커스 항목 선택 해제", "Toggle Focused Selection"), action: #selector(toggleFocusedSelection(_:)), keyEquivalent: ""); toggleSelection.target = self
+        let openTagged = menu.addItem(withTitle: L("같은 Finder 태그 항목 찾기", "Find Items with Same Finder Tag"), action: #selector(openAllTagged(_:)), keyEquivalent: ""); openTagged.target = self
+        let removeTags = menu.addItem(withTitle: L("Finder 태그 모두 제거", "Remove All Finder Tags"), action: #selector(removeTags(_:)), keyEquivalent: ""); removeTags.target = self
         let archive = menu.addItem(withTitle: L("압축 파일 탐색", "Browse Archive"), action: #selector(openArchive(_:)), keyEquivalent: ""); archive.target = self
         let createArchive = menu.addItem(withTitle: L("선택 항목 압축…", "Compress Selection…"), action: #selector(createArchive(_:)), keyEquivalent: ""); createArchive.target = self
         let extractHere = menu.addItem(withTitle: L("여기에 압축 해제", "Extract Here"), action: #selector(extractArchivesHere(_:)), keyEquivalent: ""); extractHere.target = self
@@ -1126,6 +1129,46 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         var failed = false
         for url in urls where !NSWorkspace.shared.open(url) { failed = true }
         if failed { showEntryError(failure) }
+    }
+    @objc func toggleFocusedSelection(_ sender: Any?) {
+        if secondaryActive { secondaryPane?.toggleFocusedSelection(); return }
+        guard let item = activeSelectedItems.first else { return }
+        var ids = Set(activeSelectedItems.map(\.id)); ids.remove(item.id)
+        if primaryRenderedViewMode == .grid { gridView.replaceSelection(with: ids) }
+        else if primaryRenderedViewMode == .list { listView.replaceSelection(with: ids) }
+        else if primaryRenderedViewMode == .columns { columnView.replaceSelection(with: ids) }
+        else { table.selectRowIndexes(IndexSet(model.items.indices.filter { ids.contains(model.items[$0].id) }), byExtendingSelection: false) }
+    }
+    @objc func openAllTagged(_ sender: Any?) {
+        let urls = activeSelectedItems.map(\.url), root = activeModel.location, showHidden = activeModel.showHidden
+        guard !urls.isEmpty, let root else { return }
+        Task { [weak self] in
+            let tag = await Task.detached { () -> String? in
+                for url in urls {
+                    guard let snapshot = try? FileTagService().snapshot(url) else { continue }
+                    if let tag = snapshot.tags.first { return tag }
+                }
+                return nil
+            }.value
+            guard let self, let tag else { return }
+            if self.searchWindow == nil { self.searchWindow = SearchWindow { [weak self] item in self?.openItem(item) } }
+            self.searchWindow?.presentTagSearch(tag: tag, root: root, showHidden: showHidden)
+        }
+    }
+    @objc func removeTags(_ sender: Any?) {
+        let urls = activeSelectedItems.map(\.url); guard !urls.isEmpty else { return }
+        Task { [weak self] in
+            let failures = await Task.detached { () -> Int in
+                var failures = 0
+                for url in urls {
+                    do { let snapshot = try FileTagService().snapshot(url); if !snapshot.tags.isEmpty { _ = try FileTagService().setTags([], at: url, expectedIdentity: snapshot.identity) } }
+                    catch { failures += 1 }
+                }
+                return failures
+            }.value
+            guard let self else { return }; self.refreshActivePane()
+            if failures > 0 { self.showEntryError(L("일부 항목의 Finder 태그를 제거하지 못했습니다.", "Finder tags could not be removed from some items.")) }
+        }
     }
     private func startArchiveExtraction(_ placement: ArchiveExtractionPlacement) {
         let archives = selectedArchiveURLs
@@ -2106,6 +2149,8 @@ extension BrowserWindow {
         case #selector(installCertificates(_:)): return !activeSelectedItems.isEmpty && activeSelectedItems.map(\.url).allSatisfy(SystemContentCompatibility.isCertificate)
         case #selector(installFonts(_:)): return !activeSelectedItems.isEmpty && activeSelectedItems.map(\.url).allSatisfy(SystemContentCompatibility.isFont)
         case #selector(playAllMedia(_:)): return !activeSelectedItems.isEmpty && activeSelectedItems.map(\.url).allSatisfy(SystemContentCompatibility.isMedia)
+        case #selector(toggleFocusedSelection(_:)): return !activeSelectedItems.isEmpty
+        case #selector(openAllTagged(_:)), #selector(removeTags(_:)): return !activeSelectedItems.isEmpty && activeSelectedItems.contains { ((try? FileTagService().snapshot($0.url).tags.isEmpty) == false) }
         case #selector(createSymbolicLink(_:)): return activeModel.location != nil && activeSelectedItems.count == 1 && !activeModel.isLoading && !Self.entryOperationRunning
         case #selector(createSymbolicLinkFromDialog(_:)): return activeModel.location != nil && !activeModel.isLoading && !Self.entryOperationRunning
         case #selector(toggleSelectedFavorite(_:)): return activeModel.location != nil && (activeSelectedItems.isEmpty || (activeSelectedItems.count == 1 && activeSelectedItems[0].isBrowsable))
@@ -2302,6 +2347,7 @@ extension BrowserWindow {
             checks["appBackgroundCommands"] = [#selector(setAsAppBackground(_:)), #selector(clearAppBackground(_:))].allSatisfy { action in paletteEntries.contains { $0.item.action == action } }
             checks["imageRotationCommands"] = [#selector(rotateImagesLeft(_:)), #selector(rotateImagesRight(_:))].allSatisfy { action in paletteEntries.contains { $0.item.action == action } }
             checks["systemInstallAndMediaCommands"] = [#selector(installCertificates(_:)), #selector(installFonts(_:)), #selector(playAllMedia(_:))].allSatisfy { action in paletteEntries.contains { $0.item.action == action } }
+            checks["selectionAndTagCommands"] = [#selector(toggleFocusedSelection(_:)), #selector(openAllTagged(_:)), #selector(removeTags(_:))].allSatisfy { action in paletteEntries.contains { $0.item.action == action } }
             checks["commandPaletteSearch"] = CommandPaletteCatalog.filtered(paletteEntries, query: L("숨김", "hidden")).contains { $0.item.action == #selector(toggleHidden(_:)) }
             controller.showCommandPalette(nil); try await Task.sleep(for: .milliseconds(50))
             controller.commandPalette.qaSetQuery(L("숨김", "hidden"))
@@ -2532,6 +2578,26 @@ extension BrowserWindow {
             checks["fileInfoSignature"] = controller.infoWindow?.qaSignatureLoaded == true
             try capture("file-info", view: controller.infoWindow?.window?.contentView)
             controller.infoWindow?.close(); window.makeKeyAndOrderFront(nil)
+            let taggedURL = controller.activeSelectedItems.first?.url
+            controller.openAllTagged(nil)
+            let tagSearchStart = ContinuousClock.now
+            while (controller.searchWindow?.qaTagFilter != "QA" || controller.searchWindow?.qaIsSearching == true)
+                && tagSearchStart.duration(to: .now) < .seconds(20) { try await Task.sleep(for: .milliseconds(10)) }
+            checks["openAllTaggedAlternative"] = controller.searchWindow?.qaTagFilter == "QA" && (controller.searchWindow?.qaResultCount ?? 0) >= 1
+            controller.searchWindow?.close(); window.makeKeyAndOrderFront(nil)
+            controller.removeTags(nil)
+            let tagRemovalStart = ContinuousClock.now
+            func tagsAreEmpty(at url: URL?) -> Bool {
+                guard let url, let snapshot = try? FileTagService().snapshot(url) else { return false }
+                return snapshot.tags.isEmpty
+            }
+            while !tagsAreEmpty(at: taggedURL) && tagRemovalStart.duration(to: .now) < .seconds(5) { try await Task.sleep(for: .milliseconds(10)) }
+            checks["removeTagsCommand"] = tagsAreEmpty(at: taggedURL)
+            if let taggedURL, let snapshot = try? FileTagService().snapshot(taggedURL) {
+                _ = try? FileTagService().setTags(["QA", "검토"], at: taggedURL, expectedIdentity: snapshot.identity)
+            }
+            controller.toggleFocusedSelection(nil)
+            checks["toggleFocusedSelection"] = controller.table.selectedRowIndexes.isEmpty
             if let folderIndex = controller.model.items.firstIndex(where: \.isDirectory) {
                 controller.table.selectRowIndexes([folderIndex], byExtendingSelection: false); controller.showInfo(nil)
                 let folderInfoStart = ContinuousClock.now

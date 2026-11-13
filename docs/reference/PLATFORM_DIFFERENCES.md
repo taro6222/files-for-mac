@@ -19,6 +19,7 @@
 | 앱 배경 | 선택한 정지 이미지를 검증 후 Application Support 관리 복사본으로 게시하고 모든 로컬 보기와 pane의 배경에 aspect-fill로 그린다. 동적 Windows 배경 엔진을 복제하지 않으며 시스템 대비·투명도 접근성 설정을 우선한다. | M6 `implemented`; 관리 복사·손상 복구·4개 UI 조합 검증 |
 | 이미지 회전 | ImageIO가 읽고 같은 포맷으로 쓸 수 있는 단일 프레임 일반 파일에 대해 픽셀을 재압축하지 않고 EXIF/CG 방향 메타데이터를 합성한다. 애니메이션·다중 페이지·링크는 회전 명령을 비활성화한다. | M6 `implemented`; 좌우·미러 방향 매핑, 권한 보존, UI 4조합 검증 |
 | 인증서·글꼴 설치 | 앱이 신뢰 저장소나 글꼴 디렉터리를 직접 변경하지 않는다. 명시적으로 선택한 인증서/글꼴 파일을 Launch Services 기본 시스템 처리기로 열어 Keychain Access·Font Book의 확인 UI와 권한 흐름에 맡긴다. | M6 `platform-alternative`; 명시적 확장자 gate와 메뉴 등록 검증 |
+| 선택 토글·태그 그룹 | Windows의 독립 focus item/체크박스 모델 대신 macOS 선택 모델에서 포커스된 선택 항목을 토글한다. 앱 소유 태그 그룹의 ‘모두 열기’ 대신 선택 항목의 Finder 태그를 현재 위치 하위 검색에 연결해 대량 실행 위험 없이 결과를 제시한다. | M6 `platform-alternative`; 상세·그리드·목록·컬럼 선택과 실제 Finder 태그 검색 검증 |
 | 드라이브 포맷 | 앱 내부 포맷 대신 선택 볼륨을 macOS Disk Utility에서 연다. 파일 앱이 직접 erase 권한·장치 작업을 소유하지 않는다. | `platform-alternative`; 장착 볼륨 메뉴와 UI 검증 통과 |
 | 클래식 속성 | Windows classic properties 대신 macOS 네이티브 정보 패널(Get Info)을 사용한다. | `platform-alternative`; M4 정보 패널 검증 통과 |
 | 명령 키 | ⌘L, ⌘[, ⌘], ⌘↑, ⌘↓, ⇧⌘. | 전체 키보드/VoiceOver 흐름 대기 |

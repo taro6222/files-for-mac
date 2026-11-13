@@ -694,9 +694,12 @@ private struct FixedSearch: FileSearching {
     let service = FileTagService(), initial = try service.snapshot(file)
     let written = try service.setTags([" Work ", "work", "검토"], at: file, expectedIdentity: initial.identity)
     #expect(written.tags == ["Work", "검토"]); #expect(try service.snapshot(file).tags == written.tags)
+    let cleared = try service.setTags([], at: file, expectedIdentity: written.identity)
+    #expect(cleared.tags.isEmpty)
+    let restored = try service.setTags(["Work", "검토"], at: file, expectedIdentity: cleared.identity)
     #expect(throws: FileTagError.invalidName) { try service.setTags(["bad\ntag"], at: file, expectedIdentity: written.identity) }
     try FileManager.default.removeItem(at: file); try Data("two".utf8).write(to: file)
-    #expect(throws: FileTagError.changedIdentity) { try service.setTags(["new"], at: file, expectedIdentity: written.identity) }
+    #expect(throws: FileTagError.changedIdentity) { try service.setTags(["new"], at: file, expectedIdentity: restored.identity) }
 }
 
 @Test func shortcutPreferencesPersistValidateCollisionsAndReset() throws {
