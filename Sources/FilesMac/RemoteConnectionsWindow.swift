@@ -6,6 +6,7 @@ final class RemoteConnectionsWindow: NSWindowController, NSTableViewDataSource, 
     private let profileStore: RemoteProfileStore
     private let credentialStore: KeychainRemoteCredentialStore
     private let hostTrustStore: SFTPHostTrustStore
+    private let browserSessionStore: RemoteBrowserSessionStore
     private let hostKeyScanner = SFTPHostKeyScanner()
     private var profiles: [RemoteConnectionProfile] = []
     private var pendingIdentityBookmark: Data?
@@ -18,6 +19,7 @@ final class RemoteConnectionsWindow: NSWindowController, NSTableViewDataSource, 
     init(profileStore: RemoteProfileStore, credentialStore: KeychainRemoteCredentialStore = .init()) {
         self.profileStore = profileStore; self.credentialStore = credentialStore
         self.hostTrustStore = SFTPHostTrustStore(fileURL: profileStore.fileURL.deletingLastPathComponent().appendingPathComponent("known_hosts"))
+        self.browserSessionStore = RemoteBrowserSessionStore(fileURL: profileStore.fileURL.deletingLastPathComponent().appendingPathComponent("remote-browser-sessions.json"))
         let panel = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 760, height: 520),
             styleMask: [.titled, .closable, .resizable], backing: .buffered, defer: false)
         super.init(window: panel); panel.title = L("원격 연결", "Remote Connections"); panel.isReleasedWhenClosed = false
@@ -108,7 +110,7 @@ final class RemoteConnectionsWindow: NSWindowController, NSTableViewDataSource, 
     }
     @objc private func deleteProfile(_ sender: Any?) {
         guard let selected else { return }
-        do { if let id = selected.credentialID { try credentialStore.remove(id: id) }; profiles.removeAll { $0.id == selected.id }; try profileStore.save(profiles); reload() }
+        do { if let id = selected.credentialID { try credentialStore.remove(id: id) }; try browserSessionStore.remove(profileID: selected.id); profiles.removeAll { $0.id == selected.id }; try profileStore.save(profiles); reload() }
         catch { showError(error) }
     }
     @objc private func connectSMB(_ sender: Any?) {
@@ -154,13 +156,16 @@ final class RemoteConnectionsWindow: NSWindowController, NSTableViewDataSource, 
         guard let profile = selected else { return }
         do {
             let prepared = try SFTPConnectionPreparation().prepare(profile: profile, knownHostsFile: hostTrustStore.fileURL)
-            let model = try RemoteBrowserModel(path: profile.rootPath) { path in
+            let restoredPath = (try? browserSessionStore.path(for: profile.id)) ?? profile.rootPath
+            let model = try RemoteBrowserModel(path: restoredPath) { path in
                 let access = prepared.key.identityFile.startAccessingSecurityScopedResource()
                 defer { if access { prepared.key.identityFile.stopAccessingSecurityScopedResource() } }
                 guard access else { throw SFTPBackendError.invalidIdentity }
                 return try await SFTPRemoteProvider().list(profile: profile, key: prepared.key, remotePath: path)
             }
-            let browser = RemoteBrowserWindow(title: "\(profile.name) — SFTP", model: model) { [weak self] entry, parent in
+            let browser = RemoteBrowserWindow(title: "\(profile.name) — SFTP", model: model,
+                frameAutosaveName: "FilesMac.RemoteBrowser.\(profile.id.uuidString)",
+                onPathChange: { [browserSessionStore] path in try? browserSessionStore.save(path: path, for: profile.id) }) { [weak self] entry, parent in
                 guard let self else { return }; self.chooseSFTPDownloadDestination(profile: profile, remotePath: entry.remotePath, parent: parent)
             }
             remoteBrowserWindow = browser; browser.present()

@@ -72,3 +72,19 @@ func remoteProtocolsUseExplicitSecurityAndTransportCapabilities(remoteProtocol: 
     try Data(invalid.utf8).write(to: store.fileURL)
     #expect(throws: RemoteConnectionValidationError.embeddedCredential) { try store.load(fileManager: fm) }
 }
+
+@Test func remoteBrowserSessionStorePersistsPrivateValidatedPathsAndRemovesProfiles() throws {
+    let fm = FileManager.default, root = fm.temporaryDirectory.appendingPathComponent("remote-sessions-\(UUID())", isDirectory: true)
+    defer { try? fm.removeItem(at: root) }
+    let store = RemoteBrowserSessionStore(fileURL: root.appendingPathComponent("sessions.json")), first = UUID(), second = UUID()
+    try store.save(path: "/team//한글 folder/", for: first, fileManager: fm)
+    try store.save(path: "/archive", for: second, fileManager: fm)
+    #expect(try store.path(for: first, fileManager: fm) == "/team/한글 folder")
+    #expect(try store.path(for: second, fileManager: fm) == "/archive")
+    let permissions = try #require(fm.attributesOfItem(atPath: store.fileURL.path)[.posixPermissions] as? NSNumber)
+    #expect(permissions.intValue & 0o777 == 0o600)
+    #expect(throws: RemoteBrowserError.invalidPath) { try store.save(path: "/team/../secret", for: first, fileManager: fm) }
+    try store.remove(profileID: first, fileManager: fm)
+    #expect(try store.path(for: first, fileManager: fm) == nil); #expect(try store.path(for: second, fileManager: fm) == "/archive")
+    #expect(try fm.contentsOfDirectory(atPath: root.path).allSatisfy { !$0.hasSuffix(".tmp") })
+}

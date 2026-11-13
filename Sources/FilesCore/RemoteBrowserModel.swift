@@ -75,7 +75,7 @@ public final class RemoteBrowserModel {
         }
     }
 
-    public static func normalized(_ path: String) throws -> String {
+    public nonisolated static func normalized(_ path: String) throws -> String {
         guard path.hasPrefix("/"), !path.unicodeScalars.contains(where: { CharacterSet.controlCharacters.contains($0) }) else {
             throw RemoteBrowserError.invalidPath
         }

@@ -114,6 +114,43 @@ public struct RemoteProfileStore: Sendable {
     }
 }
 
+public struct RemoteBrowserSessionStore: Sendable {
+    public let fileURL: URL
+    public init(fileURL: URL) { self.fileURL = fileURL }
+
+    public func path(for profileID: UUID, fileManager: FileManager = .default) throws -> String? {
+        guard fileManager.fileExists(atPath: fileURL.path) else { return nil }
+        let paths = try JSONDecoder().decode([String: String].self, from: Data(contentsOf: fileURL))
+        guard let path = paths[profileID.uuidString] else { return nil }
+        return try RemoteBrowserModel.normalized(path)
+    }
+    public func save(path: String, for profileID: UUID, fileManager: FileManager = .default) throws {
+        let normalized = try RemoteBrowserModel.normalized(path), directory = fileURL.deletingLastPathComponent()
+        try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
+        var paths: [String: String] = [:]
+        if fileManager.fileExists(atPath: fileURL.path) { paths = try JSONDecoder().decode([String: String].self, from: Data(contentsOf: fileURL)) }
+        paths[profileID.uuidString] = normalized
+        try publish(paths, directory: directory, fileManager: fileManager)
+    }
+    public func remove(profileID: UUID, fileManager: FileManager = .default) throws {
+        guard fileManager.fileExists(atPath: fileURL.path) else { return }
+        let directory = fileURL.deletingLastPathComponent()
+        var paths = try JSONDecoder().decode([String: String].self, from: Data(contentsOf: fileURL))
+        paths.removeValue(forKey: profileID.uuidString)
+        try publish(paths, directory: directory, fileManager: fileManager)
+    }
+    private func publish(_ paths: [String: String], directory: URL, fileManager: FileManager) throws {
+        let data = try JSONEncoder().encode(paths), staging = directory.appendingPathComponent(".remote-browser-sessions-\(UUID().uuidString).tmp")
+        guard fileManager.createFile(atPath: staging.path, contents: nil, attributes: [.posixPermissions: 0o600]) else { throw CocoaError(.fileWriteUnknown) }
+        do {
+            let handle = try FileHandle(forWritingTo: staging); try handle.write(contentsOf: data); try handle.synchronize(); try handle.close()
+            if fileManager.fileExists(atPath: fileURL.path) { _ = try fileManager.replaceItemAt(fileURL, withItemAt: staging) }
+            else { try fileManager.moveItem(at: staging, to: fileURL) }
+            try fileManager.setAttributes([.posixPermissions: 0o600], ofItemAtPath: fileURL.path)
+        } catch { try? fileManager.removeItem(at: staging); throw error }
+    }
+}
+
 public struct RemoteCredential: Equatable, Sendable {
     public let username: String
     public let secret: Data

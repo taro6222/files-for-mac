@@ -8,12 +8,15 @@ final class RemoteBrowserWindow: NSWindowController, NSTableViewDataSource, NSTa
     private let path = NSTextField(labelWithString: "/"), status = NSTextField(labelWithString: "")
     private let table = NSTableView(), back = NSButton(), forward = NSButton(), up = NSButton(), refresh = NSButton(), stop = NSButton(), download = NSButton()
 
-    init(title: String, model: RemoteBrowserModel, onDownload: @escaping (RemoteDirectoryEntry, NSWindow?) -> Void) {
+    init(title: String, model: RemoteBrowserModel, frameAutosaveName: String? = nil,
+         onPathChange: ((String) -> Void)? = nil,
+         onDownload: @escaping (RemoteDirectoryEntry, NSWindow?) -> Void) {
         self.model = model; self.onDownload = onDownload
         let panel = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 720, height: 500),
             styleMask: [.titled, .closable, .resizable], backing: .buffered, defer: false)
         super.init(window: panel); panel.title = title; panel.isReleasedWhenClosed = false
-        buildUI(); model.onChange = { [weak self] in self?.render() }; render()
+        if let frameAutosaveName { panel.setFrameAutosaveName(frameAutosaveName) }
+        buildUI(); model.onChange = { [weak self] in guard let self else { return }; self.render(); onPathChange?(self.model.path) }; render()
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
 
