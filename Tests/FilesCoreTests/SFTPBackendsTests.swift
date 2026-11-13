@@ -35,6 +35,9 @@ import Testing
         try SFTPCommandBuilder().command(profile: profile, key: key,
             intent: .uploadAndRename(local: URL(fileURLWithPath: "/tmp/file"), stagingRemotePath: "relative", finalRemotePath: "/final"))
     }
+    let rename = try SFTPCommandBuilder().command(profile: profile, key: key,
+        intent: .rename(remotePath: "/probe-a", finalRemotePath: "/probe-b"))
+    #expect(String(decoding: rename.batchInput, as: UTF8.self) == "rename \"/probe-a\" \"/probe-b\"\n")
 }
 
 @Test func sftpDownloadPublishRequiresOwnedSameDirectoryRegularStaging() throws {
@@ -104,6 +107,9 @@ import Testing
     #expect(throws: SFTPBackendError.invalidListing) { try SFTPRemoteProvider.parseList(Data([0xff]), parent: "/") }
     #expect(throws: SFTPBackendError.invalidListing) { try SFTPRemoteProvider.parseList(Data("nested/name\n".utf8), parent: "/") }
     #expect(throws: SFTPBackendError.listingLimitExceeded) { try SFTPRemoteProvider.parseList(Data("one\ntwo\n".utf8), parent: "/", maximumEntries: 1) }
+    let openSSH = try SFTPRemoteProvider.parseList(Data("sftp> ls -1 \"/team\"\n/team/alpha.txt\n/team/한글 폴더\n".utf8), parent: "/team")
+    #expect(openSSH.map(\.name) == ["alpha.txt", "한글 폴더"])
+    #expect(throws: SFTPBackendError.invalidListing) { try SFTPRemoteProvider.parseList(Data("/other/nested.txt\n".utf8), parent: "/team") }
 }
 
 @Test func sftpIdentityBookmarksRoundTripRegularFilesAndRejectLinks() throws {
@@ -132,4 +138,27 @@ import Testing
     let missingUser = try RemoteConnectionProfile(name: "SFTP", remoteProtocol: .sftp, host: "host", identityBookmark: bookmark)
     #expect(throws: SFTPBackendError.invalidUsername) { try SFTPConnectionPreparation().prepare(profile: missingUser, knownHostsFile: trust, securityScoped: false) }
     #expect(throws: SFTPBackendError.invalidTrustStore) { try SFTPConnectionPreparation().prepare(profile: profile, knownHostsFile: root.appendingPathComponent("missing"), securityScoped: false) }
+}
+
+@Test func sftpLocalFixtureListsDownloadsAndProbesRenameThroughOpenSSH() async throws {
+    let environment = ProcessInfo.processInfo.environment
+    guard let portText = environment["FILES_TEST_SFTP_PORT"], let port = Int(portText),
+          let username = environment["FILES_TEST_SFTP_USERNAME"],
+          let identityPath = environment["FILES_TEST_SFTP_IDENTITY"],
+          let knownHostsPath = environment["FILES_TEST_SFTP_KNOWN_HOSTS"],
+          let remoteRoot = environment["FILES_TEST_SFTP_REMOTE_ROOT"] else { return }
+    let profile = try RemoteConnectionProfile(name: "Fixture", remoteProtocol: .sftp, host: "127.0.0.1", port: port, rootPath: remoteRoot, username: username)
+    let key = SFTPKeyConfiguration(username: username, identityFile: URL(fileURLWithPath: identityPath), knownHostsFile: URL(fileURLWithPath: knownHostsPath))
+    let provider = SFTPRemoteProvider(), entries = try await provider.list(profile: profile, key: key, remotePath: remoteRoot)
+    #expect(entries.contains { $0.name == "fixture-한글.txt" })
+    let localRoot = FileManager.default.temporaryDirectory.appendingPathComponent("sftp-live-\(UUID())", isDirectory: true)
+    defer { try? FileManager.default.removeItem(at: localRoot) }; try FileManager.default.createDirectory(at: localRoot, withIntermediateDirectories: true)
+    let destination = localRoot.appendingPathComponent("downloaded.txt")
+    _ = try await provider.download(profile: profile, key: key, remotePath: remoteRoot + "/fixture-한글.txt", destination: destination)
+    #expect(try String(contentsOf: destination, encoding: .utf8) == "live-fixture")
+    #expect(try FileManager.default.contentsOfDirectory(atPath: localRoot.path).allSatisfy { !$0.hasPrefix(".files-sftp-download-") })
+    let capabilities = try await provider.probeRenameSafety(profile: profile, key: key, parent: remoteRoot)
+    #expect(capabilities.renameRefusesExistingDestination == false)
+    let afterProbe = try await provider.list(profile: profile, key: key, remotePath: remoteRoot)
+    #expect(afterProbe.allSatisfy { !$0.name.hasPrefix(".files-sftp-probe-") })
 }

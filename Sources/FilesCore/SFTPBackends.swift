@@ -5,6 +5,7 @@ public enum SFTPIntent: Sendable, Equatable {
     case download(remotePath: String, local: URL)
     case upload(local: URL, remotePath: String)
     case uploadAndRename(local: URL, stagingRemotePath: String, finalRemotePath: String)
+    case rename(remotePath: String, finalRemotePath: String)
     case remove(remotePath: String)
 }
 
@@ -134,6 +135,46 @@ public struct SFTPRemoteProvider: Sendable {
             throw error
         }
     }
+    public func probeRenameSafety(profile: RemoteConnectionProfile, key: SFTPKeyConfiguration,
+                                  parent: String = "/", fileManager: FileManager = .default) async throws -> SFTPServerCapabilities {
+        guard parent.hasPrefix("/"), !parent.unicodeScalars.contains(where: { CharacterSet.controlCharacters.contains($0) }) else {
+            throw SFTPBackendError.invalidPath
+        }
+        try builder.validateFiles(key)
+        let token = UUID().uuidString, localRoot = fileManager.temporaryDirectory.appendingPathComponent("sftp-probe-\(token)", isDirectory: true)
+        try fileManager.createDirectory(at: localRoot, withIntermediateDirectories: true)
+        defer { try? fileManager.removeItem(at: localRoot) }
+        let localA = localRoot.appendingPathComponent("a"), localB = localRoot.appendingPathComponent("b")
+        let dataA = Data("probe-a-\(token)".utf8), dataB = Data("probe-b-\(token)".utf8)
+        try dataA.write(to: localA); try dataB.write(to: localB)
+        let base = parent == "/" ? "" : parent.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        let remoteA = "/" + ([base, ".files-sftp-probe-a-\(token)"].filter { !$0.isEmpty }.joined(separator: "/"))
+        let remoteB = "/" + ([base, ".files-sftp-probe-b-\(token)"].filter { !$0.isEmpty }.joined(separator: "/"))
+        func execute(_ intent: SFTPIntent) async throws {
+            _ = try await executor.execute(builder.command(profile: profile, key: key, intent: intent))
+        }
+        do {
+            try await execute(.upload(local: localA, remotePath: remoteA)); try await execute(.upload(local: localB, remotePath: remoteB))
+            do {
+                try await execute(.rename(remotePath: remoteA, finalRemotePath: remoteB))
+                await cleanupProbe(profile: profile, key: key, paths: [remoteA, remoteB])
+                return SFTPServerCapabilities(renameRefusesExistingDestination: false)
+            } catch RemoteExecutionError.nonzeroExit {
+                let verifyA = localRoot.appendingPathComponent("verify-a"), verifyB = localRoot.appendingPathComponent("verify-b")
+                try await execute(.download(remotePath: remoteA, local: verifyA)); try await execute(.download(remotePath: remoteB, local: verifyB))
+                let preserved = try Data(contentsOf: verifyA) == dataA && Data(contentsOf: verifyB) == dataB
+                await cleanupProbe(profile: profile, key: key, paths: [remoteA, remoteB])
+                return SFTPServerCapabilities(renameRefusesExistingDestination: preserved)
+            }
+        } catch {
+            await cleanupProbe(profile: profile, key: key, paths: [remoteA, remoteB]); throw error
+        }
+    }
+    private func cleanupProbe(profile: RemoteConnectionProfile, key: SFTPKeyConfiguration, paths: [String]) async {
+        for path in paths {
+            if let plan = try? builder.command(profile: profile, key: key, intent: .remove(remotePath: path)) { _ = try? await executor.execute(plan) }
+        }
+    }
     public static func remoteStagingPath(for remotePath: String) throws -> String {
         guard remotePath.hasPrefix("/"), !remotePath.hasSuffix("/"),
               !remotePath.unicodeScalars.contains(where: { CharacterSet.controlCharacters.contains($0) }) else { throw SFTPBackendError.invalidPath }
@@ -153,12 +194,20 @@ public struct SFTPRemoteProvider: Sendable {
     }
     public static func parseList(_ data: Data, parent: String, maximumEntries: Int = 100_000) throws -> [RemoteDirectoryEntry] {
         guard parent.hasPrefix("/"), let text = String(data: data, encoding: .utf8) else { throw SFTPBackendError.invalidListing }
-        let names = text.split(whereSeparator: \Character.isNewline).map(String.init).filter { !$0.isEmpty && $0 != "." && $0 != ".." }
+        let normalizedParent = URL(fileURLWithPath: parent).standardizedFileURL.path
+        let lines = text.split(whereSeparator: \Character.isNewline).map(String.init).filter { !$0.hasPrefix("sftp> ") }
+        let names: [String] = try lines.compactMap { line in
+            guard !line.isEmpty, line != ".", line != ".." else { return nil }
+            guard line.hasPrefix("/") else { return line }
+            let url = URL(fileURLWithPath: line).standardizedFileURL
+            guard url.deletingLastPathComponent().path == normalizedParent else { throw SFTPBackendError.invalidListing }
+            return url.lastPathComponent
+        }
         guard names.count <= maximumEntries else { throw SFTPBackendError.listingLimitExceeded }
         guard names.allSatisfy({ !$0.contains("/") && !$0.unicodeScalars.contains(where: { CharacterSet.controlCharacters.contains($0) }) }) else {
             throw SFTPBackendError.invalidListing
         }
-        let base = parent == "/" ? "" : parent.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        let base = parent == "/" ? "" : normalizedParent.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
         return names.map { RemoteDirectoryEntry(name: $0, remotePath: "/" + ([base, $0].filter { !$0.isEmpty }.joined(separator: "/"))) }
     }
 }
@@ -176,6 +225,7 @@ public struct SFTPCommandBuilder: Sendable {
         case .upload(let local, let remote): commands = ["put \(try quoted(local.path)) \(try quoted(remote))"]
         case .uploadAndRename(let local, let staging, let final):
             commands = ["put \(try quoted(local.path)) \(try quoted(staging))", "rename \(try quoted(staging)) \(try quoted(final))"]
+        case .rename(let remote, let final): commands = ["rename \(try quoted(remote)) \(try quoted(final))"]
         case .remove(let remote): commands = ["rm \(try quoted(remote))"]
         }
         let alias = "files-remote"

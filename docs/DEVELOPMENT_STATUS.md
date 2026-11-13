@@ -4,7 +4,7 @@
 
 ## 이번 구현 단위
 
-M5 서른 번째 개발 단위로 SFTP 다운로드·업로드의 staging/publish 안전 계약을 구현했다. M3/M4 실기기·앱 번들 검증은 완료 판정을 막는 별도 항목으로 유지한다.
+M5 서른한 번째 개발 단위로 localhost OpenSSH 실제 SFTP 목록·다운로드·rename capability 수용 검증을 추가했다. M3/M4 실기기·앱 번들 검증은 완료 판정을 막는 별도 항목으로 유지한다.
 
 | 영역 | 상태 | 내용 |
 |---|---|---|
@@ -31,8 +31,8 @@ M5 서른 번째 개발 단위로 SFTP 다운로드·업로드의 staging/publis
 | 시스템 열기 | 구현 | 기본 연결 앱, Finder에서 보기, macOS 공유 picker, Terminal에서 위치 열기, 사용자가 선택한 앱/IDE로 열기; URL 기반 전달 |
 | 압축 | 구현 중 | ZIP/7z 생성·탐색·안전 추출, RAR 탐색·안전 추출, 링크/특수 항목 거부·변경 재검증, staging/publish/rollback, AppKit UI·중단·항목/바이트 진행률 |
 | 클라우드 | 구현 중 | `~/Library/CloudStorage` 공급자 폴더와 iCloud Drive 탐지·사이드바 탐색, ubiquitous resource value 기반 상태 분류, iCloud 지금 다운로드·공간 비우기 메뉴, 일반 File Provider 상태는 unknown·명령 비활성 유지 |
-| 원격 연결 | 구현 중 | FTP/FTPS provider, SFTP strict trust·identity bookmark·사용자 준비 gate·목록 연결, 다운로드 same-directory staging/publish, capability 확인 전 업로드 차단과 원격 staging/rename/실패 정리 계약 |
-| 테스트 | 통과 | 142개 Swift Testing, SFTP 다운로드 staging 소유권·링크·충돌, 업로드 staging 명령·기본 capability 차단, UI 4조합 및 기존 회귀 검증 |
+| 원격 연결 | 구현 중 | FTP/FTPS provider, SFTP strict trust·identity bookmark·목록·안전 다운로드, 서버별 rename 충돌 probe와 capability 확인 전 업로드 차단; macOS OpenSSH overwrite 확인 |
+| 테스트 | 통과 | 143개 Swift Testing, localhost OpenSSH 실제 목록·다운로드·rename overwrite 판정·probe 정리, 절대 경로 출력 검증, UI 4조합 및 기존 회귀 검증 |
 | 파일 복사 | 구현 | 대상 폴더 선택·클립보드·양쪽 유지/건너뛰기·내용 검증·취소·항목별 결과·JSON 저널·안전 실행 취소, 다중 선택 폴더 병합·통합 Undo |
 | 느린 폴더 복구 | 구현 | 읽기 중단·늦은 결과 차단·불완전 목록 안내·명시적 재시도 |
 | 접근 복구 | 부분 검증 | 오류 화면 재시도·폴더 선택, 시스템 선택 후 Desktop fixture 읽기 성공; 재실행 읽기 확인; 감시는 연결 대기 |
@@ -47,7 +47,7 @@ M5 서른 번째 개발 단위로 SFTP 다운로드·업로드의 staging/publis
 | 이동 | 구현 중 | 동일/교차 볼륨 이동, 검증·교체 백업·안전 실행 취소, 사용자 취소, 단계별 상태와 진행 막대; APFS/APFSX/exFAT 통과 |
 | 영구 삭제 | 구현 중 | 선택 항목 영구 삭제(복구 불가 경고), 항목별 상태 보고, 작업 창, 저널 파일 |
 
-다음 구현은 M5 실제 localhost sshd rename capability probe와 SFTP 다운로드·업로드 작업 진행/취소 UI다. 실제 FTPS·안전 FTP 서버, SMB·Keychain·클라우드 실환경 검증은 후속 게이트로 유지한다.
+다음 구현은 M5 SFTP 다운로드 작업 선택·진행/취소 UI다. 실제 FTPS·안전 FTP 서버, SMB·Keychain·클라우드 실환경 검증은 후속 게이트로 유지한다.
 
 ## M1 별도 검증 목록
 
@@ -74,4 +74,4 @@ M3 검증: [보기 모드 상태와 세션 호환성](verification/m3/INCREMENT_
 M4 검증: [로컬 파일명 검색 코어](verification/m4/INCREMENT_01.md), [검색 상태와 취소](verification/m4/INCREMENT_02.md), [네이티브 검색 패널](verification/m4/INCREMENT_03.md), [파일 속성과 SHA-256](verification/m4/INCREMENT_04.md), [네이티브 정보 패널](verification/m4/INCREMENT_05.md), [Quick Look](verification/m4/INCREMENT_06.md), [Finder 태그 코어](verification/m4/INCREMENT_07.md), [Finder 태그 편집 UI](verification/m4/INCREMENT_08.md), [검색 메타데이터 필터](verification/m4/INCREMENT_09.md), [검색 고급 필터 UI](verification/m4/INCREMENT_10.md), [Spotlight 콘텐츠 검색](verification/m4/INCREMENT_11.md), [장착 볼륨 capability](verification/m4/INCREMENT_12.md), [안전 추출과 Disk Utility](verification/m4/INCREMENT_13.md), [시스템 열기 명령](verification/m4/INCREMENT_14.md), [실제 볼륨 탐지 매트릭스](verification/m4/INCREMENT_15.md), [검색 크기 단위](verification/m4/INCREMENT_16.md), [실제 Spotlight 콘텐츠 hit](verification/m4/INCREMENT_17.md).
 
 M5 검증: [압축 추출 보안 validator](verification/m5/INCREMENT_01.md), [libarchive ZIP 안전 추출](verification/m5/INCREMENT_02.md), [ZIP 안전 생성](verification/m5/INCREMENT_03.md), [ZIP 탐색·추출 UI](verification/m5/INCREMENT_04.md), [ZIP 생성 UI](verification/m5/INCREMENT_05.md), [압축 정량 진행률](verification/m5/INCREMENT_06.md), [포맷 capability·오류 안내](verification/m5/INCREMENT_07.md), [7z/RAR 탐색·안전 추출](verification/m5/INCREMENT_08.md), [7z 안전 생성](verification/m5/INCREMENT_09.md), [압축 worker 취소 수용](verification/m5/INCREMENT_10.md).
-[클라우드 위치·상태 탐지](verification/m5/INCREMENT_11.md), [iCloud 다운로드·공간 비우기 명령](verification/m5/INCREMENT_12.md), [원격 연결 프로필 기반](verification/m5/INCREMENT_13.md), [원격 프로필 저장·Keychain](verification/m5/INCREMENT_14.md), [원격 연결 관리 UI](verification/m5/INCREMENT_15.md), [SMB 표준 연결 adapter](verification/m5/INCREMENT_16.md), [원격 backend·보안 명령 계획](verification/m5/INCREMENT_17.md), [원격 subprocess 실행·취소](verification/m5/INCREMENT_18.md), [FTP/FTPS 목록 provider](verification/m5/INCREMENT_19.md), [FTP/FTPS 안전 다운로드](verification/m5/INCREMENT_20.md), [FTP/FTPS staging 업로드](verification/m5/INCREMENT_21.md), [localhost FTP 실제 수용 검증](verification/m5/INCREMENT_22.md), [FTP rename capability probe](verification/m5/INCREMENT_23.md), [SFTP strict trust 명령 계약](verification/m5/INCREMENT_24.md), [SFTP private config executor](verification/m5/INCREMENT_25.md), [SFTP host fingerprint 저장소](verification/m5/INCREMENT_26.md), [SFTP host key 승인 UI](verification/m5/INCREMENT_27.md), [SFTP 개인키 bookmark UI](verification/m5/INCREMENT_28.md), [SFTP 목록 연결 UI](verification/m5/INCREMENT_29.md), [SFTP 안전 staging 전송](verification/m5/INCREMENT_30.md).
+[클라우드 위치·상태 탐지](verification/m5/INCREMENT_11.md), [iCloud 다운로드·공간 비우기 명령](verification/m5/INCREMENT_12.md), [원격 연결 프로필 기반](verification/m5/INCREMENT_13.md), [원격 프로필 저장·Keychain](verification/m5/INCREMENT_14.md), [원격 연결 관리 UI](verification/m5/INCREMENT_15.md), [SMB 표준 연결 adapter](verification/m5/INCREMENT_16.md), [원격 backend·보안 명령 계획](verification/m5/INCREMENT_17.md), [원격 subprocess 실행·취소](verification/m5/INCREMENT_18.md), [FTP/FTPS 목록 provider](verification/m5/INCREMENT_19.md), [FTP/FTPS 안전 다운로드](verification/m5/INCREMENT_20.md), [FTP/FTPS staging 업로드](verification/m5/INCREMENT_21.md), [localhost FTP 실제 수용 검증](verification/m5/INCREMENT_22.md), [FTP rename capability probe](verification/m5/INCREMENT_23.md), [SFTP strict trust 명령 계약](verification/m5/INCREMENT_24.md), [SFTP private config executor](verification/m5/INCREMENT_25.md), [SFTP host fingerprint 저장소](verification/m5/INCREMENT_26.md), [SFTP host key 승인 UI](verification/m5/INCREMENT_27.md), [SFTP 개인키 bookmark UI](verification/m5/INCREMENT_28.md), [SFTP 목록 연결 UI](verification/m5/INCREMENT_29.md), [SFTP 안전 staging 전송](verification/m5/INCREMENT_30.md), [localhost OpenSSH SFTP 수용 검증](verification/m5/INCREMENT_31.md).
