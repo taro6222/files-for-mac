@@ -13,6 +13,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     private var shortcutSettingsWindow: ShortcutSettingsWindow?
     private var appearanceSettingsWindow: AppearanceSettingsWindow?
     private var archiveCapabilitiesWindow: ArchiveCapabilitiesWindow?
+    private var remoteConnectionsWindow: RemoteConnectionsWindow?
     private var preferencesToken: UUID?
     func applicationDidFinishLaunching(_ notification: Notification) {
         applyAppearance()
@@ -90,6 +91,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         if archiveCapabilitiesWindow == nil { archiveCapabilitiesWindow = ArchiveCapabilitiesWindow() }
         archiveCapabilitiesWindow?.present()
     }
+    @objc func showRemoteConnections(_ sender: Any?) {
+        if remoteConnectionsWindow == nil {
+            #if DEBUG
+            let qaRoot = ProcessInfo.processInfo.environment["FILES_UI_QA_OUTPUT"].map { URL(fileURLWithPath: $0, isDirectory: true) }
+            #else
+            let qaRoot: URL? = nil
+            #endif
+            let support = (qaRoot ?? FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+                .appendingPathComponent("FilesMac", isDirectory: true)).appendingPathComponent("remote-connections.json")
+            remoteConnectionsWindow = RemoteConnectionsWindow(profileStore: RemoteProfileStore(fileURL: support))
+        }
+        remoteConnectionsWindow?.present()
+    }
     private func applyAppearance() { NSApp.appearance = BrowserWindow.appearance(BrowserPreferences.shared.appearance) }
     private func configureShortcuts() {
         let entries = CommandPaletteCatalog.entries(from: NSApp.mainMenu)
@@ -130,6 +144,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         appearance.target = self
         let archiveSupport = appMenu.addItem(withTitle: L("압축 포맷 지원…", "Archive Format Support…"), action: #selector(showArchiveCapabilities(_:)), keyEquivalent: "")
         archiveSupport.target = self
+        let remoteConnections = appMenu.addItem(withTitle: L("원격 연결…", "Remote Connections…"), action: #selector(showRemoteConnections(_:)), keyEquivalent: "")
+        remoteConnections.target = self
         appMenu.addItem(.separator())
         appMenu.addItem(withTitle: L("Files macOS 종료", "Quit Files macOS"), action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         let fileItem = NSMenuItem(); fileItem.title = L("파일", "File"); menu.addItem(fileItem)
@@ -212,6 +228,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     var qaShortcutContentView: NSView? { shortcutSettingsWindow?.window?.contentView }
     var qaArchiveCapabilitiesVisible: Bool { archiveCapabilitiesWindow?.window?.isVisible == true }
     var qaArchiveCapabilitiesContentView: NSView? { archiveCapabilitiesWindow?.window?.contentView }
+    var qaRemoteConnectionsVisible: Bool { remoteConnectionsWindow?.window?.isVisible == true }
+    var qaRemoteConnectionsContentView: NSView? { remoteConnectionsWindow?.window?.contentView }
+    var qaRemoteProfileCount: Int { remoteConnectionsWindow?.qaProfileCount ?? -1 }
+    func qaCreateRemoteProfile() { remoteConnectionsWindow?.qaCreateProfile() }
 #endif
 }
 

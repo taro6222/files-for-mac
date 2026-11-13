@@ -1821,6 +1821,11 @@ extension BrowserWindow {
                 checks["archiveCapabilitiesWindow"] = delegate.qaArchiveCapabilitiesVisible
                 try capture("archive-capabilities", view: delegate.qaArchiveCapabilitiesContentView)
                 delegate.qaArchiveCapabilitiesContentView?.window?.close(); window.makeKeyAndOrderFront(nil)
+                delegate.showRemoteConnections(nil); try await Task.sleep(for: .milliseconds(50))
+                delegate.qaCreateRemoteProfile(); try await Task.sleep(for: .milliseconds(50))
+                checks["remoteConnectionsWindow"] = delegate.qaRemoteConnectionsVisible && delegate.qaRemoteProfileCount == 1
+                try capture("remote-connections", view: delegate.qaRemoteConnectionsContentView)
+                delegate.qaRemoteConnectionsContentView?.window?.close(); window.makeKeyAndOrderFront(nil)
             } else { checks["shortcutSettingsWindow"] = false }
             controller.showToolbarSettings(nil); try await Task.sleep(for: .milliseconds(50))
             checks["toolbarSettingsWindow"] = controller.toolbarSettingsWindow?.window?.isVisible == true
