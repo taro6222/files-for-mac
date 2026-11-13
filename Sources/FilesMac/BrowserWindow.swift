@@ -9,6 +9,7 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
     private let model: BrowserModel
     private let table = BrowserFileTable()
     private let scroll = NSScrollView()
+    private let gridView = FileGridView()
     private let pathField = NSComboBox()
     private let status = NSTextField(labelWithString: "")
     private let message = NSTextField(wrappingLabelWithString: "")
@@ -33,6 +34,7 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
     private var activeModel: BrowserModel { secondaryActive ? secondaryPane?.model ?? model : model }
     private var activeSelectedItems: [FileItem] {
         if secondaryActive { return secondaryPane?.selectedItems ?? [] }
+        if model.viewMode == .grid { return gridView.selectedItems }
         return table.selectedRowIndexes.compactMap { model.items.indices.contains($0) ? model.items[$0] : nil }
     }
     private func refreshActivePane() { if secondaryActive { secondaryPane?.refresh() } else { refresh(nil) } }
@@ -255,7 +257,7 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         bottom.edgeInsets = NSEdgeInsets(top: 7, left: 18, bottom: 7, right: 18)
         status.font = .systemFont(ofSize: 11); status.textColor = .secondaryLabelColor
         bottom.addArrangedSubview(status); bottom.addArrangedSubview(NSView())
-        let phase = NSTextField(labelWithString: L("M2 · 탐색 및 복사", "M2 · Browse and copy"))
+        let phase = NSTextField(labelWithString: L("M3 · 보기 및 사용자 지정", "M3 · Views and customization"))
         phase.font = .systemFont(ofSize: 11); phase.textColor = .tertiaryLabelColor
         bottom.addArrangedSubview(phase); main.addArrangedSubview(bottom)
         for view in [header, toolbar, divider, content, bottom] { view.widthAnchor.constraint(equalTo: main.widthAnchor).isActive = true }
@@ -283,6 +285,14 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         scroll.documentView = table; scroll.hasVerticalScroller = true; scroll.hasHorizontalScroller = true
         scroll.translatesAutoresizingMaskIntoConstraints = false; content.addSubview(scroll)
         NSLayoutConstraint.activate([scroll.leadingAnchor.constraint(equalTo: content.leadingAnchor), scroll.trailingAnchor.constraint(equalTo: content.trailingAnchor), scroll.topAnchor.constraint(equalTo: content.topAnchor), scroll.bottomAnchor.constraint(equalTo: content.bottomAnchor)])
+        content.addSubview(gridView)
+        NSLayoutConstraint.activate([gridView.leadingAnchor.constraint(equalTo: content.leadingAnchor), gridView.trailingAnchor.constraint(equalTo: content.trailingAnchor), gridView.topAnchor.constraint(equalTo: content.topAnchor), gridView.bottomAnchor.constraint(equalTo: content.bottomAnchor)])
+        gridView.onSelectionChange = { [weak self] selection in
+            guard let self, !self.rendering, self.model.viewMode == .grid else { return }
+            self.model.savePosition(selection: selection, scrollOffset: self.gridView.currentScrollOffset())
+            self.render()
+        }
+        gridView.onOpen = { [weak self] item in self?.openGridItem(item) }
         let menu = NSMenu()
         let folder = menu.addItem(withTitle: L("새 폴더…", "New Folder…"), action: #selector(createFolder(_:)), keyEquivalent: ""); folder.target = self
         let folderFromSelection = menu.addItem(withTitle: L("선택 항목으로 새 폴더…", "New Folder with Selection…"), action: #selector(createFolderFromSelection(_:)), keyEquivalent: ""); folderFromSelection.target = self
@@ -434,8 +444,9 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
     private func savePosition(allowWhileLoading: Bool = false) {
         // Partial rows may not contain the selection awaiting history restoration.
         guard !rendering, allowWhileLoading || (!model.isLoading && !model.wasCancelled) else { return }
-        let ids = Set(table.selectedRowIndexes.compactMap { model.items.indices.contains($0) ? model.items[$0].id : nil })
-        model.savePosition(selection: ids, scrollOffset: scroll.contentView.bounds.origin.y)
+        let grid = model.viewMode == .grid
+        let ids = grid ? Set(gridView.selectedItems.map(\.id)) : Set(table.selectedRowIndexes.compactMap { model.items.indices.contains($0) ? model.items[$0].id : nil })
+        model.savePosition(selection: ids, scrollOffset: grid ? gridView.currentScrollOffset() : scroll.contentView.bounds.origin.y)
     }
     private func navigate(_ url: URL?) {
         completionTask?.cancel(); completionGeneration += 1
@@ -468,7 +479,10 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         let refreshTitle = model.isLoading ? L("읽기 중단", "Stop Loading") : L("새로고침", "Refresh")
         refreshButton.image = NSImage(systemSymbolName: model.isLoading ? "xmark" : "arrow.clockwise", accessibilityDescription: refreshTitle)
         refreshButton.toolTip = refreshTitle; refreshButton.setAccessibilityLabel(refreshTitle)
-        scroll.isHidden = model.location == nil; homeScroll.isHidden = model.location != nil
+        let showsGrid = model.location != nil && model.viewMode == .grid
+        scroll.isHidden = model.location == nil || showsGrid
+        gridView.isHidden = model.location == nil || !showsGrid
+        homeScroll.isHidden = model.location != nil
         if model.location == nil { lastRecordedLocation = nil; buildHome() }
         var revealEntry = false
         if let target = pendingEntrySelection, !model.isLoading {
@@ -481,6 +495,8 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         table.reloadData()
         let selected = IndexSet(model.items.indices.filter { model.history.current.selection.contains(model.items[$0].id) })
         table.selectRowIndexes(selected, byExtendingSelection: false)
+        gridView.update(items: model.items, selection: model.history.current.selection,
+                        scrollOffset: model.history.current.scrollOffset)
         if !model.isLoading {
             scroll.contentView.scroll(to: NSPoint(x: 0, y: model.history.current.scrollOffset))
             scroll.reflectScrolledClipView(scroll.contentView)
@@ -503,16 +519,18 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
             lastRecordedLocation = url; preferences.recordVisit(url)
         }
         updateStatus()
-        if model.location != nil && window?.firstResponder === window { window?.makeFirstResponder(table) }
+        if model.location != nil && window?.firstResponder === window {
+            if showsGrid { gridView.focus() } else { window?.makeFirstResponder(table) }
+        }
     }
     private func updateStatus() {
         if model.location == nil { status.stringValue = L("준비됨", "Ready"); return }
         status.stringValue = "\(model.items.count) " + L("개 항목", "items")
-        if !table.selectedRowIndexes.isEmpty {
-            status.stringValue += "  ·  \(table.selectedRowIndexes.count) " + L("개 선택", "selected")
-            let bytes = table.selectedRowIndexes.reduce(Int64(0)) { total, index in
-                guard model.items.indices.contains(index), !model.items[index].isDirectory else { return total }
-                return total + (model.items[index].size ?? 0)
+        let selectedItems = model.viewMode == .grid ? gridView.selectedItems : table.selectedRowIndexes.compactMap { model.items.indices.contains($0) ? model.items[$0] : nil }
+        if !selectedItems.isEmpty {
+            status.stringValue += "  ·  \(selectedItems.count) " + L("개 선택", "selected")
+            let bytes = selectedItems.reduce(Int64(0)) { total, item in
+                item.isDirectory ? total : total + (item.size ?? 0)
             }
             status.stringValue += " · " + ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file)
         }
@@ -642,10 +660,15 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
     }
     @objc func openSelection(_ sender: Any?) {
         if secondaryActive { secondaryPane?.openSelected(); return }
+        if model.viewMode == .grid, let item = gridView.selectedItems.first { openGridItem(item); return }
         if sender as? NSTableView === table && table.clickedRow < 0 { return }
         let rows = table.selectedRowIndexes
         guard let first = rows.first, model.items.indices.contains(first) else { return }
         let item = model.items[first]
+        if item.isBrowsable { navigate(item.url) }
+        else { NSWorkspace.shared.open(item.url) }
+    }
+    private func openGridItem(_ item: FileItem) {
         if item.isBrowsable { navigate(item.url) }
         else { NSWorkspace.shared.open(item.url) }
     }
@@ -1058,7 +1081,7 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         return .resolve(modifiers: modifiers, sourceAllowsMove: info.draggingSourceOperationMask.contains(.move))
     }
     @objc func revealSelection(_ sender: Any?) {
-        let urls = table.selectedRowIndexes.compactMap { model.items.indices.contains($0) ? model.items[$0].url : nil }
+        let urls = activeSelectedItems.map(\.url)
         if !urls.isEmpty { NSWorkspace.shared.activateFileViewerSelecting(urls) }
     }
     private func updateWatcher(force: Bool = false) {
@@ -1290,7 +1313,9 @@ extension BrowserWindow {
     @objc func goHome(_ sender: Any?) { navigate(nil); focusSidebar(nil) }
     @objc func focusFiles(_ sender: Any?) {
         if secondaryActive { secondaryPane?.focusFiles() }
-        else if model.location == nil { focusSidebar(nil) } else { window?.makeFirstResponder(table) }
+        else if model.location == nil { focusSidebar(nil) }
+        else if model.viewMode == .grid { gridView.focus() }
+        else { window?.makeFirstResponder(table) }
     }
     @objc func focusSidebar(_ sender: Any?) {
         if let first = sidebar.arrangedSubviews.first { window?.makeFirstResponder(first) }
@@ -1322,7 +1347,7 @@ extension BrowserWindow {
         case #selector(goForward(_:)): return secondaryActive ? !(secondaryPane?.model.history.forward.isEmpty ?? true) : !model.history.forward.isEmpty
         case #selector(goUp(_:)): return secondaryActive ? secondaryPane?.model.location != nil : model.location != nil && model.location?.path != "/"
         case #selector(openSelection(_:)): return !activeSelectedItems.isEmpty && activeModel.location != nil
-        case #selector(revealSelection(_:)): return !secondaryActive && !table.selectedRowIndexes.isEmpty && model.location != nil
+        case #selector(revealSelection(_:)): return !secondaryActive && !activeSelectedItems.isEmpty && model.location != nil
         default: return true
         }
     }
@@ -1391,7 +1416,9 @@ extension BrowserWindow {
             try fm.createDirectory(at: destination, withIntermediateDirectories: true)
             let fixture = destination.appendingPathComponent("fixture", isDirectory: true)
             try fm.createDirectory(at: fixture, withIntermediateDirectories: true)
-            for index in 0..<10_000 {
+            let gridFolder = fixture.appendingPathComponent("000-grid-folder", isDirectory: true)
+            try fm.createDirectory(at: gridFolder, withIntermediateDirectories: true)
+            for index in 0..<9_999 {
                 let name = index == 0 ? "00000-한글-é-📁-long-file-name.txt" : String(format: "%05d-file.txt", index)
                 try Data("fixture".utf8).write(to: fixture.appendingPathComponent(name))
             }
@@ -1455,6 +1482,26 @@ extension BrowserWindow {
             root.layoutSubtreeIfNeeded()
             checks["historySelection"] = controller.table.selectedRowIndexes == IndexSet(integer: 9_999)
             checks["historyScroll"] = NSLocationInRange(9_999, controller.table.rows(in: controller.table.visibleRect))
+            controller.model.setViewMode(.grid)
+            controller.model.savePosition(selection: [gridFolder.path], scrollOffset: 0)
+            controller.render()
+            root.layoutSubtreeIfNeeded(); root.displayIfNeeded()
+            checks["gridVisible"] = !controller.gridView.isHidden && controller.scroll.isHidden
+            checks["gridSelectionIdentity"] = controller.gridView.selectedItems.map(\.id) == [gridFolder.path]
+            controller.focusFiles(nil)
+            checks["gridFocus"] = (window.firstResponder as? NSView)?.isDescendant(of: controller.gridView) == true
+            try capture("files-grid")
+            if let folderItem = controller.model.items.first(where: { $0.url.standardizedFileURL == gridFolder.standardizedFileURL }) {
+                controller.openGridItem(folderItem)
+            }
+            checks["gridFolderOpen"] = controller.model.location == gridFolder.standardizedFileURL
+            controller.goBack(nil)
+            let gridBackStart = ContinuousClock.now
+            while controller.model.isLoading && gridBackStart.duration(to: .now) < .seconds(30) {
+                try await Task.sleep(for: .milliseconds(10))
+            }
+            checks["gridModeRestoredAfterNavigation"] = controller.model.viewMode == .grid && controller.model.location == fixture.standardizedFileURL
+            controller.model.setViewMode(.details)
             controller.navigate(fixture.appendingPathComponent("missing-directory"))
             let errorStart = ContinuousClock.now
             while controller.model.isLoading && errorStart.duration(to: .now) < .seconds(5) {
