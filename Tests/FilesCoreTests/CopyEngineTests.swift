@@ -243,3 +243,31 @@ private struct CopyFixture {
     #expect(report.items.first?.state == "conflict")
     #expect(try String(contentsOf: targetFolder.appendingPathComponent("racing.txt"), encoding: .utf8) == "external")
 }
+
+@Test func folderMergeBatchCombinesMissingMergedAndConflictingItemsIntoOneUndo() async throws {
+    let f = try CopyFixture(); defer { f.clean() }
+    let missing = try f.file("missing.txt", text: "new")
+    let mergeSource = f.source.appendingPathComponent("merge")
+    try FileManager.default.createDirectory(at: mergeSource, withIntermediateDirectories: true)
+    try Data("nested".utf8).write(to: mergeSource.appendingPathComponent("nested.txt"))
+    let mergeTarget = f.destination.appendingPathComponent("merge")
+    try FileManager.default.createDirectory(at: mergeTarget, withIntermediateDirectories: true)
+    try Data("keep".utf8).write(to: mergeTarget.appendingPathComponent("keep.txt"))
+    let conflicting = try f.file("conflict.txt", text: "source")
+    try Data("target".utf8).write(to: f.destination.appendingPathComponent("conflict.txt"))
+
+    let report = await CopyMergeBatch.run(sources: [missing, mergeSource, conflicting],
+        destination: f.destination, journalDirectory: f.journal, cancellation: CopyCancellation())
+
+    #expect(report.state == "completed")
+    #expect(report.items.map(\.state) == ["completed", "merged", "conflict"])
+    #expect(try String(contentsOf: f.destination.appendingPathComponent("conflict.txt"), encoding: .utf8) == "target")
+    let undo = try #require(CopyEngine.latestUndoCopy(journalDirectory: f.journal))
+    #expect(undo.operationId == report.id)
+    #expect(undo.items.count == 2)
+    let undoResult = await CopyEngine.undoCopy(undo, journalDirectory: f.journal)
+    #expect(undoResult.state == "completed")
+    #expect(!FileManager.default.fileExists(atPath: f.destination.appendingPathComponent("missing.txt").path))
+    #expect(!FileManager.default.fileExists(atPath: mergeTarget.appendingPathComponent("nested.txt").path))
+    #expect(FileManager.default.fileExists(atPath: mergeTarget.appendingPathComponent("keep.txt").path))
+}

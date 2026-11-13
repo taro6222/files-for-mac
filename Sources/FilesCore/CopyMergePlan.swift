@@ -101,6 +101,8 @@ public struct CopyMergeExecutionItem: Codable, Sendable {
     public let target: URL
     public var state: String
     public var message: String?
+    public var targetIdentity: String?
+    public var targetSnapshot: [String: String]?
 }
 
 public struct CopyMergeExecutionReport: Codable, Sendable {
@@ -113,18 +115,20 @@ public struct CopyMergeExecutionReport: Codable, Sendable {
 
 public enum CopyMergeExecutor {
     public static func run(plan: CopyMergePlan, journalDirectory: URL,
-                           cancellation: CopyCancellation) async -> CopyMergeExecutionReport {
+                           cancellation: CopyCancellation, recordUndo: Bool = true) async -> CopyMergeExecutionReport {
         await Task.detached(priority: .userInitiated) {
-            execute(plan: plan, journalDirectory: journalDirectory, cancellation: cancellation)
+            execute(plan: plan, journalDirectory: journalDirectory,
+                    cancellation: cancellation, recordUndo: recordUndo)
         }.value
     }
 
     private static func execute(plan: CopyMergePlan, journalDirectory: URL,
-                                cancellation: CopyCancellation) -> CopyMergeExecutionReport {
+                                cancellation: CopyCancellation, recordUndo: Bool) -> CopyMergeExecutionReport {
         let fm = FileManager.default
         var report = CopyMergeExecutionReport(version: 1, id: UUID(), state: "running",
             items: plan.actions.map { CopyMergeExecutionItem(relativePath: $0.relativePath,
-                                                               target: $0.target, state: "queued") })
+                                                               target: $0.target, state: "queued",
+                                                               targetIdentity: nil, targetSnapshot: nil) })
         let journal = journalDirectory.appendingPathComponent("merge-\(report.id.uuidString).json")
         func save() throws {
             try fm.createDirectory(at: journalDirectory, withIntermediateDirectories: true)
@@ -180,6 +184,8 @@ public enum CopyMergeExecutor {
                     }
                     let targetIdentity = try identity(action.target)
                     report.items[index].state = "completed"
+                    report.items[index].targetIdentity = targetIdentity
+                    report.items[index].targetSnapshot = before
                     undoItems.append(CopyUndoItem(target: action.target, targetIdentity: targetIdentity,
                                                   targetSnapshot: before))
                 }
@@ -194,7 +200,7 @@ public enum CopyMergeExecutor {
         }
         let failed = report.items.filter { $0.state == "failed" }.count
         report.state = cancellation.isCancelled ? "cancelled" : (failed == 0 ? "completed" : "partiallyCompleted")
-        if !undoItems.isEmpty {
+        if recordUndo && !undoItems.isEmpty {
             do {
                 let undo = CopyUndoRecord(operationId: report.id, items: undoItems, createdAt: Date())
                 try JSONEncoder().encode(undo).write(

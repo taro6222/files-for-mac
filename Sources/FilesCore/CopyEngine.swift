@@ -80,17 +80,20 @@ public enum CopyConflictPolicy: Sendable { case skip, keepBoth }
 public enum CopyEngine {
     public static func run(sources: [URL], destination: URL, journalDirectory: URL,
                            cancellation: CopyCancellation, conflictPolicy: CopyConflictPolicy = .skip,
+                           recordUndo: Bool = true,
                            progress: @escaping @Sendable (CopyProgress) -> Void = { _ in }) async -> CopyReport {
         await withTaskCancellationHandler {
             await Task.detached(priority: .userInitiated) {
                 execute(sources: sources, destination: destination, journalDirectory: journalDirectory,
-                        cancellation: cancellation, conflictPolicy: conflictPolicy, progress: progress)
+                        cancellation: cancellation, conflictPolicy: conflictPolicy,
+                        recordUndo: recordUndo, progress: progress)
             }.value
         } onCancel: { cancellation.cancel() }
     }
 
     private static func execute(sources: [URL], destination: URL, journalDirectory: URL,
                                 cancellation: CopyCancellation, conflictPolicy: CopyConflictPolicy,
+                                recordUndo: Bool,
                                 progress: @Sendable (CopyProgress) -> Void) -> CopyReport {
         let fm = FileManager()
         let delegate = CopyDelegate(cancellation)
@@ -217,7 +220,7 @@ public enum CopyEngine {
                   let snapshot = item.targetSnapshot else { return nil }
             return CopyUndoItem(target: item.target, targetIdentity: identity, targetSnapshot: snapshot)
         }
-        if !undoItems.isEmpty {
+        if recordUndo && !undoItems.isEmpty {
             do {
                 let record = CopyUndoRecord(operationId: report.id, items: undoItems, createdAt: Date())
                 let data = try JSONEncoder().encode(record)

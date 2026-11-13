@@ -14,28 +14,23 @@ final class FolderMergeWindow: NSWindowController, NSWindowDelegate {
     private let details = NSTextView()
     private let cancel = NSButton(title: L("취소", "Cancel"), target: nil, action: #selector(cancelMerge(_:)))
 
-    static func start(source: URL, target: URL, completion: @escaping @MainActor () -> Void) {
+    static func start(sources: [URL], destination: URL, completion: @escaping @MainActor () -> Void) {
         guard !isRunning else { return }
-        let controller = FolderMergeWindow(source: source, target: target)
+        let controller = FolderMergeWindow(sources: sources, destination: destination)
         operations.append(controller); controller.showWindow(nil); controller.window?.makeKeyAndOrderFront(nil)
         let journals = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
             .appendingPathComponent(Bundle.main.bundleIdentifier ?? "org.taro6222.files-for-mac")
             .appendingPathComponent("operations")
         Task {
-            do {
-                let plan = try await Task.detached(priority: .userInitiated) {
-                    try CopyMergePlanner.plan(source: source, target: target)
-                }.value
-                controller.showPlan(plan)
-                let report = await CopyMergeExecutor.run(plan: plan, journalDirectory: journals,
-                                                         cancellation: controller.cancellation)
-                controller.finish(report)
-            } catch { controller.finish(error) }
+            let report = await CopyMergeBatch.run(sources: sources, destination: destination,
+                                                  journalDirectory: journals,
+                                                  cancellation: controller.cancellation)
+            controller.finish(report)
             completion()
         }
     }
 
-    private init(source: URL, target: URL) {
+    private init(sources: [URL], destination: URL) {
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 680, height: 420),
                               styleMask: [.titled, .closable, .miniaturizable, .resizable],
                               backing: .buffered, defer: false)
@@ -49,7 +44,9 @@ final class FolderMergeWindow: NSWindowController, NSWindowDelegate {
             stack.topAnchor.constraint(equalTo: window.contentView!.topAnchor, constant: 20),
             stack.bottomAnchor.constraint(equalTo: window.contentView!.bottomAnchor, constant: -20)
         ])
-        let paths = NSTextField(wrappingLabelWithString: L("원본: ", "Source: ") + source.path + "\n" + L("대상: ", "Target: ") + target.path)
+        let paths = NSTextField(wrappingLabelWithString:
+            L("대상: ", "Destination: ") + destination.path + "\n" +
+            L("항목: ", "Items: ") + "\(sources.count)")
         paths.isSelectable = true; stack.addArrangedSubview(paths); stack.addArrangedSubview(label)
         progress.style = .bar; progress.isIndeterminate = true; progress.startAnimation(nil); stack.addArrangedSubview(progress)
         let scroll = NSScrollView(); scroll.hasVerticalScroller = true; scroll.borderType = .bezelBorder
@@ -61,25 +58,20 @@ final class FolderMergeWindow: NSWindowController, NSWindowDelegate {
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 
-    private func showPlan(_ plan: CopyMergePlan) {
-        let copies = plan.actions.filter { $0.kind == .copyMissing }.count
-        label.stringValue = L("계획 완료 · 추가 \(copies) · 충돌 \(plan.conflicts.count)",
-                              "Plan ready · Add \(copies) · Conflicts \(plan.conflicts.count)")
-        details.string = plan.actions.map { "[\($0.kind.rawValue)] \($0.relativePath)" }.joined(separator: "\n")
-    }
-    private func finish(_ report: CopyMergeExecutionReport) {
+    private func finish(_ report: CopyMergeBatchReport) {
         running = false; progress.stopAnimation(nil); progress.isIndeterminate = false; progress.doubleValue = 1
-        let completed = report.items.filter { $0.state == "completed" }.count
-        let conflicts = report.items.filter { $0.state == "conflict" }.count
-        label.stringValue = L("병합 종료 · 추가 \(completed) · 보존한 충돌 \(conflicts)",
-                              "Merge finished · Added \(completed) · Preserved conflicts \(conflicts)")
-        details.string = report.items.map { "[\($0.state)] \($0.relativePath)" + ($0.message.map { "\n  " + $0 } ?? "") }.joined(separator: "\n\n")
+        let added = report.items.reduce(0) { $0 + $1.addedCount }
+        let conflicts = report.items.reduce(0) { $0 + $1.conflictCount }
+        label.stringValue = L("병합 종료 · 추가 \(added) · 보존한 충돌 \(conflicts)",
+                              "Merge finished · Added \(added) · Preserved conflicts \(conflicts)")
+        details.string = report.items.map {
+            "[\($0.state)] \($0.source.path) → \($0.target.path)" +
+            "\n  " + L("추가 ", "Added ") + "\($0.addedCount)" +
+            L(" · 충돌 ", " · Conflicts ") + "\($0.conflictCount)" +
+            ($0.message.map { "\n  " + $0 } ?? "")
+        }.joined(separator: "\n\n")
         if let error = report.journalError { details.string += "\n\n" + L("저널 오류: ", "Journal error: ") + error }
         cancel.title = L("닫기", "Close"); cancel.isEnabled = true
-    }
-    private func finish(_ error: Error) {
-        running = false; progress.stopAnimation(nil); label.stringValue = L("병합 계획 실패", "Merge planning failed")
-        details.string = error.localizedDescription; cancel.title = L("닫기", "Close"); cancel.isEnabled = true
     }
     @objc private func cancelMerge(_ sender: Any?) {
         if !running { close(); return }

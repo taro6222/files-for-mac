@@ -967,21 +967,21 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
     private func prepareCopy(sources: [URL], destination: URL) {
         guard !Self.entryOperationRunning, !CopyWindow.isRunning, !FolderMergeWindow.isRunning, let window else { return }
         let targetModel = activeModel
-        let mergePair: (URL, URL)? = sources.count == 1 ? folderMergePair(source: sources[0], destination: destination) : nil
+        let canMergeFolders = sources.contains { hasFolderMergeConflict(source: $0, destination: destination) }
         let alert = NSAlert()
         alert.messageText = L("복사 시 이름 충돌 처리", "Copy conflict policy")
         alert.informativeText = L("대상: ", "Destination: ") + destination.path + "\n" +
             L("\(sources.count)개 항목을 복사합니다. 이번 작업에서 이름이 겹치면 적용할 정책을 선택하세요. 기존 항목은 덮어쓰지 않습니다.", "Copy \(sources.count) items. Choose how this job handles conflicting names. Existing items are never overwritten.")
-        if mergePair != nil { alert.addButton(withTitle: L("폴더 병합", "Merge Folders")) }
+        if canMergeFolders { alert.addButton(withTitle: L("폴더 병합", "Merge Folders")) }
         alert.addButton(withTitle: L("양쪽 유지", "Keep Both"))
         alert.addButton(withTitle: L("건너뛰기", "Skip Conflicts"))
         alert.addButton(withTitle: L("취소", "Cancel"))
         alert.beginSheetModal(for: window) { response in
-            if let pair = mergePair, response == .alertFirstButtonReturn {
-                FolderMergeWindow.start(source: pair.0, target: pair.1) { targetModel.reload() }
+            if canMergeFolders, response == .alertFirstButtonReturn {
+                FolderMergeWindow.start(sources: sources, destination: destination) { targetModel.reload() }
                 return
             }
-            let keepResponse: NSApplication.ModalResponse = mergePair == nil ? .alertFirstButtonReturn : .alertSecondButtonReturn
+            let keepResponse: NSApplication.ModalResponse = canMergeFolders ? .alertSecondButtonReturn : .alertFirstButtonReturn
             let skipResponse = NSApplication.ModalResponse(rawValue: keepResponse.rawValue + 1)
             guard response == keepResponse || response == skipResponse else { return }
             CopyWindow.start(sources: sources, destination: destination,
@@ -992,12 +992,12 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
             }
         }
     }
-    private func folderMergePair(source: URL, destination: URL) -> (URL, URL)? {
+    private func hasFolderMergeConflict(source: URL, destination: URL) -> Bool {
         var sourceInfo = stat(), targetInfo = stat()
         let target = destination.appendingPathComponent(source.lastPathComponent)
         guard lstat(source.path, &sourceInfo) == 0, (sourceInfo.st_mode & S_IFMT) == S_IFDIR,
-              lstat(target.path, &targetInfo) == 0, (targetInfo.st_mode & S_IFMT) == S_IFDIR else { return nil }
-        return (source, target)
+              lstat(target.path, &targetInfo) == 0, (targetInfo.st_mode & S_IFMT) == S_IFDIR else { return false }
+        return true
     }
     private func prepareMove(sources: [URL], destination: URL) {
         guard !Self.entryOperationRunning, !MoveWindow.isRunning, let window else { return }
