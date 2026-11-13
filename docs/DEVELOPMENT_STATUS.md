@@ -4,7 +4,7 @@
 
 ## 이번 구현 단위
 
-M5 마흔아홉 번째 개발 단위로 staging publish·중단·완료 탐색을 갖춘 AppKit Git clone UI를 구현했다. M3/M4 실기기·앱 번들 검증은 완료 판정을 막는 별도 항목으로 유지한다.
+M5 쉰 번째 개발 단위로 비동기·stale-safe Git 상태 열을 상세 파일 목록에 구현했다. M3/M4 실기기·앱 번들 검증은 완료 판정을 막는 별도 항목으로 유지한다.
 
 | 영역 | 상태 | 내용 |
 |---|---|---|
@@ -14,7 +14,7 @@ M5 마흔아홉 번째 개발 단위로 staging publish·중단·완료 탐색�
 | 네이티브 앱 | 구현 | AppKit 창·네이티브 탭 그룹·사이드바·홈·상세 목록·경로 |
 | 로컬 I/O | 검증 | 배치 열거·숨김 항목·메타데이터·파일 identity·오류 상태 |
 | 탐색 상태 | 검증 | 히스토리·선택 복원·외부 rename 대응·오래된 비동기 결과 방지 |
-| 파일 목록 | 구현 | 다중 선택·자연 정렬·열 정렬/재배치/크기 저장 |
+| 파일 목록 | 구현 | 다중 선택·자연 정렬·열 정렬/재배치/크기 저장, 상세 보기 Git 상태 열과 하위 변경 집계 |
 | 보기 모드 | 구현 중 | 양쪽 pane 상세·그리드·단일열 목록·계층형 컬럼 및 적응형 정책, 작게/보통/크게 프리셋 저장, 선택 identity·스크롤·세션·파일 작업 보존 |
 | 편의 기능 | 구현 | 경로 추천·확장자 옵션·공유 즐겨찾기 순서·홈 용량·최근 기록 삭제 |
 | 명령 팔레트 | 구현 | 메인 메뉴 자동 인덱싱, 다국어 부분 검색, 문맥별 활성 조건, 단축키 표시, 키보드 실행·취소 |
@@ -32,8 +32,8 @@ M5 마흔아홉 번째 개발 단위로 staging publish·중단·완료 탐색�
 | 압축 | 구현 중 | ZIP/7z 생성·탐색·안전 추출, RAR 탐색·안전 추출, 링크/특수 항목 거부·변경 재검증, staging/publish/rollback, AppKit UI·중단·항목/바이트 진행률 |
 | 클라우드 | 구현 중 | `~/Library/CloudStorage` 공급자 폴더와 iCloud Drive 탐지·사이드바 탐색, ubiquitous resource value 기반 상태 분류, iCloud 지금 다운로드·공간 비우기 메뉴, 일반 File Provider 상태는 unknown·명령 비활성 유지 |
 | 원격 연결 | 구현 중 | FTP/암시적 FTPS·SFTP 원격 pane 탐색·중단·세션·접근성·안전 다운로드, FTPS 인증서·호스트 검증, Keychain 자격 증명 게이트, FTP Unix·Windows/DOS LIST 폴더 metadata와 미지원 형식 차단, unsafe rename 업로드 차단 |
-| Git | 구현 중 | 상태 패널과 clone UI, HTTPS/SSH/file 입력, sibling staging publish, 완료 후 새 탐색 창, fetch/FF-only pull/push/중단 |
-| 테스트 | 통과 | 153개 Swift Testing, Git 취소·bare remote·divergence, UI 4조합 실제 local clone·Git 패널·메뉴·접근성, localhost FTP·FTPS·OpenSSH 수용 |
+| Git | 구현 중 | 상태 패널과 clone UI, HTTPS/SSH/file 입력, sibling staging publish, 완료 후 새 탐색 창, fetch/FF-only pull/push/중단, 상세 목록 XY 상태·폴더 하위 변경 표시, 탐색 중 stale 결과 폐기·선택 보존 |
+| 테스트 | 통과 | 153개 Swift Testing, Git 취소·bare remote·divergence, UI 4조합 실제 local clone·Git 패널·메뉴·접근성·결정적 미추적 파일 상태 열, localhost FTP·FTPS·OpenSSH 수용 |
 | 파일 복사 | 구현 | 대상 폴더 선택·클립보드·양쪽 유지/건너뛰기·내용 검증·취소·항목별 결과·JSON 저널·안전 실행 취소, 다중 선택 폴더 병합·통합 Undo |
 | 느린 폴더 복구 | 구현 | 읽기 중단·늦은 결과 차단·불완전 목록 안내·명시적 재시도 |
 | 접근 복구 | 부분 검증 | 오류 화면 재시도·폴더 선택, 시스템 선택 후 Desktop fixture 읽기 성공; 재실행 읽기 확인; 감시는 연결 대기 |
@@ -48,7 +48,7 @@ M5 마흔아홉 번째 개발 단위로 staging publish·중단·완료 탐색�
 | 이동 | 구현 중 | 동일/교차 볼륨 이동, 검증·교체 백업·안전 실행 취소, 사용자 취소, 단계별 상태와 진행 막대; APFS/APFSX/exFAT 통과 |
 | 영구 삭제 | 구현 중 | 선택 항목 영구 삭제(복구 불가 경고), 항목별 상태 보고, 작업 창, 저널 파일 |
 
-다음 구현은 M5 파일 목록 Git 상태 표시다. 공개 FTPS, SMB·Keychain·클라우드 실환경 검증은 후속 게이트로 유지한다.
+다음 구현은 M5 Git 지원 경계와 인증 remote 실환경 게이트를 정리하고 M5 종료 감사를 수행하는 것이다. 현재 Git 상태 열은 상세 보기에 한정하며 가시 행 우선 조회 최적화, 인증 HTTPS/SSH, submodule·LFS·hook은 남아 있다. 공개 FTPS, SMB·Keychain·클라우드 실환경 검증도 후속 게이트로 유지한다.
 
 ## M1 별도 검증 목록
 
@@ -75,4 +75,4 @@ M3 검증: [보기 모드 상태와 세션 호환성](verification/m3/INCREMENT_
 M4 검증: [로컬 파일명 검색 코어](verification/m4/INCREMENT_01.md), [검색 상태와 취소](verification/m4/INCREMENT_02.md), [네이티브 검색 패널](verification/m4/INCREMENT_03.md), [파일 속성과 SHA-256](verification/m4/INCREMENT_04.md), [네이티브 정보 패널](verification/m4/INCREMENT_05.md), [Quick Look](verification/m4/INCREMENT_06.md), [Finder 태그 코어](verification/m4/INCREMENT_07.md), [Finder 태그 편집 UI](verification/m4/INCREMENT_08.md), [검색 메타데이터 필터](verification/m4/INCREMENT_09.md), [검색 고급 필터 UI](verification/m4/INCREMENT_10.md), [Spotlight 콘텐츠 검색](verification/m4/INCREMENT_11.md), [장착 볼륨 capability](verification/m4/INCREMENT_12.md), [안전 추출과 Disk Utility](verification/m4/INCREMENT_13.md), [시스템 열기 명령](verification/m4/INCREMENT_14.md), [실제 볼륨 탐지 매트릭스](verification/m4/INCREMENT_15.md), [검색 크기 단위](verification/m4/INCREMENT_16.md), [실제 Spotlight 콘텐츠 hit](verification/m4/INCREMENT_17.md).
 
 M5 검증: [압축 추출 보안 validator](verification/m5/INCREMENT_01.md), [libarchive ZIP 안전 추출](verification/m5/INCREMENT_02.md), [ZIP 안전 생성](verification/m5/INCREMENT_03.md), [ZIP 탐색·추출 UI](verification/m5/INCREMENT_04.md), [ZIP 생성 UI](verification/m5/INCREMENT_05.md), [압축 정량 진행률](verification/m5/INCREMENT_06.md), [포맷 capability·오류 안내](verification/m5/INCREMENT_07.md), [7z/RAR 탐색·안전 추출](verification/m5/INCREMENT_08.md), [7z 안전 생성](verification/m5/INCREMENT_09.md), [압축 worker 취소 수용](verification/m5/INCREMENT_10.md).
-[클라우드 위치·상태 탐지](verification/m5/INCREMENT_11.md), [iCloud 다운로드·공간 비우기 명령](verification/m5/INCREMENT_12.md), [원격 연결 프로필 기반](verification/m5/INCREMENT_13.md), [원격 프로필 저장·Keychain](verification/m5/INCREMENT_14.md), [원격 연결 관리 UI](verification/m5/INCREMENT_15.md), [SMB 표준 연결 adapter](verification/m5/INCREMENT_16.md), [원격 backend·보안 명령 계획](verification/m5/INCREMENT_17.md), [원격 subprocess 실행·취소](verification/m5/INCREMENT_18.md), [FTP/FTPS 목록 provider](verification/m5/INCREMENT_19.md), [FTP/FTPS 안전 다운로드](verification/m5/INCREMENT_20.md), [FTP/FTPS staging 업로드](verification/m5/INCREMENT_21.md), [localhost FTP 실제 수용 검증](verification/m5/INCREMENT_22.md), [FTP rename capability probe](verification/m5/INCREMENT_23.md), [SFTP strict trust 명령 계약](verification/m5/INCREMENT_24.md), [SFTP private config executor](verification/m5/INCREMENT_25.md), [SFTP host fingerprint 저장소](verification/m5/INCREMENT_26.md), [SFTP host key 승인 UI](verification/m5/INCREMENT_27.md), [SFTP 개인키 bookmark UI](verification/m5/INCREMENT_28.md), [SFTP 목록 연결 UI](verification/m5/INCREMENT_29.md), [SFTP 안전 staging 전송](verification/m5/INCREMENT_30.md), [localhost OpenSSH SFTP 수용 검증](verification/m5/INCREMENT_31.md), [SFTP 다운로드 작업 UI](verification/m5/INCREMENT_32.md), [SFTP host-key mismatch 수용](verification/m5/INCREMENT_33.md), [SFTP 대용량 취소 수용](verification/m5/INCREMENT_34.md), [원격 탐색 상태 모델](verification/m5/INCREMENT_35.md), [AppKit 원격 탐색 pane](verification/m5/INCREMENT_36.md), [원격 pane UI 수용](verification/m5/INCREMENT_37.md), [원격 pane 세션 보존](verification/m5/INCREMENT_38.md), [원격 pane 키보드·접근성](verification/m5/INCREMENT_39.md), [FTP LIST 폴더 metadata](verification/m5/INCREMENT_40.md), [FTP/FTPS 원격 pane 연결](verification/m5/INCREMENT_41.md), [FTPS TLS 실제 수용](verification/m5/INCREMENT_42.md), [FTP DOS LIST·미지원 형식 차단](verification/m5/INCREMENT_43.md), [Git 상태·브랜치 기반](verification/m5/INCREMENT_44.md), [Git bare remote 안전 작업](verification/m5/INCREMENT_45.md), [Git divergence 보존](verification/m5/INCREMENT_46.md), [Git 취소·staging 정리](verification/m5/INCREMENT_47.md), [AppKit Git 상태 패널](verification/m5/INCREMENT_48.md), [AppKit Git clone UI](verification/m5/INCREMENT_49.md).
+[클라우드 위치·상태 탐지](verification/m5/INCREMENT_11.md), [iCloud 다운로드·공간 비우기 명령](verification/m5/INCREMENT_12.md), [원격 연결 프로필 기반](verification/m5/INCREMENT_13.md), [원격 프로필 저장·Keychain](verification/m5/INCREMENT_14.md), [원격 연결 관리 UI](verification/m5/INCREMENT_15.md), [SMB 표준 연결 adapter](verification/m5/INCREMENT_16.md), [원격 backend·보안 명령 계획](verification/m5/INCREMENT_17.md), [원격 subprocess 실행·취소](verification/m5/INCREMENT_18.md), [FTP/FTPS 목록 provider](verification/m5/INCREMENT_19.md), [FTP/FTPS 안전 다운로드](verification/m5/INCREMENT_20.md), [FTP/FTPS staging 업로드](verification/m5/INCREMENT_21.md), [localhost FTP 실제 수용 검증](verification/m5/INCREMENT_22.md), [FTP rename capability probe](verification/m5/INCREMENT_23.md), [SFTP strict trust 명령 계약](verification/m5/INCREMENT_24.md), [SFTP private config executor](verification/m5/INCREMENT_25.md), [SFTP host fingerprint 저장소](verification/m5/INCREMENT_26.md), [SFTP host key 승인 UI](verification/m5/INCREMENT_27.md), [SFTP 개인키 bookmark UI](verification/m5/INCREMENT_28.md), [SFTP 목록 연결 UI](verification/m5/INCREMENT_29.md), [SFTP 안전 staging 전송](verification/m5/INCREMENT_30.md), [localhost OpenSSH SFTP 수용 검증](verification/m5/INCREMENT_31.md), [SFTP 다운로드 작업 UI](verification/m5/INCREMENT_32.md), [SFTP host-key mismatch 수용](verification/m5/INCREMENT_33.md), [SFTP 대용량 취소 수용](verification/m5/INCREMENT_34.md), [원격 탐색 상태 모델](verification/m5/INCREMENT_35.md), [AppKit 원격 탐색 pane](verification/m5/INCREMENT_36.md), [원격 pane UI 수용](verification/m5/INCREMENT_37.md), [원격 pane 세션 보존](verification/m5/INCREMENT_38.md), [원격 pane 키보드·접근성](verification/m5/INCREMENT_39.md), [FTP LIST 폴더 metadata](verification/m5/INCREMENT_40.md), [FTP/FTPS 원격 pane 연결](verification/m5/INCREMENT_41.md), [FTPS TLS 실제 수용](verification/m5/INCREMENT_42.md), [FTP DOS LIST·미지원 형식 차단](verification/m5/INCREMENT_43.md), [Git 상태·브랜치 기반](verification/m5/INCREMENT_44.md), [Git bare remote 안전 작업](verification/m5/INCREMENT_45.md), [Git divergence 보존](verification/m5/INCREMENT_46.md), [Git 취소·staging 정리](verification/m5/INCREMENT_47.md), [AppKit Git 상태 패널](verification/m5/INCREMENT_48.md), [AppKit Git clone UI](verification/m5/INCREMENT_49.md), [상세 목록 Git 상태 열](verification/m5/INCREMENT_50.md).

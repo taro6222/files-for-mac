@@ -79,6 +79,12 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
     private var volumeTask: Task<Void, Never>?
     private var cloudLocations: [CloudLocation] = []
     private var cloudTask: Task<Void, Never>?
+    private var gitTask: Task<Void, Never>?
+    private var gitGeneration = 0
+    private var gitLocation: URL?
+    private var gitStatuses: [String: String] = [:]
+    private var gitChangedPaths: [String] = []
+    private var gitObservedLoading = false
     private let cloudProvider: CloudLocationProvider
     static private(set) var entryOperationRunning = false
     private static var operationJournalDirectory: URL {
@@ -162,7 +168,7 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
                 if let watcher = self.watcher { Task.detached { watcher.stop() } }
                 self.watcher = nil
                 self.model.onChange = nil; self.model.cancelLoad()
-                self.completionTask?.cancel(); self.volumeTask?.cancel(); self.cloudTask?.cancel()
+                self.completionTask?.cancel(); self.volumeTask?.cancel(); self.cloudTask?.cancel(); self.gitTask?.cancel()
                 self.secondaryPane?.shutdown()
                 if let token = self.preferencesToken { self.preferences.removeObserver(token) }
                 for token in self.observerTokens {
@@ -324,11 +330,11 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         table.setDraggingSourceOperationMask([.copy, .move], forLocal: true)
         table.setDraggingSourceOperationMask(.copy, forLocal: false)
         table.setAccessibilityLabel(L("파일 목록", "File list"))
-        let specs: [(String, String, CGFloat)] = [("name", L("이름", "Name"), 380), ("modified", L("수정일", "Date Modified"), 185), ("kind", L("종류", "Kind"), 140), ("size", L("크기", "Size"), 100)]
+        let specs: [(String, String, CGFloat)] = [("name", L("이름", "Name"), 340), ("git", "Git", 72), ("modified", L("수정일", "Date Modified"), 185), ("kind", L("종류", "Kind"), 140), ("size", L("크기", "Size"), 100)]
         for (key, label, width) in specs {
             let column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier(key))
             column.title = label; column.width = width; column.minWidth = 70
-            column.sortDescriptorPrototype = NSSortDescriptor(key: key, ascending: true)
+            if key != "git" { column.sortDescriptorPrototype = NSSortDescriptor(key: key, ascending: true) }
             table.addTableColumn(column)
         }
         table.sortDescriptors = [NSSortDescriptor(key: "name", ascending: true)]
@@ -607,6 +613,13 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         model.setViewMode(folder.mode)
     }
     private func render() {
+        let gitLoadCompleted = gitObservedLoading && !model.isLoading
+        gitObservedLoading = model.isLoading
+        if model.location == nil {
+            gitTask?.cancel(); gitTask = nil; gitGeneration += 1; gitLocation = nil; gitStatuses = [:]; gitChangedPaths = []
+        } else if !model.isLoading, let location = model.location, gitLocation != location || gitLoadCompleted {
+            refreshGitStatuses(for: location)
+        }
         rendering = true; defer {
             rendering = false
             updateWatcher()
@@ -723,6 +736,7 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
             let cacheKey = item.isDirectory ? (item.isPackage ? item.url.path : "folder") : item.url.pathExtension
             if iconCache[cacheKey] == nil { iconCache[cacheKey] = NSWorkspace.shared.icon(forFile: item.url.path) }
             cell.imageView?.image = iconCache[cacheKey]
+        case "git": cell.textField?.stringValue = gitStatus(for: item)
         case "modified": cell.textField?.stringValue = item.modified.map(dateFormatter.string) ?? "—"
         case "kind": cell.textField?.stringValue = item.kind == "Folder" ? L("폴더", "Folder") : (item.kind == "File" ? L("파일", "File") : item.kind)
         case "size": cell.textField?.stringValue = item.isDirectory ? "—" : item.size.map { ByteCountFormatter.string(fromByteCount: $0, countStyle: .file) } ?? "—"
@@ -730,6 +744,45 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         }
         cell.textField?.textColor = item.isHidden ? .secondaryLabelColor : .labelColor
         return cell
+    }
+    private func refreshGitStatuses(for location: URL) {
+        gitTask?.cancel(); gitGeneration += 1; let request = gitGeneration
+        gitLocation = location; gitStatuses = [:]; gitChangedPaths = []; reloadGitColumn()
+        gitTask = Task { [weak self] in
+            guard let self else { return }
+            defer { if request == gitGeneration { gitTask = nil } }
+            do {
+                let snapshot = try await GitProvider().snapshot(at: location)
+                guard !Task.isCancelled, request == gitGeneration, model.location == location else { return }
+                var statuses: [String: String] = [:], changed: [String] = []
+                for entry in snapshot.entries {
+                    let path = snapshot.root.appendingPathComponent(entry.path).standardizedFileURL.path
+                    statuses[path] = "\(entry.indexStatus)\(entry.workTreeStatus)"; changed.append(path)
+                }
+                gitStatuses = statuses; gitChangedPaths = changed.sorted(); reloadGitColumn()
+            } catch is CancellationError { return }
+            catch {
+                guard request == gitGeneration, model.location == location else { return }
+                gitStatuses = [:]; gitChangedPaths = []; reloadGitColumn()
+            }
+        }
+    }
+    private func reloadGitColumn() {
+        let wasRendering = rendering
+        rendering = true
+        table.reloadData()
+        let selected = IndexSet(model.items.indices.filter { model.history.current.selection.contains(model.items[$0].id) })
+        table.selectRowIndexes(selected, byExtendingSelection: false)
+        rendering = wasRendering
+    }
+    private func gitStatus(for item: FileItem) -> String {
+        let path = item.url.standardizedFileURL.path
+        if let exact = gitStatuses[path] { return exact }
+        if item.isDirectory {
+            let prefix = path.hasSuffix("/") ? path : path + "/"
+            if gitChangedPaths.contains(where: { $0.hasPrefix(prefix) }) { return "••" }
+        }
+        return ""
     }
     private func makeCell(_ id: NSUserInterfaceItemIdentifier, icon: Bool) -> NSTableCellView {
         let cell = NSTableCellView(); cell.identifier = id
@@ -1746,6 +1799,11 @@ private struct DelayedUIListLoader: DirectoryLoading {
 
 /// Runs against generated fixtures only; release builds contain no QA entry point.
 extension BrowserWindow {
+#if DEBUG
+    var qaGitLoading: Bool { gitTask != nil }
+    var qaGitMarkedRows: Int { model.items.filter { !gitStatus(for: $0).isEmpty }.count }
+    var qaGitColumnVisible: Bool { table.tableColumns.contains { $0.identifier.rawValue == "git" } }
+#endif
     static func runUIVerification(output: String) async {
         let fm = FileManager.default
         let destination = URL(fileURLWithPath: output, isDirectory: true)
@@ -1868,6 +1926,13 @@ extension BrowserWindow {
                 checks["gitCloneAccessibility"] = clonePanel.qaAccessibilityReady
                 checks["gitCloneMenuCommand"] = paletteEntries.contains { $0.item.action == #selector(AppDelegate.showGitClone(_:)) }
                 try capture("git-clone", view: clonePanel.window?.contentView); clonePanel.close(); window.makeKeyAndOrderFront(nil)
+                let qaGitFile = cloneDestination.appendingPathComponent("qa-untracked.txt")
+                try Data("Git column QA".utf8).write(to: qaGitFile, options: .atomic)
+                let gitList = BrowserWindow(preferences: preferences, restoresFrame: false, initialLocation: cloneDestination, cloudProvider: qaCloudProvider)
+                gitList.showWindow(nil); let gitListWait = ContinuousClock.now
+                while (gitList.model.isLoading || gitList.qaGitLoading) && gitListWait.duration(to: .now) < .seconds(15) { try await Task.sleep(for: .milliseconds(20)) }
+                checks["gitFileColumn"] = gitList.qaGitColumnVisible && gitList.qaGitMarkedRows > 0
+                try capture("git-file-column", view: gitList.window?.contentView); gitList.close(); window.makeKeyAndOrderFront(nil)
             } else { checks["shortcutSettingsWindow"] = false }
             controller.showToolbarSettings(nil); try await Task.sleep(for: .milliseconds(50))
             checks["toolbarSettingsWindow"] = controller.toolbarSettingsWindow?.window?.isVisible == true
