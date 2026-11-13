@@ -1806,6 +1806,15 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
             catch { showEntryError(L("개발 앱에서 열지 못했습니다: ", "Could not open in developer application: ") + error.localizedDescription) }
         }
     }
+    @objc func editInTextEdit(_ sender: Any?) {
+        let application = URL(fileURLWithPath: "/System/Applications/TextEdit.app")
+        let urls = activeSelectedItems.filter { !$0.isBrowsable }.map(\.url)
+        guard !urls.isEmpty, FileManager.default.fileExists(atPath: application.path) else { return }
+        Task { @MainActor in
+            do { try await NSWorkspace.shared.open(urls, withApplicationAt: application, configuration: .init()) }
+            catch { showEntryError(L("TextEdit에서 열지 못했습니다: ", "Could not open in TextEdit: ") + error.localizedDescription) }
+        }
+    }
     private func updateWatcher(force: Bool = false) {
         guard force || watchedURL != model.location else { return }
         watcherTask?.cancel()
@@ -2271,6 +2280,7 @@ extension BrowserWindow {
         case #selector(evictCloudSelection(_:)): return activeSelectedItems.count == 1 && activeSelectedItems.first.map { cloudProvider.capabilities(for: $0.url).evictLocalCopy } == true
         case #selector(revealSelection(_:)), #selector(shareSelection(_:)), #selector(openWithApplication(_:)): return !activeSelectedItems.isEmpty && activeModel.location != nil
         case #selector(openInDeveloperApplication(_:)): return activeModel.location != nil && preferences.developerApplicationPath != nil
+        case #selector(editInTextEdit(_:)): return !activeSelectedItems.isEmpty && activeSelectedItems.allSatisfy { !$0.isBrowsable }
         case #selector(openInTerminal(_:)): return activeModel.location != nil
         default: return true
         }
@@ -2444,6 +2454,9 @@ extension BrowserWindow {
                 #selector(AppDelegate.closeSelectedTab(_:)), #selector(AppDelegate.closeAllTabs(_:)),
                 #selector(AppDelegate.closeOtherTabs(_:)), #selector(AppDelegate.closeTabsToLeft(_:)),
                 #selector(AppDelegate.closeTabsToRight(_:))].allSatisfy { action in paletteEntries.contains { $0.item.action == action } }
+            checks["diagnosticAndHelpCommands"] = [#selector(AppDelegate.openHelp(_:)), #selector(AppDelegate.openLogFile(_:)),
+                #selector(AppDelegate.openLogFileLocation(_:)), #selector(AppDelegate.openSettingsFile(_:)),
+                #selector(AppDelegate.openRepositoryInIDE(_:)), #selector(editInTextEdit(_:))].allSatisfy { action in paletteEntries.contains { $0.item.action == action } }
             checks["archivePlacementCommands"] = [#selector(extractArchivesHere(_:)), #selector(extractArchivesSmart(_:)), #selector(extractArchivesToChildFolders(_:))].allSatisfy { action in
                 paletteEntries.contains { $0.item.action == action }
             }

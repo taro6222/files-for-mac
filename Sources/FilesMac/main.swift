@@ -21,7 +21,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     private var advancedSettingsWindow: AdvancedSettingsWindow?
     private var generalSettingsWindow: GeneralSettingsWindow?
     private var preferencesToken: UUID?
+    private let diagnosticArtifacts = DiagnosticArtifacts()
     func applicationDidFinishLaunching(_ notification: Notification) {
+        _ = try? diagnosticArtifacts.append(event: "application launched")
         applyAppearance()
         preferencesToken = BrowserPreferences.shared.observe { [weak self] in self?.applyAppearance() }
         buildMenu()
@@ -173,6 +175,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         if gitCloneWindow == nil { gitCloneWindow = GitCloneWindow { [weak self] location in self?.makeBrowser(location: location) } }
         gitCloneWindow?.present()
     }
+    @objc func openHelp(_ sender: Any?) {
+        if let url = URL(string: "https://github.com/taro6222/files-for-mac") { NSWorkspace.shared.open(url) }
+    }
+    @objc func openLogFile(_ sender: Any?) {
+        do { NSWorkspace.shared.open(try diagnosticArtifacts.append(event: "log opened")) }
+        catch { NSSound.beep() }
+    }
+    @objc func openLogFileLocation(_ sender: Any?) {
+        do { NSWorkspace.shared.activateFileViewerSelecting([try diagnosticArtifacts.append(event: "log location revealed")]) }
+        catch { NSSound.beep() }
+    }
+    @objc func openSettingsFile(_ sender: Any?) {
+        do { NSWorkspace.shared.open(try diagnosticArtifacts.writeSettingsSnapshot(BrowserPreferences.shared.exportData())) }
+        catch { NSSound.beep() }
+    }
+    @objc func openRepositoryInIDE(_ sender: Any?) { currentBrowser?.openInDeveloperApplication(sender) }
     private func applyAppearance() { NSApp.appearance = BrowserWindow.appearance(BrowserPreferences.shared.appearance) }
     private func configureShortcuts() {
         let entries = CommandPaletteCatalog.entries(from: NSApp.mainMenu)
@@ -188,6 +206,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         if menuItem.action == #selector(reopenClosedTab(_:)) { return !closedWorkspaces.isEmpty }
         if menuItem.action == #selector(duplicateTab(_:)) { return currentBrowser != nil }
         if menuItem.action == #selector(showGitStatus(_:)) { return currentBrowser?.activeLocation != nil }
+        if menuItem.action == #selector(openRepositoryInIDE(_:)) { return currentBrowser?.activeLocation != nil && BrowserPreferences.shared.developerApplicationPath != nil }
         if menuItem.action == #selector(nextTab(_:)) || menuItem.action == #selector(previousTab(_:)) { return currentTabGroup.count > 1 }
         if menuItem.action == #selector(closeSelectedTab(_:)) || menuItem.action == #selector(closeAllTabs(_:)) { return currentBrowser != nil }
         if menuItem.action == #selector(closeOtherTabs(_:)) { return currentTabGroup.count > 1 }
@@ -238,6 +257,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         gitStatus.target = self
         let gitClone = appMenu.addItem(withTitle: L("Git 저장소 복제…", "Clone Git Repository…"), action: #selector(showGitClone(_:)), keyEquivalent: "")
         gitClone.target = self
+        let openLog = appMenu.addItem(withTitle: L("진단 로그 열기", "Open Diagnostic Log"), action: #selector(openLogFile(_:)), keyEquivalent: ""); openLog.target = self
+        let revealLog = appMenu.addItem(withTitle: L("진단 로그 위치 보기", "Reveal Diagnostic Log"), action: #selector(openLogFileLocation(_:)), keyEquivalent: ""); revealLog.target = self
+        let openSettings = appMenu.addItem(withTitle: L("설정 스냅샷 열기", "Open Settings Snapshot"), action: #selector(openSettingsFile(_:)), keyEquivalent: ""); openSettings.target = self
+        let repoIDE = appMenu.addItem(withTitle: L("현재 저장소를 개발 앱에서 열기", "Open Current Repository in Developer Application"), action: #selector(openRepositoryInIDE(_:)), keyEquivalent: ""); repoIDE.target = self
+        let help = appMenu.addItem(withTitle: L("온라인 도움말", "Online Help"), action: #selector(openHelp(_:)), keyEquivalent: "?"); help.target = self
         appMenu.addItem(.separator())
         appMenu.addItem(withTitle: L("Files macOS 종료", "Quit Files macOS"), action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         let fileItem = NSMenuItem(); fileItem.title = L("파일", "File"); menu.addItem(fileItem)
@@ -282,6 +306,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         file.addItem(withTitle: L("Finder에서 보기", "Reveal in Finder"), action: #selector(BrowserWindow.revealSelection(_:)), keyEquivalent: "")
         file.addItem(withTitle: L("다른 앱으로 열기…", "Open With…"), action: #selector(BrowserWindow.openWithApplication(_:)), keyEquivalent: "")
         file.addItem(withTitle: L("개발 앱에서 열기", "Open in Developer Application"), action: #selector(BrowserWindow.openInDeveloperApplication(_:)), keyEquivalent: "")
+        file.addItem(withTitle: L("TextEdit에서 편집", "Edit in TextEdit"), action: #selector(BrowserWindow.editInTextEdit(_:)), keyEquivalent: "")
         file.addItem(withTitle: L("공유…", "Share…"), action: #selector(BrowserWindow.shareSelection(_:)), keyEquivalent: "")
         file.addItem(withTitle: L("터미널에서 열기", "Open in Terminal"), action: #selector(BrowserWindow.openInTerminal(_:)), keyEquivalent: "")
         file.addItem(withTitle: L("정보 가져오기", "Get Info"), action: #selector(BrowserWindow.showInfo(_:)), keyEquivalent: "i")

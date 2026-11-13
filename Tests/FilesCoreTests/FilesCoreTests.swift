@@ -989,3 +989,17 @@ private struct ChunkedLoader: DirectoryStreaming {
     try FileManager.default.createDirectory(at: nested, withIntermediateDirectories: true)
     #expect(!DirectoryWatcher.affectsDirectory(eventPath: nested.appendingPathComponent("file.txt").path, watchedPath: watched))
 }
+@Test func diagnosticArtifactsUsePrivateDeterministicFiles() throws {
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+    defer { try? FileManager.default.removeItem(at: root) }
+    let artifacts = DiagnosticArtifacts(root: root)
+    let fixed = Date(timeIntervalSince1970: 0)
+    try artifacts.append(event: "first\nline", at: fixed)
+    try artifacts.append(event: "second", at: fixed)
+    let log = try String(contentsOf: artifacts.logFile, encoding: .utf8)
+    #expect(log == "1970-01-01T00:00:00Z first line\n1970-01-01T00:00:00Z second\n")
+    try artifacts.writeSettingsSnapshot(Data("{\"ok\":true}".utf8))
+    #expect(try Data(contentsOf: artifacts.settingsSnapshot) == Data("{\"ok\":true}".utf8))
+    let permissions = try FileManager.default.attributesOfItem(atPath: artifacts.logFile.path)[.posixPermissions] as? NSNumber
+    #expect(permissions?.intValue == 0o600)
+}
