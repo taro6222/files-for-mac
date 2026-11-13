@@ -97,5 +97,6 @@ final class ArchiveWindow: NSWindowController, NSTableViewDataSource, NSTableVie
     func qaExtract(to destination: URL) { extract(to: destination) }
     var qaIsRunning: Bool { cancelButton.isEnabled }
     var qaSucceeded: Bool { status.stringValue.contains(L("추출했습니다", "Extracted")) }
+    func qaCancel() { cancel(nil) }
 #endif
 }

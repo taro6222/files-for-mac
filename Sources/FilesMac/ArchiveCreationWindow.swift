@@ -70,5 +70,6 @@ final class ArchiveCreationWindow: NSWindowController, NSWindowDelegate {
     static var qaLatest: ArchiveCreationWindow? { operations.last }
     var qaRunning: Bool { running }
     var qaSucceeded: Bool { succeeded }
+    func qaCancel() { cancel(nil) }
 #endif
 }

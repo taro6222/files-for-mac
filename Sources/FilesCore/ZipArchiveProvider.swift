@@ -42,6 +42,7 @@ public struct ZipArchiveProvider: Sendable {
         try withReader(archiveURL) { reader in
             var result: [ArchiveEntryDescriptor] = [], entry: OpaquePointer?
             while true {
+                try Task<Never, Never>.checkCancellation()
                 let status = archive_read_next_header(reader, &entry)
                 if status == FILES_ARCHIVE_EOF { break }
                 guard status == FILES_ARCHIVE_OK, let entry else { throw ZipArchiveError.readFailed(errorText(reader)) }
@@ -53,11 +54,13 @@ public struct ZipArchiveProvider: Sendable {
     }
 
     public func extract(_ archiveURL: URL, to destination: URL, limits: ArchiveExtractionLimits = .init(), progress: ArchiveProgressHandler? = nil) async throws -> ArchiveExtractionReport {
-        try await Task.detached(priority: .userInitiated) { try extractSynchronously(archiveURL, to: destination, limits: limits, progress: progress) }.value
+        let worker = Task.detached(priority: .userInitiated) { try extractSynchronously(archiveURL, to: destination, limits: limits, progress: progress) }
+        return try await withTaskCancellationHandler(operation: { try await worker.value }, onCancel: { worker.cancel() })
     }
 
     public func create(from sources: [URL], at archiveURL: URL, progress: ArchiveProgressHandler? = nil) async throws -> URL {
-        try await Task.detached(priority: .userInitiated) { try createSynchronously(from: sources, at: archiveURL, progress: progress) }.value
+        let worker = Task.detached(priority: .userInitiated) { try createSynchronously(from: sources, at: archiveURL, progress: progress) }
+        return try await withTaskCancellationHandler(operation: { try await worker.value }, onCancel: { worker.cancel() })
     }
 }
 

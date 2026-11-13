@@ -1936,6 +1936,16 @@ extension BrowserWindow {
             let createdSevenZipEntries = try ZipArchiveProvider().entries(at: createdSevenZip)
             checks["sevenZipCreation"] = ArchiveCreationWindow.qaLatest?.qaSucceeded == true && createdSevenZipEntries.count == 1
             ArchiveCreationWindow.qaLatest?.close(); window.makeKeyAndOrderFront(nil)
+            let cancellationSource = destination.appendingPathComponent("archive-cancel-source.bin")
+            try Data(repeating: 0x5a, count: 16 * 1024 * 1024).write(to: cancellationSource)
+            let cancelledArchive = destination.appendingPathComponent("cancelled-by-ui.7z"); try? fm.removeItem(at: cancelledArchive)
+            ArchiveCreationWindow.start(sources: [cancellationSource], destination: cancelledArchive) {}
+            ArchiveCreationWindow.qaLatest?.qaCancel()
+            let cancellationWait = ContinuousClock.now
+            while ArchiveCreationWindow.qaLatest?.qaRunning == true && cancellationWait.duration(to: .now) < .seconds(2) { try await Task.sleep(for: .milliseconds(10)) }
+            let cancellationDirectoryNames = try fm.contentsOfDirectory(atPath: destination.path)
+            checks["archiveCreationCancellation"] = ArchiveCreationWindow.qaLatest?.qaRunning == false && !fm.fileExists(atPath: cancelledArchive.path) && cancellationDirectoryNames.allSatisfy { !$0.hasPrefix(".files-create-") }
+            ArchiveCreationWindow.qaLatest?.close(); try? fm.removeItem(at: cancellationSource); window.makeKeyAndOrderFront(nil)
             try await Task.sleep(for: .milliseconds(300))
             let metadataRefresh = ContinuousClock.now
             while controller.model.isLoading && metadataRefresh.duration(to: .now) < .seconds(10) { try await Task.sleep(for: .milliseconds(10)) }

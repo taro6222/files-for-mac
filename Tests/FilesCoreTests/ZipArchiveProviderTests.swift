@@ -142,3 +142,38 @@ private func makeZip(source: URL, archive: URL) throws {
     #expect(try String(contentsOf: destination.appendingPathComponent(payload.path), encoding: .utf8) == "seven zip payload")
     #expect((try fm.contentsOfDirectory(atPath: root.path)).allSatisfy { !$0.hasPrefix(".files-create-") })
 }
+
+@Test func archiveCancellationPropagatesToWorkersAndRemovesStagingOutputs() async throws {
+    let fm = FileManager.default, root = fm.temporaryDirectory.appendingPathComponent("archive-cancel-\(UUID())", isDirectory: true)
+    defer { try? fm.removeItem(at: root) }
+    let source = root.appendingPathComponent("large.bin"), archive = root.appendingPathComponent("large.7z")
+    let destination = root.appendingPathComponent("destination", isDirectory: true)
+    try fm.createDirectory(at: root, withIntermediateDirectories: true); try fm.createDirectory(at: destination, withIntermediateDirectories: true)
+    try Data(repeating: 0x5a, count: 16 * 1024 * 1024).write(to: source)
+    let provider = ZipArchiveProvider(), createProgress = ProgressRecorder()
+    let createTask = Task {
+        try await provider.create(from: [source], at: archive) { update in
+            createProgress.append(update)
+            if update.completedBytes > 0 { Thread.sleep(forTimeInterval: 0.05) }
+        }
+    }
+    while createProgress.snapshot.last?.completedBytes ?? 0 == 0 { try await Task.sleep(for: .milliseconds(1)) }
+    let createCancelStart = ContinuousClock.now; createTask.cancel()
+    await #expect(throws: CancellationError.self) { try await createTask.value }
+    #expect(createCancelStart.duration(to: .now) < .seconds(1)); #expect(!fm.fileExists(atPath: archive.path))
+    #expect((try fm.contentsOfDirectory(atPath: root.path)).allSatisfy { !$0.hasPrefix(".files-create-") })
+
+    _ = try await provider.create(from: [source], at: archive)
+    let extractProgress = ProgressRecorder()
+    let extractTask = Task {
+        try await provider.extract(archive, to: destination) { update in
+            extractProgress.append(update)
+            if update.completedBytes > 0 { Thread.sleep(forTimeInterval: 0.05) }
+        }
+    }
+    while extractProgress.snapshot.last?.completedBytes ?? 0 == 0 { try await Task.sleep(for: .milliseconds(1)) }
+    let extractCancelStart = ContinuousClock.now; extractTask.cancel()
+    await #expect(throws: CancellationError.self) { try await extractTask.value }
+    #expect(extractCancelStart.duration(to: .now) < .seconds(1)); #expect(try fm.contentsOfDirectory(atPath: destination.path).isEmpty)
+    #expect((try fm.contentsOfDirectory(atPath: destination.path)).allSatisfy { !$0.hasPrefix(".files-extract-") })
+}
