@@ -4,7 +4,7 @@
 
 ## 이번 구현 단위
 
-M3 네 번째 개발 단위로 보조 pane에도 실제 AppKit 그리드 렌더러를 연결하고 렌더링 중 선택 소실 경쟁을 수정했다. M3는 진행 중이며 실제 SMB 공유가 없는 M2 환경 검증과 M0/M1 미검증 항목은 별도 유지한다.
+M3 다섯 번째 개발 단위로 양쪽 pane 그리드에 컨텍스트 명령과 Finder/다른 pane 드래그 앤 드롭을 연결했다. M3는 진행 중이며 실제 SMB 공유가 없는 M2 환경 검증과 M0/M1 미검증 항목은 별도 유지한다.
 
 | 영역 | 상태 | 내용 |
 |---|---|---|
@@ -26,13 +26,13 @@ M3 네 번째 개발 단위로 보조 pane에도 실제 AppKit 그리드 렌더�
 | 생성·이름 변경 | 구현 | 새 폴더, 선택 항목으로 새 폴더, 단일 이름 검증, 배치 패턴·미리보기·충돌 검사·순환 교환·결과 창 |
 | 탭 탐색 | 구현 중 | 네이티브 탭 생성·복제·순서 변경/분리 기반, 탭별 히스토리·선택·스크롤·정렬·숨김 설정, 닫은 탭 및 재실행 복원 |
 | 분할 보기 | 구현 중 | 실제 두 목록, pane별 탐색·파일 작업·FSEvents 감시·숨김·정렬, 분할 축·비율·활성 pane·두 상태 복원 |
-| 드래그 앤 드롭 | 구현 중 | 양쪽 pane 파일 URL 송수신, 폴더/현재 위치 drop, Option 복사·Command 이동, 안전 엔진 및 충돌 대화상자 연결 |
+| 드래그 앤 드롭 | 구현 중 | 상세·그리드 양쪽 pane 파일 URL 송수신, 폴더/현재 위치 drop, Option 복사·Command 이동, 안전 엔진 및 충돌 대화상자 연결; file promise는 미구현 |
 | 휴지통 이동 | 검증 | 항목별 결과 표시·실패 분리·저널 기록, 실제 시스템 휴지통 이동 성공 |
 | 휴지통 복원 | 검증 | 휴지통 항목 선택 복원(대상 폴더 선택) 동작과 `restoreFromTrash` 결과 창 연결, 실제 시스템 휴지통 왕복 복원·내용 확인 성공 |
 | 이동 | 구현 중 | 동일/교차 볼륨 이동, 검증·교체 백업·안전 실행 취소, 사용자 취소, 단계별 상태와 진행 막대; APFS/APFSX/exFAT 통과 |
 | 영구 삭제 | 구현 중 | 선택 항목 영구 삭제(복구 불가 경고), 항목별 상태 보고, 작업 창, 저널 파일 |
 
-다음 M3 작업은 그리드 드래그 앤 드롭·컨텍스트 명령을 연결한 뒤 목록·컬럼 렌더러를 구현하는 것이다. M2의 실제 SMB 수용 검증은 공유가 연결되면 `scripts/verify-smb-volume.sh`로 별도 실행한다.
+다음 M3 작업은 목록·컬럼 렌더러와 보기별 크기·간격 설정을 구현하는 것이다. M2의 실제 SMB 수용 검증은 공유가 연결되면 `scripts/verify-smb-volume.sh`로 별도 실행한다.
 
 ## M1 별도 검증 목록
 
@@ -54,4 +54,4 @@ M3 네 번째 개발 단위로 보조 pane에도 실제 AppKit 그리드 렌더�
 
 최근 검증: [M2 새 폴더와 이름 변경](verification/m2/INCREMENT_03.md), [M2 휴지통 이동](verification/m2/INCREMENT_04.md), [M2 휴지통 복원 준비](verification/m2/INCREMENT_05.md), [M2 영구 삭제](verification/m2/INCREMENT_06.md), [M2 이동 기본 동선](verification/m2/INCREMENT_07.md), [M2 안전한 이동 실행 취소](verification/m2/INCREMENT_08.md), [M2 교차 볼륨 이동](verification/m2/INCREMENT_09.md), [M2 교체 백업과 실행 취소](verification/m2/INCREMENT_10.md), [M2 이동 취소와 진행 표시](verification/m2/INCREMENT_11.md), [M2 배치 이름 변경](verification/m2/INCREMENT_12.md), [M2 배치 이름 변경 패턴 UI](verification/m2/INCREMENT_13.md), [M2 네이티브 탭 기반](verification/m2/INCREMENT_14.md), [M2 탭 상태 및 세션 복원](verification/m2/INCREMENT_15.md), [M2 분할 pane 상태 모델](verification/m2/INCREMENT_16.md), [M2 AppKit 분할 탐색 UI](verification/m2/INCREMENT_17.md), [M2 활성 pane 파일 작업](verification/m2/INCREMENT_18.md), [M2 분할 workspace 세션](verification/m2/INCREMENT_19.md), [M2 보조 pane 감시·보기](verification/m2/INCREMENT_20.md), [M2 Finder 드래그 앤 드롭](verification/m2/INCREMENT_21.md), [M2 선택 항목으로 새 폴더](verification/m2/INCREMENT_22.md), [M2 안전한 복사 실행 취소](verification/m2/INCREMENT_23.md), [M2 폴더 병합 계획](verification/m2/INCREMENT_24.md), [M2 폴더 병합 실행](verification/m2/INCREMENT_25.md), [M2 폴더 병합 UI](verification/m2/INCREMENT_26.md), [M2 다중 선택 폴더 병합](verification/m2/INCREMENT_27.md), [M2 AppKit 통합 검증](verification/m2/INCREMENT_28.md), [M2 장애 주입](verification/m2/INCREMENT_29.md), [M2 실제 볼륨 매트릭스](verification/m2/INCREMENT_30.md), [M2 시스템 휴지통 왕복](verification/m2/INCREMENT_31.md), [M2 SMB 수용 검증기](verification/m2/INCREMENT_32.md).
 
-M3 검증: [보기 모드 상태와 세션 호환성](verification/m3/INCREMENT_01.md), [pane별 보기 모드 컨트롤](verification/m3/INCREMENT_02.md), [기본 pane 그리드 렌더러](verification/m3/INCREMENT_03.md), [보조 pane 그리드와 선택 경쟁 수정](verification/m3/INCREMENT_04.md).
+M3 검증: [보기 모드 상태와 세션 호환성](verification/m3/INCREMENT_01.md), [pane별 보기 모드 컨트롤](verification/m3/INCREMENT_02.md), [기본 pane 그리드 렌더러](verification/m3/INCREMENT_03.md), [보조 pane 그리드와 선택 경쟁 수정](verification/m3/INCREMENT_04.md), [그리드 명령 및 드래그 앤 드롭](verification/m3/INCREMENT_05.md).

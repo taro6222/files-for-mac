@@ -292,7 +292,14 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
             self.model.savePosition(selection: selection, scrollOffset: self.gridView.currentScrollOffset())
             self.render()
         }
+        gridView.onActivate = { [weak self] in self?.setSecondaryActive(false) }
         gridView.onOpen = { [weak self] item in self?.openGridItem(item) }
+        gridView.onFileDrop = { [weak self] sources, item, intent in
+            guard let self, let destination = item?.isBrowsable == true ? item?.url : self.model.location else { return false }
+            if intent == .move { self.prepareMove(sources: sources, destination: destination) }
+            else { self.prepareCopy(sources: sources, destination: destination) }
+            return true
+        }
         let menu = NSMenu()
         let folder = menu.addItem(withTitle: L("새 폴더…", "New Folder…"), action: #selector(createFolder(_:)), keyEquivalent: ""); folder.target = self
         let folderFromSelection = menu.addItem(withTitle: L("선택 항목으로 새 폴더…", "New Folder with Selection…"), action: #selector(createFolderFromSelection(_:)), keyEquivalent: ""); folderFromSelection.target = self
@@ -310,7 +317,7 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         restore.isEnabled = false
         permanentDelete.isEnabled = false
         let reveal = menu.addItem(withTitle: L("Finder에서 보기", "Reveal in Finder"), action: #selector(revealSelection(_:)), keyEquivalent: ""); reveal.target = self
-        table.menu = menu
+        table.menu = menu; gridView.contextMenu = menu
     }
     private func configure(_ b: NSButton, _ symbol: String, _ title: String, _ action: Selector) {
         b.image = NSImage(systemSymbolName: symbol, accessibilityDescription: title)
@@ -1179,6 +1186,7 @@ extension BrowserWindow {
                 else { self.prepareCopy(sources: sources, destination: destination) }
                 return true
             }
+            pane.setContextMenu(table.menu)
             secondaryPane = pane; secondaryPaneID = id ?? UUID(); workspaceSplit.addArrangedSubview(pane)
         }
         workspaceSplit.adjustSubviews()
@@ -1751,6 +1759,13 @@ extension BrowserWindow {
             secondary.model.setViewMode(.grid)
             content.layoutSubtreeIfNeeded(); content.displayIfNeeded()
             checks["secondaryGridSelection"] = secondary.selectedItems.map(\.id) == [secondaryMerge.id]
+            let primaryGridIntegration = (controller.gridView.contextMenu === controller.table.menu,
+                                          controller.gridView.qaHasDropHandler,
+                                          controller.gridView.qaPasteboardURL(at: 0))
+            let secondaryGridIntegration = secondary.qaGridIntegration()
+            checks["gridContextCommands"] = primaryGridIntegration.0 && secondaryGridIntegration.menu
+            checks["gridDragSources"] = primaryGridIntegration.1 && secondaryGridIntegration.drop
+                && primaryGridIntegration.2 != nil && secondaryGridIntegration.source != nil
             diagnostics["secondaryRequestedSelection"] = secondaryMerge.id
             diagnostics["secondaryHistorySelection"] = Array(secondary.model.history.current.selection).sorted()
             diagnostics["secondaryRenderedSelection"] = secondary.selectedItems.map(\.id)

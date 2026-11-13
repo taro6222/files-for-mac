@@ -5,9 +5,35 @@ import FilesCore
 final class FileGridView: NSView, NSCollectionViewDataSource, NSCollectionViewDelegate {
     private final class CollectionView: NSCollectionView {
         var onOpen: (() -> Void)?
+        var onActivate: (() -> Void)?
+        var onValidateDrop: ((any NSDraggingInfo, Int?) -> NSDragOperation)?
+        var onAcceptDrop: ((any NSDraggingInfo, Int?) -> Bool)?
         override func mouseDown(with event: NSEvent) {
+            onActivate?()
             super.mouseDown(with: event)
             if event.clickCount == 2 { onOpen?() }
+        }
+        override func becomeFirstResponder() -> Bool { onActivate?(); return super.becomeFirstResponder() }
+        override func menu(for event: NSEvent) -> NSMenu? {
+            onActivate?()
+            let point = convert(event.locationInWindow, from: nil)
+            if let indexPath = indexPathForItem(at: point), !selectionIndexPaths.contains(indexPath) {
+                selectionIndexPaths = [indexPath]
+            }
+            return super.menu(for: event)
+        }
+        private func targetIndex(_ sender: any NSDraggingInfo) -> Int? {
+            let point = convert(sender.draggingLocation, from: nil)
+            return indexPathForItem(at: point)?.item
+        }
+        override func draggingEntered(_ sender: any NSDraggingInfo) -> NSDragOperation {
+            onValidateDrop?(sender, targetIndex(sender)) ?? []
+        }
+        override func draggingUpdated(_ sender: any NSDraggingInfo) -> NSDragOperation {
+            onValidateDrop?(sender, targetIndex(sender)) ?? []
+        }
+        override func performDragOperation(_ sender: any NSDraggingInfo) -> Bool {
+            onAcceptDrop?(sender, targetIndex(sender)) ?? false
         }
     }
 
@@ -46,6 +72,9 @@ final class FileGridView: NSView, NSCollectionViewDataSource, NSCollectionViewDe
     private var suppressSelectionNotification = false
     var onSelectionChange: ((Set<String>) -> Void)?
     var onOpen: ((FileItem) -> Void)?
+    var onActivate: (() -> Void)?
+    var onFileDrop: (([URL], FileItem?, FileDropIntent) -> Bool)?
+    var contextMenu: NSMenu? { get { collection.menu } set { collection.menu = newValue } }
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect); translatesAutoresizingMaskIntoConstraints = false
@@ -55,11 +84,17 @@ final class FileGridView: NSView, NSCollectionViewDataSource, NSCollectionViewDe
         collection.collectionViewLayout = layout; collection.isSelectable = true; collection.allowsMultipleSelection = true
         collection.dataSource = self; collection.delegate = self
         collection.register(Item.self, forItemWithIdentifier: Item.identifier)
+        collection.registerForDraggedTypes([.fileURL])
+        collection.setDraggingSourceOperationMask([.copy, .move], forLocal: true)
+        collection.setDraggingSourceOperationMask(.copy, forLocal: false)
         collection.setAccessibilityLabel(L("파일 그리드", "File grid"))
+        collection.onActivate = { [weak self] in self?.onActivate?() }
         collection.onOpen = { [weak self] in
             guard let self, let index = self.collection.selectionIndexPaths.first?.item, self.items.indices.contains(index) else { return }
             self.onOpen?(self.items[index])
         }
+        collection.onValidateDrop = { [weak self] info, index in self?.validateDrop(info, index: index) ?? [] }
+        collection.onAcceptDrop = { [weak self] info, index in self?.acceptDrop(info, index: index) ?? false }
         scroll.documentView = collection; scroll.hasVerticalScroller = true; scroll.translatesAutoresizingMaskIntoConstraints = false
         addSubview(scroll)
         NSLayoutConstraint.activate([scroll.leadingAnchor.constraint(equalTo: leadingAnchor), scroll.trailingAnchor.constraint(equalTo: trailingAnchor), scroll.topAnchor.constraint(equalTo: topAnchor), scroll.bottomAnchor.constraint(equalTo: bottomAnchor)])
@@ -84,10 +119,41 @@ final class FileGridView: NSView, NSCollectionViewDataSource, NSCollectionViewDe
         if let item = item as? Item, items.indices.contains(indexPath.item) { item.configure(item: items[indexPath.item]) }
         return item
     }
+    func collectionView(_ collectionView: NSCollectionView, pasteboardWriterForItemAt indexPath: IndexPath) -> (any NSPasteboardWriting)? {
+        guard items.indices.contains(indexPath.item) else { return nil }
+        return items[indexPath.item].url as NSURL
+    }
     func collectionView(_ collectionView: NSCollectionView, didSelectItemsAt indexPaths: Set<IndexPath>) { selectionChanged() }
     func collectionView(_ collectionView: NSCollectionView, didDeselectItemsAt indexPaths: Set<IndexPath>) { selectionChanged() }
     private func selectionChanged() {
         guard !suppressSelectionNotification else { return }
         onSelectionChange?(Set(selectedItems.map(\.id)))
     }
+    private func draggedURLs(_ info: any NSDraggingInfo) -> [URL] {
+        (info.draggingPasteboard.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [NSURL] ?? []).map { $0 as URL }
+    }
+    private func dropIntent(_ info: any NSDraggingInfo) -> FileDropIntent {
+        let flags = NSApp.currentEvent?.modifierFlags ?? []
+        var modifiers: DropModifiers = []
+        if flags.contains(.option) { modifiers.insert(.option) }
+        if flags.contains(.command) { modifiers.insert(.command) }
+        return .resolve(modifiers: modifiers, sourceAllowsMove: info.draggingSourceOperationMask.contains(.move))
+    }
+    private func validateDrop(_ info: any NSDraggingInfo, index: Int?) -> NSDragOperation {
+        guard !draggedURLs(info).isEmpty else { return [] }
+        if let index, items.indices.contains(index), !items[index].isBrowsable { return [] }
+        return dropIntent(info) == .move ? .move : .copy
+    }
+    private func acceptDrop(_ info: any NSDraggingInfo, index: Int?) -> Bool {
+        let urls = draggedURLs(info); guard !urls.isEmpty else { return false }
+        let item = index.flatMap { items.indices.contains($0) ? items[$0] : nil }
+        return onFileDrop?(urls, item, dropIntent(info)) ?? false
+    }
+    #if DEBUG
+    var qaHasDropHandler: Bool { onFileDrop != nil }
+    func qaPasteboardURL(at index: Int) -> URL? {
+        guard items.indices.contains(index) else { return nil }
+        return (collectionView(collection, pasteboardWriterForItemAt: IndexPath(item: index, section: 0)) as? NSURL) as URL?
+    }
+    #endif
 }

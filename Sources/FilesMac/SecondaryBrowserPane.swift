@@ -45,6 +45,7 @@ final class SecondaryBrowserPane: NSView, NSTableViewDataSource, NSTableViewDele
     func focusFiles() { activate(); if model.viewMode == .grid { gridView.focus() } else { window?.makeFirstResponder(table) } }
     func stopLoading() { model.cancelLoad() }
     func setViewMode(_ mode: BrowserViewMode) { activate(); model.setViewMode(mode) }
+    func setContextMenu(_ menu: NSMenu?) { gridView.contextMenu = menu }
     func openSelected() {
         if model.viewMode == .grid, let item = gridView.selectedItems.first { openGridItem(item) }
         else { openSelection(nil) }
@@ -109,7 +110,13 @@ final class SecondaryBrowserPane: NSView, NSTableViewDataSource, NSTableViewDele
             self.model.savePosition(selection: selection, scrollOffset: self.gridView.currentScrollOffset())
             self.render()
         }
+        gridView.onActivate = { [weak self] in self?.activate() }
         gridView.onOpen = { [weak self] item in self?.openGridItem(item) }
+        gridView.onFileDrop = { [weak self] sources, item, intent in
+            guard let self, let destination = item?.isBrowsable == true ? item?.url : self.model.location else { return false }
+            self.activate()
+            return self.onFileDrop?(sources, destination, intent) ?? false
+        }
         stack.addArrangedSubview(browserContent)
         status.font = .systemFont(ofSize: 11); status.textColor = .secondaryLabelColor
         let footer = NSStackView(); footer.edgeInsets = NSEdgeInsets(top: 6, left: 10, bottom: 6, right: 10)
@@ -259,6 +266,11 @@ final class SecondaryBrowserPane: NSView, NSTableViewDataSource, NSTableViewDele
         if flags.contains(.command) { modifiers.insert(.command) }
         return .resolve(modifiers: modifiers, sourceAllowsMove: info.draggingSourceOperationMask.contains(.move))
     }
+    #if DEBUG
+    func qaGridIntegration() -> (menu: Bool, drop: Bool, source: URL?) {
+        (gridView.contextMenu != nil, gridView.qaHasDropHandler, gridView.qaPasteboardURL(at: 0))
+    }
+    #endif
 }
 
 @MainActor
