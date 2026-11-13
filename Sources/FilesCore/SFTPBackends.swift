@@ -8,7 +8,7 @@ public enum SFTPIntent: Sendable, Equatable {
 }
 
 public enum SFTPBackendError: Error, Sendable, Equatable {
-    case unsupportedProtocol, invalidPath, invalidUsername, invalidTrustStore, invalidIdentity
+    case unsupportedProtocol, invalidPath, invalidUsername, invalidTrustStore, invalidIdentity, invalidPrivateConfiguration, invalidListing, listingLimitExceeded
 }
 
 public struct SFTPKeyConfiguration: Sendable, Equatable {
@@ -26,6 +26,51 @@ public struct SFTPCommandPlan: Sendable, Equatable {
     public let batchInput: Data
     public let privateSSHConfiguration: Data
     public let redactedDescription: String
+}
+
+public struct SFTPCommandExecutor: Sendable {
+    private let executor = RemoteCommandExecutor()
+    public init() {}
+    public func execute(_ plan: SFTPCommandPlan, temporaryRoot: URL = FileManager.default.temporaryDirectory,
+                        fileManager: FileManager = .default) async throws -> RemoteCommandResult {
+        guard plan.privateSSHConfiguration.count <= 64 * 1_024,
+              plan.arguments.filter({ $0 == "<private-config>" }).count == 1 else { throw SFTPBackendError.invalidPrivateConfiguration }
+        let directory = temporaryRoot.appendingPathComponent("files-sftp-\(UUID().uuidString)", isDirectory: true)
+        try fileManager.createDirectory(at: directory, withIntermediateDirectories: false, attributes: [.posixPermissions: 0o700])
+        defer { try? fileManager.removeItem(at: directory) }
+        let config = directory.appendingPathComponent("ssh_config")
+        guard fileManager.createFile(atPath: config.path, contents: nil, attributes: [.posixPermissions: 0o600]) else {
+            throw SFTPBackendError.invalidPrivateConfiguration
+        }
+        let handle = try FileHandle(forWritingTo: config)
+        do { try handle.write(contentsOf: plan.privateSSHConfiguration); try handle.synchronize(); try handle.close() }
+        catch { try? handle.close(); throw error }
+        let command = RemoteCommandPlan(executable: plan.executable,
+            arguments: plan.arguments.map { $0 == "<private-config>" ? config.path : $0 },
+            standardInput: plan.batchInput, redactedDescription: plan.redactedDescription)
+        return try await executor.execute(command)
+    }
+}
+
+public struct SFTPRemoteProvider: Sendable {
+    private let builder = SFTPCommandBuilder(), executor = SFTPCommandExecutor()
+    public init() {}
+    public func list(profile: RemoteConnectionProfile, key: SFTPKeyConfiguration, remotePath: String,
+                     maximumEntries: Int = 100_000) async throws -> [RemoteDirectoryEntry] {
+        try builder.validateFiles(key)
+        let result = try await executor.execute(builder.command(profile: profile, key: key, intent: .list(remotePath: remotePath)))
+        return try Self.parseList(result.standardOutput, parent: remotePath, maximumEntries: maximumEntries)
+    }
+    public static func parseList(_ data: Data, parent: String, maximumEntries: Int = 100_000) throws -> [RemoteDirectoryEntry] {
+        guard parent.hasPrefix("/"), let text = String(data: data, encoding: .utf8) else { throw SFTPBackendError.invalidListing }
+        let names = text.split(whereSeparator: \Character.isNewline).map(String.init).filter { !$0.isEmpty && $0 != "." && $0 != ".." }
+        guard names.count <= maximumEntries else { throw SFTPBackendError.listingLimitExceeded }
+        guard names.allSatisfy({ !$0.contains("/") && !$0.unicodeScalars.contains(where: { CharacterSet.controlCharacters.contains($0) }) }) else {
+            throw SFTPBackendError.invalidListing
+        }
+        let base = parent == "/" ? "" : parent.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        return names.map { RemoteDirectoryEntry(name: $0, remotePath: "/" + ([base, $0].filter { !$0.isEmpty }.joined(separator: "/"))) }
+    }
 }
 
 public struct SFTPCommandBuilder: Sendable {
