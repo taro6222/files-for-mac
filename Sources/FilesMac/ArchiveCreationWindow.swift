@@ -27,7 +27,7 @@ final class ArchiveCreationWindow: NSWindowController, NSWindowDelegate {
             } catch is CancellationError {
                 controller?.finish(success: false, message: L("생성을 중단했습니다.", "Creation stopped."))
             } catch {
-                controller?.finish(success: false, message: L("ZIP 생성 실패: ", "ZIP creation failed: ") + error.localizedDescription)
+                controller?.finish(success: false, message: archiveErrorMessage(error))
             }
         }
     }

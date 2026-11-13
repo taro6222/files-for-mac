@@ -1777,6 +1777,10 @@ extension BrowserWindow {
                 checks["shortcutSettingsWindow"] = delegate.qaShortcutWindowVisible
                 try capture("keyboard-shortcuts", view: delegate.qaShortcutContentView)
                 delegate.qaShortcutContentView?.window?.close(); window.makeKeyAndOrderFront(nil)
+                delegate.showArchiveCapabilities(nil); try await Task.sleep(for: .milliseconds(50))
+                checks["archiveCapabilitiesWindow"] = delegate.qaArchiveCapabilitiesVisible
+                try capture("archive-capabilities", view: delegate.qaArchiveCapabilitiesContentView)
+                delegate.qaArchiveCapabilitiesContentView?.window?.close(); window.makeKeyAndOrderFront(nil)
             } else { checks["shortcutSettingsWindow"] = false }
             controller.showToolbarSettings(nil); try await Task.sleep(for: .milliseconds(50))
             checks["toolbarSettingsWindow"] = controller.toolbarSettingsWindow?.window?.isVisible == true

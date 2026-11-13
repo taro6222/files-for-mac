@@ -50,7 +50,7 @@ final class ArchiveWindow: NSWindowController, NSTableViewDataSource, NSTableVie
                 guard let self, !Task.isCancelled else { return }
                 self.entries = loaded; self.status.stringValue = L("\(loaded.count)개 항목", "\(loaded.count) items"); self.setRunning(false); self.table.reloadData()
             } catch is CancellationError { }
-            catch { guard let self else { return }; self.status.stringValue = L("목록 실패: ", "Could not read archive: ") + error.localizedDescription; self.setRunning(false) }
+            catch { guard let self else { return }; self.status.stringValue = archiveErrorMessage(error); self.setRunning(false) }
         }
     }
 
@@ -69,7 +69,7 @@ final class ArchiveWindow: NSWindowController, NSTableViewDataSource, NSTableVie
                 guard let self, !Task.isCancelled else { return }
                 self.status.stringValue = L("\(report.entries)개 항목을 추출했습니다.", "Extracted \(report.entries) items."); self.setRunning(false)
             } catch is CancellationError { guard let self else { return }; self.status.stringValue = L("추출을 중단했습니다.", "Extraction stopped."); self.setRunning(false) }
-            catch { guard let self else { return }; self.status.stringValue = L("추출 실패: ", "Extraction failed: ") + error.localizedDescription; self.setRunning(false) }
+            catch { guard let self else { return }; self.status.stringValue = archiveErrorMessage(error); self.setRunning(false) }
         }
     }
     @objc private func cancel(_ sender: Any?) { task?.cancel() }

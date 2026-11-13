@@ -11,5 +11,5 @@
 | 패키징 | SwiftPM 코어/실행 + 같은 소스를 쓰는 Xcode 앱 타깃 | 정식 배포 전 코어를 별도 패키지 참조로 연결 정리 |
 | 휴지통 전체 복원 | 미확정 | 공개 API 실험 대기 |
 | 클라우드 상태 | 미확정 | 공급자별 실험 대기 |
-| 압축 backend | macOS 시스템 libarchive 직접 연결; ZIP 생성·목록·안전 추출과 네이티브 생성·탐색·추출 UI, 7z/RAR 별도 capability | ZIP Unicode 생성/재열기/추출·손상·링크·한도 fixture 및 앱 UI 4조합 통과; 7z·RAR·배포 버전 검증 진행 중 |
+| 압축 backend | macOS 시스템 libarchive 직접 연결; ZIP 생성·목록·안전 추출과 네이티브 UI; 7z/RAR·암호·분할·수정은 미지원으로 명시 | ZIP Unicode·손상·링크·한도 fixture 및 앱 UI 4조합 통과; 7z·RAR backend/fixture 진행 중 |
 | Intel/최소 OS | 배포 타깃만 설정 | 실기기 실행 대기 |

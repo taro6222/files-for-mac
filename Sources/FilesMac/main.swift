@@ -12,6 +12,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     private var shortcutPreferences: ShortcutPreferences!
     private var shortcutSettingsWindow: ShortcutSettingsWindow?
     private var appearanceSettingsWindow: AppearanceSettingsWindow?
+    private var archiveCapabilitiesWindow: ArchiveCapabilitiesWindow?
     private var preferencesToken: UUID?
     func applicationDidFinishLaunching(_ notification: Notification) {
         applyAppearance()
@@ -85,6 +86,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         if appearanceSettingsWindow == nil { appearanceSettingsWindow = AppearanceSettingsWindow(preferences: .shared) }
         appearanceSettingsWindow?.present()
     }
+    @objc func showArchiveCapabilities(_ sender: Any?) {
+        if archiveCapabilitiesWindow == nil { archiveCapabilitiesWindow = ArchiveCapabilitiesWindow() }
+        archiveCapabilitiesWindow?.present()
+    }
     private func applyAppearance() { NSApp.appearance = BrowserWindow.appearance(BrowserPreferences.shared.appearance) }
     private func configureShortcuts() {
         let entries = CommandPaletteCatalog.entries(from: NSApp.mainMenu)
@@ -123,6 +128,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         shortcuts.target = self
         let appearance = appMenu.addItem(withTitle: L("외형…", "Appearance…"), action: #selector(showAppearanceSettings(_:)), keyEquivalent: "")
         appearance.target = self
+        let archiveSupport = appMenu.addItem(withTitle: L("압축 포맷 지원…", "Archive Format Support…"), action: #selector(showArchiveCapabilities(_:)), keyEquivalent: "")
+        archiveSupport.target = self
         appMenu.addItem(.separator())
         appMenu.addItem(withTitle: L("Files macOS 종료", "Quit Files macOS"), action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         let fileItem = NSMenuItem(); fileItem.title = L("파일", "File"); menu.addItem(fileItem)
@@ -201,6 +208,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     var qaShortcutRowCount: Int { shortcutSettingsWindow?.qaRowCount ?? 0 }
     var qaShortcutWindowVisible: Bool { shortcutSettingsWindow?.window?.isVisible == true }
     var qaShortcutContentView: NSView? { shortcutSettingsWindow?.window?.contentView }
+    var qaArchiveCapabilitiesVisible: Bool { archiveCapabilitiesWindow?.window?.isVisible == true }
+    var qaArchiveCapabilitiesContentView: NSView? { archiveCapabilitiesWindow?.window?.contentView }
 #endif
 }
 
