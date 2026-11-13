@@ -8,8 +8,17 @@ public struct FileSearchQuery: Sendable, Equatable {
     public var scope: SearchScope
     public var kind: SearchItemKind
     public var showHidden: Bool
-    public init(text: String, scope: SearchScope = .descendants, kind: SearchItemKind = .any, showHidden: Bool = false) {
+    public var tagText: String
+    public var minimumSize: Int64?
+    public var maximumSize: Int64?
+    public var modifiedAfter: Date?
+    public var modifiedBefore: Date?
+    public init(text: String, scope: SearchScope = .descendants, kind: SearchItemKind = .any, showHidden: Bool = false,
+                tagText: String = "", minimumSize: Int64? = nil, maximumSize: Int64? = nil,
+                modifiedAfter: Date? = nil, modifiedBefore: Date? = nil) {
         self.text = text; self.scope = scope; self.kind = kind; self.showHidden = showHidden
+        self.tagText = tagText; self.minimumSize = minimumSize; self.maximumSize = maximumSize
+        self.modifiedAfter = modifiedAfter; self.modifiedBefore = modifiedBefore
     }
 }
 
@@ -32,8 +41,10 @@ public struct LocalFileSearch: FileSearching {
                     guard try root.resourceValues(forKeys: [.isDirectoryKey]).isDirectory == true else { throw POSIXError(.ENOTDIR) }
                     let terms = query.text.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
                         .split(whereSeparator: \.isWhitespace).map(String.init)
-                    guard !terms.isEmpty else { continuation.finish(); return }
-                    let keys: Set<URLResourceKey> = [.isDirectoryKey, .isPackageKey, .isSymbolicLinkKey, .isHiddenKey, .fileSizeKey, .contentModificationDateKey]
+                    let tagTerms = query.tagText.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
+                        .split(whereSeparator: \.isWhitespace).map(String.init)
+                    guard !terms.isEmpty || !tagTerms.isEmpty else { continuation.finish(); return }
+                    let keys: Set<URLResourceKey> = [.isDirectoryKey, .isPackageKey, .isSymbolicLinkKey, .isHiddenKey, .fileSizeKey, .contentModificationDateKey, .tagNamesKey]
                     var options: FileManager.DirectoryEnumerationOptions = []
                     if query.scope == .currentFolder { options.insert(.skipsSubdirectoryDescendants) }
                     if !query.showHidden { options.insert(.skipsHiddenFiles) }
@@ -50,9 +61,16 @@ public struct LocalFileSearch: FileSearching {
                         do {
                             let v = try url.resourceValues(forKeys: keys), isDirectory = v.isDirectory ?? false
                             guard query.kind == .any || (query.kind == .folders && isDirectory) || (query.kind == .files && !isDirectory) else { continue }
+                            let size = v.fileSize.map(Int64.init)
+                            if let minimum = query.minimumSize, size == nil || size! < minimum { continue }
+                            if let maximum = query.maximumSize, size == nil || size! > maximum { continue }
+                            if let after = query.modifiedAfter, v.contentModificationDate == nil || v.contentModificationDate! < after { continue }
+                            if let before = query.modifiedBefore, v.contentModificationDate == nil || v.contentModificationDate! > before { continue }
+                            let searchableTags = (v.tagNames ?? []).joined(separator: " ").folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
+                            guard tagTerms.allSatisfy(searchableTags.contains) else { continue }
                             batch.append(FileItem(url: url, name: name, isDirectory: isDirectory,
                                 isPackage: v.isPackage ?? false, isSymbolicLink: v.isSymbolicLink ?? false,
-                                isHidden: v.isHidden ?? false, size: v.fileSize.map(Int64.init), modified: v.contentModificationDate,
+                                isHidden: v.isHidden ?? false, size: size, modified: v.contentModificationDate,
                                 kind: isDirectory ? "Folder" : (url.pathExtension.isEmpty ? "File" : url.pathExtension.uppercased())))
                         } catch { skipped += 1 }
                         if batch.count >= 128 { continuation.yield(FileSearchBatch(items: batch, skippedLocations: skipped)); batch.removeAll(keepingCapacity: true) }

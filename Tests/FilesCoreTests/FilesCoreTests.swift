@@ -369,7 +369,8 @@ private struct DelayedLoader: DirectoryLoading {
     defer { try? FileManager.default.removeItem(at: root) }
     try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
     let nested = root.appendingPathComponent("Nested", isDirectory: true); try FileManager.default.createDirectory(at: nested, withIntermediateDirectories: true)
-    try Data().write(to: root.appendingPathComponent("Résumé report.txt"))
+    let report = root.appendingPathComponent("Résumé report.txt")
+    try Data("report-data".utf8).write(to: report)
     try Data().write(to: nested.appendingPathComponent("resume notes.md"))
     try Data().write(to: root.appendingPathComponent(".resume-hidden"))
     func results(_ query: FileSearchQuery) async throws -> [FileItem] {
@@ -381,6 +382,13 @@ private struct DelayedLoader: DirectoryLoading {
     #expect(Set(try await results(FileSearchQuery(text: "resume", kind: .files)).map(\.name)) == ["Résumé report.txt", "resume notes.md"])
     #expect(Set(try await results(FileSearchQuery(text: "resume", kind: .files, showHidden: true)).map(\.name)).contains(".resume-hidden"))
     #expect(try await results(FileSearchQuery(text: "nested", kind: .folders)).map(\.name) == ["Nested"])
+    let tagSnapshot = try FileTagService().snapshot(report)
+    _ = try FileTagService().setTags(["Important", "검토"], at: report, expectedIdentity: tagSnapshot.identity)
+    let boundary = Date(timeIntervalSinceNow: -60); try FileManager.default.setAttributes([.modificationDate: boundary], ofItemAtPath: report.path)
+    #expect(try await results(FileSearchQuery(text: "report", tagText: "important 검토", minimumSize: 5, maximumSize: 20,
+                                              modifiedAfter: boundary, modifiedBefore: boundary)).map(\.name) == ["Résumé report.txt"])
+    #expect(try await results(FileSearchQuery(text: "report", tagText: "missing")).isEmpty)
+    #expect(try await results(FileSearchQuery(text: "report", minimumSize: 20)).isEmpty)
 }
 
 private struct DelayedSearch: FileSearching {

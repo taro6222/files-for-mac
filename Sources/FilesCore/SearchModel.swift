@@ -19,7 +19,8 @@ public final class SearchModel {
         generation += 1; let request = generation
         task?.cancel(); self.root = root.standardizedFileURL; self.query = query
         results = []; skippedLocations = 0; error = nil; wasCancelled = false
-        guard !query.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { isSearching = false; onChange?(); return }
+        guard !query.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                || !query.tagText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { isSearching = false; onChange?(); return }
         isSearching = true; onChange?()
         task = Task { [weak self, searcher] in
             do {
