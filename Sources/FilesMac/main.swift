@@ -302,6 +302,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         let palette = go.addItem(withTitle: L("명령 팔레트…", "Command Palette…"), action: #selector(BrowserWindow.showCommandPalette(_:)), keyEquivalent: "p")
         palette.keyEquivalentModifierMask = [.command, .shift]
         go.addItem(withTitle: L("보기 옵션…", "View Options…"), action: #selector(BrowserWindow.openViewOptions(_:)), keyEquivalent: "")
+        go.addItem(withTitle: L("열 너비 자동 맞춤", "Auto Fit Columns"), action: #selector(BrowserWindow.autoFitColumns(_:)), keyEquivalent: "")
         go.addItem(withTitle: L("사이드바 표시 전환", "Toggle Sidebar"), action: #selector(BrowserWindow.toggleSidebarVisibility(_:)), keyEquivalent: "")
         go.addItem(withTitle: L("툴바 표시 전환", "Toggle Toolbar"), action: #selector(BrowserWindow.toggleToolbar(_:)), keyEquivalent: "")
         go.addItem(withTitle: L("툴바 사용자 지정…", "Customize Toolbar…"), action: #selector(BrowserWindow.showToolbarSettings(_:)), keyEquivalent: "")

@@ -432,6 +432,7 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         let toggleSelection = menu.addItem(withTitle: L("포커스 항목 선택 해제", "Toggle Focused Selection"), action: #selector(toggleFocusedSelection(_:)), keyEquivalent: ""); toggleSelection.target = self
         let openTagged = menu.addItem(withTitle: L("같은 Finder 태그 항목 찾기", "Find Items with Same Finder Tag"), action: #selector(openAllTagged(_:)), keyEquivalent: ""); openTagged.target = self
         let removeTags = menu.addItem(withTitle: L("Finder 태그 모두 제거", "Remove All Finder Tags"), action: #selector(removeTags(_:)), keyEquivalent: ""); removeTags.target = self
+        let autoFit = menu.addItem(withTitle: L("열 너비 자동 맞춤", "Auto Fit Columns"), action: #selector(autoFitColumns(_:)), keyEquivalent: ""); autoFit.target = self
         let archive = menu.addItem(withTitle: L("압축 파일 탐색", "Browse Archive"), action: #selector(openArchive(_:)), keyEquivalent: ""); archive.target = self
         let createArchive = menu.addItem(withTitle: L("선택 항목 압축…", "Compress Selection…"), action: #selector(createArchive(_:)), keyEquivalent: ""); createArchive.target = self
         let extractHere = menu.addItem(withTitle: L("여기에 압축 해제", "Extract Here"), action: #selector(extractArchivesHere(_:)), keyEquivalent: ""); extractHere.target = self
@@ -1168,6 +1169,24 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
             }.value
             guard let self else { return }; self.refreshActivePane()
             if failures > 0 { self.showEntryError(L("일부 항목의 Finder 태그를 제거하지 못했습니다.", "Finder tags could not be removed from some items.")) }
+        }
+    }
+    private var canAutoFitColumns: Bool {
+        secondaryActive ? secondaryPane?.canAutoFitColumns == true : primaryRenderedViewMode == .details && !model.items.isEmpty
+    }
+    @objc func autoFitColumns(_ sender: Any?) {
+        if secondaryActive { secondaryPane?.autoFitColumns(); return }
+        guard canAutoFitColumns else { return }
+        fitDetailColumns(in: table, rowCount: model.items.count) { [self] identifier, row in
+            let item = model.items[row]
+            switch identifier.rawValue {
+            case "name": return item.displayName(showExtensions: preferences.showExtensions)
+            case "git": return gitStatus(for: item)
+            case "modified": return item.modified.map(dateFormatter.string) ?? "—"
+            case "kind": return item.kind == "Folder" ? L("폴더", "Folder") : (item.kind == "File" ? L("파일", "File") : item.kind)
+            case "size": return item.isDirectory ? "—" : item.size.map { formatByteCount($0, unit: preferences.sizeUnit) } ?? "—"
+            default: return ""
+            }
         }
     }
     private func startArchiveExtraction(_ placement: ArchiveExtractionPlacement) {
@@ -2151,6 +2170,7 @@ extension BrowserWindow {
         case #selector(playAllMedia(_:)): return !activeSelectedItems.isEmpty && activeSelectedItems.map(\.url).allSatisfy(SystemContentCompatibility.isMedia)
         case #selector(toggleFocusedSelection(_:)): return !activeSelectedItems.isEmpty
         case #selector(openAllTagged(_:)), #selector(removeTags(_:)): return !activeSelectedItems.isEmpty && activeSelectedItems.contains { ((try? FileTagService().snapshot($0.url).tags.isEmpty) == false) }
+        case #selector(autoFitColumns(_:)): return canAutoFitColumns
         case #selector(createSymbolicLink(_:)): return activeModel.location != nil && activeSelectedItems.count == 1 && !activeModel.isLoading && !Self.entryOperationRunning
         case #selector(createSymbolicLinkFromDialog(_:)): return activeModel.location != nil && !activeModel.isLoading && !Self.entryOperationRunning
         case #selector(toggleSelectedFavorite(_:)): return activeModel.location != nil && (activeSelectedItems.isEmpty || (activeSelectedItems.count == 1 && activeSelectedItems[0].isBrowsable))
@@ -2348,6 +2368,7 @@ extension BrowserWindow {
             checks["imageRotationCommands"] = [#selector(rotateImagesLeft(_:)), #selector(rotateImagesRight(_:))].allSatisfy { action in paletteEntries.contains { $0.item.action == action } }
             checks["systemInstallAndMediaCommands"] = [#selector(installCertificates(_:)), #selector(installFonts(_:)), #selector(playAllMedia(_:))].allSatisfy { action in paletteEntries.contains { $0.item.action == action } }
             checks["selectionAndTagCommands"] = [#selector(toggleFocusedSelection(_:)), #selector(openAllTagged(_:)), #selector(removeTags(_:))].allSatisfy { action in paletteEntries.contains { $0.item.action == action } }
+            checks["autoFitColumnsCommand"] = paletteEntries.contains { $0.item.action == #selector(autoFitColumns(_:)) }
             checks["commandPaletteSearch"] = CommandPaletteCatalog.filtered(paletteEntries, query: L("숨김", "hidden")).contains { $0.item.action == #selector(toggleHidden(_:)) }
             controller.showCommandPalette(nil); try await Task.sleep(for: .milliseconds(50))
             controller.commandPalette.qaSetQuery(L("숨김", "hidden"))
@@ -2549,6 +2570,10 @@ extension BrowserWindow {
             metrics["firstNonemptyAppKitDisplaySeconds"] = firstLayout ?? elapsed(start)
             metrics["completeAppKitDisplaySeconds"] = elapsed(start)
             checks["tenThousandRows"] = !controller.model.isLoading && controller.model.error == nil && controller.table.numberOfRows == 10_000
+            for column in controller.table.tableColumns where !column.isHidden { column.width = column.minWidth }
+            controller.autoFitColumns(nil)
+            checks["autoFitColumns"] = controller.table.tableColumn(withIdentifier: .init("name"))?.width ?? 0 > 70
+                && controller.table.tableColumns.filter { !$0.isHidden }.allSatisfy { $0.width >= $0.minWidth && $0.width <= 720 }
             controller.showSearch(nil); controller.searchWindow?.qaSearch("long-file-name", scope: .currentFolder)
             let searchStart = ContinuousClock.now
             while controller.searchWindow?.qaIsSearching == true && searchStart.duration(to: .now) < .seconds(10) { try await Task.sleep(for: .milliseconds(10)) }

@@ -111,6 +111,19 @@ final class SecondaryBrowserPane: NSView, NSTableViewDataSource, NSTableViewDele
         default: table.selectRowIndexes(IndexSet(model.items.indices.filter { ids.contains(model.items[$0].id) }), byExtendingSelection: false)
         }
     }
+    var canAutoFitColumns: Bool { renderedViewMode == .details && !model.items.isEmpty }
+    func autoFitColumns() {
+        guard canAutoFitColumns else { return }
+        fitDetailColumns(in: table, rowCount: model.items.count) { [self] identifier, row in
+            let item = model.items[row]
+            switch identifier.rawValue {
+            case "name": return item.displayName(showExtensions: true)
+            case "kind": return item.kind
+            case "size": return item.isDirectory ? "—" : item.size.map { formatByteCount($0, unit: preferences.sizeUnit) } ?? "—"
+            default: return ""
+            }
+        }
+    }
     func focusFiles() {
         activate()
         if renderedViewMode == .grid { gridView.focus() }
