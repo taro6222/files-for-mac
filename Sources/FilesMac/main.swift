@@ -83,6 +83,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     }
     @objc func newWindow(_ sender: Any?) { makeBrowser() }
     @objc func newTab(_ sender: Any?) { makeBrowser(tabbedTo: currentBrowser) }
+    func openFolderInNewTab(_ url: URL) { makeBrowser(location: url, tabbedTo: currentBrowser) }
     @objc func duplicateTab(_ sender: Any?) {
         guard let current = currentBrowser else { return }
         makeBrowser(workspace: current.workspaceSnapshot(), tabbedTo: current)
@@ -326,6 +327,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     func qaToggleGeneralWidgets() { generalSettingsWindow?.qaToggleWidgets() }
     var qaGeneralSizeUnit: BrowserSizeUnit? { generalSettingsWindow?.qaSizeUnit }
     func qaToggleGeneralSizeUnit() { generalSettingsWindow?.qaToggleSizeUnit() }
+    var qaGeneralOpenFoldersInNewTab: Bool? { generalSettingsWindow?.qaOpenFoldersInNewTab }
+    func qaToggleGeneralOpenFoldersInNewTab() { generalSettingsWindow?.qaToggleOpenFoldersInNewTab() }
     func qaCreateRemoteProfile() { remoteConnectionsWindow?.qaCreateProfile() }
 #endif
 }

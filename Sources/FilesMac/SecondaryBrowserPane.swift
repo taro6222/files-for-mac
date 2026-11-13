@@ -7,6 +7,7 @@ final class SecondaryBrowserPane: NSView, NSTableViewDataSource, NSTableViewDele
     private let preferences: BrowserPreferences
     var onActivate: (() -> Void)?
     var onFileDrop: (([URL], URL, FileDropIntent) -> Bool)?
+    var onOpenFolderInNewTab: ((URL) -> Void)?
     private let pathField = NSTextField()
     private let table = ActivatingTableView()
     private let scroll = NSScrollView()
@@ -338,10 +339,10 @@ final class SecondaryBrowserPane: NSView, NSTableViewDataSource, NSTableViewDele
     }
     @objc private func openSelection(_ sender: Any?) {
         activate(); guard let row = table.selectedRowIndexes.first, model.items.indices.contains(row) else { return }
-        let item = model.items[row]; if item.isBrowsable { navigate(item.url) } else { NSWorkspace.shared.open(item.url) }
+        let item = model.items[row]; if item.isBrowsable && preferences.openFoldersInNewTab { onOpenFolderInNewTab?(item.url) } else if item.isBrowsable { navigate(item.url) } else { NSWorkspace.shared.open(item.url) }
     }
     private func openGridItem(_ item: FileItem) {
-        activate(); if item.isBrowsable { navigate(item.url) } else { NSWorkspace.shared.open(item.url) }
+        activate(); if item.isBrowsable && preferences.openFoldersInNewTab { onOpenFolderInNewTab?(item.url) } else if item.isBrowsable { navigate(item.url) } else { NSWorkspace.shared.open(item.url) }
     }
     private func updateWatcher() {
         guard watchedURL != model.location else { return }

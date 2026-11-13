@@ -970,7 +970,8 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         openItem(item)
     }
     private func openItem(_ item: FileItem) {
-        if item.isBrowsable { navigate(item.url) }
+        if item.isBrowsable && preferences.openFoldersInNewTab { (NSApp.delegate as? AppDelegate)?.openFolderInNewTab(item.url) }
+        else if item.isBrowsable { navigate(item.url) }
         else if ArchiveFormat.detect(item.url).map({ ArchiveCapabilityMatrix.capabilities(for: $0).browse }) == true { presentArchive(item.url) }
         else { NSWorkspace.shared.open(item.url) }
     }
@@ -1548,6 +1549,7 @@ extension BrowserWindow {
         if secondaryPane == nil {
             let pane = SecondaryBrowserPane(snapshot: snapshot ?? tabSnapshot(), preferences: preferences)
             pane.onActivate = { [weak self] in self?.setSecondaryActive(true) }
+            pane.onOpenFolderInNewTab = { (NSApp.delegate as? AppDelegate)?.openFolderInNewTab($0) }
             pane.onFileDrop = { [weak self] sources, destination, intent in
                 guard let self else { return false }
                 if intent == .move { self.prepareMove(sources: sources, destination: destination) }
@@ -1954,12 +1956,14 @@ extension BrowserWindow {
                 try capture("advanced-settings", view: delegate.qaAdvancedSettingsContentView)
                 delegate.qaAdvancedSettingsContentView?.window?.close(); window.makeKeyAndOrderFront(nil)
                 delegate.showGeneralSettings(nil); try await Task.sleep(for: .milliseconds(50)); let widgetsBefore = delegate.qaGeneralWidgetStates
-                let sizeUnitBefore = delegate.qaGeneralSizeUnit; delegate.qaToggleGeneralWidgets(); delegate.qaToggleGeneralSizeUnit(); let widgetsAfter = delegate.qaGeneralWidgetStates
+                let sizeUnitBefore = delegate.qaGeneralSizeUnit; let newTabBefore = delegate.qaGeneralOpenFoldersInNewTab
+                delegate.qaToggleGeneralWidgets(); delegate.qaToggleGeneralSizeUnit(); delegate.qaToggleGeneralOpenFoldersInNewTab(); let widgetsAfter = delegate.qaGeneralWidgetStates
                 checks["generalSettingsWindow"] = delegate.qaGeneralSettingsVisible && widgetsBefore != nil && widgetsAfter != nil
                     && widgetsAfter!.0 != widgetsBefore!.0 && widgetsAfter!.1 != widgetsBefore!.1 && widgetsAfter!.2 != widgetsBefore!.2
                     && delegate.qaGeneralSizeUnit != sizeUnitBefore
+                    && delegate.qaGeneralOpenFoldersInNewTab != newTabBefore
                 try capture("general-settings", view: delegate.qaGeneralSettingsContentView)
-                delegate.qaToggleGeneralWidgets(); delegate.qaToggleGeneralSizeUnit(); delegate.qaGeneralSettingsContentView?.window?.close(); window.makeKeyAndOrderFront(nil)
+                delegate.qaToggleGeneralWidgets(); delegate.qaToggleGeneralSizeUnit(); delegate.qaToggleGeneralOpenFoldersInNewTab(); delegate.qaGeneralSettingsContentView?.window?.close(); window.makeKeyAndOrderFront(nil)
                 delegate.showArchiveCapabilities(nil); try await Task.sleep(for: .milliseconds(50))
                 checks["archiveCapabilitiesWindow"] = delegate.qaArchiveCapabilitiesVisible
                 try capture("archive-capabilities", view: delegate.qaArchiveCapabilitiesContentView)
