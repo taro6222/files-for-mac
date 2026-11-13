@@ -5,6 +5,7 @@ import FilesCore
 final class SecondaryBrowserPane: NSView, NSTableViewDataSource, NSTableViewDelegate {
     let model: BrowserModel
     var onActivate: (() -> Void)?
+    var onFileDrop: (([URL], URL, FileDropIntent) -> Bool)?
     private let pathField = NSTextField()
     private let table = ActivatingTableView()
     private let scroll = NSScrollView()
@@ -66,6 +67,9 @@ final class SecondaryBrowserPane: NSView, NSTableViewDataSource, NSTableViewDele
         table.style = .fullWidth; table.rowHeight = 30; table.allowsMultipleSelection = true
         table.delegate = self; table.dataSource = self; table.onActivate = { [weak self] in self?.activate() }
         table.doubleAction = #selector(openSelection(_:)); table.target = self
+        table.registerForDraggedTypes([.fileURL])
+        table.setDraggingSourceOperationMask([.copy, .move], forLocal: true)
+        table.setDraggingSourceOperationMask(.copy, forLocal: false)
         for (key, title, width) in [("name", L("이름", "Name"), 300.0), ("kind", L("종류", "Kind"), 120.0), ("size", L("크기", "Size"), 90.0)] {
             let column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier(key)); column.title = title; column.width = width; column.minWidth = 70
             column.sortDescriptorPrototype = NSSortDescriptor(key: key, ascending: true); table.addTableColumn(column)
@@ -120,6 +124,24 @@ final class SecondaryBrowserPane: NSView, NSTableViewDataSource, NSTableViewDele
         return cell
     }
     func tableViewSelectionDidChange(_ notification: Notification) { activate(); savePosition() }
+    func tableView(_ tableView: NSTableView, pasteboardWriterForRow row: Int) -> (any NSPasteboardWriting)? {
+        guard model.items.indices.contains(row) else { return nil }
+        return model.items[row].url as NSURL
+    }
+    func tableView(_ tableView: NSTableView, validateDrop info: any NSDraggingInfo,
+                   proposedRow row: Int, proposedDropOperation dropOperation: NSTableView.DropOperation) -> NSDragOperation {
+        guard dropDestination(row: row, operation: dropOperation) != nil,
+              !draggedURLs(info).isEmpty else { return [] }
+        let intent = dropIntent(info)
+        return intent == .move ? .move : .copy
+    }
+    func tableView(_ tableView: NSTableView, acceptDrop info: any NSDraggingInfo,
+                   row: Int, dropOperation: NSTableView.DropOperation) -> Bool {
+        activate()
+        guard let destination = dropDestination(row: row, operation: dropOperation) else { return false }
+        let urls = draggedURLs(info); guard !urls.isEmpty else { return false }
+        return onFileDrop?(urls, destination, dropIntent(info)) ?? false
+    }
     func tableView(_ tableView: NSTableView, sortDescriptorsDidChange oldDescriptors: [NSSortDescriptor]) {
         guard let descriptor = tableView.sortDescriptors.first,
               let field = SortField(rawValue: descriptor.key ?? "") else { return }
@@ -168,6 +190,20 @@ final class SecondaryBrowserPane: NSView, NSTableViewDataSource, NSTableViewDele
                 else { self.model.reload() }
             }
         }
+    }
+    private func draggedURLs(_ info: any NSDraggingInfo) -> [URL] {
+        (info.draggingPasteboard.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [NSURL] ?? []).map { $0 as URL }
+    }
+    private func dropDestination(row: Int, operation: NSTableView.DropOperation) -> URL? {
+        if operation == .on, model.items.indices.contains(row), model.items[row].isBrowsable { return model.items[row].url }
+        return model.location
+    }
+    private func dropIntent(_ info: any NSDraggingInfo) -> FileDropIntent {
+        let flags = NSApp.currentEvent?.modifierFlags ?? []
+        var modifiers: DropModifiers = []
+        if flags.contains(.option) { modifiers.insert(.option) }
+        if flags.contains(.command) { modifiers.insert(.command) }
+        return .resolve(modifiers: modifiers, sourceAllowsMove: info.draggingSourceOperationMask.contains(.move))
     }
 }
 

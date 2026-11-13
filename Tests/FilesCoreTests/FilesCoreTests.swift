@@ -152,6 +152,14 @@ private func fixture() throws -> URL {
     #expect(store.load().isEmpty)
 }
 
+@Test func fileDropIntentUsesExplicitSafeModifiers() {
+    #expect(FileDropIntent.resolve(modifiers: [], sourceAllowsMove: true) == .copy)
+    #expect(FileDropIntent.resolve(modifiers: [.option], sourceAllowsMove: true) == .copy)
+    #expect(FileDropIntent.resolve(modifiers: [.command], sourceAllowsMove: true) == .move)
+    #expect(FileDropIntent.resolve(modifiers: [.command], sourceAllowsMove: false) == .copy)
+    #expect(FileDropIntent.resolve(modifiers: [.option, .command], sourceAllowsMove: true) == .copy)
+}
+
 @Test func sortingKeepsFoldersFirstAndNaturalNames() {
     let items = [FileItem(url: URL(fileURLWithPath: "/file10"), name: "file10", isDirectory: false),
         FileItem(url: URL(fileURLWithPath: "/file2"), name: "file2", isDirectory: false),

@@ -265,6 +265,9 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         table.autosaveTableColumns = restoresLayout
         table.columnAutoresizingStyle = .lastColumnOnlyAutoresizingStyle
         table.delegate = self; table.dataSource = self; table.target = self; table.doubleAction = #selector(openSelection(_:))
+        table.registerForDraggedTypes([.fileURL])
+        table.setDraggingSourceOperationMask([.copy, .move], forLocal: true)
+        table.setDraggingSourceOperationMask(.copy, forLocal: false)
         table.setAccessibilityLabel(L("파일 목록", "File list"))
         let specs: [(String, String, CGFloat)] = [("name", L("이름", "Name"), 380), ("modified", L("수정일", "Date Modified"), 185), ("kind", L("종류", "Kind"), 140), ("size", L("크기", "Size"), 100)]
         for (key, label, width) in specs {
@@ -537,6 +540,25 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
     }
     func tableViewSelectionDidChange(_ notification: Notification) {
         setSecondaryActive(false); savePosition(allowWhileLoading: true); updateStatus()
+    }
+    func tableView(_ tableView: NSTableView, pasteboardWriterForRow row: Int) -> (any NSPasteboardWriting)? {
+        guard model.items.indices.contains(row) else { return nil }
+        return model.items[row].url as NSURL
+    }
+    func tableView(_ tableView: NSTableView, validateDrop info: any NSDraggingInfo,
+                   proposedRow row: Int, proposedDropOperation dropOperation: NSTableView.DropOperation) -> NSDragOperation {
+        guard primaryDropDestination(row: row, operation: dropOperation) != nil,
+              !draggedURLs(info).isEmpty else { return [] }
+        return dropIntent(info) == .move ? .move : .copy
+    }
+    func tableView(_ tableView: NSTableView, acceptDrop info: any NSDraggingInfo,
+                   row: Int, dropOperation: NSTableView.DropOperation) -> Bool {
+        setSecondaryActive(false)
+        guard let destination = primaryDropDestination(row: row, operation: dropOperation) else { return false }
+        let sources = draggedURLs(info); guard !sources.isEmpty else { return false }
+        if dropIntent(info) == .move { prepareMove(sources: sources, destination: destination) }
+        else { prepareCopy(sources: sources, destination: destination) }
+        return true
     }
     func tableView(_ tableView: NSTableView, sortDescriptorsDidChange oldDescriptors: [NSSortDescriptor]) {
         guard let descriptor = tableView.sortDescriptors.first, let field = SortField(rawValue: descriptor.key ?? "") else { return }
@@ -906,6 +928,20 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
             }
         }
     }
+    private func draggedURLs(_ info: any NSDraggingInfo) -> [URL] {
+        (info.draggingPasteboard.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [NSURL] ?? []).map { $0 as URL }
+    }
+    private func primaryDropDestination(row: Int, operation: NSTableView.DropOperation) -> URL? {
+        if operation == .on, model.items.indices.contains(row), model.items[row].isBrowsable { return model.items[row].url }
+        return model.location
+    }
+    private func dropIntent(_ info: any NSDraggingInfo) -> FileDropIntent {
+        let flags = NSApp.currentEvent?.modifierFlags ?? []
+        var modifiers: DropModifiers = []
+        if flags.contains(.option) { modifiers.insert(.option) }
+        if flags.contains(.command) { modifiers.insert(.command) }
+        return .resolve(modifiers: modifiers, sourceAllowsMove: info.draggingSourceOperationMask.contains(.move))
+    }
     @objc func revealSelection(_ sender: Any?) {
         let urls = table.selectedRowIndexes.compactMap { model.items.indices.contains($0) ? model.items[$0].url : nil }
         if !urls.isEmpty { NSWorkspace.shared.activateFileViewerSelecting(urls) }
@@ -999,6 +1035,12 @@ extension BrowserWindow {
         if secondaryPane == nil {
             let pane = SecondaryBrowserPane(snapshot: snapshot ?? tabSnapshot())
             pane.onActivate = { [weak self] in self?.setSecondaryActive(true) }
+            pane.onFileDrop = { [weak self] sources, destination, intent in
+                guard let self else { return false }
+                if intent == .move { self.prepareMove(sources: sources, destination: destination) }
+                else { self.prepareCopy(sources: sources, destination: destination) }
+                return true
+            }
             secondaryPane = pane; secondaryPaneID = id ?? UUID(); workspaceSplit.addArrangedSubview(pane)
         }
         workspaceSplit.adjustSubviews()
