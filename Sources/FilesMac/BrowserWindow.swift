@@ -47,7 +47,7 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
     private let quickLook = QuickLookController()
     private let homeView = NSStackView()
     private let sidebar = NSStackView()
-    private let content = NSView()
+    private let content = AppBackgroundView()
     private let workspaceSplit = NSSplitView()
     private var secondaryPane: SecondaryBrowserPane?
     private var secondaryActive = false
@@ -159,6 +159,7 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         w.contentView = BrowserBackgroundView()
         model.showHidden = preferences.showHidden
         setupUI(restoresLayout: restoresFrame)
+        applyAppBackground()
         model.onChange = { [weak self] in self?.render() }
         preferencesToken = preferences.observe { [weak self] in self?.preferencesChanged() }
         let primarySnapshot = initialWorkspace?.panes.first?.tab ?? initialSnapshot
@@ -420,6 +421,8 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         pinToSidebarMenuItem = pin
         let editTags = menu.addItem(withTitle: L("Finder 태그 편집…", "Edit Finder Tags…"), action: #selector(showInfo(_:)), keyEquivalent: ""); editTags.target = self; editTagsMenuItem = editTags
         let wallpaper = menu.addItem(withTitle: L("데스크탑 배경으로 설정", "Set as Desktop Wallpaper"), action: #selector(setAsDesktopWallpaper(_:)), keyEquivalent: ""); wallpaper.target = self
+        let appBackground = menu.addItem(withTitle: L("앱 배경으로 설정", "Set as App Background"), action: #selector(setAsAppBackground(_:)), keyEquivalent: ""); appBackground.target = self
+        let clearAppBackground = menu.addItem(withTitle: L("앱 배경 지우기", "Clear App Background"), action: #selector(clearAppBackground(_:)), keyEquivalent: ""); clearAppBackground.target = self
         let archive = menu.addItem(withTitle: L("압축 파일 탐색", "Browse Archive"), action: #selector(openArchive(_:)), keyEquivalent: ""); archive.target = self
         let createArchive = menu.addItem(withTitle: L("선택 항목 압축…", "Compress Selection…"), action: #selector(createArchive(_:)), keyEquivalent: ""); createArchive.target = self
         let extractHere = menu.addItem(withTitle: L("여기에 압축 해제", "Extract Here"), action: #selector(extractArchivesHere(_:)), keyEquivalent: ""); extractHere.target = self
@@ -1079,6 +1082,22 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
             for (screen, oldURL, options) in previous { if let oldURL { try? workspace.setDesktopImageURL(oldURL, for: screen, options: options) } }
             showEntryError(L("데스크탑 배경을 설정하지 못했습니다.", "The desktop wallpaper could not be set."))
         }
+    }
+    @objc func setAsAppBackground(_ sender: Any?) {
+        guard activeSelectedItems.count == 1, let source = activeSelectedItems.first?.url,
+              !activeSelectedItems[0].isBrowsable, NSImage(contentsOf: source) != nil else { return }
+        let store = AppBackgroundStore()
+        Task { [weak self] in
+            do {
+                let installed = try await Task.detached(priority: .userInitiated) { try store.install(from: source) }.value
+                self?.preferences.setAppBackground(installed)
+            } catch { self?.showEntryError(L("앱 배경을 설정하지 못했습니다.", "The app background could not be set.")) }
+        }
+    }
+    @objc func clearAppBackground(_ sender: Any?) {
+        preferences.setAppBackground(nil)
+        let store = AppBackgroundStore()
+        Task.detached { try? store.remove() }
     }
     private func startArchiveExtraction(_ placement: ArchiveExtractionPlacement) {
         let archives = selectedArchiveURLs
@@ -1791,6 +1810,7 @@ extension BrowserWindow {
     }
     private func preferencesChanged() {
         window?.appearance = Self.appearance(preferences.appearance)
+        applyAppBackground()
         toolbar.isHidden = !preferences.showToolbar
         bottom.isHidden = !preferences.showStatusBar
         sidebarContainer.isHidden = !preferences.showSidebar
@@ -1807,6 +1827,14 @@ extension BrowserWindow {
         } else if !rendering {
             savePosition(); render()
         }
+    }
+    private func applyAppBackground() {
+        let valid = content.setImage(at: preferences.appBackgroundPath)
+        if !valid { preferences.setAppBackground(nil); return }
+        let enabled = content.image != nil
+        scroll.drawsBackground = !enabled; table.backgroundColor = enabled ? .clear : .controlBackgroundColor
+        gridView.applyBackground(enabled: enabled); listView.applyBackground(enabled: enabled); columnView.applyBackground(enabled: enabled)
+        secondaryPane?.applyPreferences()
     }
     @objc private func clearRecent(_ sender: Any?) { preferences.clearRecent() }
     @objc private func moveFavoriteUp(_ sender: NSMenuItem) {
@@ -2044,7 +2072,8 @@ extension BrowserWindow {
         case #selector(createFile(_:)): return activeModel.location != nil && !activeModel.isLoading && !Self.entryOperationRunning
         case #selector(createFolderFromSelection(_:)): return activeModel.location != nil && !activeModel.isLoading && !activeSelectedItems.isEmpty && !Self.entryOperationRunning && !MoveWindow.isRunning
         case #selector(extractArchivesHere(_:)), #selector(extractArchivesSmart(_:)), #selector(extractArchivesToChildFolders(_:)): return activeModel.location != nil && !activeModel.isLoading && !selectedArchiveURLs.isEmpty && !ArchiveExtractionWindow.isRunning
-        case #selector(setAsDesktopWallpaper(_:)): return activeSelectedItems.count == 1 && !activeSelectedItems[0].isBrowsable && NSImage(contentsOf: activeSelectedItems[0].url) != nil
+        case #selector(setAsDesktopWallpaper(_:)), #selector(setAsAppBackground(_:)): return activeSelectedItems.count == 1 && !activeSelectedItems[0].isBrowsable && NSImage(contentsOf: activeSelectedItems[0].url) != nil
+        case #selector(clearAppBackground(_:)): return preferences.appBackgroundPath != nil
         case #selector(createSymbolicLink(_:)): return activeModel.location != nil && activeSelectedItems.count == 1 && !activeModel.isLoading && !Self.entryOperationRunning
         case #selector(createSymbolicLinkFromDialog(_:)): return activeModel.location != nil && !activeModel.isLoading && !Self.entryOperationRunning
         case #selector(toggleSelectedFavorite(_:)): return activeModel.location != nil && (activeSelectedItems.isEmpty || (activeSelectedItems.count == 1 && activeSelectedItems[0].isBrowsable))
@@ -2126,6 +2155,7 @@ private struct DelayedUIListLoader: DirectoryLoading {
 extension BrowserWindow {
 #if DEBUG
     var qaSidebarVisible: Bool { !sidebarContainer.isHidden }
+    var qaHasAppBackground: Bool { content.image != nil }
     var qaGitLoading: Bool { gitTask != nil }
     var qaGitMarkedRows: Int { model.items.filter { !gitStatus(for: $0).isEmpty }.count }
     var qaGitColumnVisible: Bool { table.tableColumns.contains { $0.identifier.rawValue == "git" && !$0.isHidden } }
@@ -2188,6 +2218,20 @@ extension BrowserWindow {
             try await Task.sleep(for: .milliseconds(500))
             checks["cloudLocations"] = controller.cloudLocations.count == 3 && controller.cloudLocations.allSatisfy { $0.state == .unknown }
             try capture("home")
+            let backgroundFixture = destination.appendingPathComponent("background-fixture.png")
+            let backgroundImage = NSImage(size: NSSize(width: 96, height: 64)); backgroundImage.lockFocus()
+            NSColor(calibratedRed: 0.12, green: 0.34, blue: 0.62, alpha: 1).setFill(); NSRect(x: 0, y: 0, width: 96, height: 64).fill()
+            NSColor(calibratedRed: 0.78, green: 0.42, blue: 0.18, alpha: 1).setFill(); NSRect(x: 48, y: 0, width: 48, height: 64).fill(); backgroundImage.unlockFocus()
+            guard let backgroundTIFF = backgroundImage.tiffRepresentation, let backgroundBitmap = NSBitmapImageRep(data: backgroundTIFF),
+                  let backgroundPNG = backgroundBitmap.representation(using: .png, properties: [:]) else { throw CocoaError(.fileWriteUnknown) }
+            try backgroundPNG.write(to: backgroundFixture)
+            let qaBackgroundStore = AppBackgroundStore(directory: destination.appendingPathComponent("app-background-store", isDirectory: true))
+            let qaBackground = try qaBackgroundStore.install(from: backgroundFixture)
+            preferences.setAppBackground(qaBackground)
+            checks["appBackgroundApplied"] = controller.qaHasAppBackground && preferences.appBackgroundPath == qaBackground.path
+            let invalidBackground = destination.appendingPathComponent("invalid-background.txt"); try Data("not an image".utf8).write(to: invalidBackground)
+            checks["appBackgroundRejectsNonImage"] = (try? qaBackgroundStore.install(from: invalidBackground)) == nil
+            try capture("app-background")
             checks["minimumWindow"] = window.frame.size == NSSize(width: 900, height: 600)
             let paletteEntries = CommandPaletteCatalog.entries(from: NSApp.mainMenu)
             checks["commandPaletteIndexesMenus"] = paletteEntries.count >= 20
@@ -2208,6 +2252,7 @@ extension BrowserWindow {
                 paletteEntries.contains { $0.item.action == action }
             }
             checks["desktopWallpaperCommand"] = paletteEntries.contains { $0.item.action == #selector(setAsDesktopWallpaper(_:)) }
+            checks["appBackgroundCommands"] = [#selector(setAsAppBackground(_:)), #selector(clearAppBackground(_:))].allSatisfy { action in paletteEntries.contains { $0.item.action == action } }
             checks["commandPaletteSearch"] = CommandPaletteCatalog.filtered(paletteEntries, query: L("숨김", "hidden")).contains { $0.item.action == #selector(toggleHidden(_:)) }
             controller.showCommandPalette(nil); try await Task.sleep(for: .milliseconds(50))
             controller.commandPalette.qaSetQuery(L("숨김", "hidden"))
@@ -2389,6 +2434,8 @@ extension BrowserWindow {
             try capture("appearance-settings", view: appearanceSettings.window?.contentView)
             appearanceSettings.qaResetFolderViews()
             checks["folderSettingsResetAll"] = appearanceSettings.qaFolderCount == 0
+            appearanceSettings.qaClearAppBackground()
+            checks["appBackgroundCleared"] = preferences.appBackgroundPath == nil && !controller.qaHasAppBackground
             appearanceSettings.close(); window.makeKeyAndOrderFront(nil)
             checks["pathFieldUsableWidth"] = controller.pathField.frame.width >= 160
             controller.focusPath(nil)

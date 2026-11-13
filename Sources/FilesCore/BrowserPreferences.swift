@@ -64,6 +64,7 @@ public struct BrowserPreferencesArchive: Codable, Equatable, Sendable {
     public let showFileExtensionWarning: Bool?
     public let startupLocationPath: String?
     public let developerApplicationPath: String?
+    public let appBackgroundPath: String?
     public let toolbarOrder: [String]
     public let hiddenToolbarItems: [String]
     public let folderViewPreferences: [String: FolderViewPreference]
@@ -118,6 +119,7 @@ public final class BrowserPreferences {
     public private(set) var showFileExtensionWarning: Bool
     public private(set) var startupLocationPath: String?
     public private(set) var developerApplicationPath: String?
+    public private(set) var appBackgroundPath: String?
     public private(set) var toolbarOrder: [BrowserToolbarItem]
     public private(set) var hiddenToolbarItems: Set<BrowserToolbarItem>
     public private(set) var folderViewPreferences: [String: FolderViewPreference]
@@ -166,6 +168,7 @@ public final class BrowserPreferences {
         showFileExtensionWarning = defaults.object(forKey: "showFileExtensionWarning") as? Bool ?? true
         startupLocationPath = defaults.string(forKey: "startupLocationPath").flatMap { $0.hasPrefix("/") ? $0 : nil }
         developerApplicationPath = defaults.string(forKey: "developerApplicationPath")
+        appBackgroundPath = defaults.string(forKey: "appBackgroundPath").flatMap { $0.hasPrefix("/") ? $0 : nil }
         var toolbar: [BrowserToolbarItem] = []
         for raw in defaults.stringArray(forKey: "toolbarOrder") ?? [] {
             if let item = BrowserToolbarItem(rawValue: raw), !toolbar.contains(item) { toolbar.append(item) }
@@ -285,6 +288,14 @@ public final class BrowserPreferences {
         else { defaults.removeObject(forKey: "developerApplicationPath") }
         changed()
     }
+    public func setAppBackground(_ url: URL?) {
+        let value = url?.standardizedFileURL.path
+        guard appBackgroundPath != value else { return }
+        appBackgroundPath = value
+        if let value { defaults.set(value, forKey: "appBackgroundPath") }
+        else { defaults.removeObject(forKey: "appBackgroundPath") }
+        changed()
+    }
     public func exportData() throws -> Data {
         let archive = BrowserPreferencesArchive(version: 1, sidebarOrder: sidebarOrder.map(\.rawValue),
             collapsedSidebar: collapsedSidebar.map(\.rawValue).sorted(), favorites: favorites.map(\.path), recent: recent.map(\.path),
@@ -301,7 +312,7 @@ public final class BrowserPreferences {
             viewSize: viewSize.rawValue, appearance: appearance.rawValue, continueLastSession: continueLastSession, sizeUnit: sizeUnit.rawValue,
             openFoldersInNewTab: openFoldersInNewTab, scrollToPreviousFolderOnUp: scrollToPreviousFolderOnUp,
             showFileExtensionWarning: showFileExtensionWarning,
-            startupLocationPath: startupLocationPath, developerApplicationPath: developerApplicationPath, toolbarOrder: toolbarOrder.map(\.rawValue),
+            startupLocationPath: startupLocationPath, developerApplicationPath: developerApplicationPath, appBackgroundPath: appBackgroundPath, toolbarOrder: toolbarOrder.map(\.rawValue),
             hiddenToolbarItems: hiddenToolbarItems.map(\.rawValue).sorted(), folderViewPreferences: folderViewPreferences)
         let encoder = JSONEncoder(); encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         return try encoder.encode(archive)
@@ -332,6 +343,9 @@ public final class BrowserPreferences {
         if let startupLocationPath = archive.startupLocationPath, !startupLocationPath.hasPrefix("/") {
             throw BrowserPreferencesArchiveError.invalidValue
         }
+        if let appBackgroundPath = archive.appBackgroundPath, !appBackgroundPath.hasPrefix("/") {
+            throw BrowserPreferencesArchiveError.invalidValue
+        }
         sidebarOrder = importedSidebar; collapsedSidebar = Set(importedCollapsed)
         favorites = archive.favorites.map { URL(fileURLWithPath: $0) }; recent = archive.recent.map { URL(fileURLWithPath: $0) }
         showHidden = archive.showHidden; showExtensions = archive.showExtensions; showToolbar = archive.showToolbar; showStatusBar = archive.showStatusBar; showSidebar = archive.showSidebar ?? true
@@ -349,7 +363,7 @@ public final class BrowserPreferences {
         viewSize = size; appearance = importedAppearance; continueLastSession = archive.continueLastSession; sizeUnit = importedSizeUnit
         openFoldersInNewTab = archive.openFoldersInNewTab ?? false; scrollToPreviousFolderOnUp = archive.scrollToPreviousFolderOnUp ?? true
         showFileExtensionWarning = archive.showFileExtensionWarning ?? true; startupLocationPath = archive.startupLocationPath
-        developerApplicationPath = archive.developerApplicationPath; toolbarOrder = importedToolbar; hiddenToolbarItems = Set(importedHiddenToolbar)
+        developerApplicationPath = archive.developerApplicationPath; appBackgroundPath = archive.appBackgroundPath; toolbarOrder = importedToolbar; hiddenToolbarItems = Set(importedHiddenToolbar)
         folderViewPreferences = archive.folderViewPreferences
         defaults.set(sidebarOrder.map(\.rawValue), forKey: "sidebarOrder"); defaults.set(collapsedSidebar.map(\.rawValue).sorted(), forKey: "collapsedSidebar")
         defaults.set(favorites.map(\.path), forKey: "favorites"); defaults.set(recent.map(\.path), forKey: "recent")
@@ -370,6 +384,7 @@ public final class BrowserPreferences {
         defaults.set(openFoldersInNewTab, forKey: "openFoldersInNewTab"); defaults.set(scrollToPreviousFolderOnUp, forKey: "scrollToPreviousFolderOnUp"); defaults.set(showFileExtensionWarning, forKey: "showFileExtensionWarning")
         if let startupLocationPath { defaults.set(startupLocationPath, forKey: "startupLocationPath") } else { defaults.removeObject(forKey: "startupLocationPath") }
         if let developerApplicationPath { defaults.set(developerApplicationPath, forKey: "developerApplicationPath") } else { defaults.removeObject(forKey: "developerApplicationPath") }
+        if let appBackgroundPath { defaults.set(appBackgroundPath, forKey: "appBackgroundPath") } else { defaults.removeObject(forKey: "appBackgroundPath") }
         defaults.set(toolbarOrder.map(\.rawValue), forKey: "toolbarOrder"); defaults.set(hiddenToolbarItems.map(\.rawValue).sorted(), forKey: "hiddenToolbarItems")
         saveFolderViewPreferences(); changed()
     }

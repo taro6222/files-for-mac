@@ -88,6 +88,7 @@ final class FileColumnView: NSView {
     private let document = NSView()
     private let stack = NSStackView()
     private var columns: [Column] = []
+    private var customBackgroundEnabled = false
     private var baseURL: URL?
     private var baseIDs: [String] = []
     private var loadGeneration = 0
@@ -127,9 +128,15 @@ final class FileColumnView: NSView {
         if let first = columns.first, !first.selectedItems.isEmpty { expand(column: first) }
     }
     func focus() { if let table = columns.last?.table { window?.makeFirstResponder(table) } }
+    func applyBackground(enabled: Bool) {
+        customBackgroundEnabled = enabled; scroll.drawsBackground = !enabled
+        for column in columns { column.scroll.drawsBackground = !enabled; column.table.backgroundColor = enabled ? .clear : .controlBackgroundColor }
+    }
     private func reset() { loadGeneration += 1; columns.removeAll(); stack.arrangedSubviews.forEach { $0.removeFromSuperview() }; baseURL = nil; baseIDs = [] }
     private func append(url: URL, items: [FileItem]) {
         let column = Column(owner: self, url: url, items: sortOrder.sorted(items)); column.table.menu = contextMenu
+        column.scroll.drawsBackground = !customBackgroundEnabled
+        column.table.backgroundColor = customBackgroundEnabled ? .clear : .controlBackgroundColor
         columns.append(column); stack.addArrangedSubview(column.view)
         DispatchQueue.main.async { [weak self] in self?.scrollToEnd() }
     }

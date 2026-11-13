@@ -141,6 +141,10 @@ final class FileGridView: NSView, NSCollectionViewDataSource, NSCollectionViewDe
         layout.invalidateLayout(); collection.reloadData()
     }
     func focus() { window?.makeFirstResponder(collection) }
+    func applyBackground(enabled: Bool) {
+        scroll.drawsBackground = !enabled
+        collection.backgroundColors = enabled ? [.clear] : []
+    }
     func currentScrollOffset() -> Double { scroll.contentView.bounds.origin.y }
     func numberOfSections(in collectionView: NSCollectionView) -> Int { 1 }
     func collectionView(_ collectionView: NSCollectionView, numberOfItemsInSection section: Int) -> Int { items.count }

@@ -16,6 +16,7 @@
 | 태그 설정 | 항목의 Finder 태그 이름 편집과 태그 검색은 공개 resource-value API로 제공한다. Windows Files의 앱 소유 전역 태그 목록·임의 색상·정렬 레지스트리와 동일한 공개 Finder API는 없어 별도 전역 편집 화면을 만들지 않는다. | M6 `platform-alternative`; 태그 읽기·쓰기·교체 identity 및 UI 검색 검증 |
 | Windows 속성 하위 화면 | 실행 파일 호환성 모드, Windows Libraries, `.lnk` 전용 속성은 macOS 파일 객체에 그대로 적용되지 않는다. 일반·상세·해시·보안 정보는 하나의 네이티브 Get Info 패널로 통합한다. | M6 화면 감사: 3개 제외, 6개 AppKit 대체; ACL 편집은 미구현으로 명시 |
 | 시스템 배경 | 선택한 정지 이미지는 공개 `NSWorkspace.setDesktopImageURL`로 현재 디스플레이들에 적용하고 기존 디스플레이 옵션을 보존한다. Windows 잠금 화면 및 슬라이드쇼 명령은 macOS 공개 AppKit에 동등한 per-file 명령이 없고 System Settings·Spaces 정책을 침범하므로 노출하지 않는다. | M6 데스크탑 배경 명령은 `platform-alternative`; 잠금 화면·슬라이드쇼는 `platform-excluded` |
+| 앱 배경 | 선택한 정지 이미지를 검증 후 Application Support 관리 복사본으로 게시하고 모든 로컬 보기와 pane의 배경에 aspect-fill로 그린다. 동적 Windows 배경 엔진을 복제하지 않으며 시스템 대비·투명도 접근성 설정을 우선한다. | M6 `implemented`; 관리 복사·손상 복구·4개 UI 조합 검증 |
 | 드라이브 포맷 | 앱 내부 포맷 대신 선택 볼륨을 macOS Disk Utility에서 연다. 파일 앱이 직접 erase 권한·장치 작업을 소유하지 않는다. | `platform-alternative`; 장착 볼륨 메뉴와 UI 검증 통과 |
 | 클래식 속성 | Windows classic properties 대신 macOS 네이티브 정보 패널(Get Info)을 사용한다. | `platform-alternative`; M4 정보 패널 검증 통과 |
 | 명령 키 | ⌘L, ⌘[, ⌘], ⌘↑, ⌘↓, ⇧⌘. | 전체 키보드/VoiceOver 흐름 대기 |

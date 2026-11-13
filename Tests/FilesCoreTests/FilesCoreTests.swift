@@ -543,7 +543,7 @@ private struct DelayedLoader: DirectoryLoading {
     let firstDefaults = UserDefaults(suiteName: firstSuite)!, secondDefaults = UserDefaults(suiteName: secondSuite)!
     defer { firstDefaults.removePersistentDomain(forName: firstSuite); secondDefaults.removePersistentDomain(forName: secondSuite) }
     let source = BrowserPreferences(defaults: firstDefaults, initialFavorites: [URL(fileURLWithPath: "/source")])
-    source.setShowHidden(true); source.setShowToolbar(false); source.setShowSidebar(false); source.setAppearance(.dark); source.setDeveloperApplication(URL(fileURLWithPath: "/Applications/Editor.app"))
+    source.setShowHidden(true); source.setShowToolbar(false); source.setShowSidebar(false); source.setAppearance(.dark); source.setDeveloperApplication(URL(fileURLWithPath: "/Applications/Editor.app")); source.setAppBackground(URL(fileURLWithPath: "/Library/Application Support/FilesMac/background-image"))
     source.setStartupLocation(URL(fileURLWithPath: "/startup"))
     source.setSizeUnit(.decimal)
     source.setOpenFoldersInNewTab(true)
@@ -561,6 +561,7 @@ private struct DelayedLoader: DirectoryLoading {
     try destination.importData(data)
     #expect(destination.showHidden && !destination.showToolbar && !destination.showSidebar && destination.appearance == .dark)
     #expect(destination.developerApplicationPath == "/Applications/Editor.app")
+    #expect(destination.appBackgroundPath == "/Library/Application Support/FilesMac/background-image")
     #expect(destination.startupLocationPath == "/startup")
     #expect(destination.sizeUnit == .decimal)
     #expect(destination.openFoldersInNewTab)
@@ -578,6 +579,10 @@ private struct DelayedLoader: DirectoryLoading {
     var object = try #require(JSONSerialization.jsonObject(with: data) as? [String: Any]); object["viewSize"] = "huge"
     let invalid = try JSONSerialization.data(withJSONObject: object)
     #expect(throws: BrowserPreferencesArchiveError.invalidValue) { try destination.importData(invalid) }
+    #expect(try destination.exportData() == before)
+    var relativeBackground = try #require(JSONSerialization.jsonObject(with: data) as? [String: Any]); relativeBackground["appBackgroundPath"] = "relative/background.png"
+    let invalidBackground = try JSONSerialization.data(withJSONObject: relativeBackground)
+    #expect(throws: BrowserPreferencesArchiveError.invalidValue) { try destination.importData(invalidBackground) }
     #expect(try destination.exportData() == before)
 }
 

@@ -14,6 +14,7 @@ final class SecondaryBrowserPane: NSView, NSTableViewDataSource, NSTableViewDele
     private let gridView = FileGridView()
     private let listView = FileListView()
     private let columnView = FileColumnView()
+    private let browserContent = AppBackgroundView()
     private let adaptivePolicy = AdaptiveViewPolicy()
     private var adaptiveResolvedMode: BrowserViewMode = .details
     private var adaptiveWidth: CGFloat = 0
@@ -109,7 +110,7 @@ final class SecondaryBrowserPane: NSView, NSTableViewDataSource, NSTableViewDele
     }
     func stopLoading() { model.cancelLoad() }
     func setViewMode(_ mode: BrowserViewMode) { activate(); setViewModeAndPersist(mode) }
-    func applyPreferences() { render() }
+    func applyPreferences() { applyBackground(); render() }
     func setContextMenu(_ menu: NSMenu?) { gridView.contextMenu = menu; listView.contextMenu = menu; columnView.contextMenu = menu }
     func openSelected() {
         if renderedViewMode == .grid, let item = gridView.selectedItems.first { openGridItem(item) }
@@ -164,7 +165,7 @@ final class SecondaryBrowserPane: NSView, NSTableViewDataSource, NSTableViewDele
         }
         table.sortDescriptors = [NSSortDescriptor(key: model.sortOrder.field.rawValue, ascending: model.sortOrder.ascending)]
         scroll.documentView = table; scroll.hasVerticalScroller = true; scroll.hasHorizontalScroller = true
-        let browserContent = NSView(); browserContent.translatesAutoresizingMaskIntoConstraints = false
+        browserContent.translatesAutoresizingMaskIntoConstraints = false
         scroll.translatesAutoresizingMaskIntoConstraints = false; browserContent.addSubview(scroll); browserContent.addSubview(gridView); browserContent.addSubview(listView); browserContent.addSubview(columnView)
         NSLayoutConstraint.activate([
             scroll.leadingAnchor.constraint(equalTo: browserContent.leadingAnchor), scroll.trailingAnchor.constraint(equalTo: browserContent.trailingAnchor),
@@ -214,6 +215,13 @@ final class SecondaryBrowserPane: NSView, NSTableViewDataSource, NSTableViewDele
         footer.addArrangedSubview(status); footer.addArrangedSubview(NSView()); stack.addArrangedSubview(footer)
         for view in [toolbar, browserContent, footer] { view.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true }
         browserContent.heightAnchor.constraint(greaterThanOrEqualToConstant: 300).isActive = true
+        applyBackground()
+    }
+    private func applyBackground() {
+        _ = browserContent.setImage(at: preferences.appBackgroundPath)
+        let enabled = browserContent.image != nil
+        scroll.drawsBackground = !enabled; table.backgroundColor = enabled ? .clear : .controlBackgroundColor
+        gridView.applyBackground(enabled: enabled); listView.applyBackground(enabled: enabled); columnView.applyBackground(enabled: enabled)
     }
     private func button(_ symbol: String, _ action: Selector) -> NSButton {
         let button = NSButton(); button.image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)

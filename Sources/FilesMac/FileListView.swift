@@ -71,6 +71,7 @@ final class FileListView: NSView, NSTableViewDataSource, NSTableViewDelegate {
         table.reloadData()
     }
     func focus() { window?.makeFirstResponder(table) }
+    func applyBackground(enabled: Bool) { scroll.drawsBackground = !enabled; table.backgroundColor = enabled ? .clear : .controlBackgroundColor }
     func currentScrollOffset() -> Double { scroll.contentView.bounds.origin.y }
     func numberOfRows(in tableView: NSTableView) -> Int { items.count }
     func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
