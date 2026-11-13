@@ -1843,6 +1843,12 @@ extension BrowserWindow {
             while controller.searchWindow?.qaIsSearching == true && spotlightSearch.duration(to: .now) < .seconds(10) { try await Task.sleep(for: .milliseconds(10)) }
             checks["spotlightSearchCapability"] = controller.searchWindow?.qaShowsSpotlight == true && controller.searchWindow?.qaIsSearching == false
             try capture("search-spotlight", view: controller.searchWindow?.window?.contentView)
+            let projectRoot = URL(fileURLWithPath: FileManager.default.currentDirectoryPath, isDirectory: true)
+            controller.searchWindow?.present(root: projectRoot, showHidden: false)
+            controller.searchWindow?.qaSearchSpotlight("SearchRouter", scope: .descendants)
+            let spotlightHit = ContinuousClock.now
+            while controller.searchWindow?.qaIsSearching == true && spotlightHit.duration(to: .now) < .seconds(15) { try await Task.sleep(for: .milliseconds(20)) }
+            checks["spotlightContentHit"] = controller.searchWindow?.qaContainsResult(named: "LocalSearch.swift") == true
             controller.searchWindow?.close(); window.makeKeyAndOrderFront(nil)
             controller.showQuickLook(nil); try await Task.sleep(for: .milliseconds(500))
             checks["quickLookWindow"] = controller.quickLook.qaVisible

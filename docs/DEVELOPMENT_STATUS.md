@@ -4,7 +4,7 @@
 
 ## 이번 구현 단위
 
-M4 열여섯 번째 개발 단위로 검색 크기의 B/KB/MB/GB 단위 선택과 소수 변환, 고급 필터 두 줄 배치를 추가했다. M3 원본 시각 기준·VoiceOver·실기기 환경 검증은 완료 판정을 막는 별도 항목으로 유지한다.
+M4 열일곱 번째 개발 단위로 실제 Spotlight 인덱스 콘텐츠 hit를 검증하고 Metadata Query predicate·path fallback을 수정했다. M3 원본 시각 기준·VoiceOver·실기기 환경 검증은 완료 판정을 막는 별도 항목으로 유지한다.
 
 | 영역 | 상태 | 내용 |
 |---|---|---|
@@ -23,7 +23,7 @@ M4 열여섯 번째 개발 단위로 검색 크기의 B/KB/MB/GB 단위 선택�
 | 외형 | 구현 | 시스템 설정·밝게·어둡게 즉시 전환과 저장, 모든 창 반영, macOS sidebar 재질의 대비·투명도 접근성 설정 추종 |
 | 폴더별 설정 | 구현 | 표준 경로별 보기 모드·크기 저장, 양쪽 pane 적용, 폴더 설정 우선·해제 시 전역값 복귀, 손상 JSON 복구 |
 | 설정 관리 | 구현 | 저장된 폴더별 보기 개수 표시, 전체 초기화, 초기화 즉시 모든 창 반영 |
-| 검색 | 구현 중 | ⌘F 패널, 직접 열거 파일명/Spotlight 콘텐츠 adapter, 범위·종류·숨김·Finder 태그·B/KB/MB/GB 최소·최대 크기·수정 날짜 필터 및 입력 오류 표시, 인덱스 범위 안내, 진행·중단·부분 결과·접근 실패, 결과 열기 |
+| 검색 | 검증 | ⌘F 패널, 직접 열거 파일명/Spotlight 콘텐츠 adapter, 실제 인덱스 hit, 범위·종류·숨김·Finder 태그·B/KB/MB/GB 최소·최대 크기·수정 날짜 필터 및 입력 오류 표시, 인덱스 범위 안내, 진행·중단·부분 결과·접근 실패, 결과 열기 |
 | 정보·속성 | 구현 중 | ⌘I 패널, 다중 선택 요약, 논리/할당 크기, 날짜, 소유자·그룹·POSIX 권한, UTI, Finder 태그, 볼륨, 접근 상태, SHA-256 진행·취소 |
 | 미리보기 | 구현 중 | Space/메뉴 네이티브 QLPreviewPanel, 선택 항목 datasource, 다중 선택 탐색, 패널 종료 시 datasource 해제 |
 | Finder 태그 | 구현 중 | 정보 패널 편집, resource-value 읽기·쓰기, 공백·중복 정규화, 제어문자 차단, identity 재검증, 폴더 감시 갱신 |
@@ -44,7 +44,7 @@ M4 열여섯 번째 개발 단위로 검색 크기의 B/KB/MB/GB 단위 선택�
 | 이동 | 구현 중 | 동일/교차 볼륨 이동, 검증·교체 백업·안전 실행 취소, 사용자 취소, 단계별 상태와 진행 막대; APFS/APFSX/exFAT 통과 |
 | 영구 삭제 | 구현 중 | 선택 항목 영구 삭제(복구 불가 경고), 항목별 상태 보고, 작업 창, 저널 파일 |
 
-다음 구현은 M4 실제 Spotlight·Quick Look·외장 추출 수용 검증이다.
+다음 구현은 M4 실제 Quick Look 본문과 외장 추출 수용 검증이다.
 
 ## M1 별도 검증 목록
 
@@ -68,4 +68,4 @@ M4 열여섯 번째 개발 단위로 검색 크기의 B/KB/MB/GB 단위 선택�
 
 M3 검증: [보기 모드 상태와 세션 호환성](verification/m3/INCREMENT_01.md), [pane별 보기 모드 컨트롤](verification/m3/INCREMENT_02.md), [기본 pane 그리드 렌더러](verification/m3/INCREMENT_03.md), [보조 pane 그리드와 선택 경쟁 수정](verification/m3/INCREMENT_04.md), [그리드 명령 및 드래그 앤 드롭](verification/m3/INCREMENT_05.md), [양쪽 pane 단일열 목록 렌더러](verification/m3/INCREMENT_06.md), [양쪽 pane 계층형 컬럼 렌더러](verification/m3/INCREMENT_07.md), [적응형 보기 정책](verification/m3/INCREMENT_08.md), [보기 크기 프리셋](verification/m3/INCREMENT_09.md), [컬럼 파일 작업 통합](verification/m3/INCREMENT_10.md), [네이티브 명령 팔레트](verification/m3/INCREMENT_11.md), [사용자 단축키 설정](verification/m3/INCREMENT_12.md), [툴바 사용자 지정](verification/m3/INCREMENT_13.md), [외형 설정](verification/m3/INCREMENT_14.md), [폴더별 보기 설정](verification/m3/INCREMENT_15.md), [폴더별 설정 관리](verification/m3/INCREMENT_16.md).
 
-M4 검증: [로컬 파일명 검색 코어](verification/m4/INCREMENT_01.md), [검색 상태와 취소](verification/m4/INCREMENT_02.md), [네이티브 검색 패널](verification/m4/INCREMENT_03.md), [파일 속성과 SHA-256](verification/m4/INCREMENT_04.md), [네이티브 정보 패널](verification/m4/INCREMENT_05.md), [Quick Look](verification/m4/INCREMENT_06.md), [Finder 태그 코어](verification/m4/INCREMENT_07.md), [Finder 태그 편집 UI](verification/m4/INCREMENT_08.md), [검색 메타데이터 필터](verification/m4/INCREMENT_09.md), [검색 고급 필터 UI](verification/m4/INCREMENT_10.md), [Spotlight 콘텐츠 검색](verification/m4/INCREMENT_11.md), [장착 볼륨 capability](verification/m4/INCREMENT_12.md), [안전 추출과 Disk Utility](verification/m4/INCREMENT_13.md), [시스템 열기 명령](verification/m4/INCREMENT_14.md), [실제 볼륨 탐지 매트릭스](verification/m4/INCREMENT_15.md), [검색 크기 단위](verification/m4/INCREMENT_16.md).
+M4 검증: [로컬 파일명 검색 코어](verification/m4/INCREMENT_01.md), [검색 상태와 취소](verification/m4/INCREMENT_02.md), [네이티브 검색 패널](verification/m4/INCREMENT_03.md), [파일 속성과 SHA-256](verification/m4/INCREMENT_04.md), [네이티브 정보 패널](verification/m4/INCREMENT_05.md), [Quick Look](verification/m4/INCREMENT_06.md), [Finder 태그 코어](verification/m4/INCREMENT_07.md), [Finder 태그 편집 UI](verification/m4/INCREMENT_08.md), [검색 메타데이터 필터](verification/m4/INCREMENT_09.md), [검색 고급 필터 UI](verification/m4/INCREMENT_10.md), [Spotlight 콘텐츠 검색](verification/m4/INCREMENT_11.md), [장착 볼륨 capability](verification/m4/INCREMENT_12.md), [안전 추출과 Disk Utility](verification/m4/INCREMENT_13.md), [시스템 열기 명령](verification/m4/INCREMENT_14.md), [실제 볼륨 탐지 매트릭스](verification/m4/INCREMENT_15.md), [검색 크기 단위](verification/m4/INCREMENT_16.md), [실제 Spotlight 콘텐츠 hit](verification/m4/INCREMENT_17.md).

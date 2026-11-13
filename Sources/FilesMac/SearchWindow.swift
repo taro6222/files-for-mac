@@ -95,12 +95,13 @@ final class SearchWindow: NSWindowController, NSTableViewDataSource, NSTableView
 #if DEBUG
     func qaSearch(_ text: String, scope value: SearchScope) { search.stringValue = text; scope.selectItem(at: value == .currentFolder ? 1 : 0); start(nil) }
     func qaSearchAdvanced(_ text: String, tag tagValue: String, minimum: String, maximum: String, unit: SearchSizeUnit = .bytes) { search.stringValue = text; tag.stringValue = tagValue; minimumSize.stringValue = minimum; maximumSize.stringValue = maximum; sizeUnit.selectItem(at: SearchSizeUnit.allCases.firstIndex(of: unit)!); scope.selectItem(at: 1); start(nil) }
-    func qaSearchSpotlight(_ text: String) { method.selectItem(at: 1); methodChanged(nil); search.stringValue = text; tag.stringValue = ""; minimumSize.stringValue = ""; maximumSize.stringValue = ""; scope.selectItem(at: 1); start(nil) }
+    func qaSearchSpotlight(_ text: String, scope value: SearchScope = .currentFolder) { method.selectItem(at: 1); methodChanged(nil); search.stringValue = text; tag.stringValue = ""; minimumSize.stringValue = ""; maximumSize.stringValue = ""; scope.selectItem(at: value == .currentFolder ? 1 : 0); start(nil) }
     func qaInvalidSize() { minimumSize.stringValue = "invalid"; start(nil) }
     var qaValidationError: Bool { status.stringValue.contains(L("파일 크기", "File sizes")) }
     var qaIsSearching: Bool { model.isSearching }
     var qaResultCount: Int { model.results.count }
     var qaShowsDirectEnumeration: Bool { status.stringValue.contains(L("직접 열거", "direct enumeration")) }
     var qaShowsSpotlight: Bool { status.stringValue.contains("Spotlight") }
+    func qaContainsResult(named name: String) -> Bool { model.results.contains { $0.name == name } }
 #endif
 }

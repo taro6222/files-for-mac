@@ -31,8 +31,8 @@ private final class SpotlightSearchSession: NSObject {
     }
 
     func start() {
-        metadataQuery.searchScopes = [root]
-        metadataQuery.predicate = NSPredicate(format: "%K CONTAINS[cd] %@", NSMetadataItemTextContentKey, request.text)
+        metadataQuery.searchScopes = [NSMetadataQueryUserHomeScope, NSMetadataQueryLocalComputerScope]
+        metadataQuery.predicate = NSPredicate(format: "%K LIKE[cd] %@", NSMetadataItemTextContentKey, "*\(request.text)*")
         observer = NotificationCenter.default.addObserver(forName: .NSMetadataQueryDidFinishGathering, object: metadataQuery, queue: .main) { [weak self] _ in
             MainActor.assumeIsolated { self?.finishGathering() }
         }
@@ -51,7 +51,9 @@ private final class SpotlightSearchSession: NSObject {
         let tagTerms = foldedTerms(request.tagText)
         var items: [FileItem] = [], skipped = 0, seen = Set<String>()
         for case let result as NSMetadataItem in metadataQuery.results {
-            guard let url = result.value(forAttribute: NSMetadataItemURLKey) as? URL else { skipped += 1; continue }
+            let url = (result.value(forAttribute: NSMetadataItemURLKey) as? URL)
+                ?? (result.value(forAttribute: NSMetadataItemPathKey) as? String).map { URL(fileURLWithPath: $0) }
+            guard let url else { skipped += 1; continue }
             let normalized = url.standardizedFileURL
             guard normalized.path != root.path, normalized.path.hasPrefix(root.path + "/") else { continue }
             if request.scope == .currentFolder && normalized.deletingLastPathComponent() != root { continue }
