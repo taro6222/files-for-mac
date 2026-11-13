@@ -16,7 +16,7 @@ create_volume() {
   /bin/mkdir -p "$mount"
   /usr/bin/hdiutil create -size 96m -fs "$filesystem" -volname "FilesM2-$name" "$image" >/dev/null
   local output device
-  output=$(/usr/bin/hdiutil attach -nobrowse -mountpoint "$mount" "$image")
+  output=$(/usr/bin/hdiutil attach -mountpoint "$mount" "$image")
   device=$(printf '%s\n' "$output" | /usr/bin/awk 'NR == 1 { print $1 }')
   devices+=("$device")
   printf -v "$variable" '%s' "$mount"
@@ -38,6 +38,6 @@ create_volume apfsx "Case-sensitive APFS" FILES_TEST_APFSX_VOLUME
 create_exfat_volume
 export CLANG_MODULE_CACHE_PATH="$PWD/.build/ModuleCache"
 export SWIFT_TMPDIR=/tmp
-swift test --filter mountedVolumeCopyMoveUndoAndCaseSemantics \
+swift test --filter mountedVolume \
   -Xswiftc -load-plugin-library \
   -Xswiftc /Library/Developer/CommandLineTools/usr/lib/swift/host/plugins/testing/libTestingMacros.dylib

@@ -3,6 +3,19 @@ import Darwin
 import Testing
 @testable import FilesCore
 
+@Test func mountedVolumeProviderDiscoversRealMatrix() throws {
+    let environment = ProcessInfo.processInfo.environment
+    let keys = ["FILES_TEST_APFS_VOLUME", "FILES_TEST_APFSX_VOLUME", "FILES_TEST_EXFAT_VOLUME"]
+    guard keys.allSatisfy({ environment[$0] != nil }) else { return }
+    let discovered = MountedVolumeProvider().mountedVolumes()
+    for key in keys {
+        let expected = URL(fileURLWithPath: environment[key]!, isDirectory: true).standardizedFileURL
+        let volume = try #require(discovered.first { $0.url == expected }, "Mounted volume provider did not return \(expected.path)")
+        #expect(volume.totalCapacity != nil); #expect(volume.availableCapacity != nil)
+        #expect(volume.formatDescription?.isEmpty == false); #expect(volume.isLocal == true)
+    }
+}
+
 @Test func mountedVolumeCopyMoveUndoAndCaseSemantics() async throws {
     let environment = ProcessInfo.processInfo.environment
     let configurations: [(String, Bool)] = [
