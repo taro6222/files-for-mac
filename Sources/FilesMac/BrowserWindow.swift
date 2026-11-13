@@ -11,6 +11,7 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
     private let scroll = NSScrollView()
     private let gridView = FileGridView()
     private let listView = FileListView()
+    private let columnView = FileColumnView()
     private let pathField = NSComboBox()
     private let status = NSTextField(labelWithString: "")
     private let message = NSTextField(wrappingLabelWithString: "")
@@ -36,6 +37,7 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
     private var primarySelectedItems: [FileItem] {
         if model.viewMode == .grid { return gridView.selectedItems }
         if model.viewMode == .list { return listView.selectedItems }
+        if model.viewMode == .columns { return columnView.selectedItems }
         return table.selectedRowIndexes.compactMap { model.items.indices.contains($0) ? model.items[$0] : nil }
     }
     private var activeSelectedItems: [FileItem] {
@@ -294,6 +296,8 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         NSLayoutConstraint.activate([gridView.leadingAnchor.constraint(equalTo: content.leadingAnchor), gridView.trailingAnchor.constraint(equalTo: content.trailingAnchor), gridView.topAnchor.constraint(equalTo: content.topAnchor), gridView.bottomAnchor.constraint(equalTo: content.bottomAnchor)])
         content.addSubview(listView)
         NSLayoutConstraint.activate([listView.leadingAnchor.constraint(equalTo: content.leadingAnchor), listView.trailingAnchor.constraint(equalTo: content.trailingAnchor), listView.topAnchor.constraint(equalTo: content.topAnchor), listView.bottomAnchor.constraint(equalTo: content.bottomAnchor)])
+        content.addSubview(columnView)
+        NSLayoutConstraint.activate([columnView.leadingAnchor.constraint(equalTo: content.leadingAnchor), columnView.trailingAnchor.constraint(equalTo: content.trailingAnchor), columnView.topAnchor.constraint(equalTo: content.topAnchor), columnView.bottomAnchor.constraint(equalTo: content.bottomAnchor)])
         gridView.onSelectionChange = { [weak self] selection in
             guard let self, !self.rendering, self.model.viewMode == .grid else { return }
             self.model.savePosition(selection: selection, scrollOffset: self.gridView.currentScrollOffset())
@@ -318,6 +322,12 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
             if intent == .move { self.prepareMove(sources: sources, destination: destination) }
             else { self.prepareCopy(sources: sources, destination: destination) }; return true
         }
+        columnView.onSelectionChange = { [weak self] selection in
+            guard let self, !self.rendering, self.model.viewMode == .columns else { return }
+            self.model.savePosition(selection: selection, scrollOffset: 0); self.render()
+        }
+        columnView.onActivate = { [weak self] in self?.setSecondaryActive(false) }
+        columnView.onOpen = { [weak self] item in self?.openRenderedItem(item) }
         let menu = NSMenu()
         let folder = menu.addItem(withTitle: L("새 폴더…", "New Folder…"), action: #selector(createFolder(_:)), keyEquivalent: ""); folder.target = self
         let folderFromSelection = menu.addItem(withTitle: L("선택 항목으로 새 폴더…", "New Folder with Selection…"), action: #selector(createFolderFromSelection(_:)), keyEquivalent: ""); folderFromSelection.target = self
@@ -473,6 +483,7 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         switch model.viewMode {
         case .grid: ids = Set(gridView.selectedItems.map(\.id)); offset = gridView.currentScrollOffset()
         case .list: ids = Set(listView.selectedItems.map(\.id)); offset = listView.currentScrollOffset()
+        case .columns: ids = Set(columnView.selectedItems.map(\.id)); offset = 0
         default: ids = Set(table.selectedRowIndexes.compactMap { model.items.indices.contains($0) ? model.items[$0].id : nil }); offset = scroll.contentView.bounds.origin.y
         }
         model.savePosition(selection: ids, scrollOffset: offset)
@@ -510,9 +521,11 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         refreshButton.toolTip = refreshTitle; refreshButton.setAccessibilityLabel(refreshTitle)
         let showsGrid = model.location != nil && model.viewMode == .grid
         let showsList = model.location != nil && model.viewMode == .list
-        scroll.isHidden = model.location == nil || showsGrid || showsList
+        let showsColumns = model.location != nil && model.viewMode == .columns
+        scroll.isHidden = model.location == nil || showsGrid || showsList || showsColumns
         gridView.isHidden = model.location == nil || !showsGrid
         listView.isHidden = model.location == nil || !showsList
+        columnView.isHidden = model.location == nil || !showsColumns
         homeScroll.isHidden = model.location != nil
         if model.location == nil { lastRecordedLocation = nil; buildHome() }
         var revealEntry = false
@@ -530,6 +543,8 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
                         scrollOffset: model.history.current.scrollOffset)
         listView.update(items: model.items, selection: model.history.current.selection,
                         scrollOffset: model.history.current.scrollOffset)
+        columnView.showHidden = model.showHidden; columnView.sortOrder = model.sortOrder
+        columnView.update(baseURL: model.location, items: model.items, selection: model.history.current.selection)
         if !model.isLoading {
             scroll.contentView.scroll(to: NSPoint(x: 0, y: model.history.current.scrollOffset))
             scroll.reflectScrolledClipView(scroll.contentView)
@@ -553,7 +568,7 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         }
         updateStatus()
         if model.location != nil && window?.firstResponder === window {
-            if showsGrid { gridView.focus() } else if showsList { listView.focus() } else { window?.makeFirstResponder(table) }
+            if showsGrid { gridView.focus() } else if showsList { listView.focus() } else if showsColumns { columnView.focus() } else { window?.makeFirstResponder(table) }
         }
     }
     private func updateStatus() {
@@ -695,6 +710,7 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         if secondaryActive { secondaryPane?.openSelected(); return }
         if model.viewMode == .grid, let item = gridView.selectedItems.first { openGridItem(item); return }
         if model.viewMode == .list, let item = listView.selectedItems.first { openRenderedItem(item); return }
+        if model.viewMode == .columns, let item = columnView.selectedItems.first { openRenderedItem(item); return }
         if sender as? NSTableView === table && table.clickedRow < 0 { return }
         let rows = table.selectedRowIndexes
         guard let first = rows.first, model.items.indices.contains(first) else { return }
@@ -1354,6 +1370,7 @@ extension BrowserWindow {
         else if model.location == nil { focusSidebar(nil) }
         else if model.viewMode == .grid { gridView.focus() }
         else if model.viewMode == .list { listView.focus() }
+        else if model.viewMode == .columns { columnView.focus() }
         else { window?.makeFirstResponder(table) }
     }
     @objc func focusSidebar(_ sender: Any?) {
@@ -1457,6 +1474,9 @@ extension BrowserWindow {
             try fm.createDirectory(at: fixture, withIntermediateDirectories: true)
             let gridFolder = fixture.appendingPathComponent("000-grid-folder", isDirectory: true)
             try fm.createDirectory(at: gridFolder, withIntermediateDirectories: true)
+            let columnFolder = gridFolder.appendingPathComponent("nested-column-folder", isDirectory: true)
+            try fm.createDirectory(at: columnFolder, withIntermediateDirectories: true)
+            try Data("column".utf8).write(to: columnFolder.appendingPathComponent("leaf.txt"))
             for index in 0..<9_999 {
                 let name = index == 0 ? "00000-한글-é-📁-long-file-name.txt" : String(format: "%05d-file.txt", index)
                 try Data("fixture".utf8).write(to: fixture.appendingPathComponent(name))
@@ -1556,6 +1576,36 @@ extension BrowserWindow {
                 try await Task.sleep(for: .milliseconds(10))
             }
             checks["listModeRestoredAfterNavigation"] = controller.model.viewMode == .list && controller.model.location == fixture.standardizedFileURL
+            controller.model.savePosition(selection: [], scrollOffset: 0)
+            controller.model.setViewMode(.columns)
+            controller.render(); root.layoutSubtreeIfNeeded(); root.displayIfNeeded()
+            controller.columnView.qaSelect(id: gridFolder.path)
+            let columnStart = ContinuousClock.now
+            while controller.columnView.qaColumnCount < 2 && columnStart.duration(to: .now) < .seconds(5) {
+                try await Task.sleep(for: .milliseconds(10))
+            }
+            controller.columnView.qaSelect(id: columnFolder.path, column: 1)
+            let nestedColumnStart = ContinuousClock.now
+            while controller.columnView.qaColumnCount < 3 && nestedColumnStart.duration(to: .now) < .seconds(5) {
+                try await Task.sleep(for: .milliseconds(10))
+            }
+            root.layoutSubtreeIfNeeded(); root.displayIfNeeded()
+            checks["columnsVisible"] = !controller.columnView.isHidden && controller.scroll.isHidden
+            checks["columnsHierarchy"] = controller.columnView.qaColumnCount == 3
+                && controller.columnView.selectedItems.map(\.id) == [columnFolder.path]
+            controller.focusFiles(nil)
+            checks["columnsFocus"] = (window.firstResponder as? NSView)?.isDescendant(of: controller.columnView) == true
+            try capture("files-columns")
+            controller.columnView.qaMoveLeft()
+            checks["columnsLeftNavigation"] = controller.columnView.qaColumnCount == 2
+            controller.openRenderedItem(controller.columnView.selectedItems[0])
+            checks["columnsFolderOpen"] = controller.model.location == columnFolder.standardizedFileURL
+            controller.goBack(nil)
+            let columnBackStart = ContinuousClock.now
+            while controller.model.isLoading && columnBackStart.duration(to: .now) < .seconds(30) {
+                try await Task.sleep(for: .milliseconds(10))
+            }
+            checks["columnsModeRestoredAfterNavigation"] = controller.model.viewMode == .columns && controller.model.location == fixture.standardizedFileURL
             controller.model.setViewMode(.details)
             controller.navigate(fixture.appendingPathComponent("missing-directory"))
             let errorStart = ContinuousClock.now
@@ -1836,6 +1886,18 @@ extension BrowserWindow {
             let secondaryListBackStart = ContinuousClock.now
             while secondary.model.isLoading && elapsed(secondaryListBackStart) < 10 { try await Task.sleep(for: .milliseconds(10)) }
             checks["secondaryListSession"] = secondary.snapshot().viewMode == .list
+            guard let secondaryColumnFolder = secondary.model.items.first(where: { $0.url.standardizedFileURL == mergeTarget.standardizedFileURL }) else {
+                throw CocoaError(.fileNoSuchFile)
+            }
+            secondary.model.savePosition(selection: [], scrollOffset: 0)
+            secondary.model.setViewMode(.columns)
+            content.layoutSubtreeIfNeeded(); content.displayIfNeeded()
+            secondary.qaSelectColumn(id: secondaryColumnFolder.id)
+            let secondaryColumnStart = ContinuousClock.now
+            while secondary.qaColumnCount < 2 && elapsed(secondaryColumnStart) < 10 { try await Task.sleep(for: .milliseconds(10)) }
+            checks["secondaryColumnsHierarchy"] = secondary.qaColumnCount == 2
+                && secondary.selectedItems.map(\.id) == [secondaryColumnFolder.id]
+            checks["secondaryColumnsSession"] = secondary.snapshot().viewMode == .columns
             let undoMenu = NSMenuItem(title: "", action: #selector(undoLastCopy(_:)), keyEquivalent: "")
             checks["undoMenuAction"] = undoMenu.action == #selector(undoLastCopy(_:))
             checks["undoMenuEnabled"] = controller.canUndoCopy(journalDirectory: journals)

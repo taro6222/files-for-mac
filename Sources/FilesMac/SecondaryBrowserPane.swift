@@ -11,6 +11,7 @@ final class SecondaryBrowserPane: NSView, NSTableViewDataSource, NSTableViewDele
     private let scroll = NSScrollView()
     private let gridView = FileGridView()
     private let listView = FileListView()
+    private let columnView = FileColumnView()
     private let status = NSTextField(labelWithString: "")
     private let hiddenButton = NSButton()
     private let viewModeButton = NSPopUpButton()
@@ -34,6 +35,7 @@ final class SecondaryBrowserPane: NSView, NSTableViewDataSource, NSTableViewDele
     var selectedItems: [FileItem] {
         if model.viewMode == .grid { return gridView.selectedItems }
         if model.viewMode == .list { return listView.selectedItems }
+        if model.viewMode == .columns { return columnView.selectedItems }
         return table.selectedRowIndexes.compactMap { model.items.indices.contains($0) ? model.items[$0] : nil }
     }
     func setActive(_ active: Bool) {
@@ -48,6 +50,7 @@ final class SecondaryBrowserPane: NSView, NSTableViewDataSource, NSTableViewDele
         activate()
         if model.viewMode == .grid { gridView.focus() }
         else if model.viewMode == .list { listView.focus() }
+        else if model.viewMode == .columns { columnView.focus() }
         else { window?.makeFirstResponder(table) }
     }
     func stopLoading() { model.cancelLoad() }
@@ -56,6 +59,7 @@ final class SecondaryBrowserPane: NSView, NSTableViewDataSource, NSTableViewDele
     func openSelected() {
         if model.viewMode == .grid, let item = gridView.selectedItems.first { openGridItem(item) }
         else if model.viewMode == .list, let item = listView.selectedItems.first { openGridItem(item) }
+        else if model.viewMode == .columns, let item = columnView.selectedItems.first { openGridItem(item) }
         else { openSelection(nil) }
     }
     func open(_ url: URL?) { activate(); navigate(url) }
@@ -106,14 +110,16 @@ final class SecondaryBrowserPane: NSView, NSTableViewDataSource, NSTableViewDele
         table.sortDescriptors = [NSSortDescriptor(key: model.sortOrder.field.rawValue, ascending: model.sortOrder.ascending)]
         scroll.documentView = table; scroll.hasVerticalScroller = true; scroll.hasHorizontalScroller = true
         let browserContent = NSView(); browserContent.translatesAutoresizingMaskIntoConstraints = false
-        scroll.translatesAutoresizingMaskIntoConstraints = false; browserContent.addSubview(scroll); browserContent.addSubview(gridView); browserContent.addSubview(listView)
+        scroll.translatesAutoresizingMaskIntoConstraints = false; browserContent.addSubview(scroll); browserContent.addSubview(gridView); browserContent.addSubview(listView); browserContent.addSubview(columnView)
         NSLayoutConstraint.activate([
             scroll.leadingAnchor.constraint(equalTo: browserContent.leadingAnchor), scroll.trailingAnchor.constraint(equalTo: browserContent.trailingAnchor),
             scroll.topAnchor.constraint(equalTo: browserContent.topAnchor), scroll.bottomAnchor.constraint(equalTo: browserContent.bottomAnchor),
             gridView.leadingAnchor.constraint(equalTo: browserContent.leadingAnchor), gridView.trailingAnchor.constraint(equalTo: browserContent.trailingAnchor),
             gridView.topAnchor.constraint(equalTo: browserContent.topAnchor), gridView.bottomAnchor.constraint(equalTo: browserContent.bottomAnchor),
             listView.leadingAnchor.constraint(equalTo: browserContent.leadingAnchor), listView.trailingAnchor.constraint(equalTo: browserContent.trailingAnchor),
-            listView.topAnchor.constraint(equalTo: browserContent.topAnchor), listView.bottomAnchor.constraint(equalTo: browserContent.bottomAnchor)
+            listView.topAnchor.constraint(equalTo: browserContent.topAnchor), listView.bottomAnchor.constraint(equalTo: browserContent.bottomAnchor),
+            columnView.leadingAnchor.constraint(equalTo: browserContent.leadingAnchor), columnView.trailingAnchor.constraint(equalTo: browserContent.trailingAnchor),
+            columnView.topAnchor.constraint(equalTo: browserContent.topAnchor), columnView.bottomAnchor.constraint(equalTo: browserContent.bottomAnchor)
         ])
         gridView.onSelectionChange = { [weak self] selection in
             guard let self, !self.rendering, self.model.viewMode == .grid else { return }
@@ -137,6 +143,12 @@ final class SecondaryBrowserPane: NSView, NSTableViewDataSource, NSTableViewDele
             guard let self, let destination = item?.isBrowsable == true ? item?.url : self.model.location else { return false }
             self.activate(); return self.onFileDrop?(sources, destination, intent) ?? false
         }
+        columnView.onSelectionChange = { [weak self] selection in
+            guard let self, !self.rendering, self.model.viewMode == .columns else { return }
+            self.model.savePosition(selection: selection, scrollOffset: 0); self.render()
+        }
+        columnView.onActivate = { [weak self] in self?.activate() }
+        columnView.onOpen = { [weak self] item in self?.openGridItem(item) }
         stack.addArrangedSubview(browserContent)
         status.font = .systemFont(ofSize: 11); status.textColor = .secondaryLabelColor
         let footer = NSStackView(); footer.edgeInsets = NSEdgeInsets(top: 6, left: 10, bottom: 6, right: 10)
@@ -155,6 +167,7 @@ final class SecondaryBrowserPane: NSView, NSTableViewDataSource, NSTableViewDele
         switch model.viewMode {
         case .grid: selection = Set(gridView.selectedItems.map(\.id)); offset = gridView.currentScrollOffset()
         case .list: selection = Set(listView.selectedItems.map(\.id)); offset = listView.currentScrollOffset()
+        case .columns: selection = Set(columnView.selectedItems.map(\.id)); offset = 0
         default: selection = Set(table.selectedRowIndexes.compactMap { model.items.indices.contains($0) ? model.items[$0].id : nil }); offset = scroll.contentView.bounds.origin.y
         }
         model.savePosition(selection: selection, scrollOffset: offset)
@@ -172,7 +185,8 @@ final class SecondaryBrowserPane: NSView, NSTableViewDataSource, NSTableViewDele
         pathField.stringValue = model.location?.path ?? ""; table.reloadData()
         let showsGrid = model.viewMode == .grid
         let showsList = model.viewMode == .list
-        scroll.isHidden = showsGrid || showsList; gridView.isHidden = !showsGrid; listView.isHidden = !showsList
+        let showsColumns = model.viewMode == .columns
+        scroll.isHidden = showsGrid || showsList || showsColumns; gridView.isHidden = !showsGrid; listView.isHidden = !showsList; columnView.isHidden = !showsColumns
         hiddenButton.contentTintColor = model.showHidden ? .systemBlue : .labelColor
         if let item = viewModeButton.itemArray.first(where: {
             ($0.representedObject as? String) == model.viewMode.rawValue
@@ -184,6 +198,8 @@ final class SecondaryBrowserPane: NSView, NSTableViewDataSource, NSTableViewDele
                         scrollOffset: model.history.current.scrollOffset)
         listView.update(items: model.items, selection: model.history.current.selection,
                         scrollOffset: model.history.current.scrollOffset)
+        columnView.showHidden = model.showHidden; columnView.sortOrder = model.sortOrder
+        columnView.update(baseURL: model.location, items: model.items, selection: model.history.current.selection)
         if !model.isLoading { scroll.contentView.scroll(to: NSPoint(x: 0, y: model.history.current.scrollOffset)); scroll.reflectScrolledClipView(scroll.contentView) }
         if model.isLoading { status.stringValue = L("읽는 중…", "Loading…") }
         else if let failure = model.failure { status.stringValue = failure.message(korean: Locale.preferredLanguages.first?.hasPrefix("ko") == true) }
@@ -297,6 +313,8 @@ final class SecondaryBrowserPane: NSView, NSTableViewDataSource, NSTableViewDele
     func qaGridIntegration() -> (menu: Bool, drop: Bool, source: URL?) {
         (gridView.contextMenu != nil, gridView.qaHasDropHandler, gridView.qaPasteboardURL(at: 0))
     }
+    var qaColumnCount: Int { columnView.qaColumnCount }
+    func qaSelectColumn(id: String, column: Int = 0) { columnView.qaSelect(id: id, column: column) }
     #endif
 }
 
