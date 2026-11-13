@@ -230,6 +230,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         let folder = file.addItem(withTitle: L("새 폴더…", "New Folder…"), action: #selector(BrowserWindow.createFolder(_:)), keyEquivalent: "n")
         folder.keyEquivalentModifierMask = [.command, .shift]
         file.addItem(withTitle: L("선택 항목으로 새 폴더…", "New Folder with Selection…"), action: #selector(BrowserWindow.createFolderFromSelection(_:)), keyEquivalent: "")
+        file.addItem(withTitle: L("대상을 선택해 심볼릭 링크 만들기…", "Create Symbolic Link to Chosen Item…"), action: #selector(BrowserWindow.createSymbolicLinkFromDialog(_:)), keyEquivalent: "")
         file.addItem(withTitle: L("이름 변경…", "Rename…"), action: #selector(BrowserWindow.renameSelection(_:)), keyEquivalent: "")
         file.addItem(withTitle: L("일괄 이름 변경…", "Batch Rename…"), action: #selector(BrowserWindow.batchRenameSelection(_:)), keyEquivalent: "")
         let copy = file.addItem(withTitle: L("선택 항목 복사…", "Copy Selection To…"), action: #selector(BrowserWindow.copySelection(_:)), keyEquivalent: "c")

@@ -1111,10 +1111,23 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
     }
     @objc func createSymbolicLink(_ sender: Any?) {
         guard activeSelectedItems.count == 1, let parent = activeModel.location, let window else { return }
-        let source = activeSelectedItems[0]
-        let base = (source.name as NSString).deletingPathExtension
-        let ext = (source.name as NSString).pathExtension
-        let suggested = ext.isEmpty ? "\(source.name) alias" : "\(base) alias.\(ext)"
+        promptCreateSymbolicLink(to: activeSelectedItems[0].url, in: parent, window: window)
+    }
+    @objc func createSymbolicLinkFromDialog(_ sender: Any?) {
+        guard let parent = activeModel.location, let window, !Self.entryOperationRunning else { return }
+        let panel = NSOpenPanel(); panel.canChooseFiles = true; panel.canChooseDirectories = true
+        panel.allowsMultipleSelection = false; panel.canCreateDirectories = false
+        panel.prompt = L("선택", "Choose")
+        panel.beginSheetModal(for: window) { [weak self] response in
+            guard response == .OK, let self, let source = panel.url else { return }
+            self.promptCreateSymbolicLink(to: source, in: parent, window: window)
+        }
+    }
+    private func promptCreateSymbolicLink(to source: URL, in parent: URL, window: NSWindow) {
+        let sourceName = source.lastPathComponent
+        let base = (sourceName as NSString).deletingPathExtension
+        let ext = (sourceName as NSString).pathExtension
+        let suggested = ext.isEmpty ? "\(sourceName) alias" : "\(base) alias.\(ext)"
         let alert = NSAlert(); alert.messageText = L("심볼릭 링크 만들기", "Create Symbolic Link")
         alert.informativeText = L("macOS 심볼릭 링크를 현재 폴더에 만듭니다.", "Create a macOS symbolic link in the current folder.")
         let field = NSTextField(string: suggested); field.frame = NSRect(x: 0, y: 0, width: 360, height: 26)
@@ -1127,7 +1140,7 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
             Task {
                 defer { Self.entryOperationRunning = false }
                 do {
-                    let target = try await EntryOperations.createSymbolicLink(to: source.url, in: parent, name: field.stringValue)
+                    let target = try await EntryOperations.createSymbolicLink(to: source, in: parent, name: field.stringValue)
                     if self.activeModel.location == parent { self.pendingEntrySelection = target.standardizedFileURL; self.activeModel.reload() }
                 } catch {
                     let message: String
@@ -1946,6 +1959,7 @@ extension BrowserWindow {
         case #selector(createFolder(_:)): return activeModel.location != nil && !activeModel.isLoading && !Self.entryOperationRunning && !CopyWindow.isRunning
         case #selector(createFolderFromSelection(_:)): return activeModel.location != nil && !activeModel.isLoading && !activeSelectedItems.isEmpty && !Self.entryOperationRunning && !MoveWindow.isRunning
         case #selector(createSymbolicLink(_:)): return activeModel.location != nil && activeSelectedItems.count == 1 && !activeModel.isLoading && !Self.entryOperationRunning
+        case #selector(createSymbolicLinkFromDialog(_:)): return activeModel.location != nil && !activeModel.isLoading && !Self.entryOperationRunning
         case #selector(toggleSelectedFavorite(_:)): return activeModel.location != nil && (activeSelectedItems.isEmpty || (activeSelectedItems.count == 1 && activeSelectedItems[0].isBrowsable))
         case #selector(renameSelection(_:)): return activeModel.location != nil && activeSelectedItems.count == 1 && !activeModel.isLoading && !Self.entryOperationRunning && !CopyWindow.isRunning
         case #selector(batchRenameSelection(_:)): return activeModel.location != nil && activeSelectedItems.count > 1 && !activeModel.isLoading && !BatchRenameWindow.isRunning
@@ -2090,6 +2104,7 @@ extension BrowserWindow {
             let paletteEntries = CommandPaletteCatalog.entries(from: NSApp.mainMenu)
             checks["commandPaletteIndexesMenus"] = paletteEntries.count >= 20
             checks["commandPaletteStableIDs"] = Set(paletteEntries.map(\.id)).count == paletteEntries.count
+            checks["createShortcutFromDialogCommand"] = paletteEntries.contains { $0.item.action == #selector(createSymbolicLinkFromDialog(_:)) }
             checks["commandPaletteSearch"] = CommandPaletteCatalog.filtered(paletteEntries, query: L("숨김", "hidden")).contains { $0.item.action == #selector(toggleHidden(_:)) }
             controller.showCommandPalette(nil); try await Task.sleep(for: .milliseconds(50))
             controller.commandPalette.qaSetQuery(L("숨김", "hidden"))
