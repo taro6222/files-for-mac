@@ -42,7 +42,11 @@ public struct FTPServerCapabilities: Sendable, Equatable {
 public struct RemoteDirectoryEntry: Sendable, Equatable, Identifiable {
     public let name: String
     public let remotePath: String
+    public let isDirectory: Bool
     public var id: String { remotePath }
+    public init(name: String, remotePath: String, isDirectory: Bool = false) {
+        self.name = name; self.remotePath = remotePath; self.isDirectory = isDirectory
+    }
 }
 
 public struct FTPRemoteProvider: Sendable {

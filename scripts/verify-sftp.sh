@@ -39,7 +39,7 @@ for _ in {1..50}; do
   sleep 0.1
 done
 /usr/bin/nc -z 127.0.0.1 "$port" >/dev/null
-printf 'ls -1 "%s"\n' "$remote_root" | /usr/bin/sftp -q -b - -P "$port" -i "$fixture_root/client_key" \
+printf 'ls -l "%s"\n' "$remote_root" | /usr/bin/sftp -q -b - -P "$port" -i "$fixture_root/client_key" \
   -o "UserKnownHostsFile=$fixture_root/known_hosts" -o StrictHostKeyChecking=yes -o IdentitiesOnly=yes "$username@127.0.0.1"
 /usr/bin/env FILES_TEST_SFTP_PORT="$port" FILES_TEST_SFTP_USERNAME="$username" \
   FILES_TEST_SFTP_IDENTITY="$fixture_root/client_key" FILES_TEST_SFTP_KNOWN_HOSTS="$fixture_root/known_hosts" \

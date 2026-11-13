@@ -196,19 +196,25 @@ public struct SFTPRemoteProvider: Sendable {
         guard parent.hasPrefix("/"), let text = String(data: data, encoding: .utf8) else { throw SFTPBackendError.invalidListing }
         let normalizedParent = URL(fileURLWithPath: parent).standardizedFileURL.path
         let lines = text.split(whereSeparator: \Character.isNewline).map(String.init).filter { !$0.hasPrefix("sftp> ") }
-        let names: [String] = try lines.compactMap { line in
+        let parsed: [(String, Bool)] = try lines.compactMap { rawLine in
+            let longFields = rawLine.split(maxSplits: 8, omittingEmptySubsequences: true, whereSeparator: \Character.isWhitespace)
+            let isLongListing = longFields.count == 9 && longFields[0].count == 10 && "-dl".contains(longFields[0].first ?? "?")
+            let longName = isLongListing ? String(longFields[8]) : rawLine
+            let slashDirectory = !isLongListing && longName.hasSuffix("/")
+            let isDirectory = (isLongListing && longFields[0].first == "d") || slashDirectory
+            let line = slashDirectory ? String(longName.dropLast()) : longName
             guard !line.isEmpty, line != ".", line != ".." else { return nil }
-            guard line.hasPrefix("/") else { return line }
+            guard line.hasPrefix("/") else { return (line, isDirectory) }
             let url = URL(fileURLWithPath: line).standardizedFileURL
             guard url.deletingLastPathComponent().path == normalizedParent else { throw SFTPBackendError.invalidListing }
-            return url.lastPathComponent
+            return (url.lastPathComponent, isDirectory)
         }
-        guard names.count <= maximumEntries else { throw SFTPBackendError.listingLimitExceeded }
-        guard names.allSatisfy({ !$0.contains("/") && !$0.unicodeScalars.contains(where: { CharacterSet.controlCharacters.contains($0) }) }) else {
+        guard parsed.count <= maximumEntries else { throw SFTPBackendError.listingLimitExceeded }
+        guard parsed.allSatisfy({ !$0.0.contains("/") && !$0.0.unicodeScalars.contains(where: { CharacterSet.controlCharacters.contains($0) }) }) else {
             throw SFTPBackendError.invalidListing
         }
         let base = parent == "/" ? "" : normalizedParent.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
-        return names.map { RemoteDirectoryEntry(name: $0, remotePath: "/" + ([base, $0].filter { !$0.isEmpty }.joined(separator: "/"))) }
+        return parsed.map { RemoteDirectoryEntry(name: $0.0, remotePath: "/" + ([base, $0.0].filter { !$0.isEmpty }.joined(separator: "/")), isDirectory: $0.1) }
     }
 }
 
@@ -220,7 +226,7 @@ public struct SFTPCommandBuilder: Sendable {
         guard key.identityFile.isFileURL, key.knownHostsFile.isFileURL else { throw SFTPBackendError.invalidPath }
         let commands: [String]
         switch intent {
-        case .list(let remote): commands = ["ls -1 \(try quoted(remote))"]
+        case .list(let remote): commands = ["ls -l \(try quoted(remote))"]
         case .download(let remote, let local): commands = ["get \(try quoted(remote)) \(try quoted(local.path))"]
         case .upload(let local, let remote): commands = ["put \(try quoted(local.path)) \(try quoted(remote))"]
         case .uploadAndRename(let local, let staging, let final):

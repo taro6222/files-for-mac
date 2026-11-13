@@ -10,7 +10,7 @@ import Testing
     #expect(plan.executable.path == "/usr/bin/sftp"); #expect(plan.arguments == ["-q", "-b", "-", "-F", "<private-config>", "files-remote"])
     #expect(config.contains("StrictHostKeyChecking yes")); #expect(config.contains("UserKnownHostsFile")); #expect(config.contains("IdentitiesOnly yes"))
     #expect(config.contains("BatchMode yes")); #expect(config.contains("PasswordAuthentication no")); #expect(config.contains("KbdInteractiveAuthentication no"))
-    #expect(batch == "ls -1 \"/team/한글 폴더\"\n"); #expect(!plan.redactedDescription.contains("alice")); #expect(!plan.redactedDescription.contains("ssh.example.com"))
+    #expect(batch == "ls -l \"/team/한글 폴더\"\n"); #expect(!plan.redactedDescription.contains("alice")); #expect(!plan.redactedDescription.contains("ssh.example.com"))
 }
 
 @Test func sftpPlansEscapeBatchPathsAndRejectUnsafeInputs() throws {
@@ -110,6 +110,10 @@ import Testing
     let openSSH = try SFTPRemoteProvider.parseList(Data("sftp> ls -1 \"/team\"\n/team/alpha.txt\n/team/한글 폴더\n".utf8), parent: "/team")
     #expect(openSSH.map(\.name) == ["alpha.txt", "한글 폴더"])
     #expect(throws: SFTPBackendError.invalidListing) { try SFTPRemoteProvider.parseList(Data("/other/nested.txt\n".utf8), parent: "/team") }
+    let typed = try SFTPRemoteProvider.parseList(Data("/team/Folder/\n/team/file.txt\n".utf8), parent: "/team")
+    #expect(typed[0].isDirectory); #expect(!typed[1].isDirectory)
+    let long = try SFTPRemoteProvider.parseList(Data("drwxr-xr-x    2 user group        64 Jan 01 12:00 Folder With Spaces\n-rw-r--r--    1 user group        10 Jan 01 12:00 file name.txt\n".utf8), parent: "/team")
+    #expect(long.map(\.name) == ["Folder With Spaces", "file name.txt"]); #expect(long[0].isDirectory); #expect(!long[1].isDirectory)
 }
 
 @Test func sftpIdentityBookmarksRoundTripRegularFilesAndRejectLinks() throws {
