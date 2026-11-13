@@ -2440,6 +2440,10 @@ extension BrowserWindow {
             checks["existingOpenAndHiddenCommands"] = [#selector(toggleHidden(_:)), #selector(AppDelegate.showGeneralSettings(_:)), #selector(openInDeveloperApplication(_:))].allSatisfy { action in
                 paletteEntries.contains { $0.item.action == action }
             }
+            checks["nativeTabCommands"] = [#selector(AppDelegate.nextTab(_:)), #selector(AppDelegate.previousTab(_:)),
+                #selector(AppDelegate.closeSelectedTab(_:)), #selector(AppDelegate.closeAllTabs(_:)),
+                #selector(AppDelegate.closeOtherTabs(_:)), #selector(AppDelegate.closeTabsToLeft(_:)),
+                #selector(AppDelegate.closeTabsToRight(_:))].allSatisfy { action in paletteEntries.contains { $0.item.action == action } }
             checks["archivePlacementCommands"] = [#selector(extractArchivesHere(_:)), #selector(extractArchivesSmart(_:)), #selector(extractArchivesToChildFolders(_:))].allSatisfy { action in
                 paletteEntries.contains { $0.item.action == action }
             }

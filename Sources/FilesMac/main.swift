@@ -93,6 +93,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         guard let workspace = closedWorkspaces.popLast() else { return }
         makeBrowser(workspace: workspace, tabbedTo: currentBrowser)
     }
+    private var currentTabGroup: [NSWindow] { currentBrowser?.window?.tabbedWindows ?? currentBrowser?.window.map { [$0] } ?? [] }
+    @objc func nextTab(_ sender: Any?) { currentBrowser?.window?.selectNextTab(sender) }
+    @objc func previousTab(_ sender: Any?) { currentBrowser?.window?.selectPreviousTab(sender) }
+    @objc func closeSelectedTab(_ sender: Any?) { currentBrowser?.window?.performClose(sender) }
+    @objc func closeAllTabs(_ sender: Any?) { currentTabGroup.forEach { $0.performClose(sender) } }
+    @objc func closeOtherTabs(_ sender: Any?) {
+        guard let selected = currentBrowser?.window else { return }
+        currentTabGroup.filter { $0 !== selected }.forEach { $0.performClose(sender) }
+    }
+    @objc func closeTabsToLeft(_ sender: Any?) {
+        guard let selected = currentBrowser?.window, let index = currentTabGroup.firstIndex(where: { $0 === selected }) else { return }
+        currentTabGroup[..<index].forEach { $0.performClose(sender) }
+    }
+    @objc func closeTabsToRight(_ sender: Any?) {
+        guard let selected = currentBrowser?.window, let index = currentTabGroup.firstIndex(where: { $0 === selected }) else { return }
+        currentTabGroup[(index + 1)...].forEach { $0.performClose(sender) }
+    }
     @objc func showShortcutSettings(_ sender: Any?) {
         if shortcutSettingsWindow == nil {
             shortcutSettingsWindow = ShortcutSettingsWindow(preferences: shortcutPreferences,
@@ -171,6 +188,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         if menuItem.action == #selector(reopenClosedTab(_:)) { return !closedWorkspaces.isEmpty }
         if menuItem.action == #selector(duplicateTab(_:)) { return currentBrowser != nil }
         if menuItem.action == #selector(showGitStatus(_:)) { return currentBrowser?.activeLocation != nil }
+        if menuItem.action == #selector(nextTab(_:)) || menuItem.action == #selector(previousTab(_:)) { return currentTabGroup.count > 1 }
+        if menuItem.action == #selector(closeSelectedTab(_:)) || menuItem.action == #selector(closeAllTabs(_:)) { return currentBrowser != nil }
+        if menuItem.action == #selector(closeOtherTabs(_:)) { return currentTabGroup.count > 1 }
+        if menuItem.action == #selector(closeTabsToLeft(_:)), let selected = currentBrowser?.window { return currentTabGroup.first.map { $0 !== selected } ?? false }
+        if menuItem.action == #selector(closeTabsToRight(_:)), let selected = currentBrowser?.window { return currentTabGroup.last.map { $0 !== selected } ?? false }
         return true
     }
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
@@ -226,6 +248,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         duplicate.keyEquivalentModifierMask = [.command, .shift]; duplicate.target = self
         let reopen = file.addItem(withTitle: L("닫은 탭 다시 열기", "Reopen Closed Tab"), action: #selector(reopenClosedTab(_:)), keyEquivalent: "t")
         reopen.keyEquivalentModifierMask = [.command, .shift]; reopen.target = self
+        let previousTab = file.addItem(withTitle: L("이전 탭", "Previous Tab"), action: #selector(previousTab(_:)), keyEquivalent: "{"); previousTab.target = self
+        let nextTab = file.addItem(withTitle: L("다음 탭", "Next Tab"), action: #selector(nextTab(_:)), keyEquivalent: "}"); nextTab.target = self
+        file.addItem(.separator())
+        for (title, action) in [
+            (L("현재 탭 닫기", "Close Selected Tab"), #selector(closeSelectedTab(_:))),
+            (L("다른 탭 닫기", "Close Other Tabs"), #selector(closeOtherTabs(_:))),
+            (L("왼쪽 탭 닫기", "Close Tabs to the Left"), #selector(closeTabsToLeft(_:))),
+            (L("오른쪽 탭 닫기", "Close Tabs to the Right"), #selector(closeTabsToRight(_:))),
+            (L("모든 탭 닫기", "Close All Tabs"), #selector(closeAllTabs(_:)))
+        ] { let item = file.addItem(withTitle: title, action: action, keyEquivalent: ""); item.target = self }
+        file.addItem(.separator())
         file.addItem(withTitle: L("폴더 열기…", "Open Folder…"), action: #selector(BrowserWindow.chooseFolder(_:)), keyEquivalent: "o")
         file.addItem(withTitle: L("선택 항목 열기", "Open Selection"), action: #selector(BrowserWindow.openSelection(_:)), keyEquivalent: "\u{f701}")
         file.addItem(withTitle: L("압축 파일 탐색", "Browse Archive"), action: #selector(BrowserWindow.openArchive(_:)), keyEquivalent: "")
