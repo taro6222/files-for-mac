@@ -10,6 +10,7 @@ final class RemoteConnectionsWindow: NSWindowController, NSTableViewDataSource, 
     private var profiles: [RemoteConnectionProfile] = []
     private var pendingIdentityBookmark: Data?
     private var sftpTransferTask: Task<Void, Never>?
+    private var remoteBrowserWindow: RemoteBrowserWindow?
     private let table = NSTableView(), name = NSTextField(), host = NSTextField(), port = NSTextField()
     private let rootPath = NSTextField(), username = NSTextField(), password = NSSecureTextField()
     private let protocolPopup = NSPopUpButton(), saveButton = NSButton(), deleteButton = NSButton(), connectButton = NSButton(), trustButton = NSButton(), identityButton = NSButton(), sftpConnectButton = NSButton(), sftpDownloadButton = NSButton()
@@ -150,21 +151,20 @@ final class RemoteConnectionsWindow: NSWindowController, NSTableViewDataSource, 
         }
     }
     @objc private func connectSFTP(_ sender: Any?) {
-        guard let profile = selected, let window else { return }; sftpConnectButton.isEnabled = false
-        Task { [weak self] in
-            guard let self else { return }
-            do {
-                let prepared = try SFTPConnectionPreparation().prepare(profile: profile, knownHostsFile: hostTrustStore.fileURL)
+        guard let profile = selected else { return }
+        do {
+            let prepared = try SFTPConnectionPreparation().prepare(profile: profile, knownHostsFile: hostTrustStore.fileURL)
+            let model = try RemoteBrowserModel(path: profile.rootPath) { path in
                 let access = prepared.key.identityFile.startAccessingSecurityScopedResource()
                 defer { if access { prepared.key.identityFile.stopAccessingSecurityScopedResource() } }
                 guard access else { throw SFTPBackendError.invalidIdentity }
-                let entries = try await SFTPRemoteProvider().list(profile: profile, key: prepared.key, remotePath: profile.rootPath)
-                let preview = entries.prefix(8).map(\.name).joined(separator: "\n")
-                let alert = NSAlert(); alert.messageText = L("SFTP 연결 성공", "SFTP Connection Succeeded")
-                alert.informativeText = L("항목 \(entries.count)개", "\(entries.count) items") + (preview.isEmpty ? "" : "\n\n" + preview)
-                alert.beginSheetModal(for: window) { _ in }; updateControls()
-            } catch { showError(error); updateControls() }
-        }
+                return try await SFTPRemoteProvider().list(profile: profile, key: prepared.key, remotePath: path)
+            }
+            let browser = RemoteBrowserWindow(title: "\(profile.name) — SFTP", model: model) { [weak self] entry, parent in
+                guard let self else { return }; self.chooseSFTPDownloadDestination(profile: profile, remotePath: entry.remotePath, parent: parent)
+            }
+            remoteBrowserWindow = browser; browser.present()
+        } catch { showError(error); updateControls() }
     }
     @objc private func downloadSFTP(_ sender: Any?) {
         guard let profile = selected, let window else { return }
@@ -179,16 +179,20 @@ final class RemoteConnectionsWindow: NSWindowController, NSTableViewDataSource, 
             guard remotePath.hasPrefix("/"), !remotePath.hasSuffix("/"), !remotePath.isEmpty else {
                 self.showError(SFTPBackendError.invalidPath); return
             }
-            let save = NSSavePanel(); save.nameFieldStringValue = (remotePath as NSString).lastPathComponent
-            save.message = L("SFTP 다운로드를 저장할 위치를 선택하세요.", "Choose where to save the SFTP download.")
-            save.beginSheetModal(for: window) { [weak self] response in
-                guard response == .OK, let self, let destination = save.url else { return }
-                self.startSFTPDownload(profile: profile, remotePath: remotePath, destination: destination)
-            }
+            self.chooseSFTPDownloadDestination(profile: profile, remotePath: remotePath, parent: window)
         }
     }
-    private func startSFTPDownload(profile: RemoteConnectionProfile, remotePath: String, destination: URL) {
-        guard let window, sftpTransferTask == nil else { return }
+    private func chooseSFTPDownloadDestination(profile: RemoteConnectionProfile, remotePath: String, parent: NSWindow?) {
+        guard let parent else { return }
+        let save = NSSavePanel(); save.nameFieldStringValue = (remotePath as NSString).lastPathComponent
+        save.message = L("SFTP 다운로드를 저장할 위치를 선택하세요.", "Choose where to save the SFTP download.")
+        save.beginSheetModal(for: parent) { [weak self] response in
+            guard response == .OK, let self, let destination = save.url else { return }
+            self.startSFTPDownload(profile: profile, remotePath: remotePath, destination: destination, parent: parent)
+        }
+    }
+    private func startSFTPDownload(profile: RemoteConnectionProfile, remotePath: String, destination: URL, parent: NSWindow) {
+        guard sftpTransferTask == nil else { return }; let window = parent
         let progress = NSAlert(); progress.messageText = L("SFTP 다운로드 중", "Downloading from SFTP")
         progress.informativeText = (remotePath as NSString).lastPathComponent
         progress.addButton(withTitle: L("취소", "Cancel")); progress.beginSheetModal(for: window) { [weak self] _ in self?.sftpTransferTask?.cancel() }
