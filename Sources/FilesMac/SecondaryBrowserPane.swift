@@ -315,7 +315,7 @@ final class SecondaryBrowserPane: NSView, NSTableViewDataSource, NSTableViewDele
         gridView.update(items: model.items, selection: model.history.current.selection,
                         scrollOffset: model.history.current.scrollOffset, grouping: model.grouping)
         listView.update(items: model.items, selection: model.history.current.selection,
-                        scrollOffset: model.history.current.scrollOffset)
+                        scrollOffset: model.history.current.scrollOffset, grouping: model.grouping)
         columnView.showHidden = model.showHidden; columnView.sortOrder = model.sortOrder
         columnView.update(baseURL: model.location, items: model.items, selection: model.history.current.selection)
         if !model.isLoading {

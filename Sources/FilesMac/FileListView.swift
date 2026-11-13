@@ -3,6 +3,10 @@ import FilesCore
 
 @MainActor
 final class FileListView: NSView, NSTableViewDataSource, NSTableViewDelegate {
+    private enum DisplayRow {
+        case header(String)
+        case item(FileItem)
+    }
     private final class Row: NSTableRowView {
         override func drawSelection(in dirtyRect: NSRect) {
             guard selectionHighlightStyle != .none else { return }
@@ -25,6 +29,8 @@ final class FileListView: NSView, NSTableViewDataSource, NSTableViewDelegate {
     private let table = Table()
     private let scroll = NSScrollView()
     private(set) var items: [FileItem] = []
+    private var rows: [DisplayRow] = []
+    private var groupTitles: [String] = []
     private var suppressSelectionNotification = false
     private var viewSize: BrowserViewSize = .medium
     var onSelectionChange: ((Set<String>) -> Void)?
@@ -50,17 +56,27 @@ final class FileListView: NSView, NSTableViewDataSource, NSTableViewDelegate {
         NSLayoutConstraint.activate([scroll.leadingAnchor.constraint(equalTo: leadingAnchor), scroll.trailingAnchor.constraint(equalTo: trailingAnchor), scroll.topAnchor.constraint(equalTo: topAnchor), scroll.bottomAnchor.constraint(equalTo: bottomAnchor)])
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
-    var selectedItems: [FileItem] { table.selectedRowIndexes.compactMap { items.indices.contains($0) ? items[$0] : nil } }
+    private func item(at row: Int) -> FileItem? {
+        guard rows.indices.contains(row), case let .item(item) = rows[row] else { return nil }
+        return item
+    }
+    var selectedItems: [FileItem] { table.selectedRowIndexes.compactMap(item(at:)) }
     func replaceSelection(with ids: Set<String>) {
         suppressSelectionNotification = true
-        table.selectRowIndexes(IndexSet(items.indices.filter { ids.contains(items[$0].id) }), byExtendingSelection: false)
+        table.selectRowIndexes(IndexSet(rows.indices.filter { item(at: $0).map { ids.contains($0.id) } == true }), byExtendingSelection: false)
         suppressSelectionNotification = false
         onSelectionChange?(Set(selectedItems.map(\.id)))
     }
     func invertSelection() { replaceSelection(with: Set(items.map(\.id)).subtracting(selectedItems.map(\.id))) }
-    func update(items: [FileItem], selection: Set<String>, scrollOffset: Double) {
-        suppressSelectionNotification = true; self.items = items; table.reloadData()
-        table.selectRowIndexes(IndexSet(items.indices.filter { selection.contains(items[$0].id) }), byExtendingSelection: false)
+    func update(items: [FileItem], selection: Set<String>, scrollOffset: Double, grouping: FileGroupOptions = FileGroupOptions()) {
+        suppressSelectionNotification = true; self.items = items
+        let groups = FileGrouping.groups(items, options: grouping)
+        groupTitles = grouping.field == .none ? [] : groups.map { fileGroupTitle($0.key, field: grouping.field) }
+        rows = grouping.field == .none ? items.map(DisplayRow.item) : groups.flatMap { group in
+            [DisplayRow.header(fileGroupTitle(group.key, field: grouping.field))] + group.items.map(DisplayRow.item)
+        }
+        table.reloadData()
+        table.selectRowIndexes(IndexSet(rows.indices.filter { item(at: $0).map { selection.contains($0.id) } == true }), byExtendingSelection: false)
         scroll.contentView.scroll(to: NSPoint(x: 0, y: max(0, scrollOffset))); scroll.reflectScrolledClipView(scroll.contentView)
         DispatchQueue.main.async { [weak self] in self?.suppressSelectionNotification = false }
     }
@@ -73,9 +89,18 @@ final class FileListView: NSView, NSTableViewDataSource, NSTableViewDelegate {
     func focus() { window?.makeFirstResponder(table) }
     func applyBackground(enabled: Bool) { scroll.drawsBackground = !enabled; table.backgroundColor = enabled ? .clear : .controlBackgroundColor }
     func currentScrollOffset() -> Double { scroll.contentView.bounds.origin.y }
-    func numberOfRows(in tableView: NSTableView) -> Int { items.count }
+    func numberOfRows(in tableView: NSTableView) -> Int { rows.count }
     func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
-        guard items.indices.contains(row) else { return nil }
+        guard rows.indices.contains(row) else { return nil }
+        if case let .header(title) = rows[row] {
+            let id = NSUserInterfaceItemIdentifier("FileListGroupHeader")
+            let label = tableView.makeView(withIdentifier: id, owner: self) as? NSTextField ?? {
+                let label = NSTextField(labelWithString: ""); label.identifier = id
+                label.font = .systemFont(ofSize: NSFont.systemFontSize, weight: .semibold); label.textColor = .secondaryLabelColor
+                return label
+            }()
+            label.stringValue = title; label.setAccessibilityLabel(title); return label
+        }
         let id = NSUserInterfaceItemIdentifier("FileListCell")
         let cell = tableView.makeView(withIdentifier: id, owner: self) as? NSTableCellView ?? {
             let cell = NSTableCellView(); cell.identifier = id
@@ -85,25 +110,30 @@ final class FileListView: NSView, NSTableViewDataSource, NSTableViewDelegate {
             NSLayoutConstraint.activate([icon.leadingAnchor.constraint(equalTo: cell.leadingAnchor, constant: 8), icon.centerYAnchor.constraint(equalTo: cell.centerYAnchor), icon.widthAnchor.constraint(equalToConstant: 20), icon.heightAnchor.constraint(equalToConstant: 20), label.leadingAnchor.constraint(equalTo: icon.trailingAnchor, constant: 7), label.trailingAnchor.constraint(equalTo: cell.trailingAnchor, constant: -8), label.centerYAnchor.constraint(equalTo: cell.centerYAnchor)])
             return cell
         }()
-        let item = items[row]; cell.imageView?.image = NSWorkspace.shared.icon(forFile: item.url.path)
+        guard let item = item(at: row) else { return nil }; cell.imageView?.image = NSWorkspace.shared.icon(forFile: item.url.path)
         cell.textField?.stringValue = item.displayName(showExtensions: true); return cell
     }
     func tableView(_ tableView: NSTableView, rowViewForRow row: Int) -> NSTableRowView? { Row() }
+    func tableView(_ tableView: NSTableView, isGroupRow row: Int) -> Bool {
+        guard rows.indices.contains(row) else { return false }
+        if case .header = rows[row] { return true }; return false
+    }
+    func tableView(_ tableView: NSTableView, shouldSelectRow row: Int) -> Bool { item(at: row) != nil }
     func tableViewSelectionDidChange(_ notification: Notification) {
         guard !suppressSelectionNotification else { return }
         onSelectionChange?(Set(selectedItems.map(\.id)))
     }
     func tableView(_ tableView: NSTableView, pasteboardWriterForRow row: Int) -> (any NSPasteboardWriting)? {
-        guard items.indices.contains(row) else { return nil }; return items[row].url as NSURL
+        guard let item = item(at: row) else { return nil }; return item.url as NSURL
     }
     func tableView(_ tableView: NSTableView, validateDrop info: any NSDraggingInfo, proposedRow row: Int, proposedDropOperation operation: NSTableView.DropOperation) -> NSDragOperation {
         guard !draggedURLs(info).isEmpty else { return [] }
-        if operation == .on, items.indices.contains(row), !items[row].isBrowsable { return [] }
+        if operation == .on, item(at: row)?.isBrowsable != true { return [] }
         return dropIntent(info) == .move ? .move : .copy
     }
     func tableView(_ tableView: NSTableView, acceptDrop info: any NSDraggingInfo, row: Int, dropOperation operation: NSTableView.DropOperation) -> Bool {
         let urls = draggedURLs(info); guard !urls.isEmpty else { return false }
-        let item = operation == .on && items.indices.contains(row) ? items[row] : nil
+        let item = operation == .on ? item(at: row) : nil
         return onFileDrop?(urls, item, dropIntent(info)) ?? false
     }
     @objc private func openSelection(_ sender: Any?) { if let item = selectedItems.first { onOpen?(item) } }
@@ -117,5 +147,6 @@ final class FileListView: NSView, NSTableViewDataSource, NSTableViewDelegate {
     }
 #if DEBUG
     var qaRowHeight: CGFloat { table.rowHeight }
+    var qaGroupTitles: [String] { groupTitles }
 #endif
 }

@@ -726,7 +726,7 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         gridView.update(items: model.items, selection: model.history.current.selection,
                         scrollOffset: model.history.current.scrollOffset, grouping: model.grouping)
         listView.update(items: model.items, selection: model.history.current.selection,
-                        scrollOffset: model.history.current.scrollOffset)
+                        scrollOffset: model.history.current.scrollOffset, grouping: model.grouping)
         columnView.showHidden = model.showHidden; columnView.sortOrder = model.sortOrder
         columnView.update(baseURL: model.location, items: model.items, selection: model.history.current.selection)
         if !model.isLoading {
@@ -2831,6 +2831,11 @@ extension BrowserWindow {
             controller.render(); root.layoutSubtreeIfNeeded(); root.displayIfNeeded()
             checks["listVisible"] = !controller.listView.isHidden && controller.scroll.isHidden
             checks["listSelectionIdentity"] = controller.listView.selectedItems.map(\.id) == [gridFolder.path]
+            controller.model.setGrouping(.init(field: .kind)); controller.render()
+            checks["listGroupingRows"] = controller.listView.qaGroupTitles.count > 1
+                && !controller.listView.qaGroupTitles.contains("")
+                && controller.listView.selectedItems.map(\.id) == [gridFolder.path]
+            controller.model.setGrouping(FileGroupOptions()); controller.render()
             controller.focusFiles(nil)
             checks["listFocus"] = (window.firstResponder as? NSView)?.isDescendant(of: controller.listView) == true
             try capture("files-list")
