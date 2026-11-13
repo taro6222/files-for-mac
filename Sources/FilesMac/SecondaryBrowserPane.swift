@@ -9,13 +9,18 @@ final class SecondaryBrowserPane: NSView, NSTableViewDataSource, NSTableViewDele
     private let table = ActivatingTableView()
     private let scroll = NSScrollView()
     private let status = NSTextField(labelWithString: "")
+    private let hiddenButton = NSButton()
+    private var watcher: DirectoryWatcher?
+    private var watcherTask: Task<Void, Never>?
+    private var watchedURL: URL?
+    private var pendingRefresh = false
 
     init(snapshot: TabSnapshot) {
         model = BrowserModel()
         super.init(frame: .zero)
         wantsLayer = true; translatesAutoresizingMaskIntoConstraints = false
         buildUI()
-        model.onChange = { [weak self] in self?.render() }
+        model.onChange = { [weak self] in self?.modelChanged() }
         model.restore(snapshot)
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
@@ -36,6 +41,11 @@ final class SecondaryBrowserPane: NSView, NSTableViewDataSource, NSTableViewDele
     func stopLoading() { model.cancelLoad() }
     func openSelected() { openSelection(nil) }
     func open(_ url: URL?) { activate(); navigate(url) }
+    func shutdown() {
+        watcherTask?.cancel(); watcherTask = nil
+        if let watcher { Task.detached { watcher.stop() } }
+        watcher = nil; watchedURL = nil; model.onChange = nil; model.cancelLoad()
+    }
 
     private func buildUI() {
         let stack = NSStackView(); stack.orientation = .vertical; stack.spacing = 0
@@ -49,13 +59,18 @@ final class SecondaryBrowserPane: NSView, NSTableViewDataSource, NSTableViewDele
         pathField.placeholderString = L("폴더 경로", "Folder path"); pathField.target = self; pathField.action = #selector(submitPath(_:))
         pathField.setAccessibilityLabel(L("보조 pane 경로", "Secondary pane path")); toolbar.addArrangedSubview(pathField)
         toolbar.addArrangedSubview(button("arrow.clockwise", #selector(reload(_:))))
+        hiddenButton.image = NSImage(systemSymbolName: "eye.slash", accessibilityDescription: L("숨김 항목 전환", "Toggle Hidden Files"))
+        hiddenButton.title = ""; hiddenButton.imagePosition = .imageOnly; hiddenButton.bezelStyle = .texturedRounded
+        hiddenButton.target = self; hiddenButton.action = #selector(toggleHidden(_:)); toolbar.addArrangedSubview(hiddenButton)
         stack.addArrangedSubview(toolbar)
         table.style = .fullWidth; table.rowHeight = 30; table.allowsMultipleSelection = true
         table.delegate = self; table.dataSource = self; table.onActivate = { [weak self] in self?.activate() }
         table.doubleAction = #selector(openSelection(_:)); table.target = self
         for (key, title, width) in [("name", L("이름", "Name"), 300.0), ("kind", L("종류", "Kind"), 120.0), ("size", L("크기", "Size"), 90.0)] {
-            let column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier(key)); column.title = title; column.width = width; column.minWidth = 70; table.addTableColumn(column)
+            let column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier(key)); column.title = title; column.width = width; column.minWidth = 70
+            column.sortDescriptorPrototype = NSSortDescriptor(key: key, ascending: true); table.addTableColumn(column)
         }
+        table.sortDescriptors = [NSSortDescriptor(key: model.sortOrder.field.rawValue, ascending: model.sortOrder.ascending)]
         scroll.documentView = table; scroll.hasVerticalScroller = true; scroll.hasHorizontalScroller = true; stack.addArrangedSubview(scroll)
         status.font = .systemFont(ofSize: 11); status.textColor = .secondaryLabelColor
         let footer = NSStackView(); footer.edgeInsets = NSEdgeInsets(top: 6, left: 10, bottom: 6, right: 10)
@@ -73,8 +88,18 @@ final class SecondaryBrowserPane: NSView, NSTableViewDataSource, NSTableViewDele
         model.savePosition(selection: selection, scrollOffset: scroll.contentView.bounds.origin.y)
     }
     private func navigate(_ url: URL?) { savePosition(); model.navigate(url) }
+    private func modelChanged() {
+        render(); updateWatcher()
+        if pendingRefresh && !model.isLoading && !model.wasCancelled {
+            pendingRefresh = false
+            Task { @MainActor [weak self] in self?.model.reload() }
+        }
+    }
     private func render() {
         pathField.stringValue = model.location?.path ?? ""; table.reloadData()
+        hiddenButton.contentTintColor = model.showHidden ? .systemBlue : .labelColor
+        let expectedSort = NSSortDescriptor(key: model.sortOrder.field.rawValue, ascending: model.sortOrder.ascending)
+        if table.sortDescriptors.first != expectedSort { table.sortDescriptors = [expectedSort] }
         table.selectRowIndexes(IndexSet(model.items.indices.filter { model.history.current.selection.contains(model.items[$0].id) }), byExtendingSelection: false)
         if !model.isLoading { scroll.contentView.scroll(to: NSPoint(x: 0, y: model.history.current.scrollOffset)); scroll.reflectScrolledClipView(scroll.contentView) }
         if model.isLoading { status.stringValue = L("읽는 중…", "Loading…") }
@@ -95,6 +120,11 @@ final class SecondaryBrowserPane: NSView, NSTableViewDataSource, NSTableViewDele
         return cell
     }
     func tableViewSelectionDidChange(_ notification: Notification) { activate(); savePosition() }
+    func tableView(_ tableView: NSTableView, sortDescriptorsDidChange oldDescriptors: [NSSortDescriptor]) {
+        guard let descriptor = tableView.sortDescriptors.first,
+              let field = SortField(rawValue: descriptor.key ?? "") else { return }
+        savePosition(); model.sort(SortOrder(field: field, ascending: descriptor.ascending))
+    }
     private func makeCell(_ id: NSUserInterfaceItemIdentifier) -> NSTableCellView {
         let cell = NSTableCellView(); cell.identifier = id
         let label = NSTextField(labelWithString: ""); label.lineBreakMode = .byTruncatingMiddle; label.translatesAutoresizingMaskIntoConstraints = false
@@ -106,6 +136,9 @@ final class SecondaryBrowserPane: NSView, NSTableViewDataSource, NSTableViewDele
     @objc private func forward(_ sender: Any?) { goForward() }
     @objc private func up(_ sender: Any?) { goUp() }
     @objc private func reload(_ sender: Any?) { refresh() }
+    @objc private func toggleHidden(_ sender: Any?) {
+        activate(); savePosition(); model.showHidden.toggle(); model.reload()
+    }
     @objc private func submitPath(_ sender: Any?) {
         activate(); let path = (pathField.stringValue as NSString).expandingTildeInPath
         let base = model.location ?? FileManager.default.homeDirectoryForCurrentUser
@@ -114,6 +147,27 @@ final class SecondaryBrowserPane: NSView, NSTableViewDataSource, NSTableViewDele
     @objc private func openSelection(_ sender: Any?) {
         activate(); guard let row = table.selectedRowIndexes.first, model.items.indices.contains(row) else { return }
         let item = model.items[row]; if item.isBrowsable { navigate(item.url) } else { NSWorkspace.shared.open(item.url) }
+    }
+    private func updateWatcher() {
+        guard watchedURL != model.location else { return }
+        watcherTask?.cancel()
+        if let watcher { Task.detached { watcher.stop() } }
+        watcher = nil; watchedURL = model.location; pendingRefresh = false
+        guard let url = model.location else { return }
+        watcherTask = Task { [weak self] in
+            let watcher = await Task.detached(priority: .utility) { DirectoryWatcher(url: url) }.value
+            guard let self, !Task.isCancelled, self.watchedURL == url else {
+                if let watcher { Task.detached { watcher.stop() } }
+                return
+            }
+            self.watcher = watcher
+            guard let watcher else { return }
+            for await _ in watcher.events {
+                guard !Task.isCancelled, self.watchedURL == url, self.model.location == url else { return }
+                if self.model.isLoading { self.pendingRefresh = true }
+                else { self.model.reload() }
+            }
+        }
     }
 }
 

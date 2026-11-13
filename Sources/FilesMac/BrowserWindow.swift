@@ -126,6 +126,7 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
                 self.watcher = nil
                 self.model.onChange = nil; self.model.cancelLoad()
                 self.completionTask?.cancel(); self.volumeTask?.cancel()
+                self.secondaryPane?.shutdown()
                 if let token = self.preferencesToken { self.preferences.removeObserver(token) }
                 for token in self.observerTokens {
                     NotificationCenter.default.removeObserver(token)
@@ -618,7 +619,7 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         stack.addArrangedSubview(mode); stack.addArrangedSubview(first); stack.addArrangedSubview(second); alert.accessoryView = stack
         alert.addButton(withTitle: L("미리보기", "Preview")); alert.addButton(withTitle: L("취소", "Cancel"))
         alert.window.initialFirstResponder = first
-        alert.beginSheetModal(for: window) { response in
+        alert.beginSheetModal(for: window) { [weak self] response in
             guard response == .alertFirstButtonReturn, !first.stringValue.isEmpty, let self else { return }
             let requests: [BatchRenameRequest]
             do {
@@ -877,7 +878,7 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         alert.addButton(withTitle: L("양쪽 유지", "Keep Both"))
         alert.addButton(withTitle: L("건너뛰기", "Skip Conflicts"))
         alert.addButton(withTitle: L("취소", "Cancel"))
-        alert.beginSheetModal(for: window) { [weak self] response in
+        alert.beginSheetModal(for: window) { response in
             guard response == .alertFirstButtonReturn || response == .alertSecondButtonReturn else { return }
             CopyWindow.start(sources: sources, destination: destination,
                              conflictPolicy: response == .alertFirstButtonReturn ? .keepBoth : .skip) {
@@ -987,7 +988,7 @@ extension BrowserWindow {
     @objc func splitHorizontally(_ sender: Any?) { installSecondaryPane(axis: .horizontal) }
     @objc func closeSecondaryPane(_ sender: Any?) {
         guard let secondaryPane else { return }
-        secondaryPane.model.cancelLoad(); secondaryPane.removeFromSuperview()
+        secondaryPane.shutdown(); secondaryPane.removeFromSuperview()
         self.secondaryPane = nil; secondaryPaneID = nil; secondaryActive = false
         content.wantsLayer = true; content.layer?.borderWidth = 0
         window?.makeFirstResponder(table)
