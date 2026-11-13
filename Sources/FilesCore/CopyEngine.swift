@@ -24,6 +24,8 @@ public struct CopyRecord: Codable, Sendable {
     public var state: String = "queued"
     public var message: String? = nil
     public var temporary: URL? = nil
+    public var targetIdentity: String? = nil
+    public var targetSnapshot: [String: String]? = nil
 }
 
 /// Versioned, inspectable foundation journal. This is not yet an undo/recovery database.
@@ -33,6 +35,31 @@ public struct CopyReport: Codable, Sendable {
     public var state: String
     public var items: [CopyRecord]
     public var journalError: String? = nil
+}
+
+public struct CopyUndoItem: Codable, Sendable {
+    public let target: URL
+    public let targetIdentity: String
+    public let targetSnapshot: [String: String]
+}
+
+public struct CopyUndoRecord: Codable, Sendable {
+    public let operationId: UUID
+    public let items: [CopyUndoItem]
+    public let createdAt: Date
+}
+
+public struct CopyUndoItemResult: Sendable {
+    public let target: URL
+    public let state: String
+    public let message: String?
+}
+
+public struct CopyUndoResult: Sendable {
+    public let operationId: UUID
+    public let state: String
+    public let items: [CopyUndoItemResult]
+    public let journalError: String?
 }
 
 private struct CopyFailure: LocalizedError {
@@ -147,7 +174,10 @@ public enum CopyEngine {
                         report.items[index].target = destination.appendingPathComponent(name)
                         try save() // Persist the actual proposed name before publishing it.
                         if renameatx_np(stageFD, "payload", destinationFD, name, UInt32(RENAME_EXCL)) == 0 {
-                            report.items[index].state = "completed"; break
+                            report.items[index].state = "completed"
+                            report.items[index].targetIdentity = try entryIdentity(report.items[index].target)
+                            report.items[index].targetSnapshot = before
+                            break
                         }
                         guard errno == EEXIST else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
                         if conflictPolicy == .skip {
@@ -182,7 +212,68 @@ public enum CopyEngine {
         report.state = cancellation.isCancelled ? "cancelled" :
             (completed == sources.count && report.journalError == nil ? "completed" : (completed > 0 ? "partiallyCompleted" : "failed"))
         do { try save() } catch { report.journalError = error.localizedDescription }
+        let undoItems = report.items.compactMap { item -> CopyUndoItem? in
+            guard item.state == "completed", let identity = item.targetIdentity,
+                  let snapshot = item.targetSnapshot else { return nil }
+            return CopyUndoItem(target: item.target, targetIdentity: identity, targetSnapshot: snapshot)
+        }
+        if !undoItems.isEmpty {
+            do {
+                let record = CopyUndoRecord(operationId: report.id, items: undoItems, createdAt: Date())
+                let data = try JSONEncoder().encode(record)
+                try data.write(to: journalDirectory.appendingPathComponent("undo-copy-\(report.id.uuidString).json"), options: .atomic)
+            } catch {
+                report.journalError = [report.journalError, error.localizedDescription].compactMap { $0 }.joined(separator: "; ")
+                try? save()
+            }
+        }
         return report
+    }
+
+    public static func latestUndoCopy(journalDirectory: URL) -> CopyUndoRecord? {
+        let fm = FileManager.default
+        guard let files = try? fm.contentsOfDirectory(at: journalDirectory,
+            includingPropertiesForKeys: [.contentModificationDateKey], options: [.skipsHiddenFiles]) else { return nil }
+        return files.filter { $0.lastPathComponent.hasPrefix("undo-copy-") && $0.pathExtension == "json" }
+            .sorted {
+                let lhs = (try? $0.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
+                let rhs = (try? $1.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
+                return lhs > rhs
+            }
+            .lazy.compactMap { try? JSONDecoder().decode(CopyUndoRecord.self, from: Data(contentsOf: $0)) }.first
+    }
+
+    public static func undoCopy(_ record: CopyUndoRecord, journalDirectory: URL) async -> CopyUndoResult {
+        await Task.detached(priority: .userInitiated) {
+            let fm = FileManager.default
+            var results: [CopyUndoItemResult] = []
+            for item in record.items.reversed() {
+                do {
+                    guard entryExists(item.target) else {
+                        results.append(CopyUndoItemResult(target: item.target, state: "missing", message: "Copied item no longer exists.")); continue
+                    }
+                    guard try entryIdentity(item.target) == item.targetIdentity,
+                          try verifiedSnapshot(item.target) == item.targetSnapshot else {
+                        results.append(CopyUndoItemResult(target: item.target, state: "changed", message: "Copied item changed after the copy; preserved.")); continue
+                    }
+                    try fm.removeItem(at: item.target)
+                    results.append(CopyUndoItemResult(target: item.target, state: "completed", message: nil))
+                } catch {
+                    results.append(CopyUndoItemResult(target: item.target, state: "failed", message: error.localizedDescription))
+                }
+            }
+            var journalError: String?
+            do {
+                let source = journalDirectory.appendingPathComponent("undo-copy-\(record.operationId.uuidString).json")
+                if entryExists(source) { try fm.removeItem(at: source) }
+                let payload = try JSONEncoder().encode(results.map { ["target": $0.target.path, "state": $0.state, "message": $0.message ?? ""] })
+                try payload.write(to: journalDirectory.appendingPathComponent("undo-copy-result-\(record.operationId.uuidString).json"), options: .atomic)
+            } catch { journalError = error.localizedDescription }
+            let completed = results.filter { $0.state == "completed" }.count
+            return CopyUndoResult(operationId: record.operationId,
+                                  state: completed == results.count ? "completed" : (completed > 0 ? "partiallyCompleted" : "failed"),
+                                  items: results, journalError: journalError)
+        }.value
     }
 
     private static func copyName(_ source: URL, isDirectory: Bool, suffix: Int) -> String {
@@ -196,6 +287,16 @@ public enum CopyEngine {
         var pathInfo = stat(); var descriptorInfo = stat()
         return descriptor >= 0 && lstat(url.path, &pathInfo) == 0 && fstat(descriptor, &descriptorInfo) == 0 &&
             pathInfo.st_dev == descriptorInfo.st_dev && pathInfo.st_ino == descriptorInfo.st_ino
+    }
+
+    private static func entryExists(_ url: URL) -> Bool {
+        var info = stat(); return lstat(url.path, &info) == 0
+    }
+
+    private static func entryIdentity(_ url: URL) throws -> String {
+        var info = stat()
+        guard lstat(url.path, &info) == 0 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .ENOENT) }
+        return "\(info.st_dev):\(info.st_ino):\(info.st_mode & S_IFMT)"
     }
 
     /// No traversal through symlinks; reject special files before FileManager can block on them.

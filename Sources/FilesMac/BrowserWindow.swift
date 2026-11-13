@@ -895,6 +895,44 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
             }
         }
     }
+    @objc func undoLastCopy(_ sender: Any?) {
+        guard !Self.entryOperationRunning, !CopyWindow.isRunning,
+              let record = CopyEngine.latestUndoCopy(journalDirectory: Self.operationJournalDirectory),
+              let window else { return }
+        let alert = NSAlert()
+        alert.messageText = L("마지막 복사 실행 취소", "Undo Last Copy")
+        alert.informativeText = L("이 앱이 마지막 복사 작업에서 만든 항목을 삭제합니다. 복사 후 변경되거나 다른 항목으로 교체된 결과는 보존합니다.",
+                                  "Delete items created by this app's last copy operation. Results changed or replaced after the copy will be preserved.") +
+            "\n\n" + L("항목: ", "Items: ") + "\(record.items.count)"
+        alert.addButton(withTitle: L("실행 취소", "Undo"))
+        alert.addButton(withTitle: L("취소", "Cancel"))
+        alert.beginSheetModal(for: window) { [weak self] response in
+            guard response == .alertFirstButtonReturn, let self else { return }
+            Self.entryOperationRunning = true
+            Task {
+                let report = await CopyEngine.undoCopy(record, journalDirectory: Self.operationJournalDirectory)
+                Self.entryOperationRunning = false
+                self.refresh(nil)
+                self.secondaryPane?.refresh()
+                self.showCopyUndoResult(report)
+            }
+        }
+    }
+    private func showCopyUndoResult(_ report: CopyUndoResult) {
+        guard let window, window.isVisible else { return }
+        let completed = report.items.filter { $0.state == "completed" }.count
+        let alert = NSAlert()
+        alert.messageText = report.state == "completed"
+            ? L("복사 실행 취소 완료", "Copy Undo Complete")
+            : L("일부 복사 결과를 삭제하지 못했습니다", "Some Copied Items Were Preserved")
+        let details = report.items.filter { $0.state != "completed" }.map {
+            $0.target.path + "\n" + ($0.message ?? L("알 수 없는 오류", "Unknown error"))
+        }.joined(separator: "\n\n")
+        alert.informativeText = L("삭제: ", "Deleted: ") + "\(completed)/\(report.items.count)" +
+            (details.isEmpty ? "" : "\n\n" + details) +
+            (report.journalError.map { "\n\n" + L("저널 저장 오류: ", "Journal error: ") + $0 } ?? "")
+        alert.beginSheetModal(for: window)
+    }
     private func showMoveUndoResult(_ report: MoveUndoResult) {
         guard let window, window.isVisible else { return }
         let completed = report.items.filter { $0.state == "completed" }.count
@@ -1226,6 +1264,9 @@ extension BrowserWindow {
         case #selector(undoLastMove(_:)):
             return !Self.entryOperationRunning && !MoveWindow.isRunning &&
                 EntryOperations.latestUndoMove(journalDirectory: Self.operationJournalDirectory) != nil
+        case #selector(undoLastCopy(_:)):
+            return !Self.entryOperationRunning && !CopyWindow.isRunning &&
+                CopyEngine.latestUndoCopy(journalDirectory: Self.operationJournalDirectory) != nil
         case #selector(deleteSelection(_:)): return canDeleteSelection
         case #selector(restoreSelection(_:)): return canRestoreSelection
         case #selector(permanentlyDeleteSelection(_:)): return canPermanentDeleteSelection

@@ -112,6 +112,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         let editItem = NSMenuItem(); editItem.title = L("편집", "Edit"); menu.addItem(editItem)
         let edit = NSMenu(title: editItem.title); editItem.submenu = edit
         edit.addItem(withTitle: L("마지막 이동 실행 취소", "Undo Last Move"), action: #selector(BrowserWindow.undoLastMove(_:)), keyEquivalent: "z")
+        edit.addItem(withTitle: L("마지막 복사 실행 취소", "Undo Last Copy"), action: #selector(BrowserWindow.undoLastCopy(_:)), keyEquivalent: "")
         edit.addItem(.separator())
         edit.addItem(withTitle: L("복사", "Copy"), action: #selector(NSText.copy(_:)), keyEquivalent: "c")
         edit.addItem(withTitle: L("붙여넣기", "Paste"), action: #selector(NSText.paste(_:)), keyEquivalent: "v")

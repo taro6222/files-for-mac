@@ -152,3 +152,24 @@ private struct CopyFixture {
     #expect(report.items[0].target.lastPathComponent == ".config (2)")
     #expect(try Data(contentsOf: report.items[0].target) == Data(contentsOf: source))
 }
+
+@Test func copyUndoRemovesOnlyUnchangedCopiedResults() async throws {
+    let f = try CopyFixture(); defer { f.clean() }
+    let unchanged = try f.file("unchanged", text: "original")
+    let changed = try f.file("changed", text: "before")
+    let report = await CopyEngine.run(sources: [unchanged, changed], destination: f.destination,
+                                      journalDirectory: f.journal, cancellation: CopyCancellation())
+    #expect(report.state == "completed")
+    let copiedUnchanged = f.destination.appendingPathComponent("unchanged")
+    let copiedChanged = f.destination.appendingPathComponent("changed")
+    try Data("after".utf8).write(to: copiedChanged)
+    let record = try #require(CopyEngine.latestUndoCopy(journalDirectory: f.journal))
+
+    let undo = await CopyEngine.undoCopy(record, journalDirectory: f.journal)
+
+    #expect(!FileManager.default.fileExists(atPath: copiedUnchanged.path))
+    #expect(FileManager.default.fileExists(atPath: copiedChanged.path))
+    #expect(undo.items.first { $0.target == copiedChanged }?.state == "changed")
+    #expect(undo.state == "partiallyCompleted")
+    #expect(CopyEngine.latestUndoCopy(journalDirectory: f.journal) == nil)
+}
