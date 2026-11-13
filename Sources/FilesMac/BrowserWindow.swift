@@ -282,6 +282,7 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         NSLayoutConstraint.activate([scroll.leadingAnchor.constraint(equalTo: content.leadingAnchor), scroll.trailingAnchor.constraint(equalTo: content.trailingAnchor), scroll.topAnchor.constraint(equalTo: content.topAnchor), scroll.bottomAnchor.constraint(equalTo: content.bottomAnchor)])
         let menu = NSMenu()
         let folder = menu.addItem(withTitle: L("새 폴더…", "New Folder…"), action: #selector(createFolder(_:)), keyEquivalent: ""); folder.target = self
+        let folderFromSelection = menu.addItem(withTitle: L("선택 항목으로 새 폴더…", "New Folder with Selection…"), action: #selector(createFolderFromSelection(_:)), keyEquivalent: ""); folderFromSelection.target = self
         let rename = menu.addItem(withTitle: L("이름 변경…", "Rename…"), action: #selector(renameSelection(_:)), keyEquivalent: ""); rename.target = self
         let batchRename = menu.addItem(withTitle: L("일괄 이름 변경…", "Batch Rename…"), action: #selector(batchRenameSelection(_:)), keyEquivalent: ""); batchRename.target = self
         let open = menu.addItem(withTitle: L("열기", "Open"), action: #selector(openSelection(_:)), keyEquivalent: ""); open.target = self
@@ -623,6 +624,41 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         else { NSWorkspace.shared.open(item.url) }
     }
     @objc func createFolder(_ sender: Any?) { promptForEntryName(source: nil) }
+    @objc func createFolderFromSelection(_ sender: Any?) {
+        let sources = activeSelectedItems.map(\.url), targetModel = activeModel
+        guard !sources.isEmpty, !targetModel.isLoading, !Self.entryOperationRunning,
+              !MoveWindow.isRunning, let parent = targetModel.location, let window else { return }
+        let alert = NSAlert(); alert.messageText = L("선택 항목으로 새 폴더", "New Folder with Selection")
+        alert.informativeText = L("새 폴더를 만든 뒤 선택한 항목을 안전한 이동 작업으로 옮깁니다.",
+                                  "Create a folder, then move the selected items with the safe move operation.")
+        let field = NSTextField(string: L("새 폴더", "New Folder")); field.frame = NSRect(x: 0, y: 0, width: 360, height: 26)
+        alert.accessoryView = field; alert.addButton(withTitle: L("만들고 이동", "Create and Move")); alert.addButton(withTitle: L("취소", "Cancel"))
+        alert.window.initialFirstResponder = field
+        alert.beginSheetModal(for: window) { [weak self] response in
+            guard response == .alertFirstButtonReturn, let self else { return }
+            Self.entryOperationRunning = true
+            Task {
+                do {
+                    let result = try await EntryOperations.createFolder(in: parent, name: field.stringValue,
+                                                                         journalDirectory: Self.operationJournalDirectory)
+                    Self.entryOperationRunning = false
+                    if let warning = result.journalWarning { self.showEntryError(warning) }
+                    MoveWindow.start(sources: sources, destination: result.target, conflictPolicy: .skip) {
+                        targetModel.reload()
+                    }
+                } catch {
+                    Self.entryOperationRunning = false
+                    let text: String
+                    switch error {
+                    case EntryOperationError.invalidName: text = L("사용할 수 없는 폴더 이름입니다.", "The folder name is invalid.")
+                    case EntryOperationError.conflict: text = L("같은 이름의 항목이 이미 있습니다.", "An item with that name already exists.")
+                    default: text = error.localizedDescription
+                    }
+                    self.showEntryError(text)
+                }
+            }
+        }
+    }
     @objc func renameSelection(_ sender: Any?) {
         guard activeSelectedItems.count == 1 else { return }
         promptForEntryName(source: activeSelectedItems[0])
@@ -1195,6 +1231,7 @@ extension BrowserWindow {
         case #selector(permanentlyDeleteSelection(_:)): return canPermanentDeleteSelection
         case #selector(moveSelection(_:)): return canMoveSelection
         case #selector(createFolder(_:)): return activeModel.location != nil && !activeModel.isLoading && !Self.entryOperationRunning && !CopyWindow.isRunning
+        case #selector(createFolderFromSelection(_:)): return activeModel.location != nil && !activeModel.isLoading && !activeSelectedItems.isEmpty && !Self.entryOperationRunning && !MoveWindow.isRunning
         case #selector(renameSelection(_:)): return activeModel.location != nil && activeSelectedItems.count == 1 && !activeModel.isLoading && !Self.entryOperationRunning && !CopyWindow.isRunning
         case #selector(batchRenameSelection(_:)): return activeModel.location != nil && activeSelectedItems.count > 1 && !activeModel.isLoading && !BatchRenameWindow.isRunning
         case #selector(retryAutomaticRefresh(_:)): return model.location != nil && watcherStatus != .active

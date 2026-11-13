@@ -4,7 +4,7 @@
 
 ## 이번 구현 단위
 
-M2 스물한 번째 개발 단위로 Finder 호환 파일 URL 드래그 앤 드롭과 명시적 복사·이동 modifier 정책을 추가했고 M2는 진행 중이다. M0/M1의 미검증 항목은 별도 유지한다.
+M2 스물두 번째 개발 단위로 선택 항목을 새 폴더로 묶는 생성·안전 이동 흐름을 추가했고 M2는 진행 중이다. M0/M1의 미검증 항목은 별도 유지한다.
 
 | 영역 | 상태 | 내용 |
 |---|---|---|
@@ -22,7 +22,7 @@ M2 스물한 번째 개발 단위로 Finder 호환 파일 URL 드래그 앤 드�
 | 접근 복구 | 부분 검증 | 오류 화면 재시도·폴더 선택, 시스템 선택 후 Desktop fixture 읽기 성공; 재실행 읽기 확인; 감시는 연결 대기 |
 | 실제 UI | 부분 확인 | 900×600·한/영·두 테마·10k 목록·POSIX 권한 오류 확인, 이미지 보관 |
 | 폴더 감시 | 검증 | 연결 중/실패 구분, 명시적 재등록, 등록 실패 후 복구·실제 변경 반영 |
-| 생성·이름 변경 | 구현 | 단일 이름 검증, 배치 찾기/바꾸기·번호·정규식, 실행 전 미리보기, 전체 충돌 검사·순환 교환·결과 창 |
+| 생성·이름 변경 | 구현 | 새 폴더, 선택 항목으로 새 폴더, 단일 이름 검증, 배치 패턴·미리보기·충돌 검사·순환 교환·결과 창 |
 | 탭 탐색 | 구현 중 | 네이티브 탭 생성·복제·순서 변경/분리 기반, 탭별 히스토리·선택·스크롤·정렬·숨김 설정, 닫은 탭 및 재실행 복원 |
 | 분할 보기 | 구현 중 | 실제 두 목록, pane별 탐색·파일 작업·FSEvents 감시·숨김·정렬, 분할 축·비율·활성 pane·두 상태 복원 |
 | 드래그 앤 드롭 | 구현 중 | 양쪽 pane 파일 URL 송수신, 폴더/현재 위치 drop, Option 복사·Command 이동, 안전 엔진 및 충돌 대화상자 연결 |
@@ -31,7 +31,7 @@ M2 스물한 번째 개발 단위로 Finder 호환 파일 URL 드래그 앤 드�
 | 이동 | 구현 중 | 동일/교차 볼륨 이동, 검증·교체 백업·안전 실행 취소, 사용자 취소, 단계별 상태와 진행 막대 |
 | 영구 삭제 | 구현 중 | 선택 항목 영구 삭제(복구 불가 경고), 항목별 상태 보고, 작업 창, 저널 파일 |
 
-다음 M2 작업은 실제 UI에서 재실행·두 pane 외부 변경·Finder 양방향 드래그를 검증하고 M2 수용 기준의 남은 격차를 정리하는 것이다.
+다음 M2 작업은 폴더 병합 충돌 정책과 복사 실행 취소를 보강한 뒤 실제 UI 통합 검증으로 M2 수용 기준의 남은 격차를 정리하는 것이다.
 
 ## M1 별도 검증 목록
 
@@ -45,10 +45,10 @@ M2 스물한 번째 개발 단위로 Finder 호환 파일 URL 드래그 앤 드�
 
 ## M2 다음 구현
 
-복사, 새 폴더, 단일·배치 이름 변경, 휴지통 이동·복원, 영구 삭제, 안전한 동일·교차 볼륨 이동과 감시·숨김·정렬·드래그 앤 드롭을 두 pane에 연결했다. 다음 단계는 M2 실제 UI 통합 검증과 격차 보강이다.
+복사, 새 폴더, 선택 항목으로 새 폴더, 단일·배치 이름 변경, 휴지통 이동·복원, 영구 삭제, 안전한 이동과 드래그 앤 드롭을 두 pane에 연결했다. 다음 단계는 폴더 병합·복사 실행 취소와 M2 통합 검증이다.
 
 ## 변경 규칙
 
 현재 구현을 완전 기능 앱 또는 원본 UI 완전 일치로 표시하지 않는다. 각 단계 종료 시 검증 결과와 문서를 갱신하고 관련 변경을 커밋한 뒤 origin에 푸시한다. 사용자가 이 절차를 상시 승인했다. 각 개발 단위는 M0/M1/M2 진행 상태를 정확히 표시해 커밋한다. [두 번째 개발 단위 검증](verification/m1/INCREMENT_02.md)을 참고한다.
 
-최근 검증: [M2 새 폴더와 이름 변경](verification/m2/INCREMENT_03.md), [M2 휴지통 이동](verification/m2/INCREMENT_04.md), [M2 휴지통 복원 준비](verification/m2/INCREMENT_05.md), [M2 영구 삭제](verification/m2/INCREMENT_06.md), [M2 이동 기본 동선](verification/m2/INCREMENT_07.md), [M2 안전한 이동 실행 취소](verification/m2/INCREMENT_08.md), [M2 교차 볼륨 이동](verification/m2/INCREMENT_09.md), [M2 교체 백업과 실행 취소](verification/m2/INCREMENT_10.md), [M2 이동 취소와 진행 표시](verification/m2/INCREMENT_11.md), [M2 배치 이름 변경](verification/m2/INCREMENT_12.md), [M2 배치 이름 변경 패턴 UI](verification/m2/INCREMENT_13.md), [M2 네이티브 탭 기반](verification/m2/INCREMENT_14.md), [M2 탭 상태 및 세션 복원](verification/m2/INCREMENT_15.md), [M2 분할 pane 상태 모델](verification/m2/INCREMENT_16.md), [M2 AppKit 분할 탐색 UI](verification/m2/INCREMENT_17.md), [M2 활성 pane 파일 작업](verification/m2/INCREMENT_18.md), [M2 분할 workspace 세션](verification/m2/INCREMENT_19.md), [M2 보조 pane 감시·보기](verification/m2/INCREMENT_20.md), [M2 Finder 드래그 앤 드롭](verification/m2/INCREMENT_21.md).
+최근 검증: [M2 새 폴더와 이름 변경](verification/m2/INCREMENT_03.md), [M2 휴지통 이동](verification/m2/INCREMENT_04.md), [M2 휴지통 복원 준비](verification/m2/INCREMENT_05.md), [M2 영구 삭제](verification/m2/INCREMENT_06.md), [M2 이동 기본 동선](verification/m2/INCREMENT_07.md), [M2 안전한 이동 실행 취소](verification/m2/INCREMENT_08.md), [M2 교차 볼륨 이동](verification/m2/INCREMENT_09.md), [M2 교체 백업과 실행 취소](verification/m2/INCREMENT_10.md), [M2 이동 취소와 진행 표시](verification/m2/INCREMENT_11.md), [M2 배치 이름 변경](verification/m2/INCREMENT_12.md), [M2 배치 이름 변경 패턴 UI](verification/m2/INCREMENT_13.md), [M2 네이티브 탭 기반](verification/m2/INCREMENT_14.md), [M2 탭 상태 및 세션 복원](verification/m2/INCREMENT_15.md), [M2 분할 pane 상태 모델](verification/m2/INCREMENT_16.md), [M2 AppKit 분할 탐색 UI](verification/m2/INCREMENT_17.md), [M2 활성 pane 파일 작업](verification/m2/INCREMENT_18.md), [M2 분할 workspace 세션](verification/m2/INCREMENT_19.md), [M2 보조 pane 감시·보기](verification/m2/INCREMENT_20.md), [M2 Finder 드래그 앤 드롭](verification/m2/INCREMENT_21.md), [M2 선택 항목으로 새 폴더](verification/m2/INCREMENT_22.md).
