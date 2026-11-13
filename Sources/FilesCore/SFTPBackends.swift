@@ -4,11 +4,17 @@ public enum SFTPIntent: Sendable, Equatable {
     case list(remotePath: String)
     case download(remotePath: String, local: URL)
     case upload(local: URL, remotePath: String)
+    case uploadAndRename(local: URL, stagingRemotePath: String, finalRemotePath: String)
     case remove(remotePath: String)
 }
 
 public enum SFTPBackendError: Error, Sendable, Equatable {
-    case unsupportedProtocol, invalidPath, invalidUsername, invalidTrustStore, invalidIdentity, staleIdentity, missingIdentity, invalidPrivateConfiguration, invalidListing, listingLimitExceeded
+    case unsupportedProtocol, invalidPath, invalidUsername, invalidTrustStore, invalidIdentity, staleIdentity, missingIdentity, invalidPrivateConfiguration, invalidListing, listingLimitExceeded, destinationExists, invalidStaging, unverifiedServerCapability, invalidUploadSource
+}
+
+public struct SFTPServerCapabilities: Sendable, Equatable {
+    public let renameRefusesExistingDestination: Bool
+    public init(renameRefusesExistingDestination: Bool = false) { self.renameRefusesExistingDestination = renameRefusesExistingDestination }
 }
 
 public struct SFTPKeyConfiguration: Sendable, Equatable {
@@ -101,6 +107,50 @@ public struct SFTPRemoteProvider: Sendable {
         let result = try await executor.execute(builder.command(profile: profile, key: key, intent: .list(remotePath: remotePath)))
         return try Self.parseList(result.standardOutput, parent: remotePath, maximumEntries: maximumEntries)
     }
+    public func download(profile: RemoteConnectionProfile, key: SFTPKeyConfiguration, remotePath: String,
+                         destination: URL, fileManager: FileManager = .default) async throws -> URL {
+        try builder.validateFiles(key)
+        guard !fileManager.fileExists(atPath: destination.path) else { throw SFTPBackendError.destinationExists }
+        let staging = destination.deletingLastPathComponent().appendingPathComponent(".files-sftp-download-\(UUID().uuidString).tmp")
+        defer { try? fileManager.removeItem(at: staging) }
+        _ = try await executor.execute(builder.command(profile: profile, key: key, intent: .download(remotePath: remotePath, local: staging)))
+        try Self.publishDownload(staging: staging, destination: destination, fileManager: fileManager)
+        return destination
+    }
+    public func upload(profile: RemoteConnectionProfile, key: SFTPKeyConfiguration, local: URL, remotePath: String,
+                       capabilities: SFTPServerCapabilities = .init(), fileManager: FileManager = .default) async throws {
+        guard capabilities.renameRefusesExistingDestination else { throw SFTPBackendError.unverifiedServerCapability }
+        let values = try? local.resourceValues(forKeys: [.isRegularFileKey, .isSymbolicLinkKey])
+        guard values?.isRegularFile == true, values?.isSymbolicLink != true else { throw SFTPBackendError.invalidUploadSource }
+        try builder.validateFiles(key)
+        let remote = try Self.remoteStagingPath(for: remotePath)
+        do {
+            _ = try await executor.execute(builder.command(profile: profile, key: key,
+                intent: .uploadAndRename(local: local, stagingRemotePath: remote, finalRemotePath: remotePath)))
+        } catch {
+            if let cleanup = try? builder.command(profile: profile, key: key, intent: .remove(remotePath: remote)) {
+                _ = try? await executor.execute(cleanup)
+            }
+            throw error
+        }
+    }
+    public static func remoteStagingPath(for remotePath: String) throws -> String {
+        guard remotePath.hasPrefix("/"), !remotePath.hasSuffix("/"),
+              !remotePath.unicodeScalars.contains(where: { CharacterSet.controlCharacters.contains($0) }) else { throw SFTPBackendError.invalidPath }
+        let path = remotePath as NSString, parent = path.deletingLastPathComponent
+        guard path.lastPathComponent != ".", path.lastPathComponent != ".." else { throw SFTPBackendError.invalidPath }
+        return (parent as NSString).appendingPathComponent(".files-sftp-upload-\(UUID().uuidString).tmp")
+    }
+    public static func publishDownload(staging: URL, destination: URL, fileManager: FileManager = .default) throws {
+        let parent = destination.deletingLastPathComponent().standardizedFileURL
+        guard !fileManager.fileExists(atPath: destination.path) else { throw SFTPBackendError.destinationExists }
+        guard staging.deletingLastPathComponent().standardizedFileURL == parent,
+              staging.lastPathComponent.hasPrefix(".files-sftp-download-"), staging.pathExtension == "tmp",
+              let values = try? staging.resourceValues(forKeys: [.isRegularFileKey, .isSymbolicLinkKey]),
+              values.isRegularFile == true, values.isSymbolicLink != true else { throw SFTPBackendError.invalidStaging }
+        do { try fileManager.moveItem(at: staging, to: destination) }
+        catch { if fileManager.fileExists(atPath: destination.path) { throw SFTPBackendError.destinationExists }; throw error }
+    }
     public static func parseList(_ data: Data, parent: String, maximumEntries: Int = 100_000) throws -> [RemoteDirectoryEntry] {
         guard parent.hasPrefix("/"), let text = String(data: data, encoding: .utf8) else { throw SFTPBackendError.invalidListing }
         let names = text.split(whereSeparator: \Character.isNewline).map(String.init).filter { !$0.isEmpty && $0 != "." && $0 != ".." }
@@ -119,12 +169,14 @@ public struct SFTPCommandBuilder: Sendable {
         guard profile.remoteProtocol == .sftp else { throw SFTPBackendError.unsupportedProtocol }
         guard validAtom(key.username) else { throw SFTPBackendError.invalidUsername }
         guard key.identityFile.isFileURL, key.knownHostsFile.isFileURL else { throw SFTPBackendError.invalidPath }
-        let command: String
+        let commands: [String]
         switch intent {
-        case .list(let remote): command = "ls -1 \(try quoted(remote))"
-        case .download(let remote, let local): command = "get \(try quoted(remote)) \(try quoted(local.path))"
-        case .upload(let local, let remote): command = "put \(try quoted(local.path)) \(try quoted(remote))"
-        case .remove(let remote): command = "rm \(try quoted(remote))"
+        case .list(let remote): commands = ["ls -1 \(try quoted(remote))"]
+        case .download(let remote, let local): commands = ["get \(try quoted(remote)) \(try quoted(local.path))"]
+        case .upload(let local, let remote): commands = ["put \(try quoted(local.path)) \(try quoted(remote))"]
+        case .uploadAndRename(let local, let staging, let final):
+            commands = ["put \(try quoted(local.path)) \(try quoted(staging))", "rename \(try quoted(staging)) \(try quoted(final))"]
+        case .remove(let remote): commands = ["rm \(try quoted(remote))"]
         }
         let alias = "files-remote"
         let config = ["Host \(alias)", "  HostName \(profile.host)", "  Port \(profile.port)", "  User \(key.username)",
@@ -133,7 +185,7 @@ public struct SFTPCommandBuilder: Sendable {
                       "  BatchMode yes", "  PasswordAuthentication no", "  KbdInteractiveAuthentication no",
                       "  ConnectTimeout 15", ""].joined(separator: "\n")
         return SFTPCommandPlan(executable: URL(fileURLWithPath: "/usr/bin/sftp"), arguments: ["-q", "-b", "-", "-F", "<private-config>", alias],
-            batchInput: Data((command + "\n").utf8), privateSSHConfiguration: Data(config.utf8),
+            batchInput: Data((commands.joined(separator: "\n") + "\n").utf8), privateSSHConfiguration: Data(config.utf8),
             redactedDescription: "sftp <redacted>@<redacted>:/<redacted>")
     }
     public func validateFiles(_ key: SFTPKeyConfiguration) throws {

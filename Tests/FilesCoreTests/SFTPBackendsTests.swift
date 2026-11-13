@@ -25,6 +25,47 @@ import Testing
     #expect(throws: SFTPBackendError.unsupportedProtocol) { try SFTPCommandBuilder().command(profile: ftp, key: key, intent: .list(remotePath: "/")) }
 }
 
+@Test func sftpUploadPlanStagesThenRenamesWithoutExposingTheFinalPathEarly() throws {
+    let profile = try RemoteConnectionProfile(name: "SFTP", remoteProtocol: .sftp, host: "host")
+    let key = SFTPKeyConfiguration(username: "user", identityFile: URL(fileURLWithPath: "/key"), knownHostsFile: URL(fileURLWithPath: "/known"))
+    let plan = try SFTPCommandBuilder().command(profile: profile, key: key,
+        intent: .uploadAndRename(local: URL(fileURLWithPath: "/tmp/한글 file"), stagingRemotePath: "/team/.files-sftp-upload-id.tmp", finalRemotePath: "/team/최종 file"))
+    #expect(String(decoding: plan.batchInput, as: UTF8.self) == "put \"/tmp/한글 file\" \"/team/.files-sftp-upload-id.tmp\"\nrename \"/team/.files-sftp-upload-id.tmp\" \"/team/최종 file\"\n")
+    #expect(throws: SFTPBackendError.invalidPath) {
+        try SFTPCommandBuilder().command(profile: profile, key: key,
+            intent: .uploadAndRename(local: URL(fileURLWithPath: "/tmp/file"), stagingRemotePath: "relative", finalRemotePath: "/final"))
+    }
+}
+
+@Test func sftpDownloadPublishRequiresOwnedSameDirectoryRegularStaging() throws {
+    let fm = FileManager.default, root = fm.temporaryDirectory.appendingPathComponent("sftp-publish-\(UUID())", isDirectory: true)
+    defer { try? fm.removeItem(at: root) }; try fm.createDirectory(at: root, withIntermediateDirectories: true)
+    let destination = root.appendingPathComponent("final.txt"), staging = root.appendingPathComponent(".files-sftp-download-id.tmp")
+    try Data("payload".utf8).write(to: staging)
+    try SFTPRemoteProvider.publishDownload(staging: staging, destination: destination, fileManager: fm)
+    #expect(try Data(contentsOf: destination) == Data("payload".utf8)); #expect(!fm.fileExists(atPath: staging.path))
+    let replacement = root.appendingPathComponent(".files-sftp-download-replacement.tmp"); try Data("new".utf8).write(to: replacement)
+    #expect(throws: SFTPBackendError.destinationExists) { try SFTPRemoteProvider.publishDownload(staging: replacement, destination: destination, fileManager: fm) }
+    #expect(try Data(contentsOf: destination) == Data("payload".utf8))
+    let source = root.appendingPathComponent("source"); try Data("source".utf8).write(to: source)
+    let link = root.appendingPathComponent(".files-sftp-download-link.tmp"); try fm.createSymbolicLink(at: link, withDestinationURL: source)
+    #expect(throws: SFTPBackendError.invalidStaging) { try SFTPRemoteProvider.publishDownload(staging: link, destination: root.appendingPathComponent("link-result"), fileManager: fm) }
+    let foreign = root.appendingPathComponent("foreign.tmp"); try Data("foreign".utf8).write(to: foreign)
+    #expect(throws: SFTPBackendError.invalidStaging) { try SFTPRemoteProvider.publishDownload(staging: foreign, destination: root.appendingPathComponent("foreign-result"), fileManager: fm) }
+}
+
+@Test func sftpUploadSafetyDefaultsToBlockedAndUsesSiblingStagingPaths() async throws {
+    #expect(SFTPServerCapabilities().renameRefusesExistingDestination == false)
+    let staging = try SFTPRemoteProvider.remoteStagingPath(for: "/team/최종 file")
+    #expect(staging.hasPrefix("/team/.files-sftp-upload-")); #expect(staging.hasSuffix(".tmp"))
+    #expect(throws: SFTPBackendError.invalidPath) { try SFTPRemoteProvider.remoteStagingPath(for: "relative") }
+    let profile = try RemoteConnectionProfile(name: "SFTP", remoteProtocol: .sftp, host: "host")
+    let key = SFTPKeyConfiguration(username: "user", identityFile: URL(fileURLWithPath: "/missing-key"), knownHostsFile: URL(fileURLWithPath: "/missing-trust"))
+    await #expect(throws: SFTPBackendError.unverifiedServerCapability) {
+        try await SFTPRemoteProvider().upload(profile: profile, key: key, local: URL(fileURLWithPath: "/missing-source"), remotePath: "/final")
+    }
+}
+
 @Test func sftpTrustAndIdentityFilesMustBeRegularAndNotLinks() throws {
     let fm = FileManager.default, root = fm.temporaryDirectory.appendingPathComponent("sftp-files-\(UUID())", isDirectory: true)
     defer { try? fm.removeItem(at: root) }; try fm.createDirectory(at: root, withIntermediateDirectories: true)
