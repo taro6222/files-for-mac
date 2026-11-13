@@ -358,7 +358,8 @@ private struct DelayedLoader: DirectoryLoading {
     preferences.setFolderViewPreference(FolderViewPreference(mode: .grid, size: .large), for: folder)
     let restored = BrowserPreferences(defaults: defaults, initialFavorites: [])
     #expect(restored.folderViewPreference(for: URL(fileURLWithPath: "/tmp/folder")) == FolderViewPreference(mode: .grid, size: .large))
-    restored.removeFolderViewPreference(for: folder); #expect(restored.folderViewPreferences.isEmpty)
+    restored.resetFolderViewPreferences(); #expect(restored.folderViewPreferences.isEmpty)
+    #expect(defaults.data(forKey: "folderViewPreferences") == nil)
     defaults.set(Data("invalid".utf8), forKey: "folderViewPreferences")
     #expect(BrowserPreferences(defaults: defaults, initialFavorites: []).folderViewPreferences.isEmpty)
 }

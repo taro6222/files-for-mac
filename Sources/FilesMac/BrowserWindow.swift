@@ -1673,6 +1673,7 @@ extension BrowserWindow {
             checks["toolbarOrderPreference"] = preferences.toolbarOrder.firstIndex(of: .options) == optionsIndex - 1
             preferences.moveToolbarItem(.options, by: 1)
             let appearanceSettings = AppearanceSettingsWindow(preferences: preferences)
+            preferences.setFolderViewPreference(FolderViewPreference(mode: .grid, size: .large), for: fixture)
             appearanceSettings.present(); try await Task.sleep(for: .milliseconds(50))
             appearanceSettings.qaSelect(.dark)
             checks["appearanceDark"] = preferences.appearance == .dark && window.appearance?.name == .darkAqua
@@ -1682,7 +1683,10 @@ extension BrowserWindow {
             checks["appearanceSystem"] = preferences.appearance == .system && window.appearance == nil
             appearanceSettings.qaSelect(dark ? .dark : .light)
             checks["appearanceSettingsWindow"] = appearanceSettings.window?.isVisible == true
+            checks["folderSettingsManagement"] = appearanceSettings.qaFolderCount == 1
             try capture("appearance-settings", view: appearanceSettings.window?.contentView)
+            appearanceSettings.qaResetFolderViews()
+            checks["folderSettingsResetAll"] = appearanceSettings.qaFolderCount == 0
             appearanceSettings.close(); window.makeKeyAndOrderFront(nil)
             checks["pathFieldUsableWidth"] = controller.pathField.frame.width >= 160
             controller.focusPath(nil)
