@@ -32,9 +32,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             return
         }
         #endif
-        var restored = workspaceStore.load()
-        if restored.isEmpty {
-            restored = sessionStore.load().map { SplitTabState(primary: PaneSnapshot(tab: $0)) }
+        var restored: [SplitTabState] = []
+        if BrowserPreferences.shared.continueLastSession {
+            restored = workspaceStore.load()
+            if restored.isEmpty {
+                restored = sessionStore.load().map { SplitTabState(primary: PaneSnapshot(tab: $0)) }
+            }
         }
         if restored.isEmpty { newWindow(nil) }
         else {

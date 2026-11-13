@@ -376,6 +376,19 @@ private struct DelayedLoader: DirectoryLoading {
     preferences.removeObserver(token)
 }
 
+@Test @MainActor func continueLastSessionDefaultsOnPersistsAndNotifies() {
+    let suite = "session-preferences-tests-\(UUID())", defaults = UserDefaults(suiteName: suite)!
+    defer { defaults.removePersistentDomain(forName: suite) }
+    let preferences = BrowserPreferences(defaults: defaults, initialFavorites: [])
+    #expect(preferences.continueLastSession)
+    var notifications = 0; let token = preferences.observe { notifications += 1 }
+    preferences.setContinueLastSession(false)
+    #expect(!BrowserPreferences(defaults: defaults, initialFavorites: []).continueLastSession)
+    #expect(notifications == 1)
+    preferences.setContinueLastSession(false); #expect(notifications == 1)
+    preferences.removeObserver(token)
+}
+
 @Test @MainActor func folderViewPreferencesPersistStandardizeRemoveAndRecoverCorruption() {
     let suite = "folder-view-preferences-tests-\(UUID())", defaults = UserDefaults(suiteName: suite)!
     defer { defaults.removePersistentDomain(forName: suite) }

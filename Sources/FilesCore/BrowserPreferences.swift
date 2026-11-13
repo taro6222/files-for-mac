@@ -35,6 +35,7 @@ public final class BrowserPreferences {
     public private(set) var showHomeRecent: Bool
     public private(set) var viewSize: BrowserViewSize
     public private(set) var appearance: BrowserAppearance
+    public private(set) var continueLastSession: Bool
     public private(set) var toolbarOrder: [BrowserToolbarItem]
     public private(set) var hiddenToolbarItems: Set<BrowserToolbarItem>
     public private(set) var folderViewPreferences: [String: FolderViewPreference]
@@ -58,6 +59,7 @@ public final class BrowserPreferences {
         showHomeRecent = defaults.object(forKey: "showHomeRecent") as? Bool ?? true
         viewSize = defaults.string(forKey: "viewSize").flatMap(BrowserViewSize.init(rawValue:)) ?? .medium
         appearance = defaults.string(forKey: "appearance").flatMap(BrowserAppearance.init(rawValue:)) ?? .system
+        continueLastSession = defaults.object(forKey: "continueLastSession") as? Bool ?? true
         var toolbar: [BrowserToolbarItem] = []
         for raw in defaults.stringArray(forKey: "toolbarOrder") ?? [] {
             if let item = BrowserToolbarItem(rawValue: raw), !toolbar.contains(item) { toolbar.append(item) }
@@ -114,6 +116,10 @@ public final class BrowserPreferences {
     public func setAppearance(_ value: BrowserAppearance) {
         guard appearance != value else { return }
         appearance = value; defaults.set(value.rawValue, forKey: "appearance"); changed()
+    }
+    public func setContinueLastSession(_ value: Bool) {
+        guard continueLastSession != value else { return }
+        continueLastSession = value; defaults.set(value, forKey: "continueLastSession"); changed()
     }
     public func folderViewPreference(for url: URL) -> FolderViewPreference? {
         folderViewPreferences[url.standardizedFileURL.path]

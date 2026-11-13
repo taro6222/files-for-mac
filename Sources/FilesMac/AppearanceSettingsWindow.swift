@@ -5,12 +5,13 @@ import FilesCore
 final class AppearanceSettingsWindow: NSWindowController {
     private let preferences: BrowserPreferences
     private let picker = NSPopUpButton()
+    private let continueSession = NSButton(checkboxWithTitle: L("마지막 세션 계속", "Continue Last Session"), target: nil, action: nil)
     private let folderSummary = NSTextField(labelWithString: "")
     private let resetFolders = NSButton()
 
     init(preferences: BrowserPreferences) {
         self.preferences = preferences
-        let panel = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 460, height: 340),
+        let panel = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 460, height: 380),
                             styleMask: [.titled, .closable, .utilityWindow], backing: .buffered, defer: false)
         super.init(window: panel)
         panel.title = L("외형", "Appearance")
@@ -30,6 +31,7 @@ final class AppearanceSettingsWindow: NSWindowController {
         picker.target = self; picker.action = #selector(changeAppearance(_:)); picker.setAccessibilityLabel(L("앱 테마", "App theme")); stack.addArrangedSubview(picker)
         let material = NSTextField(wrappingLabelWithString: L("사이드바는 macOS 재질을 사용하며 대비 증가 및 투명도 감소 접근성 설정을 자동으로 따릅니다.", "The sidebar uses macOS material and automatically follows Increase Contrast and Reduce Transparency accessibility settings."))
         material.textColor = .secondaryLabelColor; stack.addArrangedSubview(material)
+        continueSession.target = self; continueSession.action = #selector(changeContinueSession(_:)); continueSession.setAccessibilityLabel(L("마지막 세션 계속", "Continue Last Session")); stack.addArrangedSubview(continueSession)
         let separator = NSBox(); separator.boxType = .separator; stack.addArrangedSubview(separator)
         let folderTitle = NSTextField(labelWithString: L("폴더별 보기", "Per-folder views")); folderTitle.font = .systemFont(ofSize: 14, weight: .semibold); stack.addArrangedSubview(folderTitle)
         folderSummary.textColor = .secondaryLabelColor; stack.addArrangedSubview(folderSummary)
@@ -38,6 +40,7 @@ final class AppearanceSettingsWindow: NSWindowController {
     func present() { sync(); window?.center(); showWindow(nil); window?.makeKeyAndOrderFront(nil) }
     private func sync() {
         picker.selectItem(at: BrowserAppearance.allCases.firstIndex(of: preferences.appearance) ?? 0)
+        continueSession.state = preferences.continueLastSession ? .on : .off
         let count = preferences.folderViewPreferences.count
         folderSummary.stringValue = L("저장된 폴더 설정: \(count)개", "Saved folder settings: \(count)")
         resetFolders.isEnabled = count > 0
@@ -46,11 +49,13 @@ final class AppearanceSettingsWindow: NSWindowController {
         guard BrowserAppearance.allCases.indices.contains(picker.indexOfSelectedItem) else { return }
         preferences.setAppearance(BrowserAppearance.allCases[picker.indexOfSelectedItem])
     }
+    @objc private func changeContinueSession(_ sender: Any?) { preferences.setContinueLastSession(continueSession.state == .on) }
     @objc private func resetFolderViews(_ sender: Any?) { preferences.resetFolderViewPreferences(); sync() }
 #if DEBUG
     var qaSelection: BrowserAppearance { preferences.appearance }
     func qaSelect(_ appearance: BrowserAppearance) { picker.selectItem(at: BrowserAppearance.allCases.firstIndex(of: appearance) ?? 0); changeAppearance(nil) }
     func qaResetFolderViews() { resetFolderViews(nil) }
     var qaFolderCount: Int { preferences.folderViewPreferences.count }
+    func qaSetContinueLastSession(_ value: Bool) { continueSession.state = value ? .on : .off; changeContinueSession(nil) }
 #endif
 }
