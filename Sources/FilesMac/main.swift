@@ -236,6 +236,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         file.addItem(withTitle: L("데스크탑 배경으로 설정", "Set as Desktop Wallpaper"), action: #selector(BrowserWindow.setAsDesktopWallpaper(_:)), keyEquivalent: "")
         file.addItem(withTitle: L("앱 배경으로 설정", "Set as App Background"), action: #selector(BrowserWindow.setAsAppBackground(_:)), keyEquivalent: "")
         file.addItem(withTitle: L("앱 배경 지우기", "Clear App Background"), action: #selector(BrowserWindow.clearAppBackground(_:)), keyEquivalent: "")
+        file.addItem(withTitle: L("왼쪽으로 회전", "Rotate Left"), action: #selector(BrowserWindow.rotateImagesLeft(_:)), keyEquivalent: "")
+        file.addItem(withTitle: L("오른쪽으로 회전", "Rotate Right"), action: #selector(BrowserWindow.rotateImagesRight(_:)), keyEquivalent: "")
         file.addItem(withTitle: L("지금 다운로드", "Download Now"), action: #selector(BrowserWindow.downloadCloudSelection(_:)), keyEquivalent: "")
         file.addItem(withTitle: L("공간 비우기", "Free Up Space"), action: #selector(BrowserWindow.evictCloudSelection(_:)), keyEquivalent: "")
         file.addItem(withTitle: L("Finder에서 보기", "Reveal in Finder"), action: #selector(BrowserWindow.revealSelection(_:)), keyEquivalent: "")

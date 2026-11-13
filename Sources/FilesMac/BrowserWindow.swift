@@ -1,4 +1,5 @@
 import AppKit
+import ImageIO
 import UniformTypeIdentifiers
 #if canImport(FilesCore)
 import FilesCore
@@ -423,6 +424,8 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         let wallpaper = menu.addItem(withTitle: L("데스크탑 배경으로 설정", "Set as Desktop Wallpaper"), action: #selector(setAsDesktopWallpaper(_:)), keyEquivalent: ""); wallpaper.target = self
         let appBackground = menu.addItem(withTitle: L("앱 배경으로 설정", "Set as App Background"), action: #selector(setAsAppBackground(_:)), keyEquivalent: ""); appBackground.target = self
         let clearAppBackground = menu.addItem(withTitle: L("앱 배경 지우기", "Clear App Background"), action: #selector(clearAppBackground(_:)), keyEquivalent: ""); clearAppBackground.target = self
+        let rotateLeft = menu.addItem(withTitle: L("왼쪽으로 회전", "Rotate Left"), action: #selector(rotateImagesLeft(_:)), keyEquivalent: ""); rotateLeft.target = self
+        let rotateRight = menu.addItem(withTitle: L("오른쪽으로 회전", "Rotate Right"), action: #selector(rotateImagesRight(_:)), keyEquivalent: ""); rotateRight.target = self
         let archive = menu.addItem(withTitle: L("압축 파일 탐색", "Browse Archive"), action: #selector(openArchive(_:)), keyEquivalent: ""); archive.target = self
         let createArchive = menu.addItem(withTitle: L("선택 항목 압축…", "Compress Selection…"), action: #selector(createArchive(_:)), keyEquivalent: ""); createArchive.target = self
         let extractHere = menu.addItem(withTitle: L("여기에 압축 해제", "Extract Here"), action: #selector(extractArchivesHere(_:)), keyEquivalent: ""); extractHere.target = self
@@ -1098,6 +1101,18 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         preferences.setAppBackground(nil)
         let store = AppBackgroundStore()
         Task.detached { try? store.remove() }
+    }
+    private var selectedRotatableImageURLs: [URL] {
+        let urls = activeSelectedItems.map(\.url)
+        return !urls.isEmpty && urls.allSatisfy(ImageRotationEngine.canRotate) ? urls : []
+    }
+    @objc func rotateImagesLeft(_ sender: Any?) { startImageRotation(.left) }
+    @objc func rotateImagesRight(_ sender: Any?) { startImageRotation(.right) }
+    private func startImageRotation(_ direction: ImageRotationDirection) {
+        let urls = selectedRotatableImageURLs
+        guard !urls.isEmpty, !ImageRotationWindow.isRunning else { return }
+        let target = activeModel
+        ImageRotationWindow.start(urls: urls, direction: direction) { target.reload() }
     }
     private func startArchiveExtraction(_ placement: ArchiveExtractionPlacement) {
         let archives = selectedArchiveURLs
@@ -2074,6 +2089,7 @@ extension BrowserWindow {
         case #selector(extractArchivesHere(_:)), #selector(extractArchivesSmart(_:)), #selector(extractArchivesToChildFolders(_:)): return activeModel.location != nil && !activeModel.isLoading && !selectedArchiveURLs.isEmpty && !ArchiveExtractionWindow.isRunning
         case #selector(setAsDesktopWallpaper(_:)), #selector(setAsAppBackground(_:)): return activeSelectedItems.count == 1 && !activeSelectedItems[0].isBrowsable && NSImage(contentsOf: activeSelectedItems[0].url) != nil
         case #selector(clearAppBackground(_:)): return preferences.appBackgroundPath != nil
+        case #selector(rotateImagesLeft(_:)), #selector(rotateImagesRight(_:)): return !ImageRotationWindow.isRunning && !selectedRotatableImageURLs.isEmpty
         case #selector(createSymbolicLink(_:)): return activeModel.location != nil && activeSelectedItems.count == 1 && !activeModel.isLoading && !Self.entryOperationRunning
         case #selector(createSymbolicLinkFromDialog(_:)): return activeModel.location != nil && !activeModel.isLoading && !Self.entryOperationRunning
         case #selector(toggleSelectedFavorite(_:)): return activeModel.location != nil && (activeSelectedItems.isEmpty || (activeSelectedItems.count == 1 && activeSelectedItems[0].isBrowsable))
@@ -2232,6 +2248,21 @@ extension BrowserWindow {
             let invalidBackground = destination.appendingPathComponent("invalid-background.txt"); try Data("not an image".utf8).write(to: invalidBackground)
             checks["appBackgroundRejectsNonImage"] = (try? qaBackgroundStore.install(from: invalidBackground)) == nil
             try capture("app-background")
+            func qaImageOrientation(_ url: URL) -> Int {
+                guard let source = CGImageSourceCreateWithURL(url as CFURL, nil),
+                      let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any] else { return 0 }
+                return (properties[kCGImagePropertyOrientation] as? NSNumber)?.intValue ?? 1
+            }
+            ImageRotationWindow.start(urls: [backgroundFixture], direction: .right) {}
+            let rotateRightWait = ContinuousClock.now
+            while ImageRotationWindow.qaLatest?.qaRunning == true && rotateRightWait.duration(to: .now) < .seconds(10) { try await Task.sleep(for: .milliseconds(10)) }
+            checks["imageRotateRight"] = ImageRotationWindow.qaLatest?.qaSucceeded == true && qaImageOrientation(backgroundFixture) == 6
+            try capture("image-rotation", view: ImageRotationWindow.qaLatest?.window?.contentView); ImageRotationWindow.qaLatest?.close(); window.makeKeyAndOrderFront(nil)
+            ImageRotationWindow.start(urls: [backgroundFixture], direction: .left) {}
+            let rotateLeftWait = ContinuousClock.now
+            while ImageRotationWindow.qaLatest?.qaRunning == true && rotateLeftWait.duration(to: .now) < .seconds(10) { try await Task.sleep(for: .milliseconds(10)) }
+            checks["imageRotateLeft"] = ImageRotationWindow.qaLatest?.qaSucceeded == true && qaImageOrientation(backgroundFixture) == 1
+            ImageRotationWindow.qaLatest?.close(); window.makeKeyAndOrderFront(nil)
             checks["minimumWindow"] = window.frame.size == NSSize(width: 900, height: 600)
             let paletteEntries = CommandPaletteCatalog.entries(from: NSApp.mainMenu)
             checks["commandPaletteIndexesMenus"] = paletteEntries.count >= 20
@@ -2253,6 +2284,7 @@ extension BrowserWindow {
             }
             checks["desktopWallpaperCommand"] = paletteEntries.contains { $0.item.action == #selector(setAsDesktopWallpaper(_:)) }
             checks["appBackgroundCommands"] = [#selector(setAsAppBackground(_:)), #selector(clearAppBackground(_:))].allSatisfy { action in paletteEntries.contains { $0.item.action == action } }
+            checks["imageRotationCommands"] = [#selector(rotateImagesLeft(_:)), #selector(rotateImagesRight(_:))].allSatisfy { action in paletteEntries.contains { $0.item.action == action } }
             checks["commandPaletteSearch"] = CommandPaletteCatalog.filtered(paletteEntries, query: L("숨김", "hidden")).contains { $0.item.action == #selector(toggleHidden(_:)) }
             controller.showCommandPalette(nil); try await Task.sleep(for: .milliseconds(50))
             controller.commandPalette.qaSetQuery(L("숨김", "hidden"))
