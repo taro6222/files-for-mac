@@ -10,6 +10,6 @@
 | 변경 감시 | FSEvents 현재 폴더·직접 자식 관찰 | 로컬 파일 편집·rename 통과; 네트워크 볼륨은 검증 대기 |
 | 패키징 | SwiftPM 코어/실행 + 같은 소스를 쓰는 Xcode 앱 타깃 | 정식 배포 전 코어를 별도 패키지 참조로 연결 정리 |
 | 휴지통 전체 복원 | 미확정 | 공개 API 실험 대기 |
-| 클라우드 상태 | 미확정 | 공급자별 실험 대기 |
+| 클라우드 상태 | CloudStorage/iCloud 위치를 로컬 탐색; ubiquitous resource value가 있는 항목만 상태 표시, 나머지는 unknown | fixture 위치·unknown 정확성·UI 4조합 통과; 실제 공급자별 수용 검증 대기 |
 | 압축 backend | macOS 시스템 libarchive 직접 연결; ZIP/7z 생성·탐색·안전 추출, RAR 탐색·안전 추출; 암호·분할·수정은 미지원 | ZIP/7z Unicode 생성·재열기·추출, 공식 7z/RAR fixture, 앱 UI 4조합 통과 |
 | Intel/최소 OS | 배포 타깃만 설정 | 실기기 실행 대기 |

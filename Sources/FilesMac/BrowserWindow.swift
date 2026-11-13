@@ -76,6 +76,9 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
     private var lastRecordedLocation: URL?
     private var volumes: [MountedVolume] = []
     private var volumeTask: Task<Void, Never>?
+    private var cloudLocations: [CloudLocation] = []
+    private var cloudTask: Task<Void, Never>?
+    private let cloudProvider: CloudLocationProvider
     static private(set) var entryOperationRunning = false
     private static var operationJournalDirectory: URL {
         FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
@@ -117,9 +120,11 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
          initialSnapshot: TabSnapshot? = nil,
          initialWorkspace: SplitTabState? = nil,
          loader: any DirectoryLoading = LocalFileSystem(),
+         cloudProvider: CloudLocationProvider = CloudLocationProvider(),
          makeWatcher: @escaping @Sendable (URL) -> DirectoryWatcher? = { DirectoryWatcher(url: $0) }) {
         self.model = BrowserModel(loader: loader)
         self.preferences = preferences
+        self.cloudProvider = cloudProvider
         self.makeWatcher = makeWatcher
         let w = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1280, height: 820),
             styleMask: [.titled, .closable, .miniaturizable, .resizable], backing: .buffered, defer: false)
@@ -143,6 +148,7 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
             restoreWorkspace(initialWorkspace)
         }
         refreshVolumes()
+        refreshCloudLocations()
         for name in [NSWorkspace.didMountNotification, NSWorkspace.didUnmountNotification] {
             observerTokens.append(NSWorkspace.shared.notificationCenter.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
                 Task { @MainActor in self?.refreshVolumes() }
@@ -155,7 +161,7 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
                 if let watcher = self.watcher { Task.detached { watcher.stop() } }
                 self.watcher = nil
                 self.model.onChange = nil; self.model.cancelLoad()
-                self.completionTask?.cancel(); self.volumeTask?.cancel()
+                self.completionTask?.cancel(); self.volumeTask?.cancel(); self.cloudTask?.cancel()
                 self.secondaryPane?.shutdown()
                 if let token = self.preferencesToken { self.preferences.removeObserver(token) }
                 for token in self.observerTokens {
@@ -525,6 +531,7 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
             case .locations:
                 locationButton(L("사용자 폴더", "User Folder"), symbol: "person.crop.circle", url: FileManager.default.homeDirectoryForCurrentUser, in: sidebar)
                 locationButton(L("응용 프로그램", "Applications"), symbol: "square.grid.2x2", url: URL(fileURLWithPath: "/Applications"), in: sidebar)
+                for location in cloudLocations { locationButton(location.name, symbol: "cloud", url: location.url, in: sidebar) }
                 for volume in volumes { locationButton(volume.name, symbol: "externaldrive", url: volume.url, in: sidebar) }
             }
         }
@@ -1562,6 +1569,14 @@ extension BrowserWindow {
             if self.model.location == nil { self.buildHome() }
         }
     }
+    private func refreshCloudLocations() {
+        cloudTask?.cancel()
+        cloudTask = Task { [weak self, cloudProvider] in
+            let result = await Task.detached(priority: .utility) { cloudProvider.locations() }.value
+            guard let self, !Task.isCancelled else { return }
+            self.cloudLocations = result; self.buildSidebar()
+        }
+    }
 
     private var fileOperationIsRunning: Bool {
         Self.entryOperationRunning || CopyWindow.isRunning || MoveWindow.isRunning || FolderMergeWindow.isRunning ||
@@ -1739,10 +1754,16 @@ extension BrowserWindow {
             }
             let archiveFixture = fixture.appendingPathComponent("99998-fixture.zip")
             _ = try await ZipArchiveProvider().create(from: [fixture.appendingPathComponent("00000-한글-é-📁-long-file-name.txt")], at: archiveFixture)
+            let qaCloudStorage = destination.appendingPathComponent("qa-cloud-storage", isDirectory: true)
+            let qaICloud = destination.appendingPathComponent("qa-icloud", isDirectory: true)
+            try fm.createDirectory(at: qaCloudStorage.appendingPathComponent("Dropbox-personal", isDirectory: true), withIntermediateDirectories: true)
+            try fm.createDirectory(at: qaCloudStorage.appendingPathComponent("OneDrive-work", isDirectory: true), withIntermediateDirectories: true)
+            try fm.createDirectory(at: qaICloud, withIntermediateDirectories: true)
+            let qaCloudProvider = CloudLocationProvider(cloudStorageRoot: qaCloudStorage, iCloudDriveRoot: qaICloud)
             let preferences = BrowserPreferences(defaults: defaults, initialFavorites: [fixture])
             let dark = ProcessInfo.processInfo.environment["FILES_UI_QA_THEME"] == "dark"
             NSApp.appearance = NSAppearance(named: dark ? .darkAqua : .aqua)
-            let controller = BrowserWindow(preferences: preferences, restoresFrame: false)
+            let controller = BrowserWindow(preferences: preferences, restoresFrame: false, cloudProvider: qaCloudProvider)
             guard let window = controller.window, let root = window.contentView else { throw CocoaError(.coderInvalidValue) }
             window.appearance = NSAppearance(named: dark ? .darkAqua : .aqua)
             window.setFrame(NSRect(x: 80, y: 80, width: 900, height: 600), display: true)
@@ -1760,6 +1781,7 @@ extension BrowserWindow {
                 try png.write(to: destination.appendingPathComponent(name + ".png"))
             }
             try await Task.sleep(for: .milliseconds(500))
+            checks["cloudLocations"] = controller.cloudLocations.count == 3 && controller.cloudLocations.allSatisfy { $0.state == .unknown }
             try capture("home")
             checks["minimumWindow"] = window.frame.size == NSSize(width: 900, height: 600)
             let paletteEntries = CommandPaletteCatalog.entries(from: NSApp.mainMenu)
