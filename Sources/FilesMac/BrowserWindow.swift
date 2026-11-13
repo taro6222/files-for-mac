@@ -378,6 +378,7 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         let batchRename = menu.addItem(withTitle: L("일괄 이름 변경…", "Batch Rename…"), action: #selector(batchRenameSelection(_:)), keyEquivalent: ""); batchRename.target = self
         let open = menu.addItem(withTitle: L("열기", "Open"), action: #selector(openSelection(_:)), keyEquivalent: ""); open.target = self
         let archive = menu.addItem(withTitle: L("압축 파일 탐색", "Browse Archive"), action: #selector(openArchive(_:)), keyEquivalent: ""); archive.target = self
+        let createArchive = menu.addItem(withTitle: L("선택 항목을 ZIP으로…", "Compress Selection to ZIP…"), action: #selector(createArchive(_:)), keyEquivalent: ""); createArchive.target = self
         let copy = menu.addItem(withTitle: L("선택 항목 복사…", "Copy Selection To…"), action: #selector(copySelection(_:)), keyEquivalent: ""); copy.target = self
         let move = menu.addItem(withTitle: L("선택 항목 이동…", "Move Selection To…"), action: #selector(moveSelection(_:)), keyEquivalent: ""); move.target = self
         menu.addItem(NSMenuItem.separator())
@@ -870,6 +871,17 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
     @objc func openArchive(_ sender: Any?) {
         guard activeSelectedItems.count == 1, let item = activeSelectedItems.first, item.url.pathExtension.lowercased() == "zip" else { return }
         presentArchive(item.url)
+    }
+    @objc func createArchive(_ sender: Any?) {
+        let sources = activeSelectedItems.map(\.url)
+        guard !sources.isEmpty, !activeModel.isLoading, !ArchiveCreationWindow.isRunning, let parent = activeModel.location, let window else { return }
+        let panel = NSSavePanel(); panel.allowedContentTypes = [.zip]; panel.canCreateDirectories = true
+        panel.nameFieldStringValue = sources.count == 1 ? sources[0].deletingPathExtension().lastPathComponent + ".zip" : L("압축 파일.zip", "Archive.zip")
+        panel.directoryURL = parent; panel.prompt = L("압축", "Compress")
+        panel.beginSheetModal(for: window) { [weak self] response in
+            guard response == .OK, let destination = panel.url, let self else { return }
+            ArchiveCreationWindow.start(sources: sources, destination: destination) { self.refreshActivePane() }
+        }
     }
     @objc func createFolder(_ sender: Any?) { promptForEntryName(source: nil) }
     @objc func createFolderFromSelection(_ sender: Any?) {
@@ -1641,6 +1653,7 @@ extension BrowserWindow {
         case #selector(goUp(_:)): return secondaryActive ? secondaryPane?.model.location != nil : model.location != nil && model.location?.path != "/"
         case #selector(openSelection(_:)): return !activeSelectedItems.isEmpty && activeModel.location != nil
         case #selector(openArchive(_:)): return activeSelectedItems.count == 1 && activeSelectedItems.first?.url.pathExtension.lowercased() == "zip"
+        case #selector(createArchive(_:)): return !ArchiveCreationWindow.isRunning && !activeModel.isLoading && !activeSelectedItems.isEmpty
         case #selector(revealSelection(_:)), #selector(shareSelection(_:)), #selector(openWithApplication(_:)): return !activeSelectedItems.isEmpty && activeModel.location != nil
         case #selector(openInTerminal(_:)): return activeModel.location != nil
         default: return true
@@ -1887,6 +1900,15 @@ extension BrowserWindow {
             checks["archiveExtraction"] = controller.archiveWindow?.qaSucceeded == true && extractedArchiveText == "fixture"
             try capture("archive", view: controller.archiveWindow?.window?.contentView)
             controller.archiveWindow?.close(); window.makeKeyAndOrderFront(nil)
+            let createdArchive = destination.appendingPathComponent("created-by-ui.zip")
+            try? fm.removeItem(at: createdArchive)
+            ArchiveCreationWindow.start(sources: [fixture.appendingPathComponent("00000-한글-é-📁-long-file-name.txt")], destination: createdArchive) {}
+            let archiveCreate = ContinuousClock.now
+            while ArchiveCreationWindow.qaLatest?.qaRunning == true && archiveCreate.duration(to: .now) < .seconds(10) { try await Task.sleep(for: .milliseconds(10)) }
+            let createdEntries = try ZipArchiveProvider().entries(at: createdArchive)
+            checks["archiveCreation"] = ArchiveCreationWindow.qaLatest?.qaSucceeded == true && createdEntries.count == 1
+            try capture("archive-creation", view: ArchiveCreationWindow.qaLatest?.window?.contentView)
+            ArchiveCreationWindow.qaLatest?.close(); window.makeKeyAndOrderFront(nil)
             try await Task.sleep(for: .milliseconds(300))
             let metadataRefresh = ContinuousClock.now
             while controller.model.isLoading && metadataRefresh.duration(to: .now) < .seconds(10) { try await Task.sleep(for: .milliseconds(10)) }
@@ -2259,6 +2281,7 @@ extension BrowserWindow {
             checks["gridContextCommands"] = primaryGridIntegration.0 && secondaryGridIntegration.menu
             let contextActions = Set(controller.table.menu?.items.compactMap(\.action) ?? [])
             checks["systemOpenCommands"] = [#selector(revealSelection(_:)), #selector(shareSelection(_:)), #selector(openInTerminal(_:)), #selector(openWithApplication(_:))].allSatisfy(contextActions.contains)
+            checks["archiveContextCommands"] = [#selector(openArchive(_:)), #selector(createArchive(_:))].allSatisfy(contextActions.contains)
             checks["gridDragSources"] = primaryGridIntegration.1 && secondaryGridIntegration.drop
                 && primaryGridIntegration.2 != nil && secondaryGridIntegration.source != nil
             diagnostics["secondaryRequestedSelection"] = secondaryMerge.id
