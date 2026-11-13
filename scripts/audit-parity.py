@@ -17,6 +17,11 @@ SPECS = {
     "screens": (ROOT / "docs/reference/SCREENS.csv", "source_path", 33),
 }
 REQUIRED = {"classification", "status", "evidence"}
+ALLOWED_STATUSES = {
+    "commands": {"awaiting-behavior-review", "implemented", "platform-alternative", "platform-excluded"},
+    "settings": {"awaiting-behavior-review", "implemented", "platform-alternative", "platform-excluded"},
+    "screens": {"awaiting-individual-review", "implemented", "platform-alternative", "platform-excluded"},
+}
 
 
 def inspect(name: str, path: Path, identity: str, expected: int) -> dict[str, object]:
@@ -29,9 +34,20 @@ def inspect(name: str, path: Path, identity: str, expected: int) -> dict[str, ob
     duplicates = sorted(key for key, count in Counter(identities).items() if key and count > 1)
     blank_identities = sum(not key for key in identities)
     statuses = Counter(row.get("status", "").strip() or "<blank>" for row in rows)
+    invalid_statuses = sorted(set(statuses) - ALLOWED_STATUSES[name])
     classifications = Counter(row.get("classification", "").strip() or "<blank>" for row in rows)
     missing_evidence = sum(not row.get("evidence", "").strip() for row in rows)
-    valid = not missing_columns and len(rows) == expected and not duplicates and not blank_identities and not missing_evidence
+    resolved_without_command = 0
+    if name == "commands" and "mac_command_id" in fields:
+        resolved_without_command = sum(
+            row.get("status", "").strip() in {"implemented", "platform-alternative"}
+            and not row.get("mac_command_id", "").strip()
+            for row in rows
+        )
+    valid = (
+        not missing_columns and len(rows) == expected and not duplicates and not blank_identities
+        and not missing_evidence and not invalid_statuses and not resolved_without_command
+    )
     return {
         "name": name,
         "path": str(path.relative_to(ROOT)),
@@ -43,6 +59,8 @@ def inspect(name: str, path: Path, identity: str, expected: int) -> dict[str, ob
         "duplicate_identities": duplicates,
         "blank_identities": blank_identities,
         "missing_evidence": missing_evidence,
+        "invalid_statuses": invalid_statuses,
+        "resolved_without_command": resolved_without_command,
         "valid": valid,
     }
 

@@ -4,6 +4,10 @@
 |---|---|---|
 | UI | AppKit 네이티브 창·NSTableView. 시스템 언어에 따른 한국어/영어 표시 | arm64 실제 창에서 확인 |
 | Windows 재질·창 제어 | macOS sidebar material·traffic lights | 원본 Windows 이미지와의 시각 비교 대기 |
+| Windows 전용 실행·셸 | INF 드라이버 설치, 관리자/다른 사용자로 실행, PowerShell 실행, 관리자 Terminal은 macOS 파일 관리자 명령으로 제공하지 않는다. 앱 전체 또는 임의 파일을 root로 실행하지 않으며 Terminal에서 사용자가 명시적으로 권한을 올리는 시스템 흐름을 침범하지 않는다. | M6 `platform-excluded`; 명령 UI에 노출하지 않음 |
+| Windows 전용 저장 모델 | NTFS alternate data stream 생성과 Start 메뉴 pin/unpin은 macOS에 동일한 셸 개념이 없어 제공하지 않는다. xattr·Dock/Finder 즐겨찾기를 이름만 같은 기능으로 대체하지 않는다. | M6 `platform-excluded` |
+| 드라이브 포맷 | 앱 내부 포맷 대신 선택 볼륨을 macOS Disk Utility에서 연다. 파일 앱이 직접 erase 권한·장치 작업을 소유하지 않는다. | `platform-alternative`; 장착 볼륨 메뉴와 UI 검증 통과 |
+| 클래식 속성 | Windows classic properties 대신 macOS 네이티브 정보 패널(Get Info)을 사용한다. | `platform-alternative`; M4 정보 패널 검증 통과 |
 | 명령 키 | ⌘L, ⌘[, ⌘], ⌘↑, ⌘↓, ⇧⌘. | 전체 키보드/VoiceOver 흐름 대기 |
 | 항목 ID | 경로 기반 directory-entry ID + device/inode/birth 보조 identity | hard link 구분 및 유일한 identity의 외부 rename 선택 복원 통과 |
 | 파일 종류 | 기본 메타데이터와 localizedTypeDescription을 분리; 현재 종류는 폴더/확장자 표시 | 부가 API 실패가 폴더 판별을 훼손하지 않도록 수정 |
