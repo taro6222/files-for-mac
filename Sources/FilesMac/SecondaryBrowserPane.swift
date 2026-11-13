@@ -56,8 +56,8 @@ final class SecondaryBrowserPane: NSView, NSTableViewDataSource, NSTableViewDele
     func setActive(_ active: Bool) {
         layer?.borderWidth = active ? 2 : 0; layer?.borderColor = NSColor.controlAccentColor.cgColor
     }
-    func goBack() { activate(); savePosition(); model.back() }
-    func goForward() { activate(); savePosition(); model.forward() }
+    func goBack() { activate(); savePosition(); model.back(); applyFolderViewPreference() }
+    func goForward() { activate(); savePosition(); model.forward(); applyFolderViewPreference() }
     func goUp() { activate(); if let location = model.location { navigate(location.deletingLastPathComponent()) } }
     func refresh() { activate(); savePosition(); model.reload() }
     func focusPath() { activate(); window?.makeFirstResponder(pathField); pathField.selectText(nil) }
@@ -69,7 +69,7 @@ final class SecondaryBrowserPane: NSView, NSTableViewDataSource, NSTableViewDele
         else { window?.makeFirstResponder(table) }
     }
     func stopLoading() { model.cancelLoad() }
-    func setViewMode(_ mode: BrowserViewMode) { activate(); model.setViewMode(mode) }
+    func setViewMode(_ mode: BrowserViewMode) { activate(); setViewModeAndPersist(mode) }
     func applyPreferences() { render() }
     func setContextMenu(_ menu: NSMenu?) { gridView.contextMenu = menu; listView.contextMenu = menu; columnView.contextMenu = menu }
     func openSelected() {
@@ -192,7 +192,20 @@ final class SecondaryBrowserPane: NSView, NSTableViewDataSource, NSTableViewDele
         }
         model.savePosition(selection: selection, scrollOffset: offset)
     }
-    private func navigate(_ url: URL?) { savePosition(); model.navigate(url) }
+    private func navigate(_ url: URL?) { savePosition(); model.navigate(url); applyFolderViewPreference() }
+    private var effectiveViewSize: BrowserViewSize {
+        model.location.flatMap { preferences.folderViewPreference(for: $0)?.size } ?? preferences.viewSize
+    }
+    private func applyFolderViewPreference() {
+        guard let url = model.location, let folder = preferences.folderViewPreference(for: url) else { return }
+        model.setViewMode(folder.mode)
+    }
+    private func setViewModeAndPersist(_ mode: BrowserViewMode) {
+        model.setViewMode(mode)
+        if let location = model.location, let saved = preferences.folderViewPreference(for: location) {
+            preferences.setFolderViewPreference(FolderViewPreference(mode: mode, size: saved.size), for: location)
+        }
+    }
     private func modelChanged() {
         render(); updateWatcher()
         if pendingRefresh && !model.isLoading && !model.wasCancelled {
@@ -218,8 +231,8 @@ final class SecondaryBrowserPane: NSView, NSTableViewDataSource, NSTableViewDele
         let expectedSort = NSSortDescriptor(key: model.sortOrder.field.rawValue, ascending: model.sortOrder.ascending)
         if table.sortDescriptors.first != expectedSort { table.sortDescriptors = [expectedSort] }
         table.selectRowIndexes(IndexSet(model.items.indices.filter { model.history.current.selection.contains(model.items[$0].id) }), byExtendingSelection: false)
-        gridView.apply(viewSize: preferences.viewSize)
-        listView.apply(viewSize: preferences.viewSize)
+        gridView.apply(viewSize: effectiveViewSize)
+        listView.apply(viewSize: effectiveViewSize)
         gridView.update(items: model.items, selection: model.history.current.selection,
                         scrollOffset: model.history.current.scrollOffset)
         listView.update(items: model.items, selection: model.history.current.selection,
@@ -286,7 +299,7 @@ final class SecondaryBrowserPane: NSView, NSTableViewDataSource, NSTableViewDele
         activate()
         guard let raw = viewModeButton.selectedItem?.representedObject as? String,
               let mode = BrowserViewMode(rawValue: raw) else { return }
-        model.setViewMode(mode)
+        setViewModeAndPersist(mode)
     }
     @objc private func submitPath(_ sender: Any?) {
         activate(); let path = (pathField.stringValue as NSString).expandingTildeInPath

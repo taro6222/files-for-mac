@@ -567,7 +567,14 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         suggestions = []; pathField.removeAllItems()
         pathField.stringValue = url?.path ?? ""
         window?.makeFirstResponder(nil)
-        savePosition(); model.navigate(url)
+        savePosition(); model.navigate(url); applyFolderViewPreference()
+    }
+    private var effectiveViewSize: BrowserViewSize {
+        model.location.flatMap { preferences.folderViewPreference(for: $0)?.size } ?? preferences.viewSize
+    }
+    private func applyFolderViewPreference() {
+        guard let url = model.location, let folder = preferences.folderViewPreference(for: url) else { return }
+        model.setViewMode(folder.mode)
     }
     private func render() {
         rendering = true; defer {
@@ -616,8 +623,8 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         table.reloadData()
         let selected = IndexSet(model.items.indices.filter { model.history.current.selection.contains(model.items[$0].id) })
         table.selectRowIndexes(selected, byExtendingSelection: false)
-        gridView.apply(viewSize: preferences.viewSize)
-        listView.apply(viewSize: preferences.viewSize)
+        gridView.apply(viewSize: effectiveViewSize)
+        listView.apply(viewSize: effectiveViewSize)
         gridView.update(items: model.items, selection: model.history.current.selection,
                         scrollOffset: model.history.current.scrollOffset)
         listView.update(items: model.items, selection: model.history.current.selection,
@@ -731,8 +738,8 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         savePosition(); model.sort(SortOrder(field: field, ascending: descriptor.ascending))
     }
     @objc func openLocation(_ sender: LocationButton) { navigate(sender.url) }
-    @objc func goBack(_ sender: Any?) { if secondaryActive { secondaryPane?.goBack() } else { window?.makeFirstResponder(nil); savePosition(); model.back() } }
-    @objc func goForward(_ sender: Any?) { if secondaryActive { secondaryPane?.goForward() } else { window?.makeFirstResponder(nil); savePosition(); model.forward() } }
+    @objc func goBack(_ sender: Any?) { if secondaryActive { secondaryPane?.goBack() } else { window?.makeFirstResponder(nil); savePosition(); model.back(); applyFolderViewPreference() } }
+    @objc func goForward(_ sender: Any?) { if secondaryActive { secondaryPane?.goForward() } else { window?.makeFirstResponder(nil); savePosition(); model.forward(); applyFolderViewPreference() } }
     @objc func goUp(_ sender: Any?) { if secondaryActive { secondaryPane?.goUp() } else if let url = model.location { navigate(url.deletingLastPathComponent()) } }
     @objc func refresh(_ sender: Any?) { if secondaryActive { secondaryPane?.refresh() } else { savePosition(); model.reload() } }
     @objc func refreshOrStop(_ sender: Any?) {
@@ -780,6 +787,9 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
               let raw = button.selectedItem?.representedObject as? String,
               let mode = BrowserViewMode(rawValue: raw) else { return }
         model.setViewMode(mode)
+        if let location = model.location, let saved = preferences.folderViewPreference(for: location) {
+            preferences.setFolderViewPreference(FolderViewPreference(mode: mode, size: saved.size), for: location)
+        }
     }
     @objc func toggleFavorite(_ sender: Any?) {
         guard let url = activeModel.location else { return }
@@ -1380,7 +1390,15 @@ extension BrowserWindow {
                               (.large, L("보기 크기: 크게", "View Size: Large"))] {
             let item = menu.addItem(withTitle: label, action: #selector(setViewSize(_:)), keyEquivalent: "")
             item.target = self; item.representedObject = size.rawValue
-            item.state = preferences.viewSize == size ? .on : .off
+            item.state = effectiveViewSize == size ? .on : .off
+        }
+        if let location = model.location {
+            menu.addItem(.separator())
+            let saved = preferences.folderViewPreference(for: location) != nil
+            let save = menu.addItem(withTitle: L("이 폴더의 보기 저장", "Save View for This Folder"), action: #selector(saveFolderView(_:)), keyEquivalent: "")
+            save.target = self; save.state = saved ? .on : .off
+            let clear = menu.addItem(withTitle: L("이 폴더의 보기 초기화", "Reset View for This Folder"), action: #selector(clearFolderView(_:)), keyEquivalent: "")
+            clear.target = self; clear.isEnabled = saved
         }
         menu.addItem(.separator())
         let toolbarItem = menu.addItem(withTitle: L("툴바 사용자 지정…", "Customize Toolbar…"), action: #selector(showToolbarSettings(_:)), keyEquivalent: "")
@@ -1389,7 +1407,17 @@ extension BrowserWindow {
     @objc private func toggleExtensions(_ sender: Any?) { preferences.setShowExtensions(!preferences.showExtensions) }
     @objc private func setViewSize(_ sender: NSMenuItem) {
         guard let raw = sender.representedObject as? String, let size = BrowserViewSize(rawValue: raw) else { return }
-        preferences.setViewSize(size)
+        if let location = model.location, preferences.folderViewPreference(for: location) != nil {
+            preferences.setFolderViewPreference(FolderViewPreference(mode: model.viewMode, size: size), for: location)
+        } else { preferences.setViewSize(size) }
+    }
+    @objc private func saveFolderView(_ sender: Any?) {
+        guard let location = model.location else { return }
+        preferences.setFolderViewPreference(FolderViewPreference(mode: model.viewMode, size: effectiveViewSize), for: location)
+    }
+    @objc private func clearFolderView(_ sender: Any?) {
+        guard let location = model.location else { return }
+        preferences.removeFolderViewPreference(for: location); render()
     }
     @objc private func showToolbarSettings(_ sender: Any?) {
         if toolbarSettingsWindow == nil { toolbarSettingsWindow = ToolbarSettingsWindow(preferences: preferences) }
@@ -1774,6 +1802,12 @@ extension BrowserWindow {
             controller.model.setViewMode(.details); controller.render()
             checks["adaptiveManualChoiceWins"] = controller.model.viewMode == .details
                 && controller.primaryRenderedViewMode == .details && !controller.scroll.isHidden
+            preferences.setFolderViewPreference(FolderViewPreference(mode: .grid, size: .large), for: columnFolder)
+            controller.navigate(fixture); controller.navigate(columnFolder); controller.render()
+            checks["folderViewApplied"] = controller.model.viewMode == .grid && controller.effectiveViewSize == .large
+            preferences.removeFolderViewPreference(for: columnFolder); controller.render()
+            checks["folderViewReset"] = preferences.folderViewPreference(for: columnFolder) == nil
+                && controller.effectiveViewSize == preferences.viewSize
             controller.model.setViewMode(.details)
             controller.navigate(fixture.appendingPathComponent("missing-directory"))
             let errorStart = ContinuousClock.now

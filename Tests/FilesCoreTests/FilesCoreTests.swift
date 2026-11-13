@@ -350,6 +350,19 @@ private struct DelayedLoader: DirectoryLoading {
     preferences.removeObserver(token)
 }
 
+@Test @MainActor func folderViewPreferencesPersistStandardizeRemoveAndRecoverCorruption() {
+    let suite = "folder-view-preferences-tests-\(UUID())", defaults = UserDefaults(suiteName: suite)!
+    defer { defaults.removePersistentDomain(forName: suite) }
+    let preferences = BrowserPreferences(defaults: defaults, initialFavorites: [])
+    let folder = URL(fileURLWithPath: "/tmp/parent/../folder")
+    preferences.setFolderViewPreference(FolderViewPreference(mode: .grid, size: .large), for: folder)
+    let restored = BrowserPreferences(defaults: defaults, initialFavorites: [])
+    #expect(restored.folderViewPreference(for: URL(fileURLWithPath: "/tmp/folder")) == FolderViewPreference(mode: .grid, size: .large))
+    restored.removeFolderViewPreference(for: folder); #expect(restored.folderViewPreferences.isEmpty)
+    defaults.set(Data("invalid".utf8), forKey: "folderViewPreferences")
+    #expect(BrowserPreferences(defaults: defaults, initialFavorites: []).folderViewPreferences.isEmpty)
+}
+
 @Test func shortcutPreferencesPersistValidateCollisionsAndReset() throws {
     let suite = "shortcut-preferences-tests-\(UUID())", defaults = UserDefaults(suiteName: suite)!
     defer { defaults.removePersistentDomain(forName: suite) }

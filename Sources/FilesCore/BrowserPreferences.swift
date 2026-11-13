@@ -1,10 +1,15 @@
 import Foundation
 
-public enum BrowserViewSize: String, CaseIterable, Sendable {
+public enum BrowserViewSize: String, Codable, CaseIterable, Sendable {
     case small, medium, large
 }
 public enum BrowserAppearance: String, CaseIterable, Sendable {
     case system, light, dark
+}
+public struct FolderViewPreference: Codable, Equatable, Sendable {
+    public var mode: BrowserViewMode
+    public var size: BrowserViewSize
+    public init(mode: BrowserViewMode, size: BrowserViewSize) { self.mode = mode; self.size = size }
 }
 public enum BrowserToolbarItem: String, CaseIterable, Sendable {
     case back, forward, up, refresh, path, hidden, viewMode, favorite, options
@@ -32,6 +37,7 @@ public final class BrowserPreferences {
     public private(set) var appearance: BrowserAppearance
     public private(set) var toolbarOrder: [BrowserToolbarItem]
     public private(set) var hiddenToolbarItems: Set<BrowserToolbarItem>
+    public private(set) var folderViewPreferences: [String: FolderViewPreference]
 
     public init(defaults: UserDefaults = .standard, initialFavorites: [URL]? = nil) {
         self.defaults = defaults
@@ -58,6 +64,7 @@ public final class BrowserPreferences {
         }
         toolbarOrder = toolbar + BrowserToolbarItem.allCases.filter { !toolbar.contains($0) }
         hiddenToolbarItems = Set((defaults.stringArray(forKey: "hiddenToolbarItems") ?? []).compactMap(BrowserToolbarItem.init(rawValue:)).filter { !$0.isRequired })
+        folderViewPreferences = (defaults.data(forKey: "folderViewPreferences").flatMap { try? JSONDecoder().decode([String: FolderViewPreference].self, from: $0) }) ?? [:]
     }
     @discardableResult public func observe(_ callback: @escaping () -> Void) -> UUID {
         let id = UUID(); observers[id] = callback; return id
@@ -107,6 +114,23 @@ public final class BrowserPreferences {
     public func setAppearance(_ value: BrowserAppearance) {
         guard appearance != value else { return }
         appearance = value; defaults.set(value.rawValue, forKey: "appearance"); changed()
+    }
+    public func folderViewPreference(for url: URL) -> FolderViewPreference? {
+        folderViewPreferences[url.standardizedFileURL.path]
+    }
+    public func setFolderViewPreference(_ preference: FolderViewPreference, for url: URL) {
+        folderViewPreferences[url.standardizedFileURL.path] = preference; saveFolderViewPreferences(); changed()
+    }
+    public func removeFolderViewPreference(for url: URL) {
+        guard folderViewPreferences.removeValue(forKey: url.standardizedFileURL.path) != nil else { return }
+        saveFolderViewPreferences(); changed()
+    }
+    public func resetFolderViewPreferences() {
+        guard !folderViewPreferences.isEmpty else { return }
+        folderViewPreferences = [:]; defaults.removeObject(forKey: "folderViewPreferences"); changed()
+    }
+    private func saveFolderViewPreferences() {
+        if let data = try? JSONEncoder().encode(folderViewPreferences) { defaults.set(data, forKey: "folderViewPreferences") }
     }
     public func toggleToolbarItem(_ item: BrowserToolbarItem) {
         guard !item.isRequired else { return }
