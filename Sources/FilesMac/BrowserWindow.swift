@@ -2168,6 +2168,9 @@ extension BrowserWindow {
             checks["existingWindowCommands"] = [#selector(AppDelegate.newWindow(_:)), #selector(AppDelegate.reopenClosedTab(_:)), #selector(AppDelegate.showReleaseNotes(_:)), #selector(splitHorizontally(_:)), #selector(splitVertically(_:)), #selector(toggleSidebarVisibility(_:)), #selector(toggleToolbar(_:)), #selector(showToolbarSettings(_:))].allSatisfy { action in
                 paletteEntries.contains { $0.item.action == action }
             }
+            checks["existingOpenAndHiddenCommands"] = [#selector(toggleHidden(_:)), #selector(AppDelegate.showGeneralSettings(_:)), #selector(openInDeveloperApplication(_:))].allSatisfy { action in
+                paletteEntries.contains { $0.item.action == action }
+            }
             checks["commandPaletteSearch"] = CommandPaletteCatalog.filtered(paletteEntries, query: L("숨김", "hidden")).contains { $0.item.action == #selector(toggleHidden(_:)) }
             controller.showCommandPalette(nil); try await Task.sleep(for: .milliseconds(50))
             controller.commandPalette.qaSetQuery(L("숨김", "hidden"))
