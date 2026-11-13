@@ -2092,6 +2092,16 @@ extension BrowserWindow {
             checks["fileInfoSignature"] = controller.infoWindow?.qaSignatureLoaded == true
             try capture("file-info", view: controller.infoWindow?.window?.contentView)
             controller.infoWindow?.close(); window.makeKeyAndOrderFront(nil)
+            if let folderIndex = controller.model.items.firstIndex(where: \.isDirectory) {
+                controller.table.selectRowIndexes([folderIndex], byExtendingSelection: false); controller.showInfo(nil)
+                let folderInfoStart = ContinuousClock.now
+                while controller.infoWindow?.qaLoaded != true && folderInfoStart.duration(to: .now) < .seconds(5) { try await Task.sleep(for: .milliseconds(10)) }
+                let icon = NSImage(size: NSSize(width: 32, height: 32)); icon.lockFocus(); NSColor.systemBlue.setFill(); NSBezierPath(rect: NSRect(x: 0, y: 0, width: 32, height: 32)).fill(); icon.unlockFocus()
+                controller.infoWindow?.qaApplyFolderIcon(icon); let customIconSaved = controller.infoWindow?.qaIconOperationSucceeded == true
+                controller.infoWindow?.qaApplyFolderIcon(nil)
+                checks["folderIconCustomization"] = customIconSaved && controller.infoWindow?.qaIconOperationSucceeded == true
+                controller.infoWindow?.close(); window.makeKeyAndOrderFront(nil)
+            } else { checks["folderIconCustomization"] = false }
             let tagRefresh = ContinuousClock.now
             while controller.model.isLoading && tagRefresh.duration(to: .now) < .seconds(10) { try await Task.sleep(for: .milliseconds(10)) }
             controller.showSearch(nil); controller.searchWindow?.qaSearchAdvanced("long-file-name", tag: "QA", minimum: "1", maximum: "10")

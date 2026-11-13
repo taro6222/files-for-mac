@@ -8,6 +8,7 @@ final class FileInfoWindow: NSWindowController {
     private let hashButton = NSButton(), hashProgress = NSProgressIndicator(), digest = NSTextField(wrappingLabelWithString: "")
     private let tagField = NSTextField(), saveTagsButton = NSButton()
     private let signatureButton = NSButton(), signatureDetails = NSTextField(wrappingLabelWithString: "")
+    private let chooseIconButton = NSButton(), resetIconButton = NSButton(), iconStatus = NSTextField(labelWithString: "")
     private var items: [FileItem] = [], properties: FileProperties?, inspectTask: Task<Void, Never>?, hashTask: Task<Void, Never>?, signatureTask: Task<Void, Never>?
     private var tagIdentity: String?
 
@@ -26,6 +27,11 @@ final class FileInfoWindow: NSWindowController {
         let tagControls = NSStackView(); tagControls.orientation = .horizontal; tagControls.spacing = 8
         tagField.placeholderString = L("쉼표로 태그 구분", "Separate tags with commas"); tagField.setAccessibilityLabel(L("Finder 태그", "Finder Tags")); tagControls.addArrangedSubview(tagField)
         saveTagsButton.title = L("태그 저장", "Save Tags"); saveTagsButton.target = self; saveTagsButton.action = #selector(saveTags(_:)); tagControls.addArrangedSubview(saveTagsButton); root.addArrangedSubview(tagControls)
+        let iconTitle = NSTextField(labelWithString: L("폴더 아이콘", "Folder Icon")); iconTitle.font = .systemFont(ofSize: 14, weight: .semibold); root.addArrangedSubview(iconTitle)
+        let iconControls = NSStackView(); iconControls.orientation = .horizontal; iconControls.spacing = 8
+        chooseIconButton.title = L("이미지 선택…", "Choose Image…"); chooseIconButton.target = self; chooseIconButton.action = #selector(chooseFolderIcon(_:)); iconControls.addArrangedSubview(chooseIconButton)
+        resetIconButton.title = L("기본 아이콘 복원", "Restore Default Icon"); resetIconButton.target = self; resetIconButton.action = #selector(resetFolderIcon(_:)); iconControls.addArrangedSubview(resetIconButton)
+        iconControls.addArrangedSubview(iconStatus); root.addArrangedSubview(iconControls)
         let separator = NSBox(); separator.boxType = .separator; root.addArrangedSubview(separator)
         let hashTitle = NSTextField(labelWithString: "SHA-256"); hashTitle.font = .systemFont(ofSize: 14, weight: .semibold); root.addArrangedSubview(hashTitle)
         let hashControls = NSStackView(); hashControls.orientation = .horizontal; hashControls.spacing = 8
@@ -39,7 +45,9 @@ final class FileInfoWindow: NSWindowController {
         status.textColor = .secondaryLabelColor; root.addArrangedSubview(status); root.addArrangedSubview(NSView())
     }
     func present(items: [FileItem]) {
-        cancelTasks(); self.items = items; properties = nil; tagIdentity = nil; tagField.stringValue = ""; tagField.isEnabled = false; saveTagsButton.isEnabled = false; digest.stringValue = ""; hashProgress.isHidden = true; signatureDetails.stringValue = ""; signatureButton.isEnabled = items.count == 1
+        cancelTasks(); self.items = items; properties = nil; tagIdentity = nil; tagField.stringValue = ""; tagField.isEnabled = false; saveTagsButton.isEnabled = false; digest.stringValue = ""; hashProgress.isHidden = true; signatureDetails.stringValue = ""; signatureButton.isEnabled = items.count == 1; iconStatus.stringValue = ""
+        let folderIconEnabled = items.count == 1 && items[0].isDirectory
+        chooseIconButton.isEnabled = folderIconEnabled; resetIconButton.isEnabled = folderIconEnabled
         rebuildDetails(); window?.center(); showWindow(nil); window?.makeKeyAndOrderFront(nil)
         guard items.count == 1 else { status.stringValue = L("\(items.count)개 항목", "\(items.count) items"); return }
         status.stringValue = L("속성을 읽는 중…", "Loading properties…")
@@ -80,6 +88,23 @@ final class FileInfoWindow: NSWindowController {
             tagIdentity = saved.identity; tagField.stringValue = saved.tags.joined(separator: ", "); status.stringValue = L("Finder 태그를 저장했습니다.", "Finder tags saved.")
         } catch FileTagError.changedIdentity { status.stringValue = L("파일이 외부에서 교체되어 태그를 저장하지 않았습니다.", "The file was replaced externally; tags were not saved.") }
         catch { status.stringValue = L("태그 저장 실패: ", "Unable to save tags: ") + error.localizedDescription }
+    }
+    @objc private func chooseFolderIcon(_ sender: Any?) {
+        guard items.count == 1, items[0].isDirectory, let window else { return }
+        let panel = NSOpenPanel(); panel.title = L("폴더 아이콘 이미지 선택", "Choose Folder Icon Image")
+        panel.allowedContentTypes = [.image]; panel.canChooseFiles = true; panel.canChooseDirectories = false; panel.allowsMultipleSelection = false
+        panel.beginSheetModal(for: window) { [weak self] response in
+            guard response == .OK, let url = panel.url, let image = NSImage(contentsOf: url), let self else { return }
+            self.applyFolderIcon(image)
+        }
+    }
+    @objc private func resetFolderIcon(_ sender: Any?) { applyFolderIcon(nil) }
+    private func applyFolderIcon(_ image: NSImage?) {
+        guard items.count == 1, items[0].isDirectory else { return }
+        let succeeded = NSWorkspace.shared.setIcon(image, forFile: items[0].url.path, options: [])
+        iconStatus.stringValue = succeeded
+            ? (image == nil ? L("기본 아이콘을 복원했습니다.", "Default icon restored.") : L("사용자 아이콘을 저장했습니다.", "Custom icon saved."))
+            : L("아이콘을 변경하지 못했습니다.", "Unable to change the icon.")
     }
     private func startHash() {
         guard items.count == 1, !items[0].isDirectory else { return }; let item = items[0]
@@ -126,5 +151,7 @@ final class FileInfoWindow: NSWindowController {
     var qaTags: [String] { (try? FileTagService().snapshot(items[0].url).tags) ?? [] }
     func qaInspectSignature() { inspectSignature(nil) }
     var qaSignatureLoaded: Bool { signatureTask == nil && !signatureDetails.stringValue.isEmpty }
+    func qaApplyFolderIcon(_ image: NSImage?) { applyFolderIcon(image) }
+    var qaIconOperationSucceeded: Bool { iconStatus.stringValue.contains(L("저장했습니다", "saved")) || iconStatus.stringValue.contains(L("복원했습니다", "restored")) }
 #endif
 }
