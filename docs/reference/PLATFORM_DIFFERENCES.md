@@ -9,6 +9,7 @@
 | Windows 실행 환경·상주 기능 | 관리자 실행 경고와 WSL 섹션은 Windows 실행 환경에만 해당한다. FilesMac은 별도 백그라운드 agent나 메뉴 막대 상주 항목을 만들지 않으며 텔레메트리용 영구 사용자 ID도 생성하지 않는다. | M6 `platform-excluded`; lifecycle 또는 분석 기능을 향후 추가하려면 별도 개인정보·배포 설계 필요 |
 | 상태센터·요청 프롬프트 | Windows Files의 상태센터 teaching tip과 백그라운드 실행 알림은 제공하지 않는다. 작업 진행은 활성 네이티브 작업 창에서 표시하며 앱 종료 뒤 계속된다고 주장하지 않는다. 리뷰·후원 요청 팝업과 클릭 추적 값도 만들지 않는다. | M6 `platform-excluded`; 별도 background agent나 solicitation UX 없음 |
 | 날짜·앱 인스턴스 | 파일 날짜는 별도 앱 형식 목록 대신 macOS 언어·지역 형식을 사용한다. 새 탭은 단일 `NSApplication`의 현재 브라우저 창에 네이티브 탭으로 추가한다. | M6 `platform-alternative`; 한/영 UI 4조합과 탭 UI 검증 |
+| 포인터·선택 동작 | 일반 파일 보기는 macOS 표준 더블 클릭으로 열고 명시적 클릭·키보드로 선택한다. 컬럼 보기는 단일 선택으로 다음 계층을 펼친다. Windows touch-only 단일 클릭 모드, hover 선택, 선택 체크박스를 그대로 추가하지 않는다. | M6 `platform-alternative`; 상세·그리드·목록·컬럼 UI QA 및 다중 선택 검증 |
 | 고급 설정 | Windows 시작 프로그램·system tray·Explorer/open dialog 대체·thumbnail cache 제어는 macOS 공개 앱 모델에 동일하게 대응하지 않는다. 이식 가능한 설정 관리 목적은 버전 지정 JSON 내보내기와 전체 선검증 후 원자적 가져오기로 제공한다. | M6 `platform-alternative`; 손상·미지원 버전 입력 무변경 단위 테스트 및 네이티브 창 UI 검증 |
 | 일반 설정 | 언어와 날짜 형식은 앱 내부 복제 목록 대신 macOS 시스템 설정을 따른다. 시작 세션과 홈 위젯은 앱 설정으로 제공하며 Windows shell context-menu·smooth scrolling 옵션을 거짓 대응하지 않는다. | M6 `platform-alternative`; 네이티브 일반 설정 창 UI 검증 |
 | 태그 설정 | 항목의 Finder 태그 이름 편집과 태그 검색은 공개 resource-value API로 제공한다. Windows Files의 앱 소유 전역 태그 목록·임의 색상·정렬 레지스트리와 동일한 공개 Finder API는 없어 별도 전역 편집 화면을 만들지 않는다. | M6 `platform-alternative`; 태그 읽기·쓰기·교체 identity 및 UI 검색 검증 |
