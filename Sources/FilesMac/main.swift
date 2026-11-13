@@ -104,6 +104,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         if appearanceSettingsWindow == nil { appearanceSettingsWindow = AppearanceSettingsWindow(preferences: .shared) }
         appearanceSettingsWindow?.present()
     }
+    @objc func setDarkTheme(_ sender: Any?) { BrowserPreferences.shared.setAppearance(.dark) }
+    @objc func setLightTheme(_ sender: Any?) { BrowserPreferences.shared.setAppearance(.light) }
+    @objc func setDefaultTheme(_ sender: Any?) { BrowserPreferences.shared.setAppearance(.system) }
+    @objc func toggleAppTheme(_ sender: Any?) {
+        BrowserPreferences.shared.setAppearance(BrowserPreferences.shared.appearance == .dark ? .light : .dark)
+    }
     @objc func showAbout(_ sender: Any?) {
         if releaseInfoWindow == nil { releaseInfoWindow = ReleaseInfoWindow() }
         releaseInfoWindow?.present(.about)
@@ -192,6 +198,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         shortcuts.target = self
         let appearance = appMenu.addItem(withTitle: L("외형…", "Appearance…"), action: #selector(showAppearanceSettings(_:)), keyEquivalent: "")
         appearance.target = self
+        let themeItem = appMenu.addItem(withTitle: L("테마", "Theme"), action: nil, keyEquivalent: "")
+        let theme = NSMenu(title: themeItem.title); themeItem.submenu = theme
+        theme.addItem(withTitle: L("시스템 설정 사용", "Use System Appearance"), action: #selector(setDefaultTheme(_:)), keyEquivalent: "")
+        theme.addItem(withTitle: L("밝게", "Light"), action: #selector(setLightTheme(_:)), keyEquivalent: "")
+        theme.addItem(withTitle: L("어둡게", "Dark"), action: #selector(setDarkTheme(_:)), keyEquivalent: "")
+        theme.addItem(withTitle: L("밝게/어둡게 전환", "Toggle Light/Dark"), action: #selector(toggleAppTheme(_:)), keyEquivalent: "")
+        theme.items.forEach { $0.target = self }
         let developer = appMenu.addItem(withTitle: L("개발자 도구…", "Developer Tools…"), action: #selector(showDeveloperSettings(_:)), keyEquivalent: ""); developer.target = self
         let general = appMenu.addItem(withTitle: L("일반 설정…", "General Settings…"), action: #selector(showGeneralSettings(_:)), keyEquivalent: ""); general.target = self
         let advanced = appMenu.addItem(withTitle: L("고급 설정…", "Advanced Settings…"), action: #selector(showAdvancedSettings(_:)), keyEquivalent: ""); advanced.target = self

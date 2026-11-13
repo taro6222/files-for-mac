@@ -2138,6 +2138,9 @@ extension BrowserWindow {
             checks["createShortcutFromDialogCommand"] = paletteEntries.contains { $0.item.action == #selector(createSymbolicLinkFromDialog(_:)) }
             checks["createFileCommand"] = paletteEntries.contains { $0.item.action == #selector(createFile(_:)) }
             checks["toggleFullScreenCommand"] = paletteEntries.contains { $0.item.action == #selector(toggleFullScreen(_:)) }
+            checks["themeCommands"] = [#selector(AppDelegate.setDarkTheme(_:)), #selector(AppDelegate.setLightTheme(_:)), #selector(AppDelegate.setDefaultTheme(_:)), #selector(AppDelegate.toggleAppTheme(_:))].allSatisfy { action in
+                paletteEntries.contains { $0.item.action == action }
+            }
             checks["commandPaletteSearch"] = CommandPaletteCatalog.filtered(paletteEntries, query: L("숨김", "hidden")).contains { $0.item.action == #selector(toggleHidden(_:)) }
             controller.showCommandPalette(nil); try await Task.sleep(for: .milliseconds(50))
             controller.commandPalette.qaSetQuery(L("숨김", "hidden"))
