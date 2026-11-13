@@ -126,6 +126,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         let sidebar = go.addItem(withTitle: L("사이드바에 초점", "Focus Sidebar"), action: #selector(BrowserWindow.focusSidebar(_:)), keyEquivalent: "s")
         sidebar.keyEquivalentModifierMask = [.command, .control]
         go.addItem(withTitle: L("보기 옵션…", "View Options…"), action: #selector(BrowserWindow.openViewOptions(_:)), keyEquivalent: ",")
+        go.addItem(.separator())
+        let splitVertical = go.addItem(withTitle: L("좌우 분할", "Split Vertically"), action: #selector(BrowserWindow.splitVertically(_:)), keyEquivalent: "d")
+        splitVertical.keyEquivalentModifierMask = [.command, .option]
+        let splitHorizontal = go.addItem(withTitle: L("상하 분할", "Split Horizontally"), action: #selector(BrowserWindow.splitHorizontally(_:)), keyEquivalent: "d")
+        splitHorizontal.keyEquivalentModifierMask = [.command, .option, .shift]
+        let closeSplit = go.addItem(withTitle: L("보조 pane 닫기", "Close Secondary Pane"), action: #selector(BrowserWindow.closeSecondaryPane(_:)), keyEquivalent: "w")
+        closeSplit.keyEquivalentModifierMask = [.command, .option]
         NSApp.mainMenu = menu
     }
 }

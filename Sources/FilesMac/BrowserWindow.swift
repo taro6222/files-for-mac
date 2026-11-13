@@ -24,6 +24,9 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
     private let homeView = NSStackView()
     private let sidebar = NSStackView()
     private let content = NSView()
+    private let workspaceSplit = NSSplitView()
+    private var secondaryPane: SecondaryBrowserPane?
+    private var secondaryActive = false
     private let preferences: BrowserPreferences
     private var preferencesToken: UUID?
     private var favorites: [URL] { preferences.favorites }
@@ -139,7 +142,10 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         ])
         buildSidebar()
         let main = NSStackView(); main.orientation = .vertical; main.spacing = 0; main.alignment = .leading
-        split.addArrangedSubview(main)
+        workspaceSplit.isVertical = true; workspaceSplit.dividerStyle = .thin
+        workspaceSplit.translatesAutoresizingMaskIntoConstraints = false
+        split.addArrangedSubview(workspaceSplit)
+        workspaceSplit.addArrangedSubview(main)
         split.setHoldingPriority(.defaultHigh, forSubviewAt: 0)
         split.setHoldingPriority(.defaultLow, forSubviewAt: 1)
         split.setPosition(220, ofDividerAt: 0)
@@ -502,24 +508,27 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         NSLayoutConstraint.activate([label.leadingAnchor.constraint(equalTo: leading, constant: 8), label.trailingAnchor.constraint(equalTo: cell.trailingAnchor, constant: -8), label.centerYAnchor.constraint(equalTo: cell.centerYAnchor)])
         return cell
     }
-    func tableViewSelectionDidChange(_ notification: Notification) { savePosition(allowWhileLoading: true); updateStatus() }
+    func tableViewSelectionDidChange(_ notification: Notification) {
+        setSecondaryActive(false); savePosition(allowWhileLoading: true); updateStatus()
+    }
     func tableView(_ tableView: NSTableView, sortDescriptorsDidChange oldDescriptors: [NSSortDescriptor]) {
         guard let descriptor = tableView.sortDescriptors.first, let field = SortField(rawValue: descriptor.key ?? "") else { return }
         savePosition(); model.sort(SortOrder(field: field, ascending: descriptor.ascending))
     }
     @objc func openLocation(_ sender: LocationButton) { navigate(sender.url) }
-    @objc func goBack(_ sender: Any?) { window?.makeFirstResponder(nil); savePosition(); model.back() }
-    @objc func goForward(_ sender: Any?) { window?.makeFirstResponder(nil); savePosition(); model.forward() }
-    @objc func goUp(_ sender: Any?) { if let url = model.location { navigate(url.deletingLastPathComponent()) } }
-    @objc func refresh(_ sender: Any?) { savePosition(); model.reload() }
+    @objc func goBack(_ sender: Any?) { if secondaryActive { secondaryPane?.goBack() } else { window?.makeFirstResponder(nil); savePosition(); model.back() } }
+    @objc func goForward(_ sender: Any?) { if secondaryActive { secondaryPane?.goForward() } else { window?.makeFirstResponder(nil); savePosition(); model.forward() } }
+    @objc func goUp(_ sender: Any?) { if secondaryActive { secondaryPane?.goUp() } else if let url = model.location { navigate(url.deletingLastPathComponent()) } }
+    @objc func refresh(_ sender: Any?) { if secondaryActive { secondaryPane?.refresh() } else { savePosition(); model.reload() } }
     @objc func refreshOrStop(_ sender: Any?) {
         if model.isLoading { stopLoading(sender) } else { refresh(sender) }
     }
     @objc func stopLoading(_ sender: Any?) {
+        if secondaryActive { secondaryPane?.stopLoading(); return }
         pendingRefresh = false
         model.cancelLoad()
     }
-    @objc func focusPath(_ sender: Any?) { window?.makeFirstResponder(pathField); pathField.selectText(nil) }
+    @objc func focusPath(_ sender: Any?) { if secondaryActive { secondaryPane?.focusPath() } else { window?.makeFirstResponder(pathField); pathField.selectText(nil) } }
     @objc func submitPath(_ sender: Any?) {
         let path = (pathField.stringValue as NSString).expandingTildeInPath
         guard !path.isEmpty else { navigate(nil); return }
@@ -944,6 +953,34 @@ private struct VolumeSummary: Sendable {
 }
 
 extension BrowserWindow {
+    @objc func splitVertically(_ sender: Any?) { installSecondaryPane(axis: .vertical) }
+    @objc func splitHorizontally(_ sender: Any?) { installSecondaryPane(axis: .horizontal) }
+    @objc func closeSecondaryPane(_ sender: Any?) {
+        guard let secondaryPane else { return }
+        secondaryPane.model.cancelLoad(); secondaryPane.removeFromSuperview()
+        self.secondaryPane = nil; secondaryActive = false
+        content.wantsLayer = true; content.layer?.borderWidth = 0
+        window?.makeFirstResponder(table)
+    }
+    private func installSecondaryPane(axis: SplitAxis) {
+        workspaceSplit.isVertical = axis == .vertical
+        if secondaryPane == nil {
+            let pane = SecondaryBrowserPane(snapshot: tabSnapshot())
+            pane.onActivate = { [weak self] in self?.setSecondaryActive(true) }
+            secondaryPane = pane; workspaceSplit.addArrangedSubview(pane)
+        }
+        workspaceSplit.adjustSubviews()
+        let dimension = workspaceSplit.isVertical ? workspaceSplit.bounds.width : workspaceSplit.bounds.height
+        if dimension > 0 { workspaceSplit.setPosition(dimension / 2, ofDividerAt: 0) }
+        setSecondaryActive(true); secondaryPane?.focusFiles()
+    }
+    private func setSecondaryActive(_ active: Bool) {
+        secondaryActive = active && secondaryPane != nil
+        secondaryPane?.setActive(secondaryActive)
+        content.wantsLayer = true
+        content.layer?.borderWidth = secondaryActive ? 0 : (secondaryPane == nil ? 0 : 2)
+        content.layer?.borderColor = NSColor.controlAccentColor.cgColor
+    }
     private func preferencesChanged() {
         buildSidebar()
         if model.location == nil { buildHome() }
@@ -1054,7 +1091,8 @@ extension BrowserWindow {
     }
     @objc func goHome(_ sender: Any?) { navigate(nil); focusSidebar(nil) }
     @objc func focusFiles(_ sender: Any?) {
-        if model.location == nil { focusSidebar(nil) } else { window?.makeFirstResponder(table) }
+        if secondaryActive { secondaryPane?.focusFiles() }
+        else if model.location == nil { focusSidebar(nil) } else { window?.makeFirstResponder(table) }
     }
     @objc func focusSidebar(_ sender: Any?) {
         if let first = sidebar.arrangedSubviews.first { window?.makeFirstResponder(first) }
@@ -1064,22 +1102,24 @@ extension BrowserWindow {
     }
     func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
         switch menuItem.action {
+        case #selector(splitVertically(_:)), #selector(splitHorizontally(_:)): return true
+        case #selector(closeSecondaryPane(_:)): return secondaryPane != nil
         case #selector(undoLastMove(_:)):
             return !Self.entryOperationRunning && !MoveWindow.isRunning &&
                 EntryOperations.latestUndoMove(journalDirectory: Self.operationJournalDirectory) != nil
-        case #selector(deleteSelection(_:)): return canDeleteSelection
-        case #selector(restoreSelection(_:)): return canRestoreSelection
-        case #selector(permanentlyDeleteSelection(_:)): return canPermanentDeleteSelection
-        case #selector(moveSelection(_:)): return canMoveSelection
-        case #selector(createFolder(_:)): return model.location != nil && !model.isLoading && !Self.entryOperationRunning && !CopyWindow.isRunning
-        case #selector(renameSelection(_:)): return model.location != nil && table.selectedRowIndexes.count == 1 && !model.isLoading && !Self.entryOperationRunning && !CopyWindow.isRunning
-        case #selector(batchRenameSelection(_:)): return model.location != nil && table.selectedRowIndexes.count > 1 && !model.isLoading && !BatchRenameWindow.isRunning
+        case #selector(deleteSelection(_:)): return !secondaryActive && canDeleteSelection
+        case #selector(restoreSelection(_:)): return !secondaryActive && canRestoreSelection
+        case #selector(permanentlyDeleteSelection(_:)): return !secondaryActive && canPermanentDeleteSelection
+        case #selector(moveSelection(_:)): return !secondaryActive && canMoveSelection
+        case #selector(createFolder(_:)): return !secondaryActive && model.location != nil && !model.isLoading && !Self.entryOperationRunning && !CopyWindow.isRunning
+        case #selector(renameSelection(_:)): return !secondaryActive && model.location != nil && table.selectedRowIndexes.count == 1 && !model.isLoading && !Self.entryOperationRunning && !CopyWindow.isRunning
+        case #selector(batchRenameSelection(_:)): return !secondaryActive && model.location != nil && table.selectedRowIndexes.count > 1 && !model.isLoading && !BatchRenameWindow.isRunning
         case #selector(retryAutomaticRefresh(_:)): return model.location != nil && watcherStatus != .active
-        case #selector(copySelection(_:)): return !CopyWindow.isRunning && !model.isLoading && !table.selectedRowIndexes.isEmpty
-        case #selector(stopLoading(_:)): return model.isLoading
-        case #selector(goBack(_:)): return !model.history.back.isEmpty
-        case #selector(goForward(_:)): return !model.history.forward.isEmpty
-        case #selector(goUp(_:)): return model.location != nil && model.location?.path != "/"
+        case #selector(copySelection(_:)): return !secondaryActive && !CopyWindow.isRunning && !model.isLoading && !table.selectedRowIndexes.isEmpty
+        case #selector(stopLoading(_:)): return secondaryActive ? secondaryPane?.model.isLoading == true : model.isLoading
+        case #selector(goBack(_:)): return secondaryActive ? !(secondaryPane?.model.history.back.isEmpty ?? true) : !model.history.back.isEmpty
+        case #selector(goForward(_:)): return secondaryActive ? !(secondaryPane?.model.history.forward.isEmpty ?? true) : !model.history.forward.isEmpty
+        case #selector(goUp(_:)): return secondaryActive ? secondaryPane?.model.location != nil : model.location != nil && model.location?.path != "/"
         case #selector(openSelection(_:)), #selector(revealSelection(_:)): return !table.selectedRowIndexes.isEmpty && model.location != nil
         default: return true
         }
