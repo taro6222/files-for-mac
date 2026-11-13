@@ -1555,6 +1555,13 @@ extension BrowserWindow {
                 && controller.commandPalette.qaSearchFocused && controller.commandPalette.qaVisibleCount >= 1
             try capture("command-palette", view: controller.commandPalette.window?.contentView)
             controller.commandPalette.close(); window.makeKeyAndOrderFront(nil)
+            if let delegate = NSApp.delegate as? AppDelegate {
+                delegate.showShortcutSettings(nil); try await Task.sleep(for: .milliseconds(50))
+                checks["shortcutSettingsCommands"] = delegate.qaShortcutRowCount >= 15
+                checks["shortcutSettingsWindow"] = delegate.qaShortcutWindowVisible
+                try capture("keyboard-shortcuts", view: delegate.qaShortcutContentView)
+                delegate.qaShortcutContentView?.window?.close(); window.makeKeyAndOrderFront(nil)
+            } else { checks["shortcutSettingsWindow"] = false }
             checks["pathFieldUsableWidth"] = controller.pathField.frame.width >= 160
             controller.focusPath(nil)
             checks["pathFocus"] = controller.pathField.currentEditor() != nil
@@ -1623,7 +1630,7 @@ extension BrowserWindow {
             controller.focusFiles(nil)
             checks["listFocus"] = (window.firstResponder as? NSView)?.isDescendant(of: controller.listView) == true
             try capture("files-list")
-            controller.openRenderedItem(controller.listView.selectedItems[0])
+            if let selected = controller.listView.selectedItems.first { controller.openRenderedItem(selected) }
             checks["listFolderOpen"] = controller.model.location == gridFolder.standardizedFileURL
             controller.goBack(nil)
             let listBackStart = ContinuousClock.now
@@ -1653,7 +1660,7 @@ extension BrowserWindow {
             try capture("files-columns")
             controller.columnView.qaMoveLeft()
             checks["columnsLeftNavigation"] = controller.columnView.qaColumnCount == 2
-            controller.openRenderedItem(controller.columnView.selectedItems[0])
+            if let selected = controller.columnView.selectedItems.first { controller.openRenderedItem(selected) }
             checks["columnsFolderOpen"] = controller.model.location == columnFolder.standardizedFileURL
             controller.goBack(nil)
             let columnBackStart = ContinuousClock.now

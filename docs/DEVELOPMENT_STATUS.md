@@ -4,7 +4,7 @@
 
 ## 이번 구현 단위
 
-M3 열한 번째 개발 단위로 메인 메뉴를 권위 소스로 사용하는 네이티브 명령 팔레트를 추가했다. M3는 진행 중이며 실제 SMB 공유가 없는 M2 환경 검증과 M0/M1 미검증 항목은 별도 유지한다.
+M3 열두 번째 개발 단위로 네이티브 recorder 기반 사용자 단축키 재지정과 충돌·예약 키 검증을 추가했다. M3는 진행 중이며 실제 SMB 공유가 없는 M2 환경 검증과 M0/M1 미검증 항목은 별도 유지한다.
 
 | 영역 | 상태 | 내용 |
 |---|---|---|
@@ -18,6 +18,7 @@ M3 열한 번째 개발 단위로 메인 메뉴를 권위 소스로 사용하는
 | 보기 모드 | 구현 중 | 양쪽 pane 상세·그리드·단일열 목록·계층형 컬럼 및 적응형 정책, 작게/보통/크게 프리셋 저장, 선택 identity·스크롤·세션·파일 작업 보존 |
 | 편의 기능 | 구현 | 경로 추천·확장자 옵션·공유 즐겨찾기 순서·홈 용량·최근 기록 삭제 |
 | 명령 팔레트 | 구현 | 메인 메뉴 자동 인덱싱, 다국어 부분 검색, 문맥별 활성 조건, 단축키 표시, 키보드 실행·취소 |
+| 단축키 | 구현 | 실제 keyDown recorder, 사용자 override 저장, 중복·수정키 없음·macOS 예약 조합 차단, 기본값 복원 |
 | 테스트 | 통과 | 81개 Swift Testing, 보기 모드 세션 호환성과 기존 workspace·파일 작업 회귀 검증, 기존 M1/M2 환경 기록은 별도 유지 |
 | 파일 복사 | 구현 | 대상 폴더 선택·클립보드·양쪽 유지/건너뛰기·내용 검증·취소·항목별 결과·JSON 저널·안전 실행 취소, 다중 선택 폴더 병합·통합 Undo |
 | 느린 폴더 복구 | 구현 | 읽기 중단·늦은 결과 차단·불완전 목록 안내·명시적 재시도 |
@@ -33,7 +34,7 @@ M3 열한 번째 개발 단위로 메인 메뉴를 권위 소스로 사용하는
 | 이동 | 구현 중 | 동일/교차 볼륨 이동, 검증·교체 백업·안전 실행 취소, 사용자 취소, 단계별 상태와 진행 막대; APFS/APFSX/exFAT 통과 |
 | 영구 삭제 | 구현 중 | 선택 항목 영구 삭제(복구 불가 경고), 항목별 상태 보고, 작업 창, 저널 파일 |
 
-다음 M3 작업은 단축키 재지정·충돌 복구와 툴바·테마 등 남은 사용자 지정 격차를 구현하는 것이다. M2의 실제 SMB 수용 검증은 공유가 연결되면 `scripts/verify-smb-volume.sh`로 별도 실행한다.
+다음 M3 작업은 툴바 표시·순서·overflow와 테마 등 남은 사용자 지정 격차를 구현하는 것이다. M2의 실제 SMB 수용 검증은 공유가 연결되면 `scripts/verify-smb-volume.sh`로 별도 실행한다.
 
 ## M1 별도 검증 목록
 
@@ -55,4 +56,4 @@ M3 열한 번째 개발 단위로 메인 메뉴를 권위 소스로 사용하는
 
 최근 검증: [M2 새 폴더와 이름 변경](verification/m2/INCREMENT_03.md), [M2 휴지통 이동](verification/m2/INCREMENT_04.md), [M2 휴지통 복원 준비](verification/m2/INCREMENT_05.md), [M2 영구 삭제](verification/m2/INCREMENT_06.md), [M2 이동 기본 동선](verification/m2/INCREMENT_07.md), [M2 안전한 이동 실행 취소](verification/m2/INCREMENT_08.md), [M2 교차 볼륨 이동](verification/m2/INCREMENT_09.md), [M2 교체 백업과 실행 취소](verification/m2/INCREMENT_10.md), [M2 이동 취소와 진행 표시](verification/m2/INCREMENT_11.md), [M2 배치 이름 변경](verification/m2/INCREMENT_12.md), [M2 배치 이름 변경 패턴 UI](verification/m2/INCREMENT_13.md), [M2 네이티브 탭 기반](verification/m2/INCREMENT_14.md), [M2 탭 상태 및 세션 복원](verification/m2/INCREMENT_15.md), [M2 분할 pane 상태 모델](verification/m2/INCREMENT_16.md), [M2 AppKit 분할 탐색 UI](verification/m2/INCREMENT_17.md), [M2 활성 pane 파일 작업](verification/m2/INCREMENT_18.md), [M2 분할 workspace 세션](verification/m2/INCREMENT_19.md), [M2 보조 pane 감시·보기](verification/m2/INCREMENT_20.md), [M2 Finder 드래그 앤 드롭](verification/m2/INCREMENT_21.md), [M2 선택 항목으로 새 폴더](verification/m2/INCREMENT_22.md), [M2 안전한 복사 실행 취소](verification/m2/INCREMENT_23.md), [M2 폴더 병합 계획](verification/m2/INCREMENT_24.md), [M2 폴더 병합 실행](verification/m2/INCREMENT_25.md), [M2 폴더 병합 UI](verification/m2/INCREMENT_26.md), [M2 다중 선택 폴더 병합](verification/m2/INCREMENT_27.md), [M2 AppKit 통합 검증](verification/m2/INCREMENT_28.md), [M2 장애 주입](verification/m2/INCREMENT_29.md), [M2 실제 볼륨 매트릭스](verification/m2/INCREMENT_30.md), [M2 시스템 휴지통 왕복](verification/m2/INCREMENT_31.md), [M2 SMB 수용 검증기](verification/m2/INCREMENT_32.md).
 
-M3 검증: [보기 모드 상태와 세션 호환성](verification/m3/INCREMENT_01.md), [pane별 보기 모드 컨트롤](verification/m3/INCREMENT_02.md), [기본 pane 그리드 렌더러](verification/m3/INCREMENT_03.md), [보조 pane 그리드와 선택 경쟁 수정](verification/m3/INCREMENT_04.md), [그리드 명령 및 드래그 앤 드롭](verification/m3/INCREMENT_05.md), [양쪽 pane 단일열 목록 렌더러](verification/m3/INCREMENT_06.md), [양쪽 pane 계층형 컬럼 렌더러](verification/m3/INCREMENT_07.md), [적응형 보기 정책](verification/m3/INCREMENT_08.md), [보기 크기 프리셋](verification/m3/INCREMENT_09.md), [컬럼 파일 작업 통합](verification/m3/INCREMENT_10.md), [네이티브 명령 팔레트](verification/m3/INCREMENT_11.md).
+M3 검증: [보기 모드 상태와 세션 호환성](verification/m3/INCREMENT_01.md), [pane별 보기 모드 컨트롤](verification/m3/INCREMENT_02.md), [기본 pane 그리드 렌더러](verification/m3/INCREMENT_03.md), [보조 pane 그리드와 선택 경쟁 수정](verification/m3/INCREMENT_04.md), [그리드 명령 및 드래그 앤 드롭](verification/m3/INCREMENT_05.md), [양쪽 pane 단일열 목록 렌더러](verification/m3/INCREMENT_06.md), [양쪽 pane 계층형 컬럼 렌더러](verification/m3/INCREMENT_07.md), [적응형 보기 정책](verification/m3/INCREMENT_08.md), [보기 크기 프리셋](verification/m3/INCREMENT_09.md), [컬럼 파일 작업 통합](verification/m3/INCREMENT_10.md), [네이티브 명령 팔레트](verification/m3/INCREMENT_11.md), [사용자 단축키 설정](verification/m3/INCREMENT_12.md).

@@ -9,8 +9,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     private var closedWorkspaces: [SplitTabState] = []
     private let sessionStore = TabSessionStore()
     private let workspaceStore = WorkspaceSessionStore()
+    private var shortcutPreferences: ShortcutPreferences!
+    private var shortcutSettingsWindow: ShortcutSettingsWindow?
     func applicationDidFinishLaunching(_ notification: Notification) {
         buildMenu()
+        configureShortcuts()
         #if DEBUG
         if let output = ProcessInfo.processInfo.environment["FILES_UI_QA_OUTPUT"] {
             Task { @MainActor in await BrowserWindow.runUIVerification(output: output) }
@@ -67,6 +70,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         guard let workspace = closedWorkspaces.popLast() else { return }
         makeBrowser(workspace: workspace, tabbedTo: currentBrowser)
     }
+    @objc func showShortcutSettings(_ sender: Any?) {
+        if shortcutSettingsWindow == nil {
+            shortcutSettingsWindow = ShortcutSettingsWindow(preferences: shortcutPreferences,
+                entries: CommandPaletteCatalog.entries(from: NSApp.mainMenu)) { [weak self] in self?.applyShortcuts() }
+        }
+        shortcutSettingsWindow?.present()
+    }
+    private func configureShortcuts() {
+        let entries = CommandPaletteCatalog.entries(from: NSApp.mainMenu)
+        let known = Set(entries.compactMap { ShortcutBridge.commandID($0.item) })
+        var factory: [String: KeyboardShortcut] = [:]
+        for entry in entries {
+            if let id = ShortcutBridge.commandID(entry.item), let shortcut = ShortcutBridge.shortcut(entry.item) { factory[id] = shortcut }
+        }
+        shortcutPreferences = ShortcutPreferences(factory: factory, knownCommandIDs: known); applyShortcuts()
+    }
+    private func applyShortcuts() { ShortcutBridge.apply(shortcutPreferences, to: NSApp.mainMenu) }
     func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
         if menuItem.action == #selector(reopenClosedTab(_:)) { return !closedWorkspaces.isEmpty }
         if menuItem.action == #selector(duplicateTab(_:)) { return currentBrowser != nil }
@@ -87,8 +107,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     }
     private func buildMenu() {
         let menu = NSMenu()
-        let appItem = NSMenuItem(); menu.addItem(appItem)
+        let appItem = NSMenuItem(); appItem.title = "Files macOS"; menu.addItem(appItem)
         let appMenu = NSMenu(); appItem.submenu = appMenu
+        let shortcuts = appMenu.addItem(withTitle: L("키보드 단축키…", "Keyboard Shortcuts…"), action: #selector(showShortcutSettings(_:)), keyEquivalent: ",")
+        shortcuts.target = self
+        appMenu.addItem(.separator())
         appMenu.addItem(withTitle: L("Files macOS 종료", "Quit Files macOS"), action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         let fileItem = NSMenuItem(); fileItem.title = L("파일", "File"); menu.addItem(fileItem)
         let file = NSMenu(title: fileItem.title); fileItem.submenu = file
@@ -141,7 +164,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         sidebar.keyEquivalentModifierMask = [.command, .control]
         let palette = go.addItem(withTitle: L("명령 팔레트…", "Command Palette…"), action: #selector(BrowserWindow.showCommandPalette(_:)), keyEquivalent: "p")
         palette.keyEquivalentModifierMask = [.command, .shift]
-        go.addItem(withTitle: L("보기 옵션…", "View Options…"), action: #selector(BrowserWindow.openViewOptions(_:)), keyEquivalent: ",")
+        go.addItem(withTitle: L("보기 옵션…", "View Options…"), action: #selector(BrowserWindow.openViewOptions(_:)), keyEquivalent: "")
         go.addItem(.separator())
         let splitVertical = go.addItem(withTitle: L("좌우 분할", "Split Vertically"), action: #selector(BrowserWindow.splitVertically(_:)), keyEquivalent: "d")
         splitVertical.keyEquivalentModifierMask = [.command, .option]
@@ -151,6 +174,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         closeSplit.keyEquivalentModifierMask = [.command, .option]
         NSApp.mainMenu = menu
     }
+#if DEBUG
+    var qaShortcutRowCount: Int { shortcutSettingsWindow?.qaRowCount ?? 0 }
+    var qaShortcutWindowVisible: Bool { shortcutSettingsWindow?.window?.isVisible == true }
+    var qaShortcutContentView: NSView? { shortcutSettingsWindow?.window?.contentView }
+#endif
 }
 
 func L(_ ko: String, _ en: String) -> String {

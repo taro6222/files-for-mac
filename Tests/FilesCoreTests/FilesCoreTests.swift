@@ -322,6 +322,29 @@ private struct DelayedLoader: DirectoryLoading {
     #expect(BrowserPreferences(defaults: defaults).viewSize == .medium)
 }
 
+@Test func shortcutPreferencesPersistValidateCollisionsAndReset() throws {
+    let suite = "shortcut-preferences-tests-\(UUID())", defaults = UserDefaults(suiteName: suite)!
+    defer { defaults.removePersistentDomain(forName: suite) }
+    let factory = ["open": KeyboardShortcut(key: "o", modifiers: .command),
+                   "refresh": KeyboardShortcut(key: "r", modifiers: .command)]
+    let preferences = ShortcutPreferences(defaults: defaults, factory: factory, knownCommandIDs: Set(factory.keys).union(["rename"]))
+    try preferences.set(KeyboardShortcut(key: "K", modifiers: [.command, .shift]), for: "open")
+    #expect(preferences.shortcut(for: "open") == KeyboardShortcut(key: "k", modifiers: [.command, .shift]))
+    #expect(ShortcutPreferences(defaults: defaults, factory: factory).shortcut(for: "open") == KeyboardShortcut(key: "k", modifiers: [.command, .shift]))
+    #expect(throws: ShortcutValidationError.conflict(commandID: "open")) {
+        try preferences.set(KeyboardShortcut(key: "k", modifiers: [.command, .shift]), for: "refresh")
+    }
+    #expect(throws: ShortcutValidationError.modifierRequired) {
+        try preferences.set(KeyboardShortcut(key: "x", modifiers: []), for: "refresh")
+    }
+    #expect(throws: ShortcutValidationError.systemReserved) {
+        try preferences.set(KeyboardShortcut(key: "space", modifiers: .command), for: "refresh")
+    }
+    try preferences.set(KeyboardShortcut(key: "e", modifiers: [.command, .option]), for: "rename")
+    #expect(preferences.shortcut(for: "rename") != nil)
+    preferences.resetAll(); #expect(preferences.effective == factory); #expect(preferences.shortcut(for: "rename") == nil)
+}
+
 @Test @MainActor func recentLocationsDeduplicateCapAndClearAcrossReload() {
     let suite = "files-recent-tests-\(UUID())", defaults: UserDefaults
     defaults = UserDefaults(suiteName: suite)!
