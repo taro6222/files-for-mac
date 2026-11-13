@@ -7,7 +7,7 @@ func fileGroupTitle(_ key: String, field: FileGroupField) -> String {
     switch field {
     case .none: return ""
     case .name, .kind: return value
-    case .modified:
+    case .created, .modified:
         let parts = value.split(separator: "-").compactMap { Int($0) }
         guard let year = parts.first else { return value }
         if parts.count > 2, parts[2] > 0 { return String(format: "%04d-%02d-%02d", year, parts[1], parts[2]) }

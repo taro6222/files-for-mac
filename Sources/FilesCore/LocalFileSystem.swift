@@ -25,7 +25,7 @@ public struct LocalFileSystem: DirectoryStreaming {
                     }
                     var rootError: Error?
                     let keys: Set<URLResourceKey> = [.isDirectoryKey, .isPackageKey, .isSymbolicLinkKey,
-                        .isHiddenKey, .fileSizeKey, .contentModificationDateKey]
+                        .isHiddenKey, .fileSizeKey, .creationDateKey, .contentModificationDateKey]
                     var options: FileManager.DirectoryEnumerationOptions = [.skipsSubdirectoryDescendants]
                     if !showHidden { options.insert(.skipsHiddenFiles) }
                     guard let enumerator = FileManager.default.enumerator(at: url,
@@ -50,7 +50,7 @@ public struct LocalFileSystem: DirectoryStreaming {
                             batch.append(FileItem(url: child, name: child.lastPathComponent,
                                 isDirectory: v.isDirectory ?? false, identity: identity, isPackage: v.isPackage ?? false,
                                 isSymbolicLink: v.isSymbolicLink ?? false, isHidden: v.isHidden ?? false,
-                                size: v.fileSize.map(Int64.init), modified: v.contentModificationDate,
+                                size: v.fileSize.map(Int64.init), created: v.creationDate, modified: v.contentModificationDate,
                                 kind: v.isDirectory == true ? "Folder" : (child.pathExtension.isEmpty ? "File" : child.pathExtension.uppercased())))
                         } catch {
                             let e = error as NSError

@@ -310,6 +310,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         let sort = NSMenu(title: sortItem.title); sortItem.submenu = sort
         for (title, action) in [
             (L("이름", "Name"), #selector(BrowserWindow.sortByName(_:))),
+            (L("생성일", "Date Created"), #selector(BrowserWindow.sortByCreated(_:))),
             (L("수정일", "Date Modified"), #selector(BrowserWindow.sortByModified(_:))),
             (L("크기", "Size"), #selector(BrowserWindow.sortBySize(_:))),
             (L("종류", "Kind"), #selector(BrowserWindow.sortByKind(_:)))
@@ -319,6 +320,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         for (title, action) in [
             (L("없음", "None"), #selector(BrowserWindow.groupByNone(_:))),
             (L("이름", "Name"), #selector(BrowserWindow.groupByName(_:))),
+            (L("생성일", "Date Created"), #selector(BrowserWindow.groupByCreated(_:))),
             (L("수정일", "Date Modified"), #selector(BrowserWindow.groupByModified(_:))),
             (L("크기", "Size"), #selector(BrowserWindow.groupBySize(_:))),
             (L("종류", "Kind"), #selector(BrowserWindow.groupByKind(_:)))
@@ -331,6 +333,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             (L("일", "Day"), #selector(BrowserWindow.groupByModifiedDay(_:))),
             (L("날짜 단위 전환", "Cycle Date Unit"), #selector(BrowserWindow.toggleGroupDateUnit(_:)))
         ] { units.addItem(withTitle: title, action: action, keyEquivalent: "") }
+        let createdUnit = group.addItem(withTitle: L("생성일 단위", "Created Date Unit"), action: nil, keyEquivalent: "")
+        let createdUnits = NSMenu(title: createdUnit.title); createdUnit.submenu = createdUnits
+        for (title, action) in [
+            (L("연", "Year"), #selector(BrowserWindow.groupByCreatedYear(_:))),
+            (L("월", "Month"), #selector(BrowserWindow.groupByCreatedMonth(_:))),
+            (L("일", "Day"), #selector(BrowserWindow.groupByCreatedDay(_:)))
+        ] { createdUnits.addItem(withTitle: title, action: action, keyEquivalent: "") }
         group.addItem(.separator())
         for (title, action) in [
             (L("오름차순", "Ascending"), #selector(BrowserWindow.groupAscending(_:))),

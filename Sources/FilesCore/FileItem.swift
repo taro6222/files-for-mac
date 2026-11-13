@@ -11,16 +11,17 @@ public struct FileItem: Identifiable, Sendable, Equatable {
     public let isSymbolicLink: Bool
     public let isHidden: Bool
     public let size: Int64?
+    public let created: Date?
     public let modified: Date?
     public let kind: String
 
     public init(url: URL, name: String, isDirectory: Bool, identity: String? = nil, isPackage: Bool = false,
                 isSymbolicLink: Bool = false, isHidden: Bool = false,
-                size: Int64? = nil, modified: Date? = nil, kind: String = "") {
+                size: Int64? = nil, created: Date? = nil, modified: Date? = nil, kind: String = "") {
         self.identity = identity
         self.url = url; self.name = name; self.isDirectory = isDirectory
         self.isPackage = isPackage; self.isSymbolicLink = isSymbolicLink
-        self.isHidden = isHidden; self.size = size; self.modified = modified; self.kind = kind
+        self.isHidden = isHidden; self.size = size; self.created = created; self.modified = modified; self.kind = kind
     }
     public func displayName(showExtensions: Bool) -> String {
         guard !showExtensions, !isDirectory, !name.hasPrefix("."), !url.pathExtension.isEmpty else { return name }
@@ -29,7 +30,7 @@ public struct FileItem: Identifiable, Sendable, Equatable {
     public var isBrowsable: Bool { isDirectory && !isPackage }
 }
 
-public enum SortField: String, CaseIterable, Codable, Sendable { case name, modified, kind, size }
+public enum SortField: String, CaseIterable, Codable, Sendable { case name, created, modified, kind, size }
 public enum SortDirectoryPlacement: String, CaseIterable, Codable, Sendable { case foldersFirst, filesFirst, mixed }
 public struct SortOrder: Codable, Equatable, Sendable {
     public var field: SortField
@@ -68,6 +69,7 @@ public struct SortOrder: Codable, Equatable, Sendable {
             let comparison: ComparisonResult
             switch field {
             case .name: comparison = a.name.localizedStandardCompare(b.name)
+            case .created: comparison = compare(a.created, b.created)
             case .kind: comparison = a.kind.localizedStandardCompare(b.kind)
             case .size:
                 comparison = compare(a.size, b.size)

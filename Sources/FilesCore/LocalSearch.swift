@@ -71,7 +71,7 @@ public struct LocalFileSearch: FileSearching {
                     let tagTerms = query.tagText.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
                         .split(whereSeparator: \.isWhitespace).map(String.init)
                     guard !terms.isEmpty || !tagTerms.isEmpty else { continuation.finish(); return }
-                    let keys: Set<URLResourceKey> = [.isDirectoryKey, .isPackageKey, .isSymbolicLinkKey, .isHiddenKey, .fileSizeKey, .contentModificationDateKey, .tagNamesKey]
+                    let keys: Set<URLResourceKey> = [.isDirectoryKey, .isPackageKey, .isSymbolicLinkKey, .isHiddenKey, .fileSizeKey, .creationDateKey, .contentModificationDateKey, .tagNamesKey]
                     var options: FileManager.DirectoryEnumerationOptions = []
                     if query.scope == .currentFolder { options.insert(.skipsSubdirectoryDescendants) }
                     if !query.showHidden { options.insert(.skipsHiddenFiles) }
@@ -97,7 +97,7 @@ public struct LocalFileSearch: FileSearching {
                             guard tagTerms.allSatisfy(searchableTags.contains) else { continue }
                             batch.append(FileItem(url: url, name: name, isDirectory: isDirectory,
                                 isPackage: v.isPackage ?? false, isSymbolicLink: v.isSymbolicLink ?? false,
-                                isHidden: v.isHidden ?? false, size: size, modified: v.contentModificationDate,
+                                isHidden: v.isHidden ?? false, size: size, created: v.creationDate, modified: v.contentModificationDate,
                                 kind: isDirectory ? "Folder" : (url.pathExtension.isEmpty ? "File" : url.pathExtension.uppercased())))
                         } catch { skipped += 1 }
                         if batch.count >= 128 { continuation.yield(FileSearchBatch(items: batch, skippedLocations: skipped)); batch.removeAll(keepingCapacity: true) }

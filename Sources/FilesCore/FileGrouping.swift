@@ -1,7 +1,7 @@
 import Foundation
 
 public enum FileGroupField: String, Codable, CaseIterable, Sendable {
-    case none, name, modified, size, kind
+    case none, name, created, modified, size, kind
 }
 
 public enum FileGroupDateUnit: String, Codable, CaseIterable, Sendable {
@@ -40,8 +40,9 @@ public enum FileGrouping {
                 .unicodeScalars.first
             guard let scalar, CharacterSet.alphanumerics.contains(scalar) else { return "2:#" }
             return "1:" + String(scalar).uppercased()
-        case .modified:
-            guard let date = item.modified else { return "0:unknown" }
+        case .created, .modified:
+            let date = options.field == .created ? item.created : item.modified
+            guard let date else { return "0:unknown" }
             let components: DateComponents
             switch options.dateUnit {
             case .year: components = calendar.dateComponents([.year], from: date)

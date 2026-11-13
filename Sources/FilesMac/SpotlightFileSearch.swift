@@ -46,7 +46,7 @@ private final class SpotlightSearchSession: NSObject {
     private func finishGathering() {
         metadataQuery.disableUpdates()
         defer { metadataQuery.enableUpdates() }
-        let keys: Set<URLResourceKey> = [.isDirectoryKey, .isPackageKey, .isSymbolicLinkKey, .isHiddenKey, .fileSizeKey, .contentModificationDateKey, .tagNamesKey]
+        let keys: Set<URLResourceKey> = [.isDirectoryKey, .isPackageKey, .isSymbolicLinkKey, .isHiddenKey, .fileSizeKey, .creationDateKey, .contentModificationDateKey, .tagNamesKey]
         let nameTerms = request.method == .spotlightContent ? [] : foldedTerms(request.text)
         let tagTerms = foldedTerms(request.tagText)
         var items: [FileItem] = [], skipped = 0, seen = Set<String>()
@@ -73,7 +73,7 @@ private final class SpotlightSearchSession: NSObject {
                 if let before = request.modifiedBefore, values.contentModificationDate == nil || values.contentModificationDate! > before { continue }
                 items.append(FileItem(url: normalized, name: normalized.lastPathComponent, isDirectory: isDirectory,
                     isPackage: values.isPackage ?? false, isSymbolicLink: values.isSymbolicLink ?? false,
-                    isHidden: values.isHidden ?? false, size: size, modified: values.contentModificationDate,
+                    isHidden: values.isHidden ?? false, size: size, created: values.creationDate, modified: values.contentModificationDate,
                     kind: isDirectory ? "Folder" : (normalized.pathExtension.isEmpty ? "File" : normalized.pathExtension.uppercased())))
                 if items.count == 128 { continuation.yield(FileSearchBatch(items: items, skippedLocations: skipped)); items.removeAll(keepingCapacity: true) }
             } catch { skipped += 1 }

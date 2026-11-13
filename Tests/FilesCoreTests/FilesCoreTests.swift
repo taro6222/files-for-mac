@@ -17,6 +17,7 @@ private func fixture() throws -> URL {
     let visible = try await provider.contents(of: root, showHidden: false)
     #expect(visible.count == 2)
     #expect(visible.first { $0.name == "한글.txt" }?.size == 5)
+    #expect(visible.first { $0.name == "한글.txt" }?.created != nil)
     #expect(visible.first { $0.name == "folder" }?.isBrowsable == true)
     let all = try await provider.contents(of: root, showHidden: true)
     #expect(all.count == 3)
@@ -668,8 +669,8 @@ private struct FixedSearch: FileSearching {
     let date = { (year: Int, month: Int, day: Int) in calendar.date(from: DateComponents(year: year, month: month, day: day))! }
     let root = URL(fileURLWithPath: "/tmp/grouping", isDirectory: true)
     let items = [
-        FileItem(url: root.appendingPathComponent("Beta.txt"), name: "Beta.txt", isDirectory: false, size: 2_000_000, modified: date(2025, 2, 3), kind: "Text"),
-        FileItem(url: root.appendingPathComponent("alpha.txt"), name: "alpha.txt", isDirectory: false, size: 0, modified: date(2024, 1, 2), kind: "Text"),
+        FileItem(url: root.appendingPathComponent("Beta.txt"), name: "Beta.txt", isDirectory: false, size: 2_000_000, created: date(2023, 4, 5), modified: date(2025, 2, 3), kind: "Text"),
+        FileItem(url: root.appendingPathComponent("alpha.txt"), name: "alpha.txt", isDirectory: false, size: 0, created: date(2022, 3, 4), modified: date(2024, 1, 2), kind: "Text"),
         FileItem(url: root.appendingPathComponent("Archive"), name: "Archive", isDirectory: true, kind: "Folder"),
         FileItem(url: root.appendingPathComponent("!note"), name: "!note", isDirectory: false, size: 2_000_000_000, kind: "")
     ]
@@ -678,6 +679,7 @@ private struct FixedSearch: FileSearching {
     #expect(names[0].items.map(\.name) == ["alpha.txt", "Archive"])
     #expect(FileGrouping.groups(items, options: .init(field: .name, ascending: false)).map(\.key) == ["2:#", "1:B", "1:A"])
     #expect(FileGrouping.groups(items, options: .init(field: .modified, dateUnit: .month), calendar: calendar).map(\.key) == ["0:unknown", "1:2024-01-00", "1:2025-02-00"])
+    #expect(FileGrouping.groups(items, options: .init(field: .created, dateUnit: .day), calendar: calendar).map(\.key) == ["0:unknown", "1:2022-03-04", "1:2023-04-05"])
     #expect(FileGrouping.groups(items, options: .init(field: .size)).map(\.key) == ["0:folder", "2:empty", "4:medium", "5:large"])
     #expect(FileGrouping.groups(items, options: .init(field: .kind)).map(\.key) == ["0:unknown", "1:folder", "1:text"])
     #expect(FileGrouping.groups([], options: .init()).isEmpty)

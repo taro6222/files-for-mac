@@ -948,6 +948,7 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         model.sort(order)
     }
     @objc func sortByName(_ sender: Any?) { updateSort(field: .name) }
+    @objc func sortByCreated(_ sender: Any?) { updateSort(field: .created) }
     @objc func sortByModified(_ sender: Any?) { updateSort(field: .modified) }
     @objc func sortBySize(_ sender: Any?) { updateSort(field: .size) }
     @objc func sortByKind(_ sender: Any?) { updateSort(field: .kind) }
@@ -1217,12 +1218,16 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
     }
     @objc func groupByNone(_ sender: Any?) { updateGrouping(field: FileGroupField.none) }
     @objc func groupByName(_ sender: Any?) { updateGrouping(field: .name) }
+    @objc func groupByCreated(_ sender: Any?) { updateGrouping(field: .created) }
     @objc func groupByModified(_ sender: Any?) { updateGrouping(field: .modified) }
     @objc func groupBySize(_ sender: Any?) { updateGrouping(field: .size) }
     @objc func groupByKind(_ sender: Any?) { updateGrouping(field: .kind) }
     @objc func groupByModifiedYear(_ sender: Any?) { updateGrouping(field: .modified, dateUnit: .year) }
     @objc func groupByModifiedMonth(_ sender: Any?) { updateGrouping(field: .modified, dateUnit: .month) }
     @objc func groupByModifiedDay(_ sender: Any?) { updateGrouping(field: .modified, dateUnit: .day) }
+    @objc func groupByCreatedYear(_ sender: Any?) { updateGrouping(field: .created, dateUnit: .year) }
+    @objc func groupByCreatedMonth(_ sender: Any?) { updateGrouping(field: .created, dateUnit: .month) }
+    @objc func groupByCreatedDay(_ sender: Any?) { updateGrouping(field: .created, dateUnit: .day) }
     @objc func groupAscending(_ sender: Any?) { updateGrouping(ascending: true) }
     @objc func groupDescending(_ sender: Any?) { updateGrouping(ascending: false) }
     @objc func toggleGroupDirection(_ sender: Any?) { updateGrouping(toggleDirection: true) }
@@ -2213,6 +2218,7 @@ extension BrowserWindow {
         case #selector(autoFitColumns(_:)): return canAutoFitColumns
         case #selector(groupByNone(_:)): menuItem.state = activeModel.grouping.field == .none ? .on : .off; return activeModel.location != nil
         case #selector(groupByName(_:)): menuItem.state = activeModel.grouping.field == .name ? .on : .off; return activeModel.location != nil
+        case #selector(groupByCreated(_:)): menuItem.state = activeModel.grouping.field == .created ? .on : .off; return activeModel.location != nil
         case #selector(groupByModified(_:)): menuItem.state = activeModel.grouping.field == .modified ? .on : .off; return activeModel.location != nil
         case #selector(groupBySize(_:)): menuItem.state = activeModel.grouping.field == .size ? .on : .off; return activeModel.location != nil
         case #selector(groupByKind(_:)): menuItem.state = activeModel.grouping.field == .kind ? .on : .off; return activeModel.location != nil
@@ -2225,10 +2231,19 @@ extension BrowserWindow {
         case #selector(groupByModifiedDay(_:)):
             menuItem.state = activeModel.grouping.field == .modified && activeModel.grouping.dateUnit == .day ? .on : .off
             return activeModel.location != nil
+        case #selector(groupByCreatedYear(_:)):
+            menuItem.state = activeModel.grouping.field == .created && activeModel.grouping.dateUnit == .year ? .on : .off
+            return activeModel.location != nil
+        case #selector(groupByCreatedMonth(_:)):
+            menuItem.state = activeModel.grouping.field == .created && activeModel.grouping.dateUnit == .month ? .on : .off
+            return activeModel.location != nil
+        case #selector(groupByCreatedDay(_:)):
+            menuItem.state = activeModel.grouping.field == .created && activeModel.grouping.dateUnit == .day ? .on : .off
+            return activeModel.location != nil
         case #selector(groupAscending(_:)): menuItem.state = activeModel.grouping.ascending ? .on : .off; return activeModel.grouping.field != .none
         case #selector(groupDescending(_:)): menuItem.state = !activeModel.grouping.ascending ? .on : .off; return activeModel.grouping.field != .none
         case #selector(toggleGroupDirection(_:)): return activeModel.grouping.field != .none
-        case #selector(toggleGroupDateUnit(_:)): return activeModel.grouping.field == .modified
+        case #selector(toggleGroupDateUnit(_:)): return activeModel.grouping.field == .modified || activeModel.grouping.field == .created
         case #selector(createSymbolicLink(_:)): return activeModel.location != nil && activeSelectedItems.count == 1 && !activeModel.isLoading && !Self.entryOperationRunning
         case #selector(createSymbolicLinkFromDialog(_:)): return activeModel.location != nil && !activeModel.isLoading && !Self.entryOperationRunning
         case #selector(toggleSelectedFavorite(_:)): return activeModel.location != nil && (activeSelectedItems.isEmpty || (activeSelectedItems.count == 1 && activeSelectedItems[0].isBrowsable))
@@ -2428,7 +2443,7 @@ extension BrowserWindow {
             checks["systemInstallAndMediaCommands"] = [#selector(installCertificates(_:)), #selector(installFonts(_:)), #selector(playAllMedia(_:))].allSatisfy { action in paletteEntries.contains { $0.item.action == action } }
             checks["selectionAndTagCommands"] = [#selector(toggleFocusedSelection(_:)), #selector(openAllTagged(_:)), #selector(removeTags(_:))].allSatisfy { action in paletteEntries.contains { $0.item.action == action } }
             checks["autoFitColumnsCommand"] = paletteEntries.contains { $0.item.action == #selector(autoFitColumns(_:)) }
-            let groupingActions: [Selector] = [#selector(groupByNone(_:)), #selector(groupByName(_:)), #selector(groupByModified(_:)), #selector(groupBySize(_:)), #selector(groupByKind(_:)), #selector(groupByModifiedYear(_:)), #selector(groupByModifiedMonth(_:)), #selector(groupByModifiedDay(_:)), #selector(groupAscending(_:)), #selector(groupDescending(_:)), #selector(toggleGroupDirection(_:)), #selector(groupDateByYear(_:)), #selector(groupDateByMonth(_:)), #selector(toggleGroupDateUnit(_:))]
+            let groupingActions: [Selector] = [#selector(groupByNone(_:)), #selector(groupByName(_:)), #selector(groupByCreated(_:)), #selector(groupByModified(_:)), #selector(groupBySize(_:)), #selector(groupByKind(_:)), #selector(groupByCreatedYear(_:)), #selector(groupByCreatedMonth(_:)), #selector(groupByCreatedDay(_:)), #selector(groupByModifiedYear(_:)), #selector(groupByModifiedMonth(_:)), #selector(groupByModifiedDay(_:)), #selector(groupAscending(_:)), #selector(groupDescending(_:)), #selector(toggleGroupDirection(_:)), #selector(groupDateByYear(_:)), #selector(groupDateByMonth(_:)), #selector(toggleGroupDateUnit(_:))]
             checks["groupingCommands"] = groupingActions.allSatisfy { action in paletteEntries.contains { $0.item.action == action } }
             checks["commandPaletteSearch"] = CommandPaletteCatalog.filtered(paletteEntries, query: L("숨김", "hidden")).contains { $0.item.action == #selector(toggleHidden(_:)) }
             controller.showCommandPalette(nil); try await Task.sleep(for: .milliseconds(50))
@@ -2641,6 +2656,10 @@ extension BrowserWindow {
                     && controller.primarySelectedItems.map(\.id) == [first.id]
                 controller.groupByModifiedMonth(nil)
                 checks["groupingStatePersistence"] = controller.model.snapshot.grouping == .init(field: .modified, ascending: false, dateUnit: .month)
+                controller.groupByCreatedDay(nil)
+                checks["createdDateGrouping"] = !controller.qaDetailGroupTitles.isEmpty
+                    && !controller.qaDetailGroupTitles.contains(L("알 수 없음", "Unknown"))
+                    && controller.model.snapshot.grouping == .init(field: .created, ascending: false, dateUnit: .day)
                 controller.groupByNone(nil)
             } else { checks["detailGroupingRows"] = false }
             for column in controller.table.tableColumns where !column.isHidden { column.width = column.minWidth }
@@ -2843,7 +2862,9 @@ extension BrowserWindow {
                 && controller.model.sortOrder.field == .size && !controller.model.sortOrder.ascending
             controller.toggleSortDirection(nil)
             checks["sortCommands"] = filesFirst && foldersFirst && descendingSize && controller.model.sortOrder.ascending
-            checks["sortCommandsCatalog"] = [#selector(sortByName(_:)), #selector(sortByModified(_:)), #selector(sortBySize(_:)),
+            controller.sortByCreated(nil)
+            checks["createdDateSorting"] = controller.model.sortOrder.field == .created
+            checks["sortCommandsCatalog"] = [#selector(sortByName(_:)), #selector(sortByCreated(_:)), #selector(sortByModified(_:)), #selector(sortBySize(_:)),
                 #selector(sortByKind(_:)), #selector(sortAscending(_:)), #selector(sortDescending(_:)),
                 #selector(toggleSortDirection(_:)), #selector(sortFoldersFirst(_:)), #selector(sortFilesFirst(_:)),
                 #selector(sortMixed(_:))].allSatisfy { action in paletteEntries.contains { $0.item.action == action } }
