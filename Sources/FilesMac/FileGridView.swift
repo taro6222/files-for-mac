@@ -41,15 +41,19 @@ final class FileGridView: NSView, NSCollectionViewDataSource, NSCollectionViewDe
         static let identifier = NSUserInterfaceItemIdentifier("FileGridItem")
         private let icon = NSImageView()
         private let label = NSTextField(labelWithString: "")
+        private var iconWidth: NSLayoutConstraint?
+        private var iconHeight: NSLayoutConstraint?
         override func loadView() {
             let root = NSView(); root.wantsLayer = true
             icon.imageScaling = .scaleProportionallyUpOrDown; icon.translatesAutoresizingMaskIntoConstraints = false
             label.alignment = .center; label.lineBreakMode = .byTruncatingMiddle
             label.maximumNumberOfLines = 2; label.translatesAutoresizingMaskIntoConstraints = false
             root.addSubview(icon); root.addSubview(label)
+            iconWidth = icon.widthAnchor.constraint(equalToConstant: 56)
+            iconHeight = icon.heightAnchor.constraint(equalToConstant: 56)
             NSLayoutConstraint.activate([
                 icon.topAnchor.constraint(equalTo: root.topAnchor, constant: 8), icon.centerXAnchor.constraint(equalTo: root.centerXAnchor),
-                icon.widthAnchor.constraint(equalToConstant: 56), icon.heightAnchor.constraint(equalToConstant: 56),
+                iconWidth!, iconHeight!,
                 label.topAnchor.constraint(equalTo: icon.bottomAnchor, constant: 5), label.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: 4),
                 label.trailingAnchor.constraint(equalTo: root.trailingAnchor, constant: -4), label.bottomAnchor.constraint(lessThanOrEqualTo: root.bottomAnchor, constant: -5)
             ])
@@ -59,8 +63,9 @@ final class FileGridView: NSView, NSCollectionViewDataSource, NSCollectionViewDe
             view.layer?.backgroundColor = isSelected ? NSColor.selectedContentBackgroundColor.withAlphaComponent(0.28).cgColor : NSColor.clear.cgColor
             view.layer?.cornerRadius = 8
         } }
-        func configure(item: FileItem) {
+        func configure(item: FileItem, iconSize: CGFloat) {
             representedObject = item; icon.image = NSWorkspace.shared.icon(forFile: item.url.path)
+            iconWidth?.constant = iconSize; iconHeight?.constant = iconSize
             label.stringValue = item.displayName(showExtensions: true)
             view.setAccessibilityElement(true); view.setAccessibilityLabel(label.stringValue)
         }
@@ -70,6 +75,8 @@ final class FileGridView: NSView, NSCollectionViewDataSource, NSCollectionViewDe
     private let scroll = NSScrollView()
     private(set) var items: [FileItem] = []
     private var suppressSelectionNotification = false
+    private var iconSize: CGFloat = 56
+    private var viewSize: BrowserViewSize = .medium
     var onSelectionChange: ((Set<String>) -> Void)?
     var onOpen: ((FileItem) -> Void)?
     var onActivate: (() -> Void)?
@@ -110,13 +117,30 @@ final class FileGridView: NSView, NSCollectionViewDataSource, NSCollectionViewDe
         scroll.contentView.scroll(to: NSPoint(x: 0, y: max(0, scrollOffset))); scroll.reflectScrolledClipView(scroll.contentView)
         DispatchQueue.main.async { [weak self] in self?.suppressSelectionNotification = false }
     }
+    func apply(viewSize: BrowserViewSize) {
+        guard self.viewSize != viewSize else { return }
+        self.viewSize = viewSize
+        guard let layout = collection.collectionViewLayout as? NSCollectionViewFlowLayout else { return }
+        switch viewSize {
+        case .small:
+            iconSize = 40; layout.itemSize = NSSize(width: 96, height: 84)
+            layout.minimumInteritemSpacing = 6; layout.minimumLineSpacing = 8
+        case .medium:
+            iconSize = 56; layout.itemSize = NSSize(width: 116, height: 104)
+            layout.minimumInteritemSpacing = 8; layout.minimumLineSpacing = 10
+        case .large:
+            iconSize = 72; layout.itemSize = NSSize(width: 142, height: 124)
+            layout.minimumInteritemSpacing = 12; layout.minimumLineSpacing = 14
+        }
+        layout.invalidateLayout(); collection.reloadData()
+    }
     func focus() { window?.makeFirstResponder(collection) }
     func currentScrollOffset() -> Double { scroll.contentView.bounds.origin.y }
     func numberOfSections(in collectionView: NSCollectionView) -> Int { 1 }
     func collectionView(_ collectionView: NSCollectionView, numberOfItemsInSection section: Int) -> Int { items.count }
     func collectionView(_ collectionView: NSCollectionView, itemForRepresentedObjectAt indexPath: IndexPath) -> NSCollectionViewItem {
         let item = collectionView.makeItem(withIdentifier: Item.identifier, for: indexPath)
-        if let item = item as? Item, items.indices.contains(indexPath.item) { item.configure(item: items[indexPath.item]) }
+        if let item = item as? Item, items.indices.contains(indexPath.item) { item.configure(item: items[indexPath.item], iconSize: iconSize) }
         return item
     }
     func collectionView(_ collectionView: NSCollectionView, pasteboardWriterForItemAt indexPath: IndexPath) -> (any NSPasteboardWriting)? {
@@ -155,5 +179,6 @@ final class FileGridView: NSView, NSCollectionViewDataSource, NSCollectionViewDe
         guard items.indices.contains(index) else { return nil }
         return (collectionView(collection, pasteboardWriterForItemAt: IndexPath(item: index, section: 0)) as? NSURL) as URL?
     }
+    var qaItemSize: NSSize { (collection.collectionViewLayout as? NSCollectionViewFlowLayout)?.itemSize ?? .zero }
     #endif
 }

@@ -308,10 +308,18 @@ private struct DelayedLoader: DirectoryLoading {
     preferences.moveFavorite(b, by: -1)
     #expect(preferences.favorites == [b, a]); #expect(firstWindow == 1 && secondWindow == 1)
     preferences.removeObserver(token)
-    preferences.setShowExtensions(false); preferences.toggleSection(.volumes)
-    #expect(firstWindow == 1 && secondWindow == 3)
+    preferences.setShowExtensions(false); preferences.toggleSection(.volumes); preferences.setViewSize(.large)
+    #expect(firstWindow == 1 && secondWindow == 4)
     let restored = BrowserPreferences(defaults: defaults)
     #expect(restored.favorites == [b, a]); #expect(!restored.showExtensions); #expect(!restored.showHomeVolumes)
+    #expect(restored.viewSize == .large)
+}
+
+@Test @MainActor func invalidViewSizePreferenceRepairsToMedium() {
+    let suite = "files-view-size-tests-\(UUID())", defaults = UserDefaults(suiteName: suite)!
+    defer { defaults.removePersistentDomain(forName: suite) }
+    defaults.set("enormous", forKey: "viewSize")
+    #expect(BrowserPreferences(defaults: defaults).viewSize == .medium)
 }
 
 @Test @MainActor func recentLocationsDeduplicateCapAndClearAcrossReload() {

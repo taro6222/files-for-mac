@@ -1,5 +1,9 @@
 import Foundation
 
+public enum BrowserViewSize: String, CaseIterable, Sendable {
+    case small, medium, large
+}
+
 /// A single main-actor store shared by all windows. Mutations notify synchronously,
 /// so an older window cannot overwrite a newer window's favorites or history.
 @MainActor
@@ -17,6 +21,7 @@ public final class BrowserPreferences {
     public private(set) var showHomeFavorites: Bool
     public private(set) var showHomeVolumes: Bool
     public private(set) var showHomeRecent: Bool
+    public private(set) var viewSize: BrowserViewSize
 
     public init(defaults: UserDefaults = .standard, initialFavorites: [URL]? = nil) {
         self.defaults = defaults
@@ -35,6 +40,7 @@ public final class BrowserPreferences {
         showHomeFavorites = defaults.object(forKey: "showHomeFavorites") as? Bool ?? true
         showHomeVolumes = defaults.object(forKey: "showHomeVolumes") as? Bool ?? true
         showHomeRecent = defaults.object(forKey: "showHomeRecent") as? Bool ?? true
+        viewSize = defaults.string(forKey: "viewSize").flatMap(BrowserViewSize.init(rawValue:)) ?? .medium
     }
     @discardableResult public func observe(_ callback: @escaping () -> Void) -> UUID {
         let id = UUID(); observers[id] = callback; return id
@@ -76,6 +82,10 @@ public final class BrowserPreferences {
     }
     public func setShowExtensions(_ value: Bool) {
         showExtensions = value; defaults.set(value, forKey: "showExtensions"); changed()
+    }
+    public func setViewSize(_ value: BrowserViewSize) {
+        guard viewSize != value else { return }
+        viewSize = value; defaults.set(value.rawValue, forKey: "viewSize"); changed()
     }
     public enum HomeSection { case favorites, volumes, recent }
     public func toggleSection(_ section: HomeSection) {

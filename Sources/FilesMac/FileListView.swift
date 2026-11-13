@@ -26,6 +26,7 @@ final class FileListView: NSView, NSTableViewDataSource, NSTableViewDelegate {
     private let scroll = NSScrollView()
     private(set) var items: [FileItem] = []
     private var suppressSelectionNotification = false
+    private var viewSize: BrowserViewSize = .medium
     var onSelectionChange: ((Set<String>) -> Void)?
     var onOpen: ((FileItem) -> Void)?
     var onActivate: (() -> Void)?
@@ -55,6 +56,12 @@ final class FileListView: NSView, NSTableViewDataSource, NSTableViewDelegate {
         table.selectRowIndexes(IndexSet(items.indices.filter { selection.contains(items[$0].id) }), byExtendingSelection: false)
         scroll.contentView.scroll(to: NSPoint(x: 0, y: max(0, scrollOffset))); scroll.reflectScrolledClipView(scroll.contentView)
         DispatchQueue.main.async { [weak self] in self?.suppressSelectionNotification = false }
+    }
+    func apply(viewSize: BrowserViewSize) {
+        guard self.viewSize != viewSize else { return }
+        self.viewSize = viewSize
+        table.rowHeight = switch viewSize { case .small: 26; case .medium: 30; case .large: 38 }
+        table.reloadData()
     }
     func focus() { window?.makeFirstResponder(table) }
     func currentScrollOffset() -> Double { scroll.contentView.bounds.origin.y }
@@ -100,4 +107,7 @@ final class FileListView: NSView, NSTableViewDataSource, NSTableViewDelegate {
         if flags.contains(.option) { modifiers.insert(.option) }; if flags.contains(.command) { modifiers.insert(.command) }
         return .resolve(modifiers: modifiers, sourceAllowsMove: info.draggingSourceOperationMask.contains(.move))
     }
+#if DEBUG
+    var qaRowHeight: CGFloat { table.rowHeight }
+#endif
 }

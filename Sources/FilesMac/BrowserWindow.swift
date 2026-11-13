@@ -553,6 +553,8 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         table.reloadData()
         let selected = IndexSet(model.items.indices.filter { model.history.current.selection.contains(model.items[$0].id) })
         table.selectRowIndexes(selected, byExtendingSelection: false)
+        gridView.apply(viewSize: preferences.viewSize)
+        listView.apply(viewSize: preferences.viewSize)
         gridView.update(items: model.items, selection: model.history.current.selection,
                         scrollOffset: model.history.current.scrollOffset)
         listView.update(items: model.items, selection: model.history.current.selection,
@@ -1238,7 +1240,7 @@ extension BrowserWindow {
                                       ratio: Double = 0.5, activate: Bool = true) {
         workspaceSplit.isVertical = axis == .vertical
         if secondaryPane == nil {
-            let pane = SecondaryBrowserPane(snapshot: snapshot ?? tabSnapshot())
+            let pane = SecondaryBrowserPane(snapshot: snapshot ?? tabSnapshot(), preferences: preferences)
             pane.onActivate = { [weak self] in self?.setSecondaryActive(true) }
             pane.onFileDrop = { [weak self] sources, destination, intent in
                 guard let self else { return false }
@@ -1272,6 +1274,7 @@ extension BrowserWindow {
     }
     private func preferencesChanged() {
         buildSidebar()
+        secondaryPane?.applyPreferences()
         if model.location == nil { buildHome() }
         if model.showHidden != preferences.showHidden {
             savePosition(); model.showHidden = preferences.showHidden; model.reload()
@@ -1306,8 +1309,20 @@ extension BrowserWindow {
             let item = menu.addItem(withTitle: label, action: action, keyEquivalent: "")
             item.target = self; item.state = selected ? .on : .off
         }
+        menu.addItem(.separator())
+        for (size, label) in [(BrowserViewSize.small, L("보기 크기: 작게", "View Size: Small")),
+                              (.medium, L("보기 크기: 보통", "View Size: Medium")),
+                              (.large, L("보기 크기: 크게", "View Size: Large"))] {
+            let item = menu.addItem(withTitle: label, action: #selector(setViewSize(_:)), keyEquivalent: "")
+            item.target = self; item.representedObject = size.rawValue
+            item.state = preferences.viewSize == size ? .on : .off
+        }
     }
     @objc private func toggleExtensions(_ sender: Any?) { preferences.setShowExtensions(!preferences.showExtensions) }
+    @objc private func setViewSize(_ sender: NSMenuItem) {
+        guard let raw = sender.representedObject as? String, let size = BrowserViewSize(rawValue: raw) else { return }
+        preferences.setViewSize(size)
+    }
     @objc private func toggleHomeFavorites(_ sender: Any?) { preferences.toggleSection(.favorites) }
     @objc private func toggleHomeVolumes(_ sender: Any?) { preferences.toggleSection(.volumes) }
     @objc private func toggleHomeRecent(_ sender: Any?) { preferences.toggleSection(.recent) }
@@ -1564,6 +1579,10 @@ extension BrowserWindow {
             root.layoutSubtreeIfNeeded(); root.displayIfNeeded()
             checks["gridVisible"] = !controller.gridView.isHidden && controller.scroll.isHidden
             checks["gridSelectionIdentity"] = controller.gridView.selectedItems.map(\.id) == [gridFolder.path]
+            preferences.setViewSize(.large)
+            checks["largeViewSizeApplied"] = controller.gridView.qaItemSize == NSSize(width: 142, height: 124)
+                && controller.listView.qaRowHeight == 38
+            preferences.setViewSize(.medium)
             controller.focusFiles(nil)
             checks["gridFocus"] = (window.firstResponder as? NSView)?.isDescendant(of: controller.gridView) == true
             try capture("files-grid")
@@ -1931,6 +1950,10 @@ extension BrowserWindow {
             content.layoutSubtreeIfNeeded(); content.displayIfNeeded()
             checks["secondaryAdaptiveCompactList"] = secondary.snapshot().viewMode == .adaptive
                 && secondary.qaRenderedViewMode == .list
+            preferences.setViewSize(.small)
+            checks["secondaryViewSizeApplied"] = secondary.qaGridItemSize == NSSize(width: 96, height: 84)
+                && secondary.qaListRowHeight == 26
+            preferences.setViewSize(.medium)
             let undoMenu = NSMenuItem(title: "", action: #selector(undoLastCopy(_:)), keyEquivalent: "")
             checks["undoMenuAction"] = undoMenu.action == #selector(undoLastCopy(_:))
             checks["undoMenuEnabled"] = controller.canUndoCopy(journalDirectory: journals)

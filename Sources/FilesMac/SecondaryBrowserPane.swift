@@ -4,6 +4,7 @@ import FilesCore
 @MainActor
 final class SecondaryBrowserPane: NSView, NSTableViewDataSource, NSTableViewDelegate {
     let model: BrowserModel
+    private let preferences: BrowserPreferences
     var onActivate: (() -> Void)?
     var onFileDrop: (([URL], URL, FileDropIntent) -> Bool)?
     private let pathField = NSTextField()
@@ -27,8 +28,9 @@ final class SecondaryBrowserPane: NSView, NSTableViewDataSource, NSTableViewDele
     private var pendingRefresh = false
     private var rendering = false
 
-    init(snapshot: TabSnapshot) {
+    init(snapshot: TabSnapshot, preferences: BrowserPreferences = .shared) {
         model = BrowserModel()
+        self.preferences = preferences
         super.init(frame: .zero)
         wantsLayer = true; translatesAutoresizingMaskIntoConstraints = false
         buildUI()
@@ -68,6 +70,7 @@ final class SecondaryBrowserPane: NSView, NSTableViewDataSource, NSTableViewDele
     }
     func stopLoading() { model.cancelLoad() }
     func setViewMode(_ mode: BrowserViewMode) { activate(); model.setViewMode(mode) }
+    func applyPreferences() { render() }
     func setContextMenu(_ menu: NSMenu?) { gridView.contextMenu = menu; listView.contextMenu = menu }
     func openSelected() {
         if renderedViewMode == .grid, let item = gridView.selectedItems.first { openGridItem(item) }
@@ -211,6 +214,8 @@ final class SecondaryBrowserPane: NSView, NSTableViewDataSource, NSTableViewDele
         let expectedSort = NSSortDescriptor(key: model.sortOrder.field.rawValue, ascending: model.sortOrder.ascending)
         if table.sortDescriptors.first != expectedSort { table.sortDescriptors = [expectedSort] }
         table.selectRowIndexes(IndexSet(model.items.indices.filter { model.history.current.selection.contains(model.items[$0].id) }), byExtendingSelection: false)
+        gridView.apply(viewSize: preferences.viewSize)
+        listView.apply(viewSize: preferences.viewSize)
         gridView.update(items: model.items, selection: model.history.current.selection,
                         scrollOffset: model.history.current.scrollOffset)
         listView.update(items: model.items, selection: model.history.current.selection,
@@ -333,6 +338,8 @@ final class SecondaryBrowserPane: NSView, NSTableViewDataSource, NSTableViewDele
     var qaColumnCount: Int { columnView.qaColumnCount }
     func qaSelectColumn(id: String, column: Int = 0) { columnView.qaSelect(id: id, column: column) }
     var qaRenderedViewMode: BrowserViewMode { renderedViewMode }
+    var qaGridItemSize: NSSize { gridView.qaItemSize }
+    var qaListRowHeight: CGFloat { listView.qaRowHeight }
     #endif
 }
 
