@@ -364,6 +364,25 @@ private struct DelayedLoader: DirectoryLoading {
     #expect(BrowserPreferences(defaults: defaults, initialFavorites: []).folderViewPreferences.isEmpty)
 }
 
+@Test func localSearchScopesFiltersUnicodeAndHiddenItems() async throws {
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+    defer { try? FileManager.default.removeItem(at: root) }
+    try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+    let nested = root.appendingPathComponent("Nested", isDirectory: true); try FileManager.default.createDirectory(at: nested, withIntermediateDirectories: true)
+    try Data().write(to: root.appendingPathComponent("Résumé report.txt"))
+    try Data().write(to: nested.appendingPathComponent("resume notes.md"))
+    try Data().write(to: root.appendingPathComponent(".resume-hidden"))
+    func results(_ query: FileSearchQuery) async throws -> [FileItem] {
+        var items: [FileItem] = []
+        for try await batch in LocalFileSearch().batches(in: root, query: query) { items += batch.items }
+        return items
+    }
+    #expect(try await results(FileSearchQuery(text: "resume", scope: .currentFolder)).map(\.name) == ["Résumé report.txt"])
+    #expect(Set(try await results(FileSearchQuery(text: "resume", kind: .files)).map(\.name)) == ["Résumé report.txt", "resume notes.md"])
+    #expect(Set(try await results(FileSearchQuery(text: "resume", kind: .files, showHidden: true)).map(\.name)).contains(".resume-hidden"))
+    #expect(try await results(FileSearchQuery(text: "nested", kind: .folders)).map(\.name) == ["Nested"])
+}
+
 @Test func shortcutPreferencesPersistValidateCollisionsAndReset() throws {
     let suite = "shortcut-preferences-tests-\(UUID())", defaults = UserDefaults(suiteName: suite)!
     defer { defaults.removePersistentDomain(forName: suite) }
