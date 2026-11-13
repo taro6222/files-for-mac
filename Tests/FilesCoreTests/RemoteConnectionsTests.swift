@@ -34,3 +34,30 @@ func remoteProtocolsUseExplicitSecurityAndTransportCapabilities(remoteProtocol: 
     #expect(throws: RemoteConnectionValidationError.invalidRootPath) { try RemoteConnectionProfile(name: "x", remoteProtocol: .sftp, host: "host", rootPath: "relative") }
     #expect(throws: RemoteConnectionValidationError.embeddedCredential) { try RemoteConnectionProfile(name: "x", remoteProtocol: .sftp, host: "host", username: "user:name") }
 }
+
+@Test func remoteProfileStoreSortsRoundTripsAndUsesPrivatePermissions() throws {
+    let fm = FileManager.default, root = fm.temporaryDirectory.appendingPathComponent("remote-profiles-\(UUID())", isDirectory: true)
+    defer { try? fm.removeItem(at: root) }
+    let store = RemoteProfileStore(fileURL: root.appendingPathComponent("profiles.json"))
+    let z = try RemoteConnectionProfile(name: "Zulu", remoteProtocol: .ftp, host: "ftp.example.com")
+    let a = try RemoteConnectionProfile(name: "Alpha", remoteProtocol: .smb, host: "nas.local", username: "reader", credentialID: "credential-a")
+    try store.save([z, a], fileManager: fm)
+    try store.save([a, z], fileManager: fm)
+    #expect(try store.load(fileManager: fm).map(\.name) == ["Alpha", "Zulu"])
+    let permissions = try #require(fm.attributesOfItem(atPath: store.fileURL.path)[.posixPermissions] as? NSNumber)
+    #expect(permissions.intValue & 0o777 == 0o600)
+    let serialized = try String(contentsOf: store.fileURL, encoding: .utf8)
+    #expect(!serialized.contains("secret")); #expect(!serialized.contains("password"))
+    #expect(try fm.contentsOfDirectory(atPath: root.path).allSatisfy { !$0.hasSuffix(".tmp") })
+}
+
+@Test func remoteProfileStoreRejectsCorruptAndInvalidPersistedProfiles() throws {
+    let fm = FileManager.default, root = fm.temporaryDirectory.appendingPathComponent("remote-corrupt-\(UUID())", isDirectory: true)
+    defer { try? fm.removeItem(at: root) }; try fm.createDirectory(at: root, withIntermediateDirectories: true)
+    let store = RemoteProfileStore(fileURL: root.appendingPathComponent("profiles.json"))
+    try Data("not-json".utf8).write(to: store.fileURL)
+    #expect(throws: (any Error).self) { try store.load(fileManager: fm) }
+    let invalid = "[{\"id\":\"00000000-0000-0000-0000-000000000001\",\"name\":\"Bad\",\"remoteProtocol\":\"ftp\",\"host\":\"user@host\",\"port\":21,\"rootPath\":\"/\"}]"
+    try Data(invalid.utf8).write(to: store.fileURL)
+    #expect(throws: RemoteConnectionValidationError.embeddedCredential) { try store.load(fileManager: fm) }
+}

@@ -6,7 +6,7 @@ let package = Package(
     products: [.library(name: "FilesCore", targets: ["FilesCore"]), .executable(name: "FilesMac", targets: ["FilesMac"])],
     targets: [
         .systemLibrary(name: "CLibArchive"),
-        .target(name: "FilesCore", dependencies: ["CLibArchive"]),
+        .target(name: "FilesCore", dependencies: ["CLibArchive"], linkerSettings: [.linkedFramework("Security")]),
         .executableTarget(name: "FilesMac", dependencies: ["FilesCore"]),
         .testTarget(name: "FilesCoreTests", dependencies: ["FilesCore"], resources: [.copy("Fixtures")])
     ]
