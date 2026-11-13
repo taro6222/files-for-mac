@@ -406,6 +406,21 @@ private struct DelayedSearch: FileSearching {
     #expect(model.wasCancelled); #expect(!model.isSearching); #expect(model.results.isEmpty)
 }
 
+@Test func filePropertiesAndStreamingSHA256MatchKnownVector() async throws {
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+    defer { try? FileManager.default.removeItem(at: root) }
+    try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+    let file = root.appendingPathComponent("vector.txt"); try Data("abc".utf8).write(to: file)
+    try FileManager.default.setAttributes([.posixPermissions: 0o640], ofItemAtPath: file.path)
+    let inspector = FilePropertiesInspector(), properties = try await inspector.inspect(file)
+    #expect(properties.url == file.standardizedFileURL); #expect(!properties.isDirectory)
+    #expect(properties.logicalSize == 3); #expect(properties.posixPermissions == 0o640)
+    #expect(properties.typeIdentifier != nil); #expect(properties.modified != nil)
+    let digest = try await inspector.sha256(file)
+    #expect(digest == "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad")
+    await #expect(throws: FileHashError.directoryUnsupported) { try await inspector.sha256(root) }
+}
+
 @Test func shortcutPreferencesPersistValidateCollisionsAndReset() throws {
     let suite = "shortcut-preferences-tests-\(UUID())", defaults = UserDefaults(suiteName: suite)!
     defer { defaults.removePersistentDomain(forName: suite) }
