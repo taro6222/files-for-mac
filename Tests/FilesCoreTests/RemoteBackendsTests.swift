@@ -106,3 +106,19 @@ func curlFTPPlansKeepCredentialsOffArgumentsAndDescriptions(remoteProtocol: Remo
         try await FTPRemoteProvider().upload(profile: profile, credential: credential, source: source, remotePath: "/file", capabilities: .init())
     }
 }
+
+@Test func ftpLocalFixtureListsAndDownloadsThroughRealCurl() async throws {
+    let environment = ProcessInfo.processInfo.environment
+    guard let portText = environment["FILES_TEST_FTP_PORT"], let port = Int(portText),
+          let username = environment["FILES_TEST_FTP_USERNAME"], let password = environment["FILES_TEST_FTP_PASSWORD"] else { return }
+    let profile = try RemoteConnectionProfile(name: "Fixture", remoteProtocol: .ftp, host: "127.0.0.1", port: port)
+    let credential = RemoteCredential(username: username, secret: Data(password.utf8)), provider = FTPRemoteProvider()
+    let entries = try await provider.list(profile: profile, credential: credential, remotePath: "/")
+    #expect(entries.contains { $0.name == "fixture-한글.txt" })
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent("ftp-live-\(UUID())", isDirectory: true)
+    defer { try? FileManager.default.removeItem(at: root) }; try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+    let destination = root.appendingPathComponent("downloaded.txt")
+    _ = try await provider.download(profile: profile, credential: credential, remotePath: "/fixture-한글.txt", destination: destination)
+    #expect(try String(contentsOf: destination, encoding: .utf8) == "live-fixture")
+    #expect(try FileManager.default.contentsOfDirectory(atPath: root.path).allSatisfy { !$0.hasPrefix(".files-download-") })
+}
