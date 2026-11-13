@@ -7,6 +7,7 @@ username="$(id -un)"
 remote_root="$fixture_root/remote"
 mkdir -p "$remote_root"
 printf 'live-fixture' >"$remote_root/fixture-한글.txt"
+/usr/sbin/mkfile -n 256m "$remote_root/large-fixture.bin"
 ssh-keygen -q -t ed25519 -N '' -f "$fixture_root/client_key"
 ssh-keygen -q -t ed25519 -N '' -f "$fixture_root/host_key"
 ssh-keygen -q -t ed25519 -N '' -f "$fixture_root/wrong_host_key"
@@ -43,7 +44,8 @@ printf 'ls -1 "%s"\n' "$remote_root" | /usr/bin/sftp -q -b - -P "$port" -i "$fix
 /usr/bin/env FILES_TEST_SFTP_PORT="$port" FILES_TEST_SFTP_USERNAME="$username" \
   FILES_TEST_SFTP_IDENTITY="$fixture_root/client_key" FILES_TEST_SFTP_KNOWN_HOSTS="$fixture_root/known_hosts" \
   FILES_TEST_SFTP_WRONG_KNOWN_HOSTS="$fixture_root/wrong_known_hosts" \
-  FILES_TEST_SFTP_REMOTE_ROOT="$remote_root" DEVELOPER_DIR="${DEVELOPER_DIR:-/Library/Developer/CommandLineTools}" \
+  FILES_TEST_SFTP_REMOTE_ROOT="$remote_root" FILES_TEST_SFTP_LARGE_REMOTE="$remote_root/large-fixture.bin" \
+  DEVELOPER_DIR="${DEVELOPER_DIR:-/Library/Developer/CommandLineTools}" \
   CLANG_MODULE_CACHE_PATH="$PWD/.build/ModuleCache" SWIFT_TMPDIR=/tmp \
   swift test --filter sftpLocalFixtureListsDownloadsAndProbesRenameThroughOpenSSH \
   -Xswiftc -load-plugin-library -Xswiftc /Library/Developer/CommandLineTools/usr/lib/swift/host/plugins/testing/libTestingMacros.dylib

@@ -147,7 +147,8 @@ import Testing
           let identityPath = environment["FILES_TEST_SFTP_IDENTITY"],
           let knownHostsPath = environment["FILES_TEST_SFTP_KNOWN_HOSTS"],
           let wrongKnownHostsPath = environment["FILES_TEST_SFTP_WRONG_KNOWN_HOSTS"],
-          let remoteRoot = environment["FILES_TEST_SFTP_REMOTE_ROOT"] else { return }
+          let remoteRoot = environment["FILES_TEST_SFTP_REMOTE_ROOT"],
+          let largeRemotePath = environment["FILES_TEST_SFTP_LARGE_REMOTE"] else { return }
     let profile = try RemoteConnectionProfile(name: "Fixture", remoteProtocol: .sftp, host: "127.0.0.1", port: port, rootPath: remoteRoot, username: username)
     let key = SFTPKeyConfiguration(username: username, identityFile: URL(fileURLWithPath: identityPath), knownHostsFile: URL(fileURLWithPath: knownHostsPath))
     let provider = SFTPRemoteProvider(), entries = try await provider.list(profile: profile, key: key, remotePath: remoteRoot)
@@ -169,4 +170,10 @@ import Testing
     } catch let error as RemoteExecutionError {
         guard case .nonzeroExit = error else { Issue.record("Unexpected remote error: \(error)"); return }
     }
+    let cancelledDestination = localRoot.appendingPathComponent("cancelled.bin")
+    let transfer = Task { try await provider.download(profile: profile, key: key, remotePath: largeRemotePath, destination: cancelledDestination) }
+    try await Task.sleep(for: .milliseconds(20)); transfer.cancel()
+    await #expect(throws: CancellationError.self) { try await transfer.value }
+    #expect(!FileManager.default.fileExists(atPath: cancelledDestination.path))
+    #expect(try FileManager.default.contentsOfDirectory(atPath: localRoot.path).allSatisfy { !$0.hasPrefix(".files-sftp-download-") })
 }
