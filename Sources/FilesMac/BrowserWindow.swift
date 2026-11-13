@@ -460,8 +460,8 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         b.image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)
         b.imagePosition = .imageLeading; b.imageHugsTitle = true
         b.toolTip = url?.path ?? title; b.setAccessibilityLabel(title)
+        let menu = NSMenu(); menu.autoenablesItems = false
         if let url, favorites.contains(url) {
-            let menu = NSMenu(); menu.autoenablesItems = false
             for (label, action) in [(L("위로 이동", "Move Up"), #selector(moveFavoriteUp(_:))),
                                     (L("아래로 이동", "Move Down"), #selector(moveFavoriteDown(_:))),
                                     (L("즐겨찾기에서 제거", "Remove Favorite"), #selector(removeFavorite(_:)))] {
@@ -472,8 +472,17 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
                 menu.items[0].isEnabled = index > 0
                 menu.items[1].isEnabled = index < favorites.count - 1
             }
-            b.menu = menu
         }
+        if let url, let volume = volumes.first(where: { $0.url == url }) {
+            if !menu.items.isEmpty { menu.addItem(.separator()) }
+            let utility = menu.addItem(withTitle: L("디스크 유틸리티에서 열기", "Open in Disk Utility"), action: #selector(openDiskUtility(_:)), keyEquivalent: "")
+            utility.target = self; utility.representedObject = volume.url
+            if volume.canRequestEject {
+                let eject = menu.addItem(withTitle: L("추출…", "Eject…"), action: #selector(ejectVolume(_:)), keyEquivalent: "")
+                eject.target = self; eject.representedObject = volume.url
+            }
+        }
+        if !menu.items.isEmpty { b.menu = menu }
         stack.addArrangedSubview(b)
         b.heightAnchor.constraint(equalToConstant: 32).isActive = true
         b.widthAnchor.constraint(equalTo: stack.widthAnchor, constant: -(stack.edgeInsets.left + stack.edgeInsets.right)).isActive = true
@@ -1491,6 +1500,38 @@ extension BrowserWindow {
             guard let self, !Task.isCancelled else { return }
             self.volumes = result; self.buildSidebar()
             if self.model.location == nil { self.buildHome() }
+        }
+    }
+
+    private var fileOperationIsRunning: Bool {
+        Self.entryOperationRunning || CopyWindow.isRunning || MoveWindow.isRunning || FolderMergeWindow.isRunning ||
+        DeletionWindow.isRunning || PermanentDeleteWindow.isRunning || RestoreWindow.isRunning || BatchRenameWindow.isRunning
+    }
+
+    @objc private func openDiskUtility(_ sender: NSMenuItem) {
+        guard let application = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.apple.DiskUtility") else {
+            showEntryError(L("디스크 유틸리티를 찾을 수 없습니다.", "Disk Utility could not be found.")); return
+        }
+        let configuration = NSWorkspace.OpenConfiguration(); configuration.activates = true
+        NSWorkspace.shared.openApplication(at: application, configuration: configuration)
+    }
+
+    @objc private func ejectVolume(_ sender: NSMenuItem) {
+        guard let url = sender.representedObject as? URL, let volume = volumes.first(where: { $0.url == url }), volume.canRequestEject else { return }
+        guard !fileOperationIsRunning else {
+            showEntryError(L("파일 작업이 진행 중이므로 드라이브를 추출할 수 없습니다. 작업이 끝난 뒤 다시 시도하세요.",
+                                  "The drive cannot be ejected while a file operation is running. Try again when it finishes.")); return
+        }
+        guard let window else { return }
+        let alert = NSAlert(); alert.messageText = L("드라이브 추출", "Eject Drive")
+        alert.informativeText = L("‘\(volume.name)’ 드라이브를 안전하게 추출합니다.", "Safely eject ‘\(volume.name)’.")
+        alert.addButton(withTitle: L("추출", "Eject")); alert.addButton(withTitle: L("취소", "Cancel"))
+        alert.beginSheetModal(for: window) { [weak self] response in
+            guard response == .alertFirstButtonReturn, let self else { return }
+            Task { @MainActor in
+                do { try await NSWorkspace.shared.unmountAndEjectDevice(at: url) }
+                catch { self.showEntryError(L("드라이브를 추출하지 못했습니다: ", "Could not eject the drive: ") + error.localizedDescription) }
+            }
         }
     }
 }
