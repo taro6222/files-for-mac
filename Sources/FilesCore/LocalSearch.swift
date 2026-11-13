@@ -19,7 +19,11 @@ public struct FileSearchBatch: Sendable {
     public init(items: [FileItem], skippedLocations: Int) { self.items = items; self.skippedLocations = skippedLocations }
 }
 
-public struct LocalFileSearch: Sendable {
+public protocol FileSearching: Sendable {
+    func batches(in root: URL, query: FileSearchQuery) -> AsyncThrowingStream<FileSearchBatch, Error>
+}
+
+public struct LocalFileSearch: FileSearching {
     public init() {}
     public func batches(in root: URL, query: FileSearchQuery) -> AsyncThrowingStream<FileSearchBatch, Error> {
         AsyncThrowingStream { continuation in

@@ -383,6 +383,29 @@ private struct DelayedLoader: DirectoryLoading {
     #expect(try await results(FileSearchQuery(text: "nested", kind: .folders)).map(\.name) == ["Nested"])
 }
 
+private struct DelayedSearch: FileSearching {
+    func batches(in root: URL, query: FileSearchQuery) -> AsyncThrowingStream<FileSearchBatch, Error> {
+        AsyncThrowingStream { continuation in
+            let task = Task {
+                try? await Task.sleep(for: query.text == "old" ? .milliseconds(120) : .milliseconds(10))
+                continuation.yield(FileSearchBatch(items: [FileItem(url: root.appendingPathComponent(query.text), name: query.text, isDirectory: false)], skippedLocations: query.text == "new" ? 2 : 0))
+                continuation.finish()
+            }
+            continuation.onTermination = { _ in task.cancel() }
+        }
+    }
+}
+
+@Test @MainActor func searchModelDiscardsStaleResultsAndReportsCancellation() async throws {
+    let model = SearchModel(searcher: DelayedSearch()), root = URL(fileURLWithPath: "/tmp")
+    model.search(in: root, query: FileSearchQuery(text: "old"))
+    model.search(in: root, query: FileSearchQuery(text: "new"))
+    try await Task.sleep(for: .milliseconds(150))
+    #expect(model.results.map(\.name) == ["new"]); #expect(model.skippedLocations == 2); #expect(!model.isSearching)
+    model.search(in: root, query: FileSearchQuery(text: "old")); model.cancel()
+    #expect(model.wasCancelled); #expect(!model.isSearching); #expect(model.results.isEmpty)
+}
+
 @Test func shortcutPreferencesPersistValidateCollisionsAndReset() throws {
     let suite = "shortcut-preferences-tests-\(UUID())", defaults = UserDefaults(suiteName: suite)!
     defer { defaults.removePersistentDomain(forName: suite) }
