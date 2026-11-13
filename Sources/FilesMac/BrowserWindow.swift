@@ -1202,6 +1202,33 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
             }
         }
     }
+    private func updateGrouping(field: FileGroupField? = nil, ascending: Bool? = nil,
+                                dateUnit: FileGroupDateUnit? = nil, toggleDirection: Bool = false,
+                                cycleDateUnit: Bool = false) {
+        var options = activeModel.grouping
+        if let field { options.field = field }
+        if let ascending { options.ascending = ascending }
+        if toggleDirection { options.ascending.toggle() }
+        if let dateUnit { options.dateUnit = dateUnit }
+        if cycleDateUnit {
+            options.dateUnit = switch options.dateUnit { case .year: .month; case .month: .day; case .day: .year }
+        }
+        activeModel.setGrouping(options)
+    }
+    @objc func groupByNone(_ sender: Any?) { updateGrouping(field: FileGroupField.none) }
+    @objc func groupByName(_ sender: Any?) { updateGrouping(field: .name) }
+    @objc func groupByModified(_ sender: Any?) { updateGrouping(field: .modified) }
+    @objc func groupBySize(_ sender: Any?) { updateGrouping(field: .size) }
+    @objc func groupByKind(_ sender: Any?) { updateGrouping(field: .kind) }
+    @objc func groupByModifiedYear(_ sender: Any?) { updateGrouping(field: .modified, dateUnit: .year) }
+    @objc func groupByModifiedMonth(_ sender: Any?) { updateGrouping(field: .modified, dateUnit: .month) }
+    @objc func groupByModifiedDay(_ sender: Any?) { updateGrouping(field: .modified, dateUnit: .day) }
+    @objc func groupAscending(_ sender: Any?) { updateGrouping(ascending: true) }
+    @objc func groupDescending(_ sender: Any?) { updateGrouping(ascending: false) }
+    @objc func toggleGroupDirection(_ sender: Any?) { updateGrouping(toggleDirection: true) }
+    @objc func groupDateByYear(_ sender: Any?) { updateGrouping(dateUnit: .year) }
+    @objc func groupDateByMonth(_ sender: Any?) { updateGrouping(dateUnit: .month) }
+    @objc func toggleGroupDateUnit(_ sender: Any?) { updateGrouping(cycleDateUnit: true) }
     private func startArchiveExtraction(_ placement: ArchiveExtractionPlacement) {
         let archives = selectedArchiveURLs
         guard !archives.isEmpty, let parent = activeModel.location, !ArchiveExtractionWindow.isRunning else { return }
@@ -2184,6 +2211,24 @@ extension BrowserWindow {
         case #selector(toggleFocusedSelection(_:)): return !activeSelectedItems.isEmpty
         case #selector(openAllTagged(_:)), #selector(removeTags(_:)): return !activeSelectedItems.isEmpty && activeSelectedItems.contains { ((try? FileTagService().snapshot($0.url).tags.isEmpty) == false) }
         case #selector(autoFitColumns(_:)): return canAutoFitColumns
+        case #selector(groupByNone(_:)): menuItem.state = activeModel.grouping.field == .none ? .on : .off; return activeModel.location != nil
+        case #selector(groupByName(_:)): menuItem.state = activeModel.grouping.field == .name ? .on : .off; return activeModel.location != nil
+        case #selector(groupByModified(_:)): menuItem.state = activeModel.grouping.field == .modified ? .on : .off; return activeModel.location != nil
+        case #selector(groupBySize(_:)): menuItem.state = activeModel.grouping.field == .size ? .on : .off; return activeModel.location != nil
+        case #selector(groupByKind(_:)): menuItem.state = activeModel.grouping.field == .kind ? .on : .off; return activeModel.location != nil
+        case #selector(groupByModifiedYear(_:)), #selector(groupDateByYear(_:)):
+            menuItem.state = activeModel.grouping.field == .modified && activeModel.grouping.dateUnit == .year ? .on : .off
+            return menuItem.action == #selector(groupByModifiedYear(_:)) ? activeModel.location != nil : activeModel.grouping.field == .modified
+        case #selector(groupByModifiedMonth(_:)), #selector(groupDateByMonth(_:)):
+            menuItem.state = activeModel.grouping.field == .modified && activeModel.grouping.dateUnit == .month ? .on : .off
+            return menuItem.action == #selector(groupByModifiedMonth(_:)) ? activeModel.location != nil : activeModel.grouping.field == .modified
+        case #selector(groupByModifiedDay(_:)):
+            menuItem.state = activeModel.grouping.field == .modified && activeModel.grouping.dateUnit == .day ? .on : .off
+            return activeModel.location != nil
+        case #selector(groupAscending(_:)): menuItem.state = activeModel.grouping.ascending ? .on : .off; return activeModel.grouping.field != .none
+        case #selector(groupDescending(_:)): menuItem.state = !activeModel.grouping.ascending ? .on : .off; return activeModel.grouping.field != .none
+        case #selector(toggleGroupDirection(_:)): return activeModel.grouping.field != .none
+        case #selector(toggleGroupDateUnit(_:)): return activeModel.grouping.field == .modified
         case #selector(createSymbolicLink(_:)): return activeModel.location != nil && activeSelectedItems.count == 1 && !activeModel.isLoading && !Self.entryOperationRunning
         case #selector(createSymbolicLinkFromDialog(_:)): return activeModel.location != nil && !activeModel.isLoading && !Self.entryOperationRunning
         case #selector(toggleSelectedFavorite(_:)): return activeModel.location != nil && (activeSelectedItems.isEmpty || (activeSelectedItems.count == 1 && activeSelectedItems[0].isBrowsable))
@@ -2383,6 +2428,8 @@ extension BrowserWindow {
             checks["systemInstallAndMediaCommands"] = [#selector(installCertificates(_:)), #selector(installFonts(_:)), #selector(playAllMedia(_:))].allSatisfy { action in paletteEntries.contains { $0.item.action == action } }
             checks["selectionAndTagCommands"] = [#selector(toggleFocusedSelection(_:)), #selector(openAllTagged(_:)), #selector(removeTags(_:))].allSatisfy { action in paletteEntries.contains { $0.item.action == action } }
             checks["autoFitColumnsCommand"] = paletteEntries.contains { $0.item.action == #selector(autoFitColumns(_:)) }
+            let groupingActions: [Selector] = [#selector(groupByNone(_:)), #selector(groupByName(_:)), #selector(groupByModified(_:)), #selector(groupBySize(_:)), #selector(groupByKind(_:)), #selector(groupByModifiedYear(_:)), #selector(groupByModifiedMonth(_:)), #selector(groupByModifiedDay(_:)), #selector(groupAscending(_:)), #selector(groupDescending(_:)), #selector(toggleGroupDirection(_:)), #selector(groupDateByYear(_:)), #selector(groupDateByMonth(_:)), #selector(toggleGroupDateUnit(_:))]
+            checks["groupingCommands"] = groupingActions.allSatisfy { action in paletteEntries.contains { $0.item.action == action } }
             checks["commandPaletteSearch"] = CommandPaletteCatalog.filtered(paletteEntries, query: L("숨김", "hidden")).contains { $0.item.action == #selector(toggleHidden(_:)) }
             controller.showCommandPalette(nil); try await Task.sleep(for: .milliseconds(50))
             controller.commandPalette.qaSetQuery(L("숨김", "hidden"))
@@ -2586,11 +2633,15 @@ extension BrowserWindow {
             checks["tenThousandRows"] = !controller.model.isLoading && controller.model.error == nil && controller.table.numberOfRows == 10_000
             if let first = controller.model.items.first {
                 controller.model.savePosition(selection: [first.id], scrollOffset: 0)
-                controller.model.setGrouping(.init(field: .size)); controller.render()
-                checks["detailGroupingRows"] = controller.qaDetailGroupTitles.count > 1
+                controller.groupBySize(nil); let ascendingGroups = controller.qaDetailGroupTitles
+                controller.groupDescending(nil); let descendingGroups = controller.qaDetailGroupTitles
+                checks["detailGroupingRows"] = ascendingGroups.count > 1
                     && !controller.qaDetailGroupTitles.contains("")
+                    && descendingGroups == Array(ascendingGroups.reversed())
                     && controller.primarySelectedItems.map(\.id) == [first.id]
-                controller.model.setGrouping(FileGroupOptions()); controller.render()
+                controller.groupByModifiedMonth(nil)
+                checks["groupingStatePersistence"] = controller.model.snapshot.grouping == .init(field: .modified, ascending: false, dateUnit: .month)
+                controller.groupByNone(nil)
             } else { checks["detailGroupingRows"] = false }
             for column in controller.table.tableColumns where !column.isHidden { column.width = column.minWidth }
             controller.autoFitColumns(nil)

@@ -314,6 +314,31 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             (L("크기", "Size"), #selector(BrowserWindow.sortBySize(_:))),
             (L("종류", "Kind"), #selector(BrowserWindow.sortByKind(_:)))
         ] { sort.addItem(withTitle: title, action: action, keyEquivalent: "") }
+        let groupItem = go.addItem(withTitle: L("그룹화", "Group By"), action: nil, keyEquivalent: "")
+        let group = NSMenu(title: groupItem.title); groupItem.submenu = group
+        for (title, action) in [
+            (L("없음", "None"), #selector(BrowserWindow.groupByNone(_:))),
+            (L("이름", "Name"), #selector(BrowserWindow.groupByName(_:))),
+            (L("수정일", "Date Modified"), #selector(BrowserWindow.groupByModified(_:))),
+            (L("크기", "Size"), #selector(BrowserWindow.groupBySize(_:))),
+            (L("종류", "Kind"), #selector(BrowserWindow.groupByKind(_:)))
+        ] { group.addItem(withTitle: title, action: action, keyEquivalent: "") }
+        let modifiedUnit = group.addItem(withTitle: L("수정일 단위", "Modified Date Unit"), action: nil, keyEquivalent: "")
+        let units = NSMenu(title: modifiedUnit.title); modifiedUnit.submenu = units
+        for (title, action) in [
+            (L("연", "Year"), #selector(BrowserWindow.groupByModifiedYear(_:))),
+            (L("월", "Month"), #selector(BrowserWindow.groupByModifiedMonth(_:))),
+            (L("일", "Day"), #selector(BrowserWindow.groupByModifiedDay(_:))),
+            (L("날짜 단위 전환", "Cycle Date Unit"), #selector(BrowserWindow.toggleGroupDateUnit(_:)))
+        ] { units.addItem(withTitle: title, action: action, keyEquivalent: "") }
+        group.addItem(.separator())
+        for (title, action) in [
+            (L("오름차순", "Ascending"), #selector(BrowserWindow.groupAscending(_:))),
+            (L("내림차순", "Descending"), #selector(BrowserWindow.groupDescending(_:))),
+            (L("그룹 방향 전환", "Toggle Group Direction"), #selector(BrowserWindow.toggleGroupDirection(_:))),
+            (L("연 단위", "Group Dates by Year"), #selector(BrowserWindow.groupDateByYear(_:))),
+            (L("월 단위", "Group Dates by Month"), #selector(BrowserWindow.groupDateByMonth(_:)))
+        ] { group.addItem(withTitle: title, action: action, keyEquivalent: "") }
         sort.addItem(.separator())
         for (title, action) in [
             (L("오름차순", "Ascending"), #selector(BrowserWindow.sortAscending(_:))),
