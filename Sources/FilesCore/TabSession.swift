@@ -13,26 +13,29 @@ public struct TabSnapshot: Codable, Equatable, Sendable {
     public var sortOrder: SortOrder
     public var showHidden: Bool
     public var viewMode: BrowserViewMode
+    public var grouping: FileGroupOptions
 
     public var location: URL? { history.current.url }
 
     public init(location: URL?, sortOrder: SortOrder = SortOrder(), showHidden: Bool = false,
-                viewMode: BrowserViewMode = .details) {
+                viewMode: BrowserViewMode = .details, grouping: FileGroupOptions = FileGroupOptions()) {
         self.history = NavigationHistory(current: NavigationEntry(url: location))
         self.sortOrder = sortOrder
         self.showHidden = showHidden
         self.viewMode = viewMode
+        self.grouping = grouping
     }
 
     public init(history: NavigationHistory, sortOrder: SortOrder = SortOrder(), showHidden: Bool = false,
-                viewMode: BrowserViewMode = .details) {
+                viewMode: BrowserViewMode = .details, grouping: FileGroupOptions = FileGroupOptions()) {
         self.history = history
         self.sortOrder = sortOrder
         self.showHidden = showHidden
         self.viewMode = viewMode
+        self.grouping = grouping
     }
 
-    private enum CodingKeys: String, CodingKey { case history, sortOrder, showHidden, viewMode }
+    private enum CodingKeys: String, CodingKey { case history, sortOrder, showHidden, viewMode, grouping }
 
     public init(from decoder: any Decoder) throws {
         let values = try decoder.container(keyedBy: CodingKeys.self)
@@ -40,6 +43,7 @@ public struct TabSnapshot: Codable, Equatable, Sendable {
         sortOrder = try values.decode(SortOrder.self, forKey: .sortOrder)
         showHidden = try values.decode(Bool.self, forKey: .showHidden)
         viewMode = try values.decodeIfPresent(BrowserViewMode.self, forKey: .viewMode) ?? .details
+        grouping = try values.decodeIfPresent(FileGroupOptions.self, forKey: .grouping) ?? FileGroupOptions()
     }
 }
 

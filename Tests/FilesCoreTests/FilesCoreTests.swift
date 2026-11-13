@@ -116,8 +116,21 @@ private func fixture() throws -> URL {
                                             from: JSONSerialization.data(withJSONObject: object))
 
     #expect(restored.viewMode == .details)
+    #expect(restored.grouping == FileGroupOptions())
     #expect(restored.location?.path == "/legacy")
     #expect(restored.showHidden)
+}
+
+@Test @MainActor func tabSnapshotPersistsGroupingAndBrowserModelRestoresIt() throws {
+    let grouping = FileGroupOptions(field: .modified, ascending: false, dateUnit: .month)
+    let snapshot = TabSnapshot(location: nil, viewMode: .grid, grouping: grouping)
+    let decoded = try JSONDecoder().decode(TabSnapshot.self, from: JSONEncoder().encode(snapshot))
+    #expect(decoded == snapshot)
+    let model = BrowserModel()
+    model.restore(decoded)
+    #expect(model.grouping == grouping)
+    model.setGrouping(.init(field: .kind))
+    #expect(model.snapshot.grouping == .init(field: .kind))
 }
 
 @Test @MainActor func browserViewModeChangesWithoutReloadingLocation() {

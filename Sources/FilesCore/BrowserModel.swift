@@ -55,6 +55,7 @@ public final class BrowserModel {
     public var showHidden = false
     public var sortOrder = SortOrder()
     public private(set) var viewMode: BrowserViewMode = .details
+    public private(set) var grouping = FileGroupOptions()
     public var onChange: (() -> Void)?
     private let loader: any DirectoryLoading
     private var generation = 0
@@ -63,13 +64,14 @@ public final class BrowserModel {
     public init(loader: any DirectoryLoading = LocalFileSystem()) { self.loader = loader }
     public var location: URL? { history.current.url }
     public var snapshot: TabSnapshot {
-        TabSnapshot(history: history, sortOrder: sortOrder, showHidden: showHidden, viewMode: viewMode)
+        TabSnapshot(history: history, sortOrder: sortOrder, showHidden: showHidden, viewMode: viewMode, grouping: grouping)
     }
     public func restore(_ snapshot: TabSnapshot) {
         history = snapshot.history
         sortOrder = snapshot.sortOrder
         showHidden = snapshot.showHidden
         viewMode = snapshot.viewMode
+        grouping = snapshot.grouping
         reload()
     }
     public func savePosition(selection: Set<String>, scrollOffset: Double) {
@@ -133,6 +135,11 @@ public final class BrowserModel {
     public func setViewMode(_ mode: BrowserViewMode) {
         guard viewMode != mode else { return }
         viewMode = mode
+        onChange?()
+    }
+    public func setGrouping(_ options: FileGroupOptions) {
+        guard grouping != options else { return }
+        grouping = options
         onChange?()
     }
 }
