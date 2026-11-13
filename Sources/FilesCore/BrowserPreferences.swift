@@ -50,6 +50,7 @@ public struct BrowserPreferencesArchive: Codable, Equatable, Sendable {
     public let showOpenInNewTab: Bool?
     public let showOpenInNewWindow: Bool?
     public let showOpenInNewPane: Bool?
+    public let showEditTagsMenu: Bool?
     public let showHomeFavorites: Bool
     public let showHomeVolumes: Bool
     public let showHomeRecent: Bool
@@ -102,6 +103,7 @@ public final class BrowserPreferences {
     public private(set) var showOpenInNewTab: Bool
     public private(set) var showOpenInNewWindow: Bool
     public private(set) var showOpenInNewPane: Bool
+    public private(set) var showEditTagsMenu: Bool
     public private(set) var showHomeFavorites: Bool
     public private(set) var showHomeVolumes: Bool
     public private(set) var showHomeRecent: Bool
@@ -148,6 +150,7 @@ public final class BrowserPreferences {
         showOpenInNewTab = defaults.object(forKey: "showOpenInNewTab") as? Bool ?? true
         showOpenInNewWindow = defaults.object(forKey: "showOpenInNewWindow") as? Bool ?? true
         showOpenInNewPane = defaults.object(forKey: "showOpenInNewPane") as? Bool ?? true
+        showEditTagsMenu = defaults.object(forKey: "showEditTagsMenu") as? Bool ?? true
         showHomeFavorites = defaults.object(forKey: "showHomeFavorites") as? Bool ?? true
         showHomeVolumes = defaults.object(forKey: "showHomeVolumes") as? Bool ?? true
         showHomeRecent = defaults.object(forKey: "showHomeRecent") as? Bool ?? true
@@ -234,6 +237,7 @@ public final class BrowserPreferences {
     public func setShowOpenInNewTab(_ value: Bool) { guard showOpenInNewTab != value else { return }; showOpenInNewTab = value; defaults.set(value, forKey: "showOpenInNewTab"); changed() }
     public func setShowOpenInNewWindow(_ value: Bool) { guard showOpenInNewWindow != value else { return }; showOpenInNewWindow = value; defaults.set(value, forKey: "showOpenInNewWindow"); changed() }
     public func setShowOpenInNewPane(_ value: Bool) { guard showOpenInNewPane != value else { return }; showOpenInNewPane = value; defaults.set(value, forKey: "showOpenInNewPane"); changed() }
+    public func setShowEditTagsMenu(_ value: Bool) { guard showEditTagsMenu != value else { return }; showEditTagsMenu = value; defaults.set(value, forKey: "showEditTagsMenu"); changed() }
     public func setViewSize(_ value: BrowserViewSize) {
         guard viewSize != value else { return }
         viewSize = value; defaults.set(value.rawValue, forKey: "viewSize"); changed()
@@ -287,6 +291,7 @@ public final class BrowserPreferences {
             showSendToMenu: showSendToMenu,
             showCopyPath: showCopyPath,
             showOpenInNewTab: showOpenInNewTab, showOpenInNewWindow: showOpenInNewWindow, showOpenInNewPane: showOpenInNewPane,
+            showEditTagsMenu: showEditTagsMenu,
             showHomeFavorites: showHomeFavorites, showHomeVolumes: showHomeVolumes, showHomeRecent: showHomeRecent,
             viewSize: viewSize.rawValue, appearance: appearance.rawValue, continueLastSession: continueLastSession, sizeUnit: sizeUnit.rawValue,
             openFoldersInNewTab: openFoldersInNewTab, scrollToPreviousFolderOnUp: scrollToPreviousFolderOnUp,
@@ -333,6 +338,7 @@ public final class BrowserPreferences {
         showSendToMenu = archive.showSendToMenu ?? true
         showCopyPath = archive.showCopyPath ?? true
         showOpenInNewTab = archive.showOpenInNewTab ?? true; showOpenInNewWindow = archive.showOpenInNewWindow ?? true; showOpenInNewPane = archive.showOpenInNewPane ?? true
+        showEditTagsMenu = archive.showEditTagsMenu ?? true
         showHomeFavorites = archive.showHomeFavorites; showHomeVolumes = archive.showHomeVolumes; showHomeRecent = archive.showHomeRecent
         viewSize = size; appearance = importedAppearance; continueLastSession = archive.continueLastSession; sizeUnit = importedSizeUnit
         openFoldersInNewTab = archive.openFoldersInNewTab ?? false; scrollToPreviousFolderOnUp = archive.scrollToPreviousFolderOnUp ?? true
@@ -351,6 +357,7 @@ public final class BrowserPreferences {
         defaults.set(showSendToMenu, forKey: "showSendToMenu")
         defaults.set(showCopyPath, forKey: "showCopyPath")
         defaults.set(showOpenInNewTab, forKey: "showOpenInNewTab"); defaults.set(showOpenInNewWindow, forKey: "showOpenInNewWindow"); defaults.set(showOpenInNewPane, forKey: "showOpenInNewPane")
+        defaults.set(showEditTagsMenu, forKey: "showEditTagsMenu")
         defaults.set(showHomeFavorites, forKey: "showHomeFavorites"); defaults.set(showHomeVolumes, forKey: "showHomeVolumes"); defaults.set(showHomeRecent, forKey: "showHomeRecent")
         defaults.set(viewSize.rawValue, forKey: "viewSize"); defaults.set(appearance.rawValue, forKey: "appearance"); defaults.set(continueLastSession, forKey: "continueLastSession"); defaults.set(sizeUnit.rawValue, forKey: "sizeUnit")
         defaults.set(openFoldersInNewTab, forKey: "openFoldersInNewTab"); defaults.set(scrollToPreviousFolderOnUp, forKey: "scrollToPreviousFolderOnUp"); defaults.set(showFileExtensionWarning, forKey: "showFileExtensionWarning")

@@ -81,6 +81,7 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
     private var openInNewTabMenuItem: NSMenuItem?
     private var openInNewWindowMenuItem: NSMenuItem?
     private var openInNewPaneMenuItem: NSMenuItem?
+    private var editTagsMenuItem: NSMenuItem?
     private lazy var commandPalette = CommandPaletteWindow()
     private var sharingPicker: NSSharingServicePicker?
     private var completionTask: Task<Void, Never>?
@@ -414,6 +415,7 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         let openPane = menu.addItem(withTitle: L("새 pane에서 열기", "Open in New Pane"), action: #selector(openInNewPane(_:)), keyEquivalent: ""); openPane.target = self; openInNewPaneMenuItem = openPane
         let pin = menu.addItem(withTitle: L("사이드바 즐겨찾기 전환", "Toggle Sidebar Favorite"), action: #selector(toggleSelectedFavorite(_:)), keyEquivalent: ""); pin.target = self
         pinToSidebarMenuItem = pin
+        let editTags = menu.addItem(withTitle: L("Finder 태그 편집…", "Edit Finder Tags…"), action: #selector(showInfo(_:)), keyEquivalent: ""); editTags.target = self; editTagsMenuItem = editTags
         let archive = menu.addItem(withTitle: L("압축 파일 탐색", "Browse Archive"), action: #selector(openArchive(_:)), keyEquivalent: ""); archive.target = self
         let createArchive = menu.addItem(withTitle: L("선택 항목 압축…", "Compress Selection…"), action: #selector(createArchive(_:)), keyEquivalent: ""); createArchive.target = self
         compressionMenuItems = [archive, createArchive]
@@ -1754,6 +1756,7 @@ extension BrowserWindow {
         openInNewTabMenuItem?.isHidden = !preferences.showOpenInNewTab
         openInNewWindowMenuItem?.isHidden = !preferences.showOpenInNewWindow
         openInNewPaneMenuItem?.isHidden = !preferences.showOpenInNewPane
+        editTagsMenuItem?.isHidden = !preferences.showEditTagsMenu
     }
     @objc private func setViewSize(_ sender: NSMenuItem) {
         guard let raw = sender.representedObject as? String, let size = BrowserViewSize(rawValue: raw) else { return }
@@ -1917,6 +1920,7 @@ extension BrowserWindow {
         case #selector(goForward(_:)): return secondaryActive ? !(secondaryPane?.model.history.forward.isEmpty ?? true) : !model.history.forward.isEmpty
         case #selector(goUp(_:)): return secondaryActive ? secondaryPane?.model.location != nil : model.location != nil && model.location?.path != "/"
         case #selector(openSelection(_:)): return !activeSelectedItems.isEmpty && activeModel.location != nil
+        case #selector(showInfo(_:)): return !activeSelectedItems.isEmpty && activeModel.location != nil
         case #selector(openInNewTab(_:)), #selector(openInNewWindow(_:)), #selector(openInNewPane(_:)): return contextFolderURL != nil
         case #selector(openArchive(_:)): return activeSelectedItems.count == 1 && activeSelectedItems.first.map { ArchiveFormat.detect($0.url).map { ArchiveCapabilityMatrix.capabilities(for: $0).browse } == true } == true
         case #selector(createArchive(_:)): return !ArchiveCreationWindow.isRunning && !activeModel.isLoading && !activeSelectedItems.isEmpty
@@ -2087,7 +2091,7 @@ extension BrowserWindow {
                     && delegate.qaGeneralScrollToPreviousFolderOnUp != revealBefore
                     && delegate.qaGeneralShowFileExtensionWarning != extensionWarningBefore
                     && contextMenusToggled
-                preferences.setShowCompressionOptions(false); preferences.setShowOpenTerminal(false); preferences.setShowCreateFolderWithSelection(false); preferences.setShowPinToSidebar(false); preferences.setShowSendToMenu(false); preferences.setShowCopyPath(false); preferences.setShowOpenInNewTab(false); preferences.setShowOpenInNewWindow(false); preferences.setShowOpenInNewPane(false)
+                preferences.setShowCompressionOptions(false); preferences.setShowOpenTerminal(false); preferences.setShowCreateFolderWithSelection(false); preferences.setShowPinToSidebar(false); preferences.setShowSendToMenu(false); preferences.setShowCopyPath(false); preferences.setShowOpenInNewTab(false); preferences.setShowOpenInNewWindow(false); preferences.setShowOpenInNewPane(false); preferences.setShowEditTagsMenu(false)
                 checks["contextMenuCompressionVisibilityPreference"] = !controller.qaVisibleContextActions.contains(NSStringFromSelector(#selector(createArchive(_:))))
                 checks["contextMenuTerminalVisibilityPreference"] = !controller.qaVisibleContextActions.contains(NSStringFromSelector(#selector(openInTerminal(_:))))
                 checks["contextMenuFolderVisibilityPreference"] = !controller.qaVisibleContextActions.contains(NSStringFromSelector(#selector(createFolderFromSelection(_:))))
@@ -2098,7 +2102,8 @@ extension BrowserWindow {
                 checks["contextMenuOpenDestinationVisibilityPreference"] = !controller.qaVisibleContextActions.contains(NSStringFromSelector(#selector(openInNewTab(_:))))
                     && !controller.qaVisibleContextActions.contains(NSStringFromSelector(#selector(openInNewWindow(_:))))
                     && !controller.qaVisibleContextActions.contains(NSStringFromSelector(#selector(openInNewPane(_:))))
-                preferences.setShowCompressionOptions(true); preferences.setShowOpenTerminal(true); preferences.setShowCreateFolderWithSelection(true); preferences.setShowPinToSidebar(true); preferences.setShowSendToMenu(true); preferences.setShowCopyPath(true); preferences.setShowOpenInNewTab(true); preferences.setShowOpenInNewWindow(true); preferences.setShowOpenInNewPane(true)
+                checks["contextMenuEditTagsVisibilityPreference"] = !controller.qaVisibleContextActions.contains(NSStringFromSelector(#selector(showInfo(_:))))
+                preferences.setShowCompressionOptions(true); preferences.setShowOpenTerminal(true); preferences.setShowCreateFolderWithSelection(true); preferences.setShowPinToSidebar(true); preferences.setShowSendToMenu(true); preferences.setShowCopyPath(true); preferences.setShowOpenInNewTab(true); preferences.setShowOpenInNewWindow(true); preferences.setShowOpenInNewPane(true); preferences.setShowEditTagsMenu(true)
                 controller.closeSecondaryPane(nil)
                 controller.navigate(fixture)
                 let paneSourceWait = ContinuousClock.now

@@ -22,6 +22,7 @@ final class GeneralSettingsWindow: NSWindowController {
     private let showOpenInNewTab = NSButton(checkboxWithTitle: L("컨텍스트 메뉴에 새 탭 열기 표시", "Show Open in New Tab in Context Menu"), target: nil, action: nil)
     private let showOpenInNewWindow = NSButton(checkboxWithTitle: L("컨텍스트 메뉴에 새 창 열기 표시", "Show Open in New Window in Context Menu"), target: nil, action: nil)
     private let showOpenInNewPane = NSButton(checkboxWithTitle: L("컨텍스트 메뉴에 새 pane 열기 표시", "Show Open in New Pane in Context Menu"), target: nil, action: nil)
+    private let showEditTagsMenu = NSButton(checkboxWithTitle: L("컨텍스트 메뉴에 Finder 태그 편집 표시", "Show Edit Finder Tags in Context Menu"), target: nil, action: nil)
 
     init(preferences: BrowserPreferences) {
         self.preferences = preferences
@@ -53,6 +54,7 @@ final class GeneralSettingsWindow: NSWindowController {
         configure(showOpenInNewTab, action: #selector(changeShowOpenInNewTab(_:))); stack.addArrangedSubview(showOpenInNewTab)
         configure(showOpenInNewWindow, action: #selector(changeShowOpenInNewWindow(_:))); stack.addArrangedSubview(showOpenInNewWindow)
         configure(showOpenInNewPane, action: #selector(changeShowOpenInNewPane(_:))); stack.addArrangedSubview(showOpenInNewPane)
+        configure(showEditTagsMenu, action: #selector(changeShowEditTagsMenu(_:))); stack.addArrangedSubview(showEditTagsMenu)
         let homeTitle = NSTextField(labelWithString: L("홈 위젯", "Home Widgets")); homeTitle.font = .systemFont(ofSize: 14, weight: .semibold); stack.addArrangedSubview(homeTitle)
         configure(favorites, action: #selector(changeFavorites(_:))); configure(volumes, action: #selector(changeVolumes(_:))); configure(recent, action: #selector(changeRecent(_:)))
         stack.addArrangedSubview(favorites); stack.addArrangedSubview(volumes); stack.addArrangedSubview(recent)
@@ -77,6 +79,7 @@ final class GeneralSettingsWindow: NSWindowController {
         showOpenInNewTab.state = preferences.showOpenInNewTab ? .on : .off
         showOpenInNewWindow.state = preferences.showOpenInNewWindow ? .on : .off
         showOpenInNewPane.state = preferences.showOpenInNewPane ? .on : .off
+        showEditTagsMenu.state = preferences.showEditTagsMenu ? .on : .off
         favorites.state = preferences.showHomeFavorites ? .on : .off; volumes.state = preferences.showHomeVolumes ? .on : .off; recent.state = preferences.showHomeRecent ? .on : .off
     }
     @objc private func changeContinueSession(_ sender: Any?) { preferences.setContinueLastSession(continueSession.state == .on) }
@@ -99,6 +102,7 @@ final class GeneralSettingsWindow: NSWindowController {
     @objc private func changeShowOpenInNewTab(_ sender: Any?) { preferences.setShowOpenInNewTab(showOpenInNewTab.state == .on) }
     @objc private func changeShowOpenInNewWindow(_ sender: Any?) { preferences.setShowOpenInNewWindow(showOpenInNewWindow.state == .on) }
     @objc private func changeShowOpenInNewPane(_ sender: Any?) { preferences.setShowOpenInNewPane(showOpenInNewPane.state == .on) }
+    @objc private func changeShowEditTagsMenu(_ sender: Any?) { preferences.setShowEditTagsMenu(showEditTagsMenu.state == .on) }
     @objc private func changeFavorites(_ sender: Any?) { preferences.setSection(.favorites, visible: favorites.state == .on) }
     @objc private func changeVolumes(_ sender: Any?) { preferences.setSection(.volumes, visible: volumes.state == .on) }
     @objc private func changeRecent(_ sender: Any?) { preferences.setSection(.recent, visible: recent.state == .on) }
@@ -109,12 +113,12 @@ final class GeneralSettingsWindow: NSWindowController {
     var qaOpenFoldersInNewTab: Bool { preferences.openFoldersInNewTab }
     var qaScrollToPreviousFolderOnUp: Bool { preferences.scrollToPreviousFolderOnUp }
     var qaShowFileExtensionWarning: Bool { preferences.showFileExtensionWarning }
-    var qaContextMenuStates: [Bool] { [preferences.showCompressionOptions, preferences.showOpenTerminal, preferences.showCreateFolderWithSelection, preferences.showPinToSidebar, preferences.showSendToMenu, preferences.showCopyPath, preferences.showOpenInNewTab, preferences.showOpenInNewWindow, preferences.showOpenInNewPane] }
+    var qaContextMenuStates: [Bool] { [preferences.showCompressionOptions, preferences.showOpenTerminal, preferences.showCreateFolderWithSelection, preferences.showPinToSidebar, preferences.showSendToMenu, preferences.showCopyPath, preferences.showOpenInNewTab, preferences.showOpenInNewWindow, preferences.showOpenInNewPane, preferences.showEditTagsMenu] }
     func qaToggleWidgets() { favorites.performClick(nil); volumes.performClick(nil); recent.performClick(nil) }
     func qaToggleSizeUnit() { sizeUnit.selectItem(at: sizeUnit.indexOfSelectedItem == 0 ? 1 : 0); changeSizeUnit(nil) }
     func qaToggleOpenFoldersInNewTab() { openFoldersInNewTab.performClick(nil) }
     func qaToggleScrollToPreviousFolderOnUp() { scrollToPreviousFolderOnUp.performClick(nil) }
     func qaToggleShowFileExtensionWarning() { showFileExtensionWarning.performClick(nil) }
-    func qaToggleContextMenuItems() { showCompressionOptions.performClick(nil); showOpenTerminal.performClick(nil); showCreateFolderWithSelection.performClick(nil); showPinToSidebar.performClick(nil); showSendToMenu.performClick(nil); showCopyPath.performClick(nil); showOpenInNewTab.performClick(nil); showOpenInNewWindow.performClick(nil); showOpenInNewPane.performClick(nil) }
+    func qaToggleContextMenuItems() { showCompressionOptions.performClick(nil); showOpenTerminal.performClick(nil); showCreateFolderWithSelection.performClick(nil); showPinToSidebar.performClick(nil); showSendToMenu.performClick(nil); showCopyPath.performClick(nil); showOpenInNewTab.performClick(nil); showOpenInNewWindow.performClick(nil); showOpenInNewPane.performClick(nil); showEditTagsMenu.performClick(nil) }
 #endif
 }
