@@ -40,6 +40,7 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
     private var toolbarSettingsWindow: ToolbarSettingsWindow?
     private var searchWindow: SearchWindow?
     private var infoWindow: FileInfoWindow?
+    private var archiveWindow: ArchiveWindow?
     private let quickLook = QuickLookController()
     private let homeView = NSStackView()
     private let sidebar = NSStackView()
@@ -376,6 +377,7 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         let rename = menu.addItem(withTitle: L("이름 변경…", "Rename…"), action: #selector(renameSelection(_:)), keyEquivalent: ""); rename.target = self
         let batchRename = menu.addItem(withTitle: L("일괄 이름 변경…", "Batch Rename…"), action: #selector(batchRenameSelection(_:)), keyEquivalent: ""); batchRename.target = self
         let open = menu.addItem(withTitle: L("열기", "Open"), action: #selector(openSelection(_:)), keyEquivalent: ""); open.target = self
+        let archive = menu.addItem(withTitle: L("압축 파일 탐색", "Browse Archive"), action: #selector(openArchive(_:)), keyEquivalent: ""); archive.target = self
         let copy = menu.addItem(withTitle: L("선택 항목 복사…", "Copy Selection To…"), action: #selector(copySelection(_:)), keyEquivalent: ""); copy.target = self
         let move = menu.addItem(withTitle: L("선택 항목 이동…", "Move Selection To…"), action: #selector(moveSelection(_:)), keyEquivalent: ""); move.target = self
         menu.addItem(NSMenuItem.separator())
@@ -849,15 +851,25 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         let rows = table.selectedRowIndexes
         guard let first = rows.first, model.items.indices.contains(first) else { return }
         let item = model.items[first]
-        if item.isBrowsable { navigate(item.url) }
-        else { NSWorkspace.shared.open(item.url) }
+        openItem(item)
     }
     private func openGridItem(_ item: FileItem) {
         openRenderedItem(item)
     }
     private func openRenderedItem(_ item: FileItem) {
+        openItem(item)
+    }
+    private func openItem(_ item: FileItem) {
         if item.isBrowsable { navigate(item.url) }
+        else if item.url.pathExtension.lowercased() == "zip" { presentArchive(item.url) }
         else { NSWorkspace.shared.open(item.url) }
+    }
+    private func presentArchive(_ url: URL) {
+        let controller = archiveWindow ?? ArchiveWindow(); archiveWindow = controller; controller.present(archiveURL: url)
+    }
+    @objc func openArchive(_ sender: Any?) {
+        guard activeSelectedItems.count == 1, let item = activeSelectedItems.first, item.url.pathExtension.lowercased() == "zip" else { return }
+        presentArchive(item.url)
     }
     @objc func createFolder(_ sender: Any?) { promptForEntryName(source: nil) }
     @objc func createFolderFromSelection(_ sender: Any?) {
@@ -1628,6 +1640,7 @@ extension BrowserWindow {
         case #selector(goForward(_:)): return secondaryActive ? !(secondaryPane?.model.history.forward.isEmpty ?? true) : !model.history.forward.isEmpty
         case #selector(goUp(_:)): return secondaryActive ? secondaryPane?.model.location != nil : model.location != nil && model.location?.path != "/"
         case #selector(openSelection(_:)): return !activeSelectedItems.isEmpty && activeModel.location != nil
+        case #selector(openArchive(_:)): return activeSelectedItems.count == 1 && activeSelectedItems.first?.url.pathExtension.lowercased() == "zip"
         case #selector(revealSelection(_:)), #selector(shareSelection(_:)), #selector(openWithApplication(_:)): return !activeSelectedItems.isEmpty && activeModel.location != nil
         case #selector(openInTerminal(_:)): return activeModel.location != nil
         default: return true
@@ -1706,10 +1719,12 @@ extension BrowserWindow {
             for name in ["one.jpg", "two.png", "three.mov"] {
                 try Data("media".utf8).write(to: columnFolder.appendingPathComponent(name))
             }
-            for index in 0..<9_999 {
+            for index in 0..<9_998 {
                 let name = index == 0 ? "00000-한글-é-📁-long-file-name.txt" : String(format: "%05d-file.txt", index)
                 try Data("fixture".utf8).write(to: fixture.appendingPathComponent(name))
             }
+            let archiveFixture = fixture.appendingPathComponent("99998-fixture.zip")
+            _ = try await ZipArchiveProvider().create(from: [fixture.appendingPathComponent("00000-한글-é-📁-long-file-name.txt")], at: archiveFixture)
             let preferences = BrowserPreferences(defaults: defaults, initialFavorites: [fixture])
             let dark = ProcessInfo.processInfo.environment["FILES_UI_QA_THEME"] == "dark"
             NSApp.appearance = NSAppearance(named: dark ? .darkAqua : .aqua)
@@ -1855,6 +1870,23 @@ extension BrowserWindow {
             checks["quickLookItems"] = controller.quickLook.qaItemCount == 1
             try capture("quick-look", view: controller.quickLook.qaContentView)
             controller.quickLook.close(); window.makeKeyAndOrderFront(nil)
+            if let archiveItem = controller.model.items.first(where: { $0.name == archiveFixture.lastPathComponent }) {
+                controller.model.savePosition(selection: [archiveItem.id], scrollOffset: 0); controller.render(); controller.openArchive(nil)
+            }
+            let archiveLoad = ContinuousClock.now
+            while controller.archiveWindow?.qaLoaded != true && archiveLoad.duration(to: .now) < .seconds(10) { try await Task.sleep(for: .milliseconds(10)) }
+            checks["archiveWindow"] = controller.archiveWindow?.window?.isVisible == true
+            checks["archiveListing"] = controller.archiveWindow?.qaEntryCount == 1
+            let archiveDestination = destination.appendingPathComponent("archive-extracted", isDirectory: true)
+            if fm.fileExists(atPath: archiveDestination.path) { try fm.removeItem(at: archiveDestination) }
+            try fm.createDirectory(at: archiveDestination, withIntermediateDirectories: true)
+            controller.archiveWindow?.qaExtract(to: archiveDestination)
+            let archiveExtract = ContinuousClock.now
+            while controller.archiveWindow?.qaIsRunning == true && archiveExtract.duration(to: .now) < .seconds(10) { try await Task.sleep(for: .milliseconds(10)) }
+            let extractedArchiveText = try String(contentsOf: archiveDestination.appendingPathComponent("00000-한글-é-📁-long-file-name.txt"), encoding: .utf8)
+            checks["archiveExtraction"] = controller.archiveWindow?.qaSucceeded == true && extractedArchiveText == "fixture"
+            try capture("archive", view: controller.archiveWindow?.window?.contentView)
+            controller.archiveWindow?.close(); window.makeKeyAndOrderFront(nil)
             try await Task.sleep(for: .milliseconds(300))
             let metadataRefresh = ContinuousClock.now
             while controller.model.isLoading && metadataRefresh.duration(to: .now) < .seconds(10) { try await Task.sleep(for: .milliseconds(10)) }
