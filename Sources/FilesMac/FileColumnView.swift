@@ -109,6 +109,14 @@ final class FileColumnView: NSView {
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
     var selectedItems: [FileItem] { columns.reversed().first(where: { !$0.selectedItems.isEmpty })?.selectedItems ?? [] }
+    func replaceSelection(with ids: Set<String>) {
+        guard let column = columns.reversed().first(where: { !$0.selectedItems.isEmpty }) ?? columns.last else { return }
+        column.apply(selection: ids); selectionChanged(column: column)
+    }
+    func invertSelection() {
+        guard let column = columns.reversed().first(where: { !$0.selectedItems.isEmpty }) ?? columns.last else { return }
+        replaceSelection(with: Set(column.items.map(\.id)).subtracting(column.selectedItems.map(\.id)))
+    }
     func update(baseURL: URL?, items: [FileItem], selection: Set<String>) {
         guard let baseURL else { reset(); return }
         let ids = items.map(\.id)

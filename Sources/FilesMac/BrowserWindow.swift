@@ -839,6 +839,26 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         model.cancelLoad()
     }
     @objc func focusPath(_ sender: Any?) { if secondaryActive { secondaryPane?.focusPath() } else { window?.makeFirstResponder(pathField); pathField.selectText(nil) } }
+    @objc func clearSelection(_ sender: Any?) {
+        if secondaryActive { secondaryPane?.clearSelection(); return }
+        switch primaryRenderedViewMode {
+        case .grid: gridView.replaceSelection(with: [])
+        case .list: listView.replaceSelection(with: [])
+        case .columns: columnView.replaceSelection(with: [])
+        default: table.deselectAll(nil)
+        }
+    }
+    @objc func invertSelection(_ sender: Any?) {
+        if secondaryActive { secondaryPane?.invertSelection(); return }
+        switch primaryRenderedViewMode {
+        case .grid: gridView.invertSelection()
+        case .list: listView.invertSelection()
+        case .columns: columnView.invertSelection()
+        default:
+            let inverted = IndexSet(model.items.indices).subtracting(table.selectedRowIndexes)
+            table.selectRowIndexes(inverted, byExtendingSelection: false)
+        }
+    }
     @objc func showSearch(_ sender: Any?) {
         guard let root = activeModel.location else { return }
         if searchWindow == nil {
@@ -2103,6 +2123,14 @@ extension BrowserWindow {
             while controller.model.isLoading && metadataRefresh.duration(to: .now) < .seconds(10) { try await Task.sleep(for: .milliseconds(10)) }
             controller.focusFiles(nil)
             checks["fileListFocus"] = window.firstResponder === controller.table
+            controller.table.selectRowIndexes(IndexSet([0, 1]), byExtendingSelection: false)
+            controller.invertSelection(nil)
+            checks["invertSelectionCommand"] = controller.table.selectedRowIndexes.count == controller.model.items.count - 2
+            controller.clearSelection(nil)
+            checks["clearSelectionCommand"] = controller.table.selectedRowIndexes.isEmpty
+            checks["selectionCommandsCatalog"] = [#selector(clearSelection(_:)), #selector(invertSelection(_:))].allSatisfy { action in
+                paletteEntries.contains { $0.item.action == action }
+            }
             try capture("files-top")
             controller.table.selectRowIndexes(IndexSet(integer: 9_999), byExtendingSelection: false)
             let scrollStart = ContinuousClock.now

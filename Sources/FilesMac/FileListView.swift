@@ -51,6 +51,13 @@ final class FileListView: NSView, NSTableViewDataSource, NSTableViewDelegate {
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
     var selectedItems: [FileItem] { table.selectedRowIndexes.compactMap { items.indices.contains($0) ? items[$0] : nil } }
+    func replaceSelection(with ids: Set<String>) {
+        suppressSelectionNotification = true
+        table.selectRowIndexes(IndexSet(items.indices.filter { ids.contains(items[$0].id) }), byExtendingSelection: false)
+        suppressSelectionNotification = false
+        onSelectionChange?(Set(selectedItems.map(\.id)))
+    }
+    func invertSelection() { replaceSelection(with: Set(items.map(\.id)).subtracting(selectedItems.map(\.id))) }
     func update(items: [FileItem], selection: Set<String>, scrollOffset: Double) {
         suppressSelectionNotification = true; self.items = items; table.reloadData()
         table.selectRowIndexes(IndexSet(items.indices.filter { selection.contains(items[$0].id) }), byExtendingSelection: false)

@@ -61,6 +61,26 @@ final class SecondaryBrowserPane: NSView, NSTableViewDataSource, NSTableViewDele
     func goUp() { activate(); if let location = model.location { navigate(location.deletingLastPathComponent()) } }
     func refresh() { activate(); savePosition(); model.reload() }
     func focusPath() { activate(); window?.makeFirstResponder(pathField); pathField.selectText(nil) }
+    func clearSelection() {
+        activate()
+        switch renderedViewMode {
+        case .grid: gridView.replaceSelection(with: [])
+        case .list: listView.replaceSelection(with: [])
+        case .columns: columnView.replaceSelection(with: [])
+        default: table.deselectAll(nil)
+        }
+    }
+    func invertSelection() {
+        activate()
+        switch renderedViewMode {
+        case .grid: gridView.invertSelection()
+        case .list: listView.invertSelection()
+        case .columns: columnView.invertSelection()
+        default:
+            let inverted = IndexSet(model.items.indices).subtracting(table.selectedRowIndexes)
+            table.selectRowIndexes(inverted, byExtendingSelection: false)
+        }
+    }
     func focusFiles() {
         activate()
         if renderedViewMode == .grid { gridView.focus() }

@@ -206,6 +206,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         edit.addItem(withTitle: L("복사", "Copy"), action: #selector(NSText.copy(_:)), keyEquivalent: "c")
         edit.addItem(withTitle: L("붙여넣기", "Paste"), action: #selector(NSText.paste(_:)), keyEquivalent: "v")
         edit.addItem(withTitle: L("모두 선택", "Select All"), action: #selector(NSResponder.selectAll(_:)), keyEquivalent: "a")
+        edit.addItem(withTitle: L("선택 해제", "Clear Selection"), action: #selector(BrowserWindow.clearSelection(_:)), keyEquivalent: "")
+        edit.addItem(withTitle: L("선택 반전", "Invert Selection"), action: #selector(BrowserWindow.invertSelection(_:)), keyEquivalent: "")
         edit.addItem(.separator())
         edit.addItem(withTitle: L("현재 위치 검색…", "Search Current Location…"), action: #selector(BrowserWindow.showSearch(_:)), keyEquivalent: "f")
         let goItem = NSMenuItem(); goItem.title = L("이동", "Go"); menu.addItem(goItem)

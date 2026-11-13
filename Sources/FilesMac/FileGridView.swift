@@ -108,6 +108,12 @@ final class FileGridView: NSView, NSCollectionViewDataSource, NSCollectionViewDe
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
     var selectedItems: [FileItem] { collection.selectionIndexPaths.compactMap { items.indices.contains($0.item) ? items[$0.item] : nil } }
+    func replaceSelection(with ids: Set<String>) {
+        suppressSelectionNotification = true
+        collection.selectionIndexPaths = Set(items.indices.filter { ids.contains(items[$0].id) }.map { IndexPath(item: $0, section: 0) })
+        suppressSelectionNotification = false; selectionChanged()
+    }
+    func invertSelection() { replaceSelection(with: Set(items.map(\.id)).subtracting(selectedItems.map(\.id))) }
     func update(items: [FileItem], selection: Set<String>, scrollOffset: Double) {
         suppressSelectionNotification = true
         self.items = items; collection.reloadData()
