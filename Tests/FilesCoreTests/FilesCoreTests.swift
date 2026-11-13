@@ -421,6 +421,19 @@ private struct DelayedSearch: FileSearching {
     await #expect(throws: FileHashError.directoryUnsupported) { try await inspector.sha256(root) }
 }
 
+@Test func finderTagsRoundTripValidateAndRejectReplacement() throws {
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+    defer { try? FileManager.default.removeItem(at: root) }
+    try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+    let file = root.appendingPathComponent("tagged.txt"); try Data("one".utf8).write(to: file)
+    let service = FileTagService(), initial = try service.snapshot(file)
+    let written = try service.setTags([" Work ", "work", "검토"], at: file, expectedIdentity: initial.identity)
+    #expect(written.tags == ["Work", "검토"]); #expect(try service.snapshot(file).tags == written.tags)
+    #expect(throws: FileTagError.invalidName) { try service.setTags(["bad\ntag"], at: file, expectedIdentity: written.identity) }
+    try FileManager.default.removeItem(at: file); try Data("two".utf8).write(to: file)
+    #expect(throws: FileTagError.changedIdentity) { try service.setTags(["new"], at: file, expectedIdentity: written.identity) }
+}
+
 @Test func shortcutPreferencesPersistValidateCollisionsAndReset() throws {
     let suite = "shortcut-preferences-tests-\(UUID())", defaults = UserDefaults(suiteName: suite)!
     defer { defaults.removePersistentDomain(forName: suite) }
