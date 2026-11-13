@@ -385,3 +385,12 @@ private extension Data {
     #expect(BatchRenamePattern.replacing(sources, find: "photo", replacement: "image").map(\.name) == ["image-a.jpg", "image-b.png"])
     #expect(BatchRenamePattern.numbered(sources, base: "Vacation", start: 7).map(\.name) == ["Vacation 7.jpg", "Vacation 8.png"])
 }
+
+@Test func batchRenameRegularExpressionSupportsCapturesAndRejectsInvalidPattern() throws {
+    let sources = [URL(fileURLWithPath: "/tmp/IMG_0042.jpg"), URL(fileURLWithPath: "/tmp/IMG_0043.jpg")]
+    let requests = try BatchRenamePattern.regularExpression(sources, pattern: #"IMG_(\d+)"#, replacement: "Photo-$1")
+    #expect(requests.map(\.name) == ["Photo-0042.jpg", "Photo-0043.jpg"])
+    #expect(throws: (any Error).self) {
+        try BatchRenamePattern.regularExpression(sources, pattern: "(", replacement: "x")
+    }
+}

@@ -33,6 +33,17 @@ public enum BatchRenamePattern {
             return BatchRenameRequest(source: source, name: "\(base) \(start + index)\(suffix)")
         }
     }
+
+    public static func regularExpression(_ sources: [URL], pattern: String,
+                                         replacement: String) throws -> [BatchRenameRequest] {
+        let expression = try NSRegularExpression(pattern: pattern)
+        return sources.map { source in
+            let name = source.lastPathComponent
+            let range = NSRange(name.startIndex..<name.endIndex, in: name)
+            return BatchRenameRequest(source: source,
+                name: expression.stringByReplacingMatches(in: name, range: range, withTemplate: replacement))
+        }
+    }
 }
 
 public extension EntryOperations {

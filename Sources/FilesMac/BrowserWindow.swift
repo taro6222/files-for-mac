@@ -566,18 +566,46 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         guard table.selectedRowIndexes.count > 1, let window else { return }
         let sources = table.selectedRowIndexes.compactMap { model.items.indices.contains($0) ? model.items[$0].url : nil }
         let alert = NSAlert(); alert.messageText = L("일괄 이름 변경", "Batch Rename")
-        alert.informativeText = L("찾을 문자열과 바꿀 문자열을 입력하세요. 적용 전에 전체 이름의 중복과 기존 항목 충돌을 검사합니다.",
-                                  "Enter text to find and replace. Duplicate names and existing-item conflicts are checked before applying.")
+        alert.informativeText = L("방식을 선택하고 값을 입력하세요. 다음 화면에서 실제 변경 이름을 확인합니다.",
+                                  "Choose a mode and enter values. Review the resulting names on the next screen.")
         let stack = NSStackView(); stack.orientation = .vertical; stack.spacing = 8
-        stack.frame = NSRect(x: 0, y: 0, width: 420, height: 62)
-        let find = NSTextField(); find.placeholderString = L("찾을 문자열", "Find text")
-        let replacement = NSTextField(); replacement.placeholderString = L("바꿀 문자열", "Replacement text")
-        stack.addArrangedSubview(find); stack.addArrangedSubview(replacement); alert.accessoryView = stack
-        alert.addButton(withTitle: L("미리보기 및 실행", "Preview and Run")); alert.addButton(withTitle: L("취소", "Cancel"))
-        alert.window.initialFirstResponder = find
+        stack.frame = NSRect(x: 0, y: 0, width: 440, height: 96)
+        let mode = NSPopUpButton(); mode.addItems(withTitles: [L("찾기 및 바꾸기", "Find and Replace"), L("번호 매기기", "Numbering"), L("정규식", "Regular Expression")])
+        let first = NSTextField(); first.placeholderString = L("찾을 문자열 / 기본 이름 / 정규식", "Find text / Base name / Regular expression")
+        let second = NSTextField(); second.placeholderString = L("바꿀 문자열 / 시작 번호 / 치환식", "Replacement / Start number / Replacement template")
+        stack.addArrangedSubview(mode); stack.addArrangedSubview(first); stack.addArrangedSubview(second); alert.accessoryView = stack
+        alert.addButton(withTitle: L("미리보기", "Preview")); alert.addButton(withTitle: L("취소", "Cancel"))
+        alert.window.initialFirstResponder = first
         alert.beginSheetModal(for: window) { [weak self] response in
-            guard response == .alertFirstButtonReturn, !find.stringValue.isEmpty else { return }
-            let requests = BatchRenamePattern.replacing(sources, find: find.stringValue, replacement: replacement.stringValue)
+            guard response == .alertFirstButtonReturn, !first.stringValue.isEmpty, let self else { return }
+            let requests: [BatchRenameRequest]
+            do {
+                switch mode.indexOfSelectedItem {
+                case 1:
+                    let start = Int(second.stringValue) ?? 1
+                    guard start >= 0 else { self.showEntryError(L("시작 번호는 0 이상이어야 합니다.", "The starting number must be zero or greater.")); return }
+                    requests = BatchRenamePattern.numbered(sources, base: first.stringValue, start: start)
+                case 2:
+                    requests = try BatchRenamePattern.regularExpression(sources, pattern: first.stringValue, replacement: second.stringValue)
+                default:
+                    requests = BatchRenamePattern.replacing(sources, find: first.stringValue, replacement: second.stringValue)
+                }
+                self.confirmBatchRename(requests)
+            } catch {
+                self.showEntryError(L("정규식을 해석할 수 없습니다: ", "Invalid regular expression: ") + error.localizedDescription)
+            }
+        }
+    }
+    private func confirmBatchRename(_ requests: [BatchRenameRequest]) {
+        guard let window else { return }
+        let alert = NSAlert(); alert.messageText = L("변경될 이름 미리보기", "Preview New Names")
+        let preview = requests.prefix(20).map { $0.source.lastPathComponent + " → " + $0.name }.joined(separator: "\n")
+        let remainder = requests.count > 20 ? L("\n…외 ", "\n…and ") + "\(requests.count - 20)" + L("개", " more") : ""
+        alert.informativeText = L("실행 시 전체 계획의 중복과 기존 항목 충돌을 다시 검사합니다.\n\n",
+                                  "The full plan is checked again for duplicates and existing-item conflicts before applying.\n\n") + preview + remainder
+        alert.addButton(withTitle: L("이름 변경", "Rename")); alert.addButton(withTitle: L("취소", "Cancel"))
+        alert.beginSheetModal(for: window) { [weak self] response in
+            guard response == .alertFirstButtonReturn else { return }
             BatchRenameWindow.start(requests: requests) { [weak self] in self?.refresh(nil) }
         }
     }
