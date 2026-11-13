@@ -404,6 +404,21 @@ private struct DelayedLoader: DirectoryLoading {
     preferences.removeObserver(token)
 }
 
+@Test func codeSignatureMetadataParserExtractsStableFields() {
+    let parsed = CodeSignatureInspector.parse("""
+    Executable=/Applications/Example.app/Contents/MacOS/Example
+    Identifier=org.example.app
+    Format=app bundle with Mach-O thin (arm64)
+    Authority=Developer ID Application: Example
+    Authority=Developer ID Certification Authority
+    TeamIdentifier=ABCDE12345
+    """)
+    #expect(parsed.identifier == "org.example.app")
+    #expect(parsed.teamIdentifier == "ABCDE12345")
+    #expect(parsed.format == "app bundle with Mach-O thin (arm64)")
+    #expect(parsed.authorities == ["Developer ID Application: Example", "Developer ID Certification Authority"])
+}
+
 @Test @MainActor func folderViewPreferencesPersistStandardizeRemoveAndRecoverCorruption() {
     let suite = "folder-view-preferences-tests-\(UUID())", defaults = UserDefaults(suiteName: suite)!
     defer { defaults.removePersistentDomain(forName: suite) }

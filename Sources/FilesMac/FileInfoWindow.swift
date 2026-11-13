@@ -7,7 +7,8 @@ final class FileInfoWindow: NSWindowController {
     private let details = NSStackView(), status = NSTextField(labelWithString: "")
     private let hashButton = NSButton(), hashProgress = NSProgressIndicator(), digest = NSTextField(wrappingLabelWithString: "")
     private let tagField = NSTextField(), saveTagsButton = NSButton()
-    private var items: [FileItem] = [], properties: FileProperties?, inspectTask: Task<Void, Never>?, hashTask: Task<Void, Never>?
+    private let signatureButton = NSButton(), signatureDetails = NSTextField(wrappingLabelWithString: "")
+    private var items: [FileItem] = [], properties: FileProperties?, inspectTask: Task<Void, Never>?, hashTask: Task<Void, Never>?, signatureTask: Task<Void, Never>?
     private var tagIdentity: String?
 
     init() {
@@ -31,10 +32,14 @@ final class FileInfoWindow: NSWindowController {
         hashButton.title = L("해시 계산", "Calculate Hash"); hashButton.target = self; hashButton.action = #selector(toggleHash(_:)); hashControls.addArrangedSubview(hashButton)
         hashProgress.isIndeterminate = true; hashProgress.isHidden = true; hashControls.addArrangedSubview(hashProgress); root.addArrangedSubview(hashControls)
         digest.font = .monospacedSystemFont(ofSize: 11, weight: .regular); digest.isSelectable = true; digest.lineBreakMode = .byCharWrapping; root.addArrangedSubview(digest)
+        let signatureSeparator = NSBox(); signatureSeparator.boxType = .separator; root.addArrangedSubview(signatureSeparator)
+        let signatureTitle = NSTextField(labelWithString: L("코드 서명", "Code Signature")); signatureTitle.font = .systemFont(ofSize: 14, weight: .semibold); root.addArrangedSubview(signatureTitle)
+        signatureButton.title = L("서명 확인", "Inspect Signature"); signatureButton.target = self; signatureButton.action = #selector(inspectSignature(_:)); root.addArrangedSubview(signatureButton)
+        signatureDetails.isSelectable = true; signatureDetails.textColor = .secondaryLabelColor; root.addArrangedSubview(signatureDetails)
         status.textColor = .secondaryLabelColor; root.addArrangedSubview(status); root.addArrangedSubview(NSView())
     }
     func present(items: [FileItem]) {
-        cancelTasks(); self.items = items; properties = nil; tagIdentity = nil; tagField.stringValue = ""; tagField.isEnabled = false; saveTagsButton.isEnabled = false; digest.stringValue = ""; hashProgress.isHidden = true
+        cancelTasks(); self.items = items; properties = nil; tagIdentity = nil; tagField.stringValue = ""; tagField.isEnabled = false; saveTagsButton.isEnabled = false; digest.stringValue = ""; hashProgress.isHidden = true; signatureDetails.stringValue = ""; signatureButton.isEnabled = items.count == 1
         rebuildDetails(); window?.center(); showWindow(nil); window?.makeKeyAndOrderFront(nil)
         guard items.count == 1 else { status.stringValue = L("\(items.count)개 항목", "\(items.count) items"); return }
         status.stringValue = L("속성을 읽는 중…", "Loading properties…")
@@ -89,7 +94,29 @@ final class FileInfoWindow: NSWindowController {
     }
     private func cancelHash() { hashTask?.cancel() }
     private func finishHash() { hashTask = nil; hashButton.title = L("해시 계산", "Calculate Hash"); hashProgress.stopAnimation(nil); hashProgress.isHidden = true }
-    private func cancelTasks() { inspectTask?.cancel(); inspectTask = nil; hashTask?.cancel(); hashTask = nil }
+    @objc private func inspectSignature(_ sender: Any?) {
+        guard items.count == 1, signatureTask == nil else { return }
+        signatureButton.isEnabled = false; signatureDetails.stringValue = L("서명을 확인하는 중…", "Inspecting signature…")
+        let url = items[0].url
+        signatureTask = Task { [weak self] in
+            let report = await CodeSignatureInspector.inspect(url)
+            guard let self, !Task.isCancelled else { return }
+            let state = switch report.state {
+            case .valid: L("유효", "Valid")
+            case .unsigned: L("서명되지 않음", "Unsigned")
+            case .invalid: L("유효하지 않음", "Invalid")
+            }
+            var lines = [L("상태: ", "State: ") + state]
+            if let value = report.identifier { lines.append("Identifier: " + value) }
+            if let value = report.teamIdentifier { lines.append("Team: " + value) }
+            if let value = report.format { lines.append("Format: " + value) }
+            lines += report.authorities.map { "Authority: " + $0 }
+            if let value = report.diagnostic, !value.isEmpty { lines.append(value) }
+            signatureDetails.stringValue = lines.joined(separator: "\n")
+            signatureTask = nil; signatureButton.isEnabled = true
+        }
+    }
+    private func cancelTasks() { inspectTask?.cancel(); inspectTask = nil; hashTask?.cancel(); hashTask = nil; signatureTask?.cancel(); signatureTask = nil }
 #if DEBUG
     var qaLoaded: Bool { properties != nil }
     var qaHashing: Bool { hashTask != nil }
@@ -97,5 +124,7 @@ final class FileInfoWindow: NSWindowController {
     func qaStartHash() { startHash() }
     func qaSetTags(_ value: String) { tagField.stringValue = value; saveTags(nil) }
     var qaTags: [String] { (try? FileTagService().snapshot(items[0].url).tags) ?? [] }
+    func qaInspectSignature() { inspectSignature(nil) }
+    var qaSignatureLoaded: Bool { signatureTask == nil && !signatureDetails.stringValue.isEmpty }
 #endif
 }
