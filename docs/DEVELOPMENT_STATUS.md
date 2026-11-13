@@ -4,7 +4,7 @@
 
 ## 이번 구현 단위
 
-M5 첫 번째 개발 단위로 압축 해제 전 경로 이탈·링크·항목 수·단일/총 크기 한도를 차단하는 보안 validator를 추가했다. M3/M4 실기기·앱 번들 검증은 완료 판정을 막는 별도 항목으로 유지한다.
+M5 두 번째 개발 단위로 시스템 libarchive를 직접 연결한 ZIP 구조화 목록과 private staging 안전 추출 backend를 추가했다. M3/M4 실기기·앱 번들 검증은 완료 판정을 막는 별도 항목으로 유지한다.
 
 | 영역 | 상태 | 내용 |
 |---|---|---|
@@ -29,8 +29,8 @@ M5 첫 번째 개발 단위로 압축 해제 전 경로 이탈·링크·항목 �
 | Finder 태그 | 구현 중 | 정보 패널 편집, resource-value 읽기·쓰기, 공백·중복 정규화, 제어문자 차단, identity 재검증, 폴더 감시 갱신 |
 | 드라이브 | 구현 중 | 장착/해제 알림 갱신, 이름·용량·여유 공간·포맷·내장/로컬/읽기 전용·제거 가능 capability, 홈 사용량·사이드바 탐색, 파일 작업 차단형 안전 추출, Disk Utility 연결 |
 | 시스템 열기 | 구현 | 기본 연결 앱, Finder에서 보기, macOS 공유 picker, Terminal에서 위치 열기, 사용자가 선택한 앱/IDE로 열기; URL 기반 전달 |
-| 압축 | 구현 중 | 추출 전 상대 경로 정규화, 절대/상위/Windows/역슬래시 경로 차단, 링크·특수 항목 거부, Unicode 정규화 중복 및 항목 수·단일/총 크기·overflow 한도 검증 |
-| 테스트 | 통과 | 99개 Swift Testing, 압축 경로 이탈·링크·폭탄 한도와 기존 검색·볼륨·파일 작업 회귀 검증, 기존 M1/M2 환경 기록은 별도 유지 |
+| 압축 | 구현 중 | libarchive ZIP 목록·스트리밍 추출, 사전 경로/링크/크기 검증, private staging, 실제 byte 재검증, 대상 충돌 사전 차단, top-level publish 실패 rollback |
+| 테스트 | 통과 | 102개 Swift Testing, ZIP Unicode 목록·추출·충돌·링크·손상·크기 한도와 기존 검색·볼륨·파일 작업 회귀 검증, 기존 M1/M2 환경 기록은 별도 유지 |
 | 파일 복사 | 구현 | 대상 폴더 선택·클립보드·양쪽 유지/건너뛰기·내용 검증·취소·항목별 결과·JSON 저널·안전 실행 취소, 다중 선택 폴더 병합·통합 Undo |
 | 느린 폴더 복구 | 구현 | 읽기 중단·늦은 결과 차단·불완전 목록 안내·명시적 재시도 |
 | 접근 복구 | 부분 검증 | 오류 화면 재시도·폴더 선택, 시스템 선택 후 Desktop fixture 읽기 성공; 재실행 읽기 확인; 감시는 연결 대기 |
@@ -45,7 +45,7 @@ M5 첫 번째 개발 단위로 압축 해제 전 경로 이탈·링크·항목 �
 | 이동 | 구현 중 | 동일/교차 볼륨 이동, 검증·교체 백업·안전 실행 취소, 사용자 취소, 단계별 상태와 진행 막대; APFS/APFSX/exFAT 통과 |
 | 영구 삭제 | 구현 중 | 선택 항목 영구 삭제(복구 불가 경고), 항목별 상태 보고, 작업 창, 저널 파일 |
 
-다음 구현은 M5 ZIP 목록·생성·안전 추출 backend다. M4 Quick Look 본문과 물리 외장 추출은 앱 번들·실기기 수용 게이트로 유지한다.
+다음 구현은 M5 ZIP 생성 backend와 압축 목록·추출 UI다. M4 Quick Look 본문과 물리 외장 추출은 앱 번들·실기기 수용 게이트로 유지한다.
 
 ## M1 별도 검증 목록
 
@@ -71,4 +71,4 @@ M3 검증: [보기 모드 상태와 세션 호환성](verification/m3/INCREMENT_
 
 M4 검증: [로컬 파일명 검색 코어](verification/m4/INCREMENT_01.md), [검색 상태와 취소](verification/m4/INCREMENT_02.md), [네이티브 검색 패널](verification/m4/INCREMENT_03.md), [파일 속성과 SHA-256](verification/m4/INCREMENT_04.md), [네이티브 정보 패널](verification/m4/INCREMENT_05.md), [Quick Look](verification/m4/INCREMENT_06.md), [Finder 태그 코어](verification/m4/INCREMENT_07.md), [Finder 태그 편집 UI](verification/m4/INCREMENT_08.md), [검색 메타데이터 필터](verification/m4/INCREMENT_09.md), [검색 고급 필터 UI](verification/m4/INCREMENT_10.md), [Spotlight 콘텐츠 검색](verification/m4/INCREMENT_11.md), [장착 볼륨 capability](verification/m4/INCREMENT_12.md), [안전 추출과 Disk Utility](verification/m4/INCREMENT_13.md), [시스템 열기 명령](verification/m4/INCREMENT_14.md), [실제 볼륨 탐지 매트릭스](verification/m4/INCREMENT_15.md), [검색 크기 단위](verification/m4/INCREMENT_16.md), [실제 Spotlight 콘텐츠 hit](verification/m4/INCREMENT_17.md).
 
-M5 검증: [압축 추출 보안 validator](verification/m5/INCREMENT_01.md).
+M5 검증: [압축 추출 보안 validator](verification/m5/INCREMENT_01.md), [libarchive ZIP 안전 추출](verification/m5/INCREMENT_02.md).
