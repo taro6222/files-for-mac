@@ -34,6 +34,7 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
     private let favoriteButton = NSButton()
     private let optionsButton = NSButton()
     private let toolbar = NSStackView()
+    private let bottom = NSStackView()
     private let toolbarOverflow = NSPopUpButton()
     private var toolbarViews: [BrowserToolbarItem: NSView] = [:]
     private var toolbarCompact: Bool?
@@ -309,13 +310,15 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
             recoveryActions.centerXAnchor.constraint(equalTo: content.centerXAnchor),
             recoveryActions.widthAnchor.constraint(lessThanOrEqualTo: content.widthAnchor, constant: -32)
         ])
-        let bottom = NSStackView(); bottom.orientation = .horizontal
+        bottom.orientation = .horizontal
         bottom.edgeInsets = NSEdgeInsets(top: 7, left: 18, bottom: 7, right: 18)
         status.font = .systemFont(ofSize: 11); status.textColor = .secondaryLabelColor
         bottom.addArrangedSubview(status); bottom.addArrangedSubview(NSView())
         let phase = NSTextField(labelWithString: L("M3 · 보기 및 사용자 지정", "M3 · Views and customization"))
         phase.font = .systemFont(ofSize: 11); phase.textColor = .tertiaryLabelColor
         bottom.addArrangedSubview(phase); main.addArrangedSubview(bottom)
+        toolbar.isHidden = !preferences.showToolbar
+        bottom.isHidden = !preferences.showStatusBar
         for view in [header, toolbar, divider, content, bottom] { view.widthAnchor.constraint(equalTo: main.widthAnchor).isActive = true }
     }
 
@@ -1563,6 +1566,8 @@ extension BrowserWindow {
     }
     private func preferencesChanged() {
         window?.appearance = Self.appearance(preferences.appearance)
+        toolbar.isHidden = !preferences.showToolbar
+        bottom.isHidden = !preferences.showStatusBar
         buildSidebar()
         rebuildToolbar(force: true)
         secondaryPane?.applyPreferences()
@@ -1590,6 +1595,8 @@ extension BrowserWindow {
         guard menu === optionsMenu else { return }
         menu.removeAllItems()
         let entries: [(String, Selector, Bool)] = [
+            (L("툴바 표시", "Show Toolbar"), #selector(toggleToolbar(_:)), preferences.showToolbar),
+            (L("상태 막대 표시", "Show Status Bar"), #selector(toggleStatusBar(_:)), preferences.showStatusBar),
             (L("파일 확장자 표시", "Show File Extensions"), #selector(toggleExtensions(_:)), preferences.showExtensions),
             (L("숨김 항목 표시", "Show Hidden Files"), #selector(toggleHidden(_:)), preferences.showHidden),
             (L("홈: 빠른 접근", "Home: Quick Access"), #selector(toggleHomeFavorites(_:)), preferences.showHomeFavorites),
@@ -1621,6 +1628,8 @@ extension BrowserWindow {
         toolbarItem.target = self
     }
     @objc private func toggleExtensions(_ sender: Any?) { preferences.setShowExtensions(!preferences.showExtensions) }
+    @objc private func toggleToolbar(_ sender: Any?) { preferences.setShowToolbar(!preferences.showToolbar) }
+    @objc private func toggleStatusBar(_ sender: Any?) { preferences.setShowStatusBar(!preferences.showStatusBar) }
     @objc private func setViewSize(_ sender: NSMenuItem) {
         guard let raw = sender.representedObject as? String, let size = BrowserViewSize(rawValue: raw) else { return }
         if let location = model.location, preferences.folderViewPreference(for: location) != nil {
@@ -1992,6 +2001,10 @@ extension BrowserWindow {
             checks["toolbarVisibilityPreference"] = preferences.hiddenToolbarItems.contains(.favorite)
                 && !controller.toolbarOverflow.itemArray.map(\.title).contains(L("즐겨찾기 전환", "Toggle Favorite"))
             preferences.toggleToolbarItem(.favorite)
+            preferences.setShowToolbar(false); preferences.setShowStatusBar(false)
+            checks["browserChromeVisibilityPreference"] = controller.toolbar.isHidden && controller.bottom.isHidden
+            preferences.setShowToolbar(true); preferences.setShowStatusBar(true)
+            checks["browserChromeVisibilityRestored"] = !controller.toolbar.isHidden && !controller.bottom.isHidden
             let optionsIndex = preferences.toolbarOrder.firstIndex(of: .options)!
             preferences.moveToolbarItem(.options, by: -1)
             checks["toolbarOrderPreference"] = preferences.toolbarOrder.firstIndex(of: .options) == optionsIndex - 1

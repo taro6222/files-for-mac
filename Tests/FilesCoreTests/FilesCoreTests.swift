@@ -389,6 +389,21 @@ private struct DelayedLoader: DirectoryLoading {
     preferences.removeObserver(token)
 }
 
+@Test @MainActor func toolbarAndStatusBarVisibilityPersistAndNotify() {
+    let suite = "chrome-visibility-tests-\(UUID())", defaults = UserDefaults(suiteName: suite)!
+    defer { defaults.removePersistentDomain(forName: suite) }
+    let preferences = BrowserPreferences(defaults: defaults, initialFavorites: [])
+    #expect(preferences.showToolbar && preferences.showStatusBar)
+    var notifications = 0; let token = preferences.observe { notifications += 1 }
+    preferences.setShowToolbar(false); preferences.setShowStatusBar(false)
+    let restored = BrowserPreferences(defaults: defaults, initialFavorites: [])
+    #expect(!restored.showToolbar && !restored.showStatusBar)
+    #expect(notifications == 2)
+    preferences.setShowToolbar(false); preferences.setShowStatusBar(false)
+    #expect(notifications == 2)
+    preferences.removeObserver(token)
+}
+
 @Test @MainActor func folderViewPreferencesPersistStandardizeRemoveAndRecoverCorruption() {
     let suite = "folder-view-preferences-tests-\(UUID())", defaults = UserDefaults(suiteName: suite)!
     defer { defaults.removePersistentDomain(forName: suite) }

@@ -30,6 +30,8 @@ public final class BrowserPreferences {
     public private(set) var recent: [URL]
     public private(set) var showHidden: Bool
     public private(set) var showExtensions: Bool
+    public private(set) var showToolbar: Bool
+    public private(set) var showStatusBar: Bool
     public private(set) var showHomeFavorites: Bool
     public private(set) var showHomeVolumes: Bool
     public private(set) var showHomeRecent: Bool
@@ -54,6 +56,8 @@ public final class BrowserPreferences {
         recent = (defaults.stringArray(forKey: "recent") ?? []).map { URL(fileURLWithPath: $0) }
         showHidden = defaults.bool(forKey: "showHidden")
         showExtensions = defaults.object(forKey: "showExtensions") as? Bool ?? true
+        showToolbar = defaults.object(forKey: "showToolbar") as? Bool ?? true
+        showStatusBar = defaults.object(forKey: "showStatusBar") as? Bool ?? true
         showHomeFavorites = defaults.object(forKey: "showHomeFavorites") as? Bool ?? true
         showHomeVolumes = defaults.object(forKey: "showHomeVolumes") as? Bool ?? true
         showHomeRecent = defaults.object(forKey: "showHomeRecent") as? Bool ?? true
@@ -108,6 +112,14 @@ public final class BrowserPreferences {
     }
     public func setShowExtensions(_ value: Bool) {
         showExtensions = value; defaults.set(value, forKey: "showExtensions"); changed()
+    }
+    public func setShowToolbar(_ value: Bool) {
+        guard showToolbar != value else { return }
+        showToolbar = value; defaults.set(value, forKey: "showToolbar"); changed()
+    }
+    public func setShowStatusBar(_ value: Bool) {
+        guard showStatusBar != value else { return }
+        showStatusBar = value; defaults.set(value, forKey: "showStatusBar"); changed()
     }
     public func setViewSize(_ value: BrowserViewSize) {
         guard viewSize != value else { return }
