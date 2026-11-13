@@ -38,6 +38,21 @@ public struct ValidatedArchiveEntry: Sendable, Equatable {
     public let uncompressedSize: Int64
 }
 
+public enum ArchiveExtractionPlacement: Sendable, Equatable { case here, smart, childFolder }
+
+public func archiveNeedsChildFolder(_ entries: [ArchiveEntryDescriptor], placement: ArchiveExtractionPlacement) throws -> Bool {
+    if placement == .childFolder { return true }
+    if placement == .here { return false }
+    let validated = try ArchiveExtractionValidator.validate(entries)
+    let topLevel = Set(validated.compactMap { $0.relativePath.split(separator: "/").first.map(String.init) })
+    return topLevel.count > 1
+}
+
+public func archiveChildFolderBaseName(_ archiveURL: URL) -> String {
+    let name = archiveURL.deletingPathExtension().lastPathComponent
+    return name.isEmpty ? "Archive" : name
+}
+
 public enum ArchiveExtractionValidator {
     public static func validate(_ entries: [ArchiveEntryDescriptor], limits: ArchiveExtractionLimits = .init()) throws -> [ValidatedArchiveEntry] {
         guard entries.count <= limits.maximumEntries else { throw ArchiveValidationError.tooManyEntries }

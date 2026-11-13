@@ -1,3 +1,4 @@
+import Foundation
 import Testing
 @testable import FilesCore
 
@@ -39,4 +40,14 @@ import Testing
     #expect(throws: ArchiveValidationError.totalSizeLimit) {
         try ArchiveExtractionValidator.validate([.init(path: "a", kind: .regularFile, uncompressedSize: .max), .init(path: "b", kind: .regularFile, uncompressedSize: 1)], limits: .init(maximumTotalBytes: .max, maximumSingleFileBytes: .max))
     }
+}
+
+@Test func archiveExtractionPlacementMatchesSmartTopLevelRules() throws {
+    let oneTree = [ArchiveEntryDescriptor(path: "root/a.txt", kind: .regularFile)]
+    let many = [ArchiveEntryDescriptor(path: "a.txt", kind: .regularFile), ArchiveEntryDescriptor(path: "folder/b.txt", kind: .regularFile)]
+    #expect(try !archiveNeedsChildFolder(oneTree, placement: .here))
+    #expect(try !archiveNeedsChildFolder(oneTree, placement: .smart))
+    #expect(try archiveNeedsChildFolder(many, placement: .smart))
+    #expect(try archiveNeedsChildFolder(oneTree, placement: .childFolder))
+    #expect(archiveChildFolderBaseName(URL(fileURLWithPath: "/tmp/자료.tar.zip")) == "자료.tar")
 }

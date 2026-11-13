@@ -421,7 +421,10 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         let editTags = menu.addItem(withTitle: L("Finder 태그 편집…", "Edit Finder Tags…"), action: #selector(showInfo(_:)), keyEquivalent: ""); editTags.target = self; editTagsMenuItem = editTags
         let archive = menu.addItem(withTitle: L("압축 파일 탐색", "Browse Archive"), action: #selector(openArchive(_:)), keyEquivalent: ""); archive.target = self
         let createArchive = menu.addItem(withTitle: L("선택 항목 압축…", "Compress Selection…"), action: #selector(createArchive(_:)), keyEquivalent: ""); createArchive.target = self
-        compressionMenuItems = [archive, createArchive]
+        let extractHere = menu.addItem(withTitle: L("여기에 압축 해제", "Extract Here"), action: #selector(extractArchivesHere(_:)), keyEquivalent: ""); extractHere.target = self
+        let extractSmart = menu.addItem(withTitle: L("여기에 스마트 압축 해제", "Extract Here Smart"), action: #selector(extractArchivesSmart(_:)), keyEquivalent: ""); extractSmart.target = self
+        let extractChild = menu.addItem(withTitle: L("각 하위 폴더에 압축 해제", "Extract to Child Folders"), action: #selector(extractArchivesToChildFolders(_:)), keyEquivalent: ""); extractChild.target = self
+        compressionMenuItems = [archive, createArchive, extractHere, extractSmart, extractChild]
         let cloudDownload = menu.addItem(withTitle: L("지금 다운로드", "Download Now"), action: #selector(downloadCloudSelection(_:)), keyEquivalent: ""); cloudDownload.target = self
         let cloudEvict = menu.addItem(withTitle: L("공간 비우기", "Free Up Space"), action: #selector(evictCloudSelection(_:)), keyEquivalent: ""); cloudEvict.target = self
         let copy = menu.addItem(withTitle: L("선택 항목 복사…", "Copy Selection To…"), action: #selector(copySelection(_:)), keyEquivalent: ""); copy.target = self
@@ -1055,6 +1058,19 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
             guard response == .OK, let destination = panel.url, let self else { return }
             ArchiveCreationWindow.start(sources: sources, destination: destination) { self.refreshActivePane() }
         }
+    }
+    private var selectedArchiveURLs: [URL] {
+        let urls = activeSelectedItems.map(\.url)
+        return !urls.isEmpty && urls.allSatisfy { ArchiveFormat.detect($0).map { ArchiveCapabilityMatrix.capabilities(for: $0).extract } == true } ? urls : []
+    }
+    @objc func extractArchivesHere(_ sender: Any?) { startArchiveExtraction(.here) }
+    @objc func extractArchivesSmart(_ sender: Any?) { startArchiveExtraction(.smart) }
+    @objc func extractArchivesToChildFolders(_ sender: Any?) { startArchiveExtraction(.childFolder) }
+    private func startArchiveExtraction(_ placement: ArchiveExtractionPlacement) {
+        let archives = selectedArchiveURLs
+        guard !archives.isEmpty, let parent = activeModel.location, !ArchiveExtractionWindow.isRunning else { return }
+        let targetModel = activeModel
+        ArchiveExtractionWindow.start(archives: archives, parent: parent, placement: placement) { targetModel.reload() }
     }
     @objc func downloadCloudSelection(_ sender: Any?) { performCloudOperation(evict: false) }
     @objc func evictCloudSelection(_ sender: Any?) { performCloudOperation(evict: true) }
@@ -2013,6 +2029,7 @@ extension BrowserWindow {
         case #selector(createFolder(_:)): return activeModel.location != nil && !activeModel.isLoading && !Self.entryOperationRunning && !CopyWindow.isRunning
         case #selector(createFile(_:)): return activeModel.location != nil && !activeModel.isLoading && !Self.entryOperationRunning
         case #selector(createFolderFromSelection(_:)): return activeModel.location != nil && !activeModel.isLoading && !activeSelectedItems.isEmpty && !Self.entryOperationRunning && !MoveWindow.isRunning
+        case #selector(extractArchivesHere(_:)), #selector(extractArchivesSmart(_:)), #selector(extractArchivesToChildFolders(_:)): return activeModel.location != nil && !activeModel.isLoading && !selectedArchiveURLs.isEmpty && !ArchiveExtractionWindow.isRunning
         case #selector(createSymbolicLink(_:)): return activeModel.location != nil && activeSelectedItems.count == 1 && !activeModel.isLoading && !Self.entryOperationRunning
         case #selector(createSymbolicLinkFromDialog(_:)): return activeModel.location != nil && !activeModel.isLoading && !Self.entryOperationRunning
         case #selector(toggleSelectedFavorite(_:)): return activeModel.location != nil && (activeSelectedItems.isEmpty || (activeSelectedItems.count == 1 && activeSelectedItems[0].isBrowsable))
@@ -2169,6 +2186,9 @@ extension BrowserWindow {
                 paletteEntries.contains { $0.item.action == action }
             }
             checks["existingOpenAndHiddenCommands"] = [#selector(toggleHidden(_:)), #selector(AppDelegate.showGeneralSettings(_:)), #selector(openInDeveloperApplication(_:))].allSatisfy { action in
+                paletteEntries.contains { $0.item.action == action }
+            }
+            checks["archivePlacementCommands"] = [#selector(extractArchivesHere(_:)), #selector(extractArchivesSmart(_:)), #selector(extractArchivesToChildFolders(_:))].allSatisfy { action in
                 paletteEntries.contains { $0.item.action == action }
             }
             checks["commandPaletteSearch"] = CommandPaletteCatalog.filtered(paletteEntries, query: L("숨김", "hidden")).contains { $0.item.action == #selector(toggleHidden(_:)) }
@@ -2455,6 +2475,30 @@ extension BrowserWindow {
             checks["archiveExtraction"] = controller.archiveWindow?.qaSucceeded == true && extractedArchiveText == "fixture"
             try capture("archive", view: controller.archiveWindow?.window?.contentView)
             controller.archiveWindow?.close(); window.makeKeyAndOrderFront(nil)
+            let placementSources = destination.appendingPathComponent("archive-placement-sources", isDirectory: true)
+            let singleRoot = placementSources.appendingPathComponent("single-root", isDirectory: true)
+            try fm.createDirectory(at: singleRoot, withIntermediateDirectories: true)
+            try Data("single".utf8).write(to: singleRoot.appendingPathComponent("single.txt"))
+            let secondSource = placementSources.appendingPathComponent("second.txt")
+            try Data("second".utf8).write(to: secondSource)
+            let singleArchive = destination.appendingPathComponent("single-tree.zip")
+            let multipleArchive = destination.appendingPathComponent("multiple-roots.zip")
+            _ = try await ZipArchiveProvider().create(from: [singleRoot], at: singleArchive)
+            _ = try await ZipArchiveProvider().create(from: [singleRoot, secondSource], at: multipleArchive)
+            func verifyPlacement(_ archive: URL, placement: ArchiveExtractionPlacement, parentName: String, expected: String, checkName: String) async throws {
+                let parent = destination.appendingPathComponent(parentName, isDirectory: true)
+                try fm.createDirectory(at: parent, withIntermediateDirectories: true)
+                ArchiveExtractionWindow.start(archives: [archive], parent: parent, placement: placement) {}
+                let start = ContinuousClock.now
+                while ArchiveExtractionWindow.qaLatest?.qaRunning == true && start.duration(to: .now) < .seconds(10) { try await Task.sleep(for: .milliseconds(10)) }
+                checks[checkName] = ArchiveExtractionWindow.qaLatest?.qaSucceeded == true && fm.fileExists(atPath: parent.appendingPathComponent(expected).path)
+                if checkName == "archivePlacementSmartMany" { try capture("archive-placement", view: ArchiveExtractionWindow.qaLatest?.window?.contentView) }
+                ArchiveExtractionWindow.qaLatest?.close(); window.makeKeyAndOrderFront(nil)
+            }
+            try await verifyPlacement(singleArchive, placement: .here, parentName: "placement-here", expected: "single-root/single.txt", checkName: "archivePlacementHere")
+            try await verifyPlacement(singleArchive, placement: .smart, parentName: "placement-smart-one", expected: "single-root/single.txt", checkName: "archivePlacementSmartOne")
+            try await verifyPlacement(multipleArchive, placement: .smart, parentName: "placement-smart-many", expected: "multiple-roots/second.txt", checkName: "archivePlacementSmartMany")
+            try await verifyPlacement(singleArchive, placement: .childFolder, parentName: "placement-child", expected: "single-tree/single-root/single.txt", checkName: "archivePlacementChild")
             let formatFixtureRoot = URL(fileURLWithPath: FileManager.default.currentDirectoryPath, isDirectory: true).appendingPathComponent("Tests/FilesCoreTests/Fixtures", isDirectory: true)
             var extraFormatsPassed = true
             for (name, expectedName) in [("libarchive-empty.7z", "empty"), ("libarchive-noeof.rar", "test.txt")] {
