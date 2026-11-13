@@ -102,3 +102,61 @@ import Testing
     #expect(try String(contentsOf: restoredURL, encoding: .utf8) == "trash-round-trip")
     trashed = nil
 }
+
+@Test func mountedSMBCopyMoveUndoRoundTrip() async throws {
+    guard let path = ProcessInfo.processInfo.environment["FILES_TEST_SMB_VOLUME"] else { return }
+    let fm = FileManager.default
+    let volume = URL(fileURLWithPath: path, isDirectory: true).standardizedFileURL
+    var fileSystem = statfs()
+    guard statfs(volume.path, &fileSystem) == 0 else {
+        Issue.record("Cannot inspect SMB fixture mount: \(String(cString: strerror(errno)))")
+        return
+    }
+    let type = withUnsafePointer(to: &fileSystem.f_fstypename) {
+        $0.withMemoryRebound(to: CChar.self, capacity: Int(MFSNAMELEN)) { String(cString: $0) }
+    }
+    guard type == "smbfs" else {
+        Issue.record("FILES_TEST_SMB_VOLUME must be on smbfs, got \(type)")
+        return
+    }
+
+    let root = volume.appendingPathComponent("FilesM2-SMB-\(UUID().uuidString)", isDirectory: true)
+    let destination = root.appendingPathComponent("destination", isDirectory: true)
+    let journal = root.appendingPathComponent("journal", isDirectory: true)
+    let local = fm.temporaryDirectory.appendingPathComponent("FilesM2-SMB-source-\(UUID().uuidString)", isDirectory: true)
+    defer { try? fm.removeItem(at: root); try? fm.removeItem(at: local) }
+    try fm.createDirectory(at: destination, withIntermediateDirectories: true)
+    try fm.createDirectory(at: local, withIntermediateDirectories: true)
+
+    let copySource = local.appendingPathComponent("복사-é-📁", isDirectory: true)
+    try fm.createDirectory(at: copySource, withIntermediateDirectories: true)
+    let payload = Data(repeating: 0x5A, count: 512 * 1024)
+    try payload.write(to: copySource.appendingPathComponent("payload.bin"))
+    let copy = await CopyEngine.run(sources: [copySource], destination: destination,
+                                    journalDirectory: journal, cancellation: CopyCancellation())
+    #expect(copy.state == "completed")
+    #expect(try Data(contentsOf: destination.appendingPathComponent("복사-é-📁/payload.bin")) == payload)
+    let copyUndo = try #require(CopyEngine.latestUndoCopy(journalDirectory: journal))
+    #expect(await CopyEngine.undoCopy(copyUndo, journalDirectory: journal).state == "completed")
+
+    let moveSource = local.appendingPathComponent("move.txt")
+    try Data("network-move".utf8).write(to: moveSource)
+    let move = try await EntryOperations.move([moveSource], to: destination,
+        conflictPolicy: .skip, journalDirectory: journal)
+    #expect(move.state == "completed")
+    let moveUndo = try #require(EntryOperations.latestUndoMove(journalDirectory: journal))
+    #expect(await EntryOperations.undoMove(moveUndo, journalDirectory: journal).state == "completed")
+    #expect(try String(contentsOf: moveSource, encoding: .utf8) == "network-move")
+
+    let replacement = local.appendingPathComponent("replace.txt")
+    let existing = destination.appendingPathComponent("replace.txt")
+    try Data("new".utf8).write(to: replacement)
+    try Data("old".utf8).write(to: existing)
+    let replace = try await EntryOperations.move([replacement], to: destination,
+        conflictPolicy: .replace, journalDirectory: journal)
+    #expect(replace.state == "completed")
+    let replaceUndo = try #require(EntryOperations.latestUndoMove(journalDirectory: journal))
+    #expect(await EntryOperations.undoMove(replaceUndo, journalDirectory: journal).state == "completed")
+    #expect(try String(contentsOf: replacement, encoding: .utf8) == "new")
+    #expect(try String(contentsOf: existing, encoding: .utf8) == "old")
+}
