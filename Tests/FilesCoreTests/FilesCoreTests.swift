@@ -484,15 +484,15 @@ private struct DelayedLoader: DirectoryLoading {
     let suite = "column-visibility-tests-\(UUID())", defaults = UserDefaults(suiteName: suite)!
     defer { defaults.removePersistentDomain(forName: suite) }
     let preferences = BrowserPreferences(defaults: defaults, initialFavorites: [])
-    #expect(preferences.showDateColumn && preferences.showTypeColumn && preferences.showSizeColumn)
+    #expect(!preferences.showCreatedColumn && preferences.showDateColumn && preferences.showTypeColumn && preferences.showSizeColumn)
     #expect(!preferences.showGitStatusColumn)
     var notifications = 0; let token = preferences.observe { notifications += 1 }
-    preferences.setShowDateColumn(false); preferences.setShowTypeColumn(false)
+    preferences.setShowCreatedColumn(true); preferences.setShowDateColumn(false); preferences.setShowTypeColumn(false)
     preferences.setShowSizeColumn(false); preferences.setShowGitStatusColumn(true)
     preferences.setShowDateColumn(false); preferences.setShowGitStatusColumn(true)
     let restored = BrowserPreferences(defaults: defaults, initialFavorites: [])
-    #expect(!restored.showDateColumn && !restored.showTypeColumn && !restored.showSizeColumn && restored.showGitStatusColumn)
-    #expect(notifications == 4)
+    #expect(restored.showCreatedColumn && !restored.showDateColumn && !restored.showTypeColumn && !restored.showSizeColumn && restored.showGitStatusColumn)
+    #expect(notifications == 5)
     preferences.removeObserver(token)
 }
 
@@ -563,7 +563,7 @@ private struct DelayedLoader: DirectoryLoading {
     source.setOpenFoldersInNewTab(true)
     source.setScrollToPreviousFolderOnUp(false)
     source.setShowFileExtensionWarning(false)
-    source.setShowDateColumn(false); source.setShowTypeColumn(false); source.setShowSizeColumn(false); source.setShowGitStatusColumn(true)
+    source.setShowCreatedColumn(true); source.setShowDateColumn(false); source.setShowTypeColumn(false); source.setShowSizeColumn(false); source.setShowGitStatusColumn(true)
     source.setShowCompressionOptions(false); source.setShowOpenTerminal(false); source.setShowCreateFolderWithSelection(false)
     source.setShowPinToSidebar(false)
     source.setShowSendToMenu(false)
@@ -581,7 +581,7 @@ private struct DelayedLoader: DirectoryLoading {
     #expect(destination.openFoldersInNewTab)
     #expect(!destination.scrollToPreviousFolderOnUp)
     #expect(!destination.showFileExtensionWarning)
-    #expect(!destination.showDateColumn && !destination.showTypeColumn && !destination.showSizeColumn && destination.showGitStatusColumn)
+    #expect(destination.showCreatedColumn && !destination.showDateColumn && !destination.showTypeColumn && !destination.showSizeColumn && destination.showGitStatusColumn)
     #expect(!destination.showCompressionOptions && !destination.showOpenTerminal && !destination.showCreateFolderWithSelection)
     #expect(!destination.showPinToSidebar)
     #expect(!destination.showSendToMenu)

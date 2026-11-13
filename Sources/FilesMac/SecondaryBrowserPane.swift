@@ -31,6 +31,7 @@ final class SecondaryBrowserPane: NSView, NSTableViewDataSource, NSTableViewDele
     private var rendering = false
     private var pendingEntrySelection: URL?
     private var detailRows: [DetailDisplayRow] = []
+    private let dateFormatter: DateFormatter = { let value = DateFormatter(); value.dateStyle = .medium; value.timeStyle = .short; return value }()
 
     init(snapshot: TabSnapshot, preferences: BrowserPreferences = .shared) {
         model = BrowserModel()
@@ -120,6 +121,8 @@ final class SecondaryBrowserPane: NSView, NSTableViewDataSource, NSTableViewDele
             let item = model.items[row]
             switch identifier.rawValue {
             case "name": return item.displayName(showExtensions: true)
+            case "created": return item.created.map(dateFormatter.string) ?? "—"
+            case "modified": return item.modified.map(dateFormatter.string) ?? "—"
             case "kind": return item.kind
             case "size": return item.isDirectory ? "—" : item.size.map { formatByteCount($0, unit: preferences.sizeUnit) } ?? "—"
             default: return ""
@@ -184,7 +187,7 @@ final class SecondaryBrowserPane: NSView, NSTableViewDataSource, NSTableViewDele
         table.registerForDraggedTypes([.fileURL])
         table.setDraggingSourceOperationMask([.copy, .move], forLocal: true)
         table.setDraggingSourceOperationMask(.copy, forLocal: false)
-        for (key, title, width) in [("name", L("이름", "Name"), 300.0), ("kind", L("종류", "Kind"), 120.0), ("size", L("크기", "Size"), 90.0)] {
+        for (key, title, width) in [("name", L("이름", "Name"), 300.0), ("created", L("생성일", "Date Created"), 200.0), ("modified", L("수정일", "Date Modified"), 185.0), ("kind", L("종류", "Kind"), 120.0), ("size", L("크기", "Size"), 90.0)] {
             let column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier(key)); column.title = title; column.width = width; column.minWidth = 70
             column.sortDescriptorPrototype = NSSortDescriptor(key: key, ascending: true); table.addTableColumn(column)
         }
@@ -296,6 +299,8 @@ final class SecondaryBrowserPane: NSView, NSTableViewDataSource, NSTableViewDele
             }
         }
         detailRows = detailDisplayRows(items: model.items, grouping: model.grouping)
+        table.tableColumn(withIdentifier: .init("created"))?.isHidden = !preferences.showCreatedColumn
+        table.tableColumn(withIdentifier: .init("modified"))?.isHidden = !preferences.showDateColumn
         table.reloadData()
         if model.viewMode == .adaptive && !model.isLoading {
             adaptiveResolvedMode = adaptivePolicy.resolve(items: model.items, availableWidth: bounds.width)
@@ -343,6 +348,8 @@ final class SecondaryBrowserPane: NSView, NSTableViewDataSource, NSTableViewDele
         let cell = tableView.makeView(withIdentifier: id, owner: self) as? NSTableCellView ?? makeCell(id)
         switch id.rawValue {
         case "name": cell.textField?.stringValue = item.displayName(showExtensions: true)
+        case "created": cell.textField?.stringValue = item.created.map(dateFormatter.string) ?? "—"
+        case "modified": cell.textField?.stringValue = item.modified.map(dateFormatter.string) ?? "—"
         case "kind": cell.textField?.stringValue = item.kind
         case "size": cell.textField?.stringValue = item.isDirectory ? "—" : item.size.map { formatByteCount($0, unit: preferences.sizeUnit) } ?? "—"
         default: break

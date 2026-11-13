@@ -352,7 +352,7 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         table.setDraggingSourceOperationMask([.copy, .move], forLocal: true)
         table.setDraggingSourceOperationMask(.copy, forLocal: false)
         table.setAccessibilityLabel(L("파일 목록", "File list"))
-        let specs: [(String, String, CGFloat)] = [("name", L("이름", "Name"), 340), ("git", "Git", 72), ("modified", L("수정일", "Date Modified"), 185), ("kind", L("종류", "Kind"), 140), ("size", L("크기", "Size"), 100)]
+        let specs: [(String, String, CGFloat)] = [("name", L("이름", "Name"), 340), ("git", "Git", 72), ("created", L("생성일", "Date Created"), 200), ("modified", L("수정일", "Date Modified"), 185), ("kind", L("종류", "Kind"), 140), ("size", L("크기", "Size"), 100)]
         for (key, label, width) in specs {
             let column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier(key))
             column.title = label; column.width = width; column.minWidth = 70
@@ -800,6 +800,7 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
             if iconCache[cacheKey] == nil { iconCache[cacheKey] = NSWorkspace.shared.icon(forFile: item.url.path) }
             cell.imageView?.image = iconCache[cacheKey]
         case "git": cell.textField?.stringValue = gitStatus(for: item)
+        case "created": cell.textField?.stringValue = item.created.map(dateFormatter.string) ?? "—"
         case "modified": cell.textField?.stringValue = item.modified.map(dateFormatter.string) ?? "—"
         case "kind": cell.textField?.stringValue = item.kind == "Folder" ? L("폴더", "Folder") : (item.kind == "File" ? L("파일", "File") : item.kind)
         case "size": cell.textField?.stringValue = item.isDirectory ? "—" : item.size.map { formatByteCount($0, unit: preferences.sizeUnit) } ?? "—"
@@ -1196,6 +1197,7 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
             switch identifier.rawValue {
             case "name": return item.displayName(showExtensions: preferences.showExtensions)
             case "git": return gitStatus(for: item)
+            case "created": return item.created.map(dateFormatter.string) ?? "—"
             case "modified": return item.modified.map(dateFormatter.string) ?? "—"
             case "kind": return item.kind == "Folder" ? L("폴더", "Folder") : (item.kind == "File" ? L("파일", "File") : item.kind)
             case "size": return item.isDirectory ? "—" : item.size.map { formatByteCount($0, unit: preferences.sizeUnit) } ?? "—"
@@ -1993,6 +1995,7 @@ extension BrowserWindow {
             (L("상태 막대 표시", "Show Status Bar"), #selector(toggleStatusBar(_:)), preferences.showStatusBar),
             (L("파일 확장자 표시", "Show File Extensions"), #selector(toggleExtensions(_:)), preferences.showExtensions),
             (L("숨김 항목 표시", "Show Hidden Files"), #selector(toggleHidden(_:)), preferences.showHidden),
+            (L("생성일 열 표시", "Show Date Created Column"), #selector(toggleCreatedColumn(_:)), preferences.showCreatedColumn),
             (L("수정일 열 표시", "Show Date Modified Column"), #selector(toggleDateColumn(_:)), preferences.showDateColumn),
             (L("종류 열 표시", "Show Kind Column"), #selector(toggleTypeColumn(_:)), preferences.showTypeColumn),
             (L("크기 열 표시", "Show Size Column"), #selector(toggleSizeColumn(_:)), preferences.showSizeColumn),
@@ -2029,11 +2032,13 @@ extension BrowserWindow {
     @objc func toggleSidebarVisibility(_ sender: Any?) { preferences.setShowSidebar(!preferences.showSidebar) }
     @objc func toggleToolbar(_ sender: Any?) { preferences.setShowToolbar(!preferences.showToolbar) }
     @objc private func toggleStatusBar(_ sender: Any?) { preferences.setShowStatusBar(!preferences.showStatusBar) }
+    @objc private func toggleCreatedColumn(_ sender: Any?) { preferences.setShowCreatedColumn(!preferences.showCreatedColumn) }
     @objc private func toggleDateColumn(_ sender: Any?) { preferences.setShowDateColumn(!preferences.showDateColumn) }
     @objc private func toggleTypeColumn(_ sender: Any?) { preferences.setShowTypeColumn(!preferences.showTypeColumn) }
     @objc private func toggleSizeColumn(_ sender: Any?) { preferences.setShowSizeColumn(!preferences.showSizeColumn) }
     @objc private func toggleGitColumn(_ sender: Any?) { preferences.setShowGitStatusColumn(!preferences.showGitStatusColumn) }
     private func applyColumnVisibility() {
+        table.tableColumn(withIdentifier: .init("created"))?.isHidden = !preferences.showCreatedColumn
         table.tableColumn(withIdentifier: .init("modified"))?.isHidden = !preferences.showDateColumn
         table.tableColumn(withIdentifier: .init("kind"))?.isHidden = !preferences.showTypeColumn
         table.tableColumn(withIdentifier: .init("size"))?.isHidden = !preferences.showSizeColumn
@@ -2330,6 +2335,7 @@ extension BrowserWindow {
     var qaGitMarkedRows: Int { model.items.filter { !gitStatus(for: $0).isEmpty }.count }
     var qaGitColumnVisible: Bool { table.tableColumns.contains { $0.identifier.rawValue == "git" && !$0.isHidden } }
     var qaVisibleDetailColumns: Set<String> { Set(table.tableColumns.filter { !$0.isHidden }.map { $0.identifier.rawValue }) }
+    var qaCreatedColumnWidth: CGFloat? { table.tableColumn(withIdentifier: .init("created"))?.width }
     var qaDetailGroupTitles: [String] { detailRows.compactMap { if case let .header(title) = $0 { return title }; return nil } }
     var qaVisibleContextActions: Set<String> { Set((table.menu?.items ?? []).filter { !$0.isHidden }.compactMap { $0.action.map(NSStringFromSelector) }) }
 #endif
@@ -2603,10 +2609,12 @@ extension BrowserWindow {
             checks["browserChromeVisibilityPreference"] = controller.toolbar.isHidden && controller.bottom.isHidden && !controller.qaSidebarVisible
             preferences.setShowToolbar(true); preferences.setShowStatusBar(true); preferences.setShowSidebar(true)
             checks["browserChromeVisibilityRestored"] = !controller.toolbar.isHidden && !controller.bottom.isHidden && controller.qaSidebarVisible
-            preferences.setShowDateColumn(false); preferences.setShowTypeColumn(false); preferences.setShowSizeColumn(false); preferences.setShowGitStatusColumn(true)
-            checks["detailColumnVisibilityPreference"] = controller.qaVisibleDetailColumns.isSuperset(of: ["name", "git"])
+            preferences.setShowCreatedColumn(true); preferences.setShowDateColumn(false); preferences.setShowTypeColumn(false); preferences.setShowSizeColumn(false); preferences.setShowGitStatusColumn(true)
+            checks["createdDateColumn"] = controller.qaVisibleDetailColumns.contains("created")
+                && (controller.qaCreatedColumnWidth ?? 0) >= 70
+            checks["detailColumnVisibilityPreference"] = controller.qaVisibleDetailColumns.isSuperset(of: ["name", "created", "git"])
                 && controller.qaVisibleDetailColumns.isDisjoint(with: ["modified", "kind", "size"])
-            preferences.setShowDateColumn(true); preferences.setShowTypeColumn(true); preferences.setShowSizeColumn(true); preferences.setShowGitStatusColumn(false)
+            preferences.setShowCreatedColumn(false); preferences.setShowDateColumn(true); preferences.setShowTypeColumn(true); preferences.setShowSizeColumn(true); preferences.setShowGitStatusColumn(false)
             let optionsIndex = preferences.toolbarOrder.firstIndex(of: .options)!
             preferences.moveToolbarItem(.options, by: -1)
             checks["toolbarOrderPreference"] = preferences.toolbarOrder.firstIndex(of: .options) == optionsIndex - 1
