@@ -7,6 +7,7 @@ import FilesCore
 final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     var windows: [BrowserWindow] = []
     private var closedTabs = ClosedTabHistory()
+    private let sessionStore = TabSessionStore()
     func applicationDidFinishLaunching(_ notification: Notification) {
         buildMenu()
         #if DEBUG
@@ -15,16 +16,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             return
         }
         #endif
-        newWindow(nil); NSApp.activate(ignoringOtherApps: true)
+        let restored = sessionStore.load()
+        if restored.isEmpty { newWindow(nil) }
+        else {
+            var first: BrowserWindow?
+            for snapshot in restored {
+                let controller = makeBrowser(snapshot: snapshot, tabbedTo: first)
+                if first == nil { first = controller }
+            }
+        }
+        NSApp.activate(ignoringOtherApps: true)
     }
     private var currentBrowser: BrowserWindow? {
         (NSApp.keyWindow?.windowController as? BrowserWindow) ?? (NSApp.mainWindow?.windowController as? BrowserWindow)
     }
-    @discardableResult private func makeBrowser(location: URL? = nil, tabbedTo source: BrowserWindow? = nil) -> BrowserWindow {
-        let controller = BrowserWindow(initialLocation: location)
+    @discardableResult private func makeBrowser(location: URL? = nil, snapshot: TabSnapshot? = nil,
+                                                 tabbedTo source: BrowserWindow? = nil) -> BrowserWindow {
+        let controller = BrowserWindow(initialLocation: location, initialSnapshot: snapshot)
         windows.append(controller)
         controller.onClose = { [weak self, weak controller] in
-            if let controller { self?.closedTabs.record(TabSnapshot(location: controller.tabLocation)) }
+            if let controller { self?.closedTabs.record(controller.tabSnapshot()) }
             self?.windows.removeAll { $0 === controller }
         }
         controller.showWindow(nil)
@@ -38,11 +49,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     @objc func newTab(_ sender: Any?) { makeBrowser(tabbedTo: currentBrowser) }
     @objc func duplicateTab(_ sender: Any?) {
         guard let current = currentBrowser else { return }
-        makeBrowser(location: current.tabLocation, tabbedTo: current)
+        makeBrowser(snapshot: current.tabSnapshot(), tabbedTo: current)
     }
     @objc func reopenClosedTab(_ sender: Any?) {
         guard let snapshot = closedTabs.restoreLast() else { return }
-        makeBrowser(location: snapshot.location, tabbedTo: currentBrowser)
+        makeBrowser(snapshot: snapshot, tabbedTo: currentBrowser)
     }
     func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
         if menuItem.action == #selector(reopenClosedTab(_:)) { return closedTabs.canRestore }
@@ -50,6 +61,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         return true
     }
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
+    func applicationWillTerminate(_ notification: Notification) {
+        try? sessionStore.save(windows.map { $0.tabSnapshot() })
+    }
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         guard CopyWindow.isRunning || DeletionWindow.isRunning || RestoreWindow.isRunning || MoveWindow.isRunning ||
               PermanentDeleteWindow.isRunning || BatchRenameWindow.isRunning || BrowserWindow.entryOperationRunning else { return .terminateNow }

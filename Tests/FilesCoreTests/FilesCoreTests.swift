@@ -68,6 +68,32 @@ private func fixture() throws -> URL {
     #expect(history.snapshots.map(\.location?.path) == ["/two", "/three"])
 }
 
+@Test func tabSnapshotRoundTripsNavigationAndViewState() throws {
+    let suite = "tab-session-tests-\(UUID())"
+    let defaults = try #require(UserDefaults(suiteName: suite))
+    defer { defaults.removePersistentDomain(forName: suite) }
+    var history = NavigationHistory()
+    history.visit(URL(fileURLWithPath: "/first"))
+    history.save(selection: ["/first/item"], scrollOffset: 240)
+    history.visit(URL(fileURLWithPath: "/second"))
+    history.goBack()
+    let snapshot = TabSnapshot(history: history, sortOrder: SortOrder(field: .size, ascending: false), showHidden: true)
+    let store = TabSessionStore(defaults: defaults)
+
+    try store.save([snapshot])
+
+    #expect(store.load() == [snapshot])
+}
+
+@Test func tabSessionStoreRejectsCorruptStateSafely() throws {
+    let suite = "tab-session-corrupt-tests-\(UUID())"
+    let defaults = try #require(UserDefaults(suiteName: suite))
+    defer { defaults.removePersistentDomain(forName: suite) }
+    defaults.set(Data("not-json".utf8), forKey: "tabSession")
+
+    #expect(TabSessionStore(defaults: defaults).load().isEmpty)
+}
+
 @Test func sortingKeepsFoldersFirstAndNaturalNames() {
     let items = [FileItem(url: URL(fileURLWithPath: "/file10"), name: "file10", isDirectory: false),
         FileItem(url: URL(fileURLWithPath: "/file2"), name: "file2", isDirectory: false),

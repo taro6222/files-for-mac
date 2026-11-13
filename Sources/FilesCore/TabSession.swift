@@ -1,10 +1,43 @@
 import Foundation
 
-public struct TabSnapshot: Equatable, Sendable {
-    public let location: URL?
+public struct TabSnapshot: Codable, Equatable, Sendable {
+    public var history: NavigationHistory
+    public var sortOrder: SortOrder
+    public var showHidden: Bool
 
-    public init(location: URL?) {
-        self.location = location
+    public var location: URL? { history.current.url }
+
+    public init(location: URL?, sortOrder: SortOrder = SortOrder(), showHidden: Bool = false) {
+        self.history = NavigationHistory(current: NavigationEntry(url: location))
+        self.sortOrder = sortOrder
+        self.showHidden = showHidden
+    }
+
+    public init(history: NavigationHistory, sortOrder: SortOrder = SortOrder(), showHidden: Bool = false) {
+        self.history = history
+        self.sortOrder = sortOrder
+        self.showHidden = showHidden
+    }
+}
+
+public final class TabSessionStore: @unchecked Sendable {
+    private let defaults: UserDefaults
+    private let key: String
+    private let encoder = JSONEncoder()
+    private let decoder = JSONDecoder()
+
+    public init(defaults: UserDefaults = .standard, key: String = "tabSession") {
+        self.defaults = defaults
+        self.key = key
+    }
+
+    public func save(_ snapshots: [TabSnapshot]) throws {
+        defaults.set(try encoder.encode(snapshots), forKey: key)
+    }
+
+    public func load() -> [TabSnapshot] {
+        guard let data = defaults.data(forKey: key) else { return [] }
+        return (try? decoder.decode([TabSnapshot].self, from: data)) ?? []
     }
 }
 

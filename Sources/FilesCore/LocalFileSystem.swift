@@ -71,7 +71,7 @@ public struct LocalFileSystem: DirectoryStreaming {
     }
 }
 
-public struct NavigationEntry: Equatable, Sendable {
+public struct NavigationEntry: Codable, Equatable, Sendable {
     public var url: URL?
     public var selection: Set<String>
     public var scrollOffset: Double
@@ -80,11 +80,14 @@ public struct NavigationEntry: Equatable, Sendable {
     }
 }
 
-public struct NavigationHistory: Sendable {
+public struct NavigationHistory: Codable, Equatable, Sendable {
     public private(set) var current = NavigationEntry(url: nil)
     public private(set) var back: [NavigationEntry] = []
     public private(set) var forward: [NavigationEntry] = []
     public init() {}
+    public init(current: NavigationEntry, back: [NavigationEntry] = [], forward: [NavigationEntry] = []) {
+        self.current = current; self.back = back; self.forward = forward
+    }
     public mutating func save(selection: Set<String>, scrollOffset: Double) {
         current.selection = selection; current.scrollOffset = scrollOffset
     }

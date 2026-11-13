@@ -29,8 +29,8 @@ public struct FileItem: Identifiable, Sendable, Equatable {
     public var isBrowsable: Bool { isDirectory && !isPackage }
 }
 
-public enum SortField: String, CaseIterable, Sendable { case name, modified, kind, size }
-public struct SortOrder: Sendable {
+public enum SortField: String, CaseIterable, Codable, Sendable { case name, modified, kind, size }
+public struct SortOrder: Codable, Equatable, Sendable {
     public var field: SortField
     public var ascending: Bool
     public var foldersFirst: Bool

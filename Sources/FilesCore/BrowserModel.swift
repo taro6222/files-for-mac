@@ -61,6 +61,15 @@ public final class BrowserModel {
     private var task: Task<Void, Never>?
     public init(loader: any DirectoryLoading = LocalFileSystem()) { self.loader = loader }
     public var location: URL? { history.current.url }
+    public var snapshot: TabSnapshot {
+        TabSnapshot(history: history, sortOrder: sortOrder, showHidden: showHidden)
+    }
+    public func restore(_ snapshot: TabSnapshot) {
+        history = snapshot.history
+        sortOrder = snapshot.sortOrder
+        showHidden = snapshot.showHidden
+        reload()
+    }
     public func savePosition(selection: Set<String>, scrollOffset: Double) {
         history.save(selection: selection, scrollOffset: scrollOffset)
     }
