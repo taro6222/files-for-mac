@@ -123,6 +123,7 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         if restoresFrame { w.setFrameAutosaveName("BrowserWindow") }
         w.titlebarAppearsTransparent = true
         w.isReleasedWhenClosed = false
+        w.appearance = Self.appearance(preferences.appearance)
         w.contentView = BrowserBackgroundView()
         model.showHidden = preferences.showHidden
         setupUI(restoresLayout: restoresFrame)
@@ -166,6 +167,14 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         })
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
+
+    static func appearance(_ preference: BrowserAppearance) -> NSAppearance? {
+        switch preference {
+        case .system: nil
+        case .light: NSAppearance(named: .aqua)
+        case .dark: NSAppearance(named: .darkAqua)
+        }
+    }
 
     private func setupUI(restoresLayout: Bool) {
         guard let root = window?.contentView else { return }
@@ -1327,6 +1336,7 @@ extension BrowserWindow {
         content.layer?.borderColor = NSColor.controlAccentColor.cgColor
     }
     private func preferencesChanged() {
+        window?.appearance = Self.appearance(preferences.appearance)
         buildSidebar()
         rebuildToolbar(force: true)
         secondaryPane?.applyPreferences()
@@ -1634,6 +1644,18 @@ extension BrowserWindow {
             preferences.moveToolbarItem(.options, by: -1)
             checks["toolbarOrderPreference"] = preferences.toolbarOrder.firstIndex(of: .options) == optionsIndex - 1
             preferences.moveToolbarItem(.options, by: 1)
+            let appearanceSettings = AppearanceSettingsWindow(preferences: preferences)
+            appearanceSettings.present(); try await Task.sleep(for: .milliseconds(50))
+            appearanceSettings.qaSelect(.dark)
+            checks["appearanceDark"] = preferences.appearance == .dark && window.appearance?.name == .darkAqua
+            appearanceSettings.qaSelect(.light)
+            checks["appearanceLight"] = preferences.appearance == .light && window.appearance?.name == .aqua
+            appearanceSettings.qaSelect(.system)
+            checks["appearanceSystem"] = preferences.appearance == .system && window.appearance == nil
+            appearanceSettings.qaSelect(dark ? .dark : .light)
+            checks["appearanceSettingsWindow"] = appearanceSettings.window?.isVisible == true
+            try capture("appearance-settings", view: appearanceSettings.window?.contentView)
+            appearanceSettings.close(); window.makeKeyAndOrderFront(nil)
             checks["pathFieldUsableWidth"] = controller.pathField.frame.width >= 160
             controller.focusPath(nil)
             checks["pathFocus"] = controller.pathField.currentEditor() != nil

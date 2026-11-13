@@ -336,6 +336,20 @@ private struct DelayedLoader: DirectoryLoading {
     restored.resetToolbar(); #expect(restored.toolbarOrder == BrowserToolbarItem.allCases); #expect(restored.hiddenToolbarItems.isEmpty)
 }
 
+@Test @MainActor func appearancePreferenceRepairsPersistsAndNotifies() {
+    let suite = "appearance-preferences-tests-\(UUID())", defaults = UserDefaults(suiteName: suite)!
+    defer { defaults.removePersistentDomain(forName: suite) }
+    defaults.set("unsupported", forKey: "appearance")
+    let preferences = BrowserPreferences(defaults: defaults, initialFavorites: [])
+    #expect(preferences.appearance == .system)
+    var notifications = 0; let token = preferences.observe { notifications += 1 }
+    preferences.setAppearance(.dark)
+    #expect(BrowserPreferences(defaults: defaults, initialFavorites: []).appearance == .dark)
+    #expect(notifications == 1)
+    preferences.setAppearance(.dark); #expect(notifications == 1)
+    preferences.removeObserver(token)
+}
+
 @Test func shortcutPreferencesPersistValidateCollisionsAndReset() throws {
     let suite = "shortcut-preferences-tests-\(UUID())", defaults = UserDefaults(suiteName: suite)!
     defer { defaults.removePersistentDomain(forName: suite) }

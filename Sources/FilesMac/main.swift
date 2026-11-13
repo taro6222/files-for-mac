@@ -11,7 +11,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     private let workspaceStore = WorkspaceSessionStore()
     private var shortcutPreferences: ShortcutPreferences!
     private var shortcutSettingsWindow: ShortcutSettingsWindow?
+    private var appearanceSettingsWindow: AppearanceSettingsWindow?
+    private var preferencesToken: UUID?
     func applicationDidFinishLaunching(_ notification: Notification) {
+        applyAppearance()
+        preferencesToken = BrowserPreferences.shared.observe { [weak self] in self?.applyAppearance() }
         buildMenu()
         configureShortcuts()
         #if DEBUG
@@ -77,6 +81,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         }
         shortcutSettingsWindow?.present()
     }
+    @objc func showAppearanceSettings(_ sender: Any?) {
+        if appearanceSettingsWindow == nil { appearanceSettingsWindow = AppearanceSettingsWindow(preferences: .shared) }
+        appearanceSettingsWindow?.present()
+    }
+    private func applyAppearance() { NSApp.appearance = BrowserWindow.appearance(BrowserPreferences.shared.appearance) }
     private func configureShortcuts() {
         let entries = CommandPaletteCatalog.entries(from: NSApp.mainMenu)
         let known = Set(entries.compactMap { ShortcutBridge.commandID($0.item) })
@@ -94,6 +103,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     }
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
     func applicationWillTerminate(_ notification: Notification) {
+        if let preferencesToken { BrowserPreferences.shared.removeObserver(preferencesToken) }
         try? workspaceStore.save(windows.map { $0.workspaceSnapshot() })
     }
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
@@ -111,6 +121,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         let appMenu = NSMenu(); appItem.submenu = appMenu
         let shortcuts = appMenu.addItem(withTitle: L("키보드 단축키…", "Keyboard Shortcuts…"), action: #selector(showShortcutSettings(_:)), keyEquivalent: ",")
         shortcuts.target = self
+        let appearance = appMenu.addItem(withTitle: L("외형…", "Appearance…"), action: #selector(showAppearanceSettings(_:)), keyEquivalent: "")
+        appearance.target = self
         appMenu.addItem(.separator())
         appMenu.addItem(withTitle: L("Files macOS 종료", "Quit Files macOS"), action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         let fileItem = NSMenuItem(); fileItem.title = L("파일", "File"); menu.addItem(fileItem)

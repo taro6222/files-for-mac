@@ -3,6 +3,9 @@ import Foundation
 public enum BrowserViewSize: String, CaseIterable, Sendable {
     case small, medium, large
 }
+public enum BrowserAppearance: String, CaseIterable, Sendable {
+    case system, light, dark
+}
 public enum BrowserToolbarItem: String, CaseIterable, Sendable {
     case back, forward, up, refresh, path, hidden, viewMode, favorite, options
     public var isRequired: Bool { self == .path }
@@ -26,6 +29,7 @@ public final class BrowserPreferences {
     public private(set) var showHomeVolumes: Bool
     public private(set) var showHomeRecent: Bool
     public private(set) var viewSize: BrowserViewSize
+    public private(set) var appearance: BrowserAppearance
     public private(set) var toolbarOrder: [BrowserToolbarItem]
     public private(set) var hiddenToolbarItems: Set<BrowserToolbarItem>
 
@@ -47,6 +51,7 @@ public final class BrowserPreferences {
         showHomeVolumes = defaults.object(forKey: "showHomeVolumes") as? Bool ?? true
         showHomeRecent = defaults.object(forKey: "showHomeRecent") as? Bool ?? true
         viewSize = defaults.string(forKey: "viewSize").flatMap(BrowserViewSize.init(rawValue:)) ?? .medium
+        appearance = defaults.string(forKey: "appearance").flatMap(BrowserAppearance.init(rawValue:)) ?? .system
         var toolbar: [BrowserToolbarItem] = []
         for raw in defaults.stringArray(forKey: "toolbarOrder") ?? [] {
             if let item = BrowserToolbarItem(rawValue: raw), !toolbar.contains(item) { toolbar.append(item) }
@@ -98,6 +103,10 @@ public final class BrowserPreferences {
     public func setViewSize(_ value: BrowserViewSize) {
         guard viewSize != value else { return }
         viewSize = value; defaults.set(value.rawValue, forKey: "viewSize"); changed()
+    }
+    public func setAppearance(_ value: BrowserAppearance) {
+        guard appearance != value else { return }
+        appearance = value; defaults.set(value.rawValue, forKey: "appearance"); changed()
     }
     public func toggleToolbarItem(_ item: BrowserToolbarItem) {
         guard !item.isRequired else { return }
