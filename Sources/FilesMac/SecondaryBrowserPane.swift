@@ -11,6 +11,7 @@ final class SecondaryBrowserPane: NSView, NSTableViewDataSource, NSTableViewDele
     private let scroll = NSScrollView()
     private let status = NSTextField(labelWithString: "")
     private let hiddenButton = NSButton()
+    private let viewModeButton = NSPopUpButton()
     private var watcher: DirectoryWatcher?
     private var watcherTask: Task<Void, Never>?
     private var watchedURL: URL?
@@ -40,6 +41,7 @@ final class SecondaryBrowserPane: NSView, NSTableViewDataSource, NSTableViewDele
     func focusPath() { activate(); window?.makeFirstResponder(pathField); pathField.selectText(nil) }
     func focusFiles() { activate(); window?.makeFirstResponder(table) }
     func stopLoading() { model.cancelLoad() }
+    func setViewMode(_ mode: BrowserViewMode) { activate(); model.setViewMode(mode) }
     func openSelected() { openSelection(nil) }
     func open(_ url: URL?) { activate(); navigate(url) }
     func shutdown() {
@@ -63,6 +65,18 @@ final class SecondaryBrowserPane: NSView, NSTableViewDataSource, NSTableViewDele
         hiddenButton.image = NSImage(systemSymbolName: "eye.slash", accessibilityDescription: L("숨김 항목 전환", "Toggle Hidden Files"))
         hiddenButton.title = ""; hiddenButton.imagePosition = .imageOnly; hiddenButton.bezelStyle = .texturedRounded
         hiddenButton.target = self; hiddenButton.action = #selector(toggleHidden(_:)); toolbar.addArrangedSubview(hiddenButton)
+        for (mode, title) in [(BrowserViewMode.details, L("상세", "Details")),
+                              (.list, L("목록", "List")),
+                              (.grid, L("그리드", "Grid")),
+                              (.columns, L("컬럼", "Columns")),
+                              (.adaptive, L("적응형", "Adaptive"))] {
+            viewModeButton.addItem(withTitle: title)
+            viewModeButton.lastItem?.representedObject = mode.rawValue
+        }
+        viewModeButton.target = self; viewModeButton.action = #selector(changeViewMode(_:))
+        viewModeButton.toolTip = L("보기 모드", "View Mode")
+        viewModeButton.setAccessibilityLabel(L("보기 모드", "View Mode"))
+        toolbar.addArrangedSubview(viewModeButton)
         stack.addArrangedSubview(toolbar)
         table.style = .fullWidth; table.rowHeight = 30; table.allowsMultipleSelection = true
         table.delegate = self; table.dataSource = self; table.onActivate = { [weak self] in self?.activate() }
@@ -102,6 +116,9 @@ final class SecondaryBrowserPane: NSView, NSTableViewDataSource, NSTableViewDele
     private func render() {
         pathField.stringValue = model.location?.path ?? ""; table.reloadData()
         hiddenButton.contentTintColor = model.showHidden ? .systemBlue : .labelColor
+        if let item = viewModeButton.itemArray.first(where: {
+            ($0.representedObject as? String) == model.viewMode.rawValue
+        }) { viewModeButton.select(item) }
         let expectedSort = NSSortDescriptor(key: model.sortOrder.field.rawValue, ascending: model.sortOrder.ascending)
         if table.sortDescriptors.first != expectedSort { table.sortDescriptors = [expectedSort] }
         table.selectRowIndexes(IndexSet(model.items.indices.filter { model.history.current.selection.contains(model.items[$0].id) }), byExtendingSelection: false)
@@ -160,6 +177,12 @@ final class SecondaryBrowserPane: NSView, NSTableViewDataSource, NSTableViewDele
     @objc private func reload(_ sender: Any?) { refresh() }
     @objc private func toggleHidden(_ sender: Any?) {
         activate(); savePosition(); model.showHidden.toggle(); model.reload()
+    }
+    @objc private func changeViewMode(_ sender: Any?) {
+        activate()
+        guard let raw = viewModeButton.selectedItem?.representedObject as? String,
+              let mode = BrowserViewMode(rawValue: raw) else { return }
+        model.setViewMode(mode)
     }
     @objc private func submitPath(_ sender: Any?) {
         activate(); let path = (pathField.stringValue as NSString).expandingTildeInPath

@@ -20,6 +20,7 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
     private let forwardButton = NSButton()
     private let upButton = NSButton()
     private let hiddenButton = NSButton()
+    private let viewModeButton = NSPopUpButton()
     private let refreshButton = NSButton()
     private let homeView = NSStackView()
     private let sidebar = NSStackView()
@@ -206,6 +207,8 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         toolbar.addArrangedSubview(pathField)
         configure(hiddenButton, "eye.slash", L("숨김 항목 표시", "Show Hidden Files"), #selector(toggleHidden(_:)))
         toolbar.addArrangedSubview(hiddenButton)
+        configureViewModeButton(viewModeButton)
+        toolbar.addArrangedSubview(viewModeButton)
         toolbar.addArrangedSubview(button("pin", L("즐겨찾기 전환", "Toggle Favorite"), #selector(toggleFavorite(_:))))
         optionsMenu.delegate = self
         toolbar.addArrangedSubview(button("slider.horizontal.3", L("보기 옵션", "View Options"), #selector(showOptions(_:))))
@@ -304,6 +307,20 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         b.title = ""; b.imagePosition = .imageOnly; b.bezelStyle = .texturedRounded
         b.toolTip = title; b.setAccessibilityLabel(title); b.target = self; b.action = action
         b.widthAnchor.constraint(equalToConstant: 32).isActive = true
+    }
+    private func configureViewModeButton(_ button: NSPopUpButton) {
+        button.removeAllItems()
+        for (mode, title) in [(BrowserViewMode.details, L("상세", "Details")),
+                              (.list, L("목록", "List")),
+                              (.grid, L("그리드", "Grid")),
+                              (.columns, L("컬럼", "Columns")),
+                              (.adaptive, L("적응형", "Adaptive"))] {
+            button.addItem(withTitle: title)
+            button.lastItem?.representedObject = mode.rawValue
+        }
+        button.target = self; button.action = #selector(changeViewMode(_:))
+        button.toolTip = L("보기 모드", "View Mode")
+        button.setAccessibilityLabel(L("보기 모드", "View Mode"))
     }
     private func button(_ symbol: String, _ title: String, _ action: Selector) -> NSButton {
         let b = NSButton(); configure(b, symbol, title, action); return b
@@ -445,6 +462,9 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         backButton.isEnabled = !model.history.back.isEmpty; forwardButton.isEnabled = !model.history.forward.isEmpty
         upButton.isEnabled = model.location != nil && model.location?.path != "/"
         hiddenButton.contentTintColor = model.showHidden ? .systemBlue : .labelColor
+        if let item = viewModeButton.itemArray.first(where: {
+            ($0.representedObject as? String) == model.viewMode.rawValue
+        }) { viewModeButton.select(item) }
         let refreshTitle = model.isLoading ? L("읽기 중단", "Stop Loading") : L("새로고침", "Refresh")
         refreshButton.image = NSImage(systemSymbolName: model.isLoading ? "xmark" : "arrow.clockwise", accessibilityDescription: refreshTitle)
         refreshButton.toolTip = refreshTitle; refreshButton.setAccessibilityLabel(refreshTitle)
@@ -609,6 +629,12 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
     @objc func retryAutomaticRefresh(_ sender: Any?) { updateWatcher(force: true) }
     @objc func toggleHidden(_ sender: Any?) {
         preferences.setShowHidden(!preferences.showHidden)
+    }
+    @objc func changeViewMode(_ sender: Any?) {
+        guard let button = sender as? NSPopUpButton,
+              let raw = button.selectedItem?.representedObject as? String,
+              let mode = BrowserViewMode(rawValue: raw) else { return }
+        model.setViewMode(mode)
     }
     @objc func toggleFavorite(_ sender: Any?) {
         guard let url = activeModel.location else { return }
