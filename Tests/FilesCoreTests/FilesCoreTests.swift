@@ -455,14 +455,14 @@ private struct DelayedLoader: DirectoryLoading {
     let suite = "chrome-visibility-tests-\(UUID())", defaults = UserDefaults(suiteName: suite)!
     defer { defaults.removePersistentDomain(forName: suite) }
     let preferences = BrowserPreferences(defaults: defaults, initialFavorites: [])
-    #expect(preferences.showToolbar && preferences.showStatusBar)
+    #expect(preferences.showToolbar && preferences.showStatusBar && preferences.showSidebar)
     var notifications = 0; let token = preferences.observe { notifications += 1 }
-    preferences.setShowToolbar(false); preferences.setShowStatusBar(false)
+    preferences.setShowToolbar(false); preferences.setShowStatusBar(false); preferences.setShowSidebar(false)
     let restored = BrowserPreferences(defaults: defaults, initialFavorites: [])
-    #expect(!restored.showToolbar && !restored.showStatusBar)
-    #expect(notifications == 2)
-    preferences.setShowToolbar(false); preferences.setShowStatusBar(false)
-    #expect(notifications == 2)
+    #expect(!restored.showToolbar && !restored.showStatusBar && !restored.showSidebar)
+    #expect(notifications == 3)
+    preferences.setShowToolbar(false); preferences.setShowStatusBar(false); preferences.setShowSidebar(false)
+    #expect(notifications == 3)
     preferences.removeObserver(token)
 }
 
@@ -497,7 +497,7 @@ private struct DelayedLoader: DirectoryLoading {
     let firstDefaults = UserDefaults(suiteName: firstSuite)!, secondDefaults = UserDefaults(suiteName: secondSuite)!
     defer { firstDefaults.removePersistentDomain(forName: firstSuite); secondDefaults.removePersistentDomain(forName: secondSuite) }
     let source = BrowserPreferences(defaults: firstDefaults, initialFavorites: [URL(fileURLWithPath: "/source")])
-    source.setShowHidden(true); source.setShowToolbar(false); source.setAppearance(.dark); source.setDeveloperApplication(URL(fileURLWithPath: "/Applications/Editor.app"))
+    source.setShowHidden(true); source.setShowToolbar(false); source.setShowSidebar(false); source.setAppearance(.dark); source.setDeveloperApplication(URL(fileURLWithPath: "/Applications/Editor.app"))
     source.setStartupLocation(URL(fileURLWithPath: "/startup"))
     source.setSizeUnit(.decimal)
     source.setOpenFoldersInNewTab(true)
@@ -506,7 +506,7 @@ private struct DelayedLoader: DirectoryLoading {
     source.setFolderViewPreference(FolderViewPreference(mode: .grid, size: .large), for: URL(fileURLWithPath: "/folder"))
     let data = try source.exportData(), destination = BrowserPreferences(defaults: secondDefaults, initialFavorites: [])
     try destination.importData(data)
-    #expect(destination.showHidden && !destination.showToolbar && destination.appearance == .dark)
+    #expect(destination.showHidden && !destination.showToolbar && !destination.showSidebar && destination.appearance == .dark)
     #expect(destination.developerApplicationPath == "/Applications/Editor.app")
     #expect(destination.startupLocationPath == "/startup")
     #expect(destination.sizeUnit == .decimal)

@@ -36,6 +36,8 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
     private let toolbar = NSStackView()
     private let bottom = NSStackView()
     private let toolbarOverflow = NSPopUpButton()
+    private let rootSplit = NSSplitView()
+    private let sidebarContainer = NSVisualEffectView()
     private var toolbarViews: [BrowserToolbarItem: NSView] = [:]
     private var toolbarCompact: Bool?
     private var toolbarSettingsWindow: ToolbarSettingsWindow?
@@ -198,16 +200,18 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
 
     private func setupUI(restoresLayout: Bool) {
         guard let root = window?.contentView else { return }
-        let split = NSSplitView()
+        let split = rootSplit
         if restoresLayout { split.autosaveName = "BrowserSidebarSplit" }
         split.isVertical = true; split.dividerStyle = .thin; split.translatesAutoresizingMaskIntoConstraints = false
         root.addSubview(split)
         NSLayoutConstraint.activate([split.leadingAnchor.constraint(equalTo: root.leadingAnchor), split.trailingAnchor.constraint(equalTo: root.trailingAnchor), split.topAnchor.constraint(equalTo: root.topAnchor), split.bottomAnchor.constraint(equalTo: root.bottomAnchor)])
-        let sideEffect = NSVisualEffectView()
+        let sideEffect = sidebarContainer
         sideEffect.material = .sidebar; sideEffect.blendingMode = .behindWindow; sideEffect.state = .active
         split.addArrangedSubview(sideEffect)
-        sideEffect.widthAnchor.constraint(greaterThanOrEqualToConstant: 180).isActive = true
-        sideEffect.widthAnchor.constraint(lessThanOrEqualToConstant: 320).isActive = true
+        let sidebarMinimumWidth = sideEffect.widthAnchor.constraint(greaterThanOrEqualToConstant: 180)
+        let sidebarMaximumWidth = sideEffect.widthAnchor.constraint(lessThanOrEqualToConstant: 320)
+        sidebarMinimumWidth.priority = .defaultHigh; sidebarMaximumWidth.priority = .defaultHigh
+        sidebarMinimumWidth.isActive = true; sidebarMaximumWidth.isActive = true
         let sideScroll = NSScrollView(); sideScroll.drawsBackground = false; sideScroll.hasVerticalScroller = true
         sideScroll.translatesAutoresizingMaskIntoConstraints = false; sideEffect.addSubview(sideScroll)
         NSLayoutConstraint.activate([sideScroll.leadingAnchor.constraint(equalTo: sideEffect.leadingAnchor), sideScroll.trailingAnchor.constraint(equalTo: sideEffect.trailingAnchor), sideScroll.topAnchor.constraint(equalTo: sideEffect.topAnchor), sideScroll.bottomAnchor.constraint(equalTo: sideEffect.bottomAnchor)])
@@ -319,6 +323,7 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         bottom.addArrangedSubview(phase); main.addArrangedSubview(bottom)
         toolbar.isHidden = !preferences.showToolbar
         bottom.isHidden = !preferences.showStatusBar
+        sidebarContainer.isHidden = !preferences.showSidebar
         for view in [header, toolbar, divider, content, bottom] { view.widthAnchor.constraint(equalTo: main.widthAnchor).isActive = true }
     }
 
@@ -1601,6 +1606,9 @@ extension BrowserWindow {
         window?.appearance = Self.appearance(preferences.appearance)
         toolbar.isHidden = !preferences.showToolbar
         bottom.isHidden = !preferences.showStatusBar
+        sidebarContainer.isHidden = !preferences.showSidebar
+        rootSplit.adjustSubviews()
+        rootSplit.layoutSubtreeIfNeeded()
         buildSidebar()
         rebuildToolbar(force: true)
         secondaryPane?.applyPreferences()
@@ -1628,6 +1636,7 @@ extension BrowserWindow {
         guard menu === optionsMenu else { return }
         menu.removeAllItems()
         let entries: [(String, Selector, Bool)] = [
+            (L("사이드바 표시", "Show Sidebar"), #selector(toggleSidebarVisibility(_:)), preferences.showSidebar),
             (L("툴바 표시", "Show Toolbar"), #selector(toggleToolbar(_:)), preferences.showToolbar),
             (L("상태 막대 표시", "Show Status Bar"), #selector(toggleStatusBar(_:)), preferences.showStatusBar),
             (L("파일 확장자 표시", "Show File Extensions"), #selector(toggleExtensions(_:)), preferences.showExtensions),
@@ -1661,6 +1670,7 @@ extension BrowserWindow {
         toolbarItem.target = self
     }
     @objc private func toggleExtensions(_ sender: Any?) { preferences.setShowExtensions(!preferences.showExtensions) }
+    @objc private func toggleSidebarVisibility(_ sender: Any?) { preferences.setShowSidebar(!preferences.showSidebar) }
     @objc private func toggleToolbar(_ sender: Any?) { preferences.setShowToolbar(!preferences.showToolbar) }
     @objc private func toggleStatusBar(_ sender: Any?) { preferences.setShowStatusBar(!preferences.showStatusBar) }
     @objc private func setViewSize(_ sender: NSMenuItem) {
@@ -1886,6 +1896,7 @@ private struct DelayedUIListLoader: DirectoryLoading {
 /// Runs against generated fixtures only; release builds contain no QA entry point.
 extension BrowserWindow {
 #if DEBUG
+    var qaSidebarVisible: Bool { !sidebarContainer.isHidden }
     var qaGitLoading: Bool { gitTask != nil }
     var qaGitMarkedRows: Int { model.items.filter { !gitStatus(for: $0).isEmpty }.count }
     var qaGitColumnVisible: Bool { table.tableColumns.contains { $0.identifier.rawValue == "git" } }
@@ -2049,19 +2060,23 @@ extension BrowserWindow {
                 && controller.toolbarSettingsWindow?.qaRowCount == BrowserToolbarItem.allCases.count
             try capture("toolbar-settings", view: controller.toolbarSettingsWindow?.window?.contentView)
             controller.toolbarSettingsWindow?.close(); window.makeKeyAndOrderFront(nil)
+            let toolbarTestFrame = window.frame
+            window.setFrame(NSRect(origin: toolbarTestFrame.origin, size: NSSize(width: 700, height: toolbarTestFrame.height)), display: true)
+            root.layoutSubtreeIfNeeded()
             controller.rebuildToolbar(force: true)
             let overflowTitles = controller.toolbarOverflow.itemArray.map(\.title)
             checks["toolbarCompactOverflow"] = controller.toolbarCompact == true
                 && overflowTitles.contains(L("숨김 항목 전환", "Toggle Hidden Files"))
                 && overflowTitles.contains(L("즐겨찾기 전환", "Toggle Favorite"))
+            window.setFrame(toolbarTestFrame, display: true); root.layoutSubtreeIfNeeded(); controller.rebuildToolbar(force: true)
             preferences.toggleToolbarItem(.favorite)
             checks["toolbarVisibilityPreference"] = preferences.hiddenToolbarItems.contains(.favorite)
                 && !controller.toolbarOverflow.itemArray.map(\.title).contains(L("즐겨찾기 전환", "Toggle Favorite"))
             preferences.toggleToolbarItem(.favorite)
-            preferences.setShowToolbar(false); preferences.setShowStatusBar(false)
-            checks["browserChromeVisibilityPreference"] = controller.toolbar.isHidden && controller.bottom.isHidden
-            preferences.setShowToolbar(true); preferences.setShowStatusBar(true)
-            checks["browserChromeVisibilityRestored"] = !controller.toolbar.isHidden && !controller.bottom.isHidden
+            preferences.setShowToolbar(false); preferences.setShowStatusBar(false); preferences.setShowSidebar(false)
+            checks["browserChromeVisibilityPreference"] = controller.toolbar.isHidden && controller.bottom.isHidden && !controller.qaSidebarVisible
+            preferences.setShowToolbar(true); preferences.setShowStatusBar(true); preferences.setShowSidebar(true)
+            checks["browserChromeVisibilityRestored"] = !controller.toolbar.isHidden && !controller.bottom.isHidden && controller.qaSidebarVisible
             let optionsIndex = preferences.toolbarOrder.firstIndex(of: .options)!
             preferences.moveToolbarItem(.options, by: -1)
             checks["toolbarOrderPreference"] = preferences.toolbarOrder.firstIndex(of: .options) == optionsIndex - 1
