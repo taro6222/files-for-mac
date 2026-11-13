@@ -200,3 +200,46 @@ private struct CopyFixture {
     #expect(!FileManager.default.fileExists(atPath: targetNested.appendingPathComponent("missing.txt").path))
     #expect(try String(contentsOf: targetNested.appendingPathComponent("same.txt"), encoding: .utf8) == "target")
 }
+
+@Test func folderMergeExecutionPublishesOnlyMissingItemsAndSupportsSafeUndo() async throws {
+    let f = try CopyFixture(); defer { f.clean() }
+    let sourceFolder = f.source.appendingPathComponent("folder")
+    let sourceNested = sourceFolder.appendingPathComponent("nested")
+    try FileManager.default.createDirectory(at: sourceNested, withIntermediateDirectories: true)
+    try Data("new".utf8).write(to: sourceNested.appendingPathComponent("new.txt"))
+    try Data("source".utf8).write(to: sourceNested.appendingPathComponent("existing.txt"))
+    let targetFolder = f.destination.appendingPathComponent("folder")
+    let targetNested = targetFolder.appendingPathComponent("nested")
+    try FileManager.default.createDirectory(at: targetNested, withIntermediateDirectories: true)
+    try Data("target".utf8).write(to: targetNested.appendingPathComponent("existing.txt"))
+    let plan = try CopyMergePlanner.plan(source: sourceFolder, target: targetFolder)
+
+    let report = await CopyMergeExecutor.run(plan: plan, journalDirectory: f.journal,
+                                              cancellation: CopyCancellation())
+
+    #expect(report.state == "completed")
+    #expect(try String(contentsOf: targetNested.appendingPathComponent("new.txt"), encoding: .utf8) == "new")
+    #expect(try String(contentsOf: targetNested.appendingPathComponent("existing.txt"), encoding: .utf8) == "target")
+    let undo = try #require(CopyEngine.latestUndoCopy(journalDirectory: f.journal))
+    let undoResult = await CopyEngine.undoCopy(undo, journalDirectory: f.journal)
+    #expect(undoResult.state == "completed")
+    #expect(!FileManager.default.fileExists(atPath: targetNested.appendingPathComponent("new.txt").path))
+    #expect(FileManager.default.fileExists(atPath: targetNested.path))
+}
+
+@Test func folderMergeExecutionPreservesDestinationThatAppearsAfterPlanning() async throws {
+    let f = try CopyFixture(); defer { f.clean() }
+    let sourceFolder = f.source.appendingPathComponent("folder")
+    try FileManager.default.createDirectory(at: sourceFolder, withIntermediateDirectories: true)
+    try Data("source".utf8).write(to: sourceFolder.appendingPathComponent("racing.txt"))
+    let targetFolder = f.destination.appendingPathComponent("folder")
+    try FileManager.default.createDirectory(at: targetFolder, withIntermediateDirectories: true)
+    let plan = try CopyMergePlanner.plan(source: sourceFolder, target: targetFolder)
+    try Data("external".utf8).write(to: targetFolder.appendingPathComponent("racing.txt"))
+
+    let report = await CopyMergeExecutor.run(plan: plan, journalDirectory: f.journal,
+                                              cancellation: CopyCancellation())
+
+    #expect(report.items.first?.state == "conflict")
+    #expect(try String(contentsOf: targetFolder.appendingPathComponent("racing.txt"), encoding: .utf8) == "external")
+}
