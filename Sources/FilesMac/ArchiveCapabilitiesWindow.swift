@@ -13,7 +13,7 @@ final class ArchiveCapabilitiesWindow: NSWindowController {
         for item in ArchiveCapabilityMatrix.current {
             grid.addRow(with: [NSTextField(labelWithString: item.format.rawValue.uppercased()), mark(item.browse), mark(item.extract), mark(item.create), mark(item.update), mark(item.password), mark(item.splitVolumes)])
         }
-        let note = NSTextField(wrappingLabelWithString: L("실제 fixture로 검증한 기능만 지원으로 표시합니다. 7z/RAR 파일은 현재 변경하지 않습니다.", "Only fixture-verified features are shown as supported. 7z/RAR files are currently left unchanged."))
+        let note = NSTextField(wrappingLabelWithString: L("실제 fixture로 검증한 기능만 지원으로 표시합니다. 7z/RAR은 탐색·안전 추출만 지원합니다.", "Only fixture-verified features are shown as supported. 7z/RAR support is limited to browsing and safe extraction."))
         let stack = NSStackView(views: [grid, note]); stack.orientation = .vertical; stack.alignment = .leading; stack.spacing = 22; stack.translatesAutoresizingMaskIntoConstraints = false; panel.contentView!.addSubview(stack)
         NSLayoutConstraint.activate([stack.leadingAnchor.constraint(equalTo: panel.contentView!.leadingAnchor, constant: 24), stack.trailingAnchor.constraint(equalTo: panel.contentView!.trailingAnchor, constant: -24), stack.topAnchor.constraint(equalTo: panel.contentView!.topAnchor, constant: 24), stack.bottomAnchor.constraint(lessThanOrEqualTo: panel.contentView!.bottomAnchor, constant: -24), note.widthAnchor.constraint(equalTo: stack.widthAnchor)])
     }

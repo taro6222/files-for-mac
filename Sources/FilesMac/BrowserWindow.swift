@@ -862,14 +862,15 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
     }
     private func openItem(_ item: FileItem) {
         if item.isBrowsable { navigate(item.url) }
-        else if item.url.pathExtension.lowercased() == "zip" { presentArchive(item.url) }
+        else if ArchiveFormat.detect(item.url).map({ ArchiveCapabilityMatrix.capabilities(for: $0).browse }) == true { presentArchive(item.url) }
         else { NSWorkspace.shared.open(item.url) }
     }
     private func presentArchive(_ url: URL) {
         let controller = archiveWindow ?? ArchiveWindow(); archiveWindow = controller; controller.present(archiveURL: url)
     }
     @objc func openArchive(_ sender: Any?) {
-        guard activeSelectedItems.count == 1, let item = activeSelectedItems.first, item.url.pathExtension.lowercased() == "zip" else { return }
+        guard activeSelectedItems.count == 1, let item = activeSelectedItems.first,
+              ArchiveFormat.detect(item.url).map({ ArchiveCapabilityMatrix.capabilities(for: $0).browse }) == true else { return }
         presentArchive(item.url)
     }
     @objc func createArchive(_ sender: Any?) {
@@ -1652,7 +1653,7 @@ extension BrowserWindow {
         case #selector(goForward(_:)): return secondaryActive ? !(secondaryPane?.model.history.forward.isEmpty ?? true) : !model.history.forward.isEmpty
         case #selector(goUp(_:)): return secondaryActive ? secondaryPane?.model.location != nil : model.location != nil && model.location?.path != "/"
         case #selector(openSelection(_:)): return !activeSelectedItems.isEmpty && activeModel.location != nil
-        case #selector(openArchive(_:)): return activeSelectedItems.count == 1 && activeSelectedItems.first?.url.pathExtension.lowercased() == "zip"
+        case #selector(openArchive(_:)): return activeSelectedItems.count == 1 && activeSelectedItems.first.map { ArchiveFormat.detect($0.url).map { ArchiveCapabilityMatrix.capabilities(for: $0).browse } == true } == true
         case #selector(createArchive(_:)): return !ArchiveCreationWindow.isRunning && !activeModel.isLoading && !activeSelectedItems.isEmpty
         case #selector(revealSelection(_:)), #selector(shareSelection(_:)), #selector(openWithApplication(_:)): return !activeSelectedItems.isEmpty && activeModel.location != nil
         case #selector(openInTerminal(_:)): return activeModel.location != nil
@@ -1904,6 +1905,21 @@ extension BrowserWindow {
             checks["archiveExtraction"] = controller.archiveWindow?.qaSucceeded == true && extractedArchiveText == "fixture"
             try capture("archive", view: controller.archiveWindow?.window?.contentView)
             controller.archiveWindow?.close(); window.makeKeyAndOrderFront(nil)
+            let formatFixtureRoot = URL(fileURLWithPath: FileManager.default.currentDirectoryPath, isDirectory: true).appendingPathComponent("Tests/FilesCoreTests/Fixtures", isDirectory: true)
+            var extraFormatsPassed = true
+            for (name, expectedName) in [("libarchive-empty.7z", "empty"), ("libarchive-noeof.rar", "test.txt")] {
+                controller.presentArchive(formatFixtureRoot.appendingPathComponent(name))
+                let formatLoad = ContinuousClock.now
+                while controller.archiveWindow?.qaLoaded != true && formatLoad.duration(to: .now) < .seconds(10) { try await Task.sleep(for: .milliseconds(10)) }
+                extraFormatsPassed = extraFormatsPassed && controller.archiveWindow?.qaEntryCount == 1
+                let destination = destination.appendingPathComponent("extract-\(name)", isDirectory: true); try? fm.removeItem(at: destination); try fm.createDirectory(at: destination, withIntermediateDirectories: true)
+                controller.archiveWindow?.qaExtract(to: destination)
+                let formatExtract = ContinuousClock.now
+                while controller.archiveWindow?.qaIsRunning == true && formatExtract.duration(to: .now) < .seconds(10) { try await Task.sleep(for: .milliseconds(10)) }
+                extraFormatsPassed = extraFormatsPassed && controller.archiveWindow?.qaSucceeded == true && fm.fileExists(atPath: destination.appendingPathComponent(expectedName).path)
+                controller.archiveWindow?.close(); window.makeKeyAndOrderFront(nil)
+            }
+            checks["sevenZipAndRarExtraction"] = extraFormatsPassed
             let createdArchive = destination.appendingPathComponent("created-by-ui.zip")
             try? fm.removeItem(at: createdArchive)
             ArchiveCreationWindow.start(sources: [fixture.appendingPathComponent("00000-한글-é-📁-long-file-name.txt")], destination: createdArchive) {}

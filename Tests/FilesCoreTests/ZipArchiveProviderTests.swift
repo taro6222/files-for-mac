@@ -108,3 +108,22 @@ private func makeZip(source: URL, archive: URL) throws {
         #expect(zip(events, events.dropFirst()).allSatisfy { $0.completedEntries <= $1.completedEntries && $0.completedBytes <= $1.completedBytes })
     }
 }
+
+@Test func libArchiveProviderBrowsesAndSafelyExtractsOfficialSevenZipAndRarFixtures() async throws {
+    let fm = FileManager.default, root = fm.temporaryDirectory.appendingPathComponent("archive-formats-\(UUID())", isDirectory: true)
+    defer { try? fm.removeItem(at: root) }
+    try fm.createDirectory(at: root, withIntermediateDirectories: true)
+    let provider = ZipArchiveProvider()
+    for (resource, extensionName, expectedPath, expectedBytes) in [
+        ("libarchive-empty", "7z", "empty", Data()),
+        ("libarchive-noeof", "rar", "test.txt", Data("test text document\r\n".utf8))
+    ] {
+        let archive = try #require(Bundle.module.url(forResource: resource, withExtension: extensionName, subdirectory: "Fixtures"))
+        let entries = try provider.entries(at: archive)
+        #expect(entries.contains { $0.path == expectedPath && $0.kind == .regularFile && $0.uncompressedSize == expectedBytes.count })
+        let destination = root.appendingPathComponent(extensionName, isDirectory: true); try fm.createDirectory(at: destination, withIntermediateDirectories: true)
+        let report = try await provider.extract(archive, to: destination)
+        #expect(report.entries == entries.count)
+        #expect(try Data(contentsOf: destination.appendingPathComponent(expectedPath)) == expectedBytes)
+    }
+}

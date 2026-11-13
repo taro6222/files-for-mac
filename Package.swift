@@ -8,6 +8,6 @@ let package = Package(
         .systemLibrary(name: "CLibArchive"),
         .target(name: "FilesCore", dependencies: ["CLibArchive"]),
         .executableTarget(name: "FilesMac", dependencies: ["FilesCore"]),
-        .testTarget(name: "FilesCoreTests", dependencies: ["FilesCore"])
+        .testTarget(name: "FilesCoreTests", dependencies: ["FilesCore"], resources: [.copy("Fixtures")])
     ]
 )

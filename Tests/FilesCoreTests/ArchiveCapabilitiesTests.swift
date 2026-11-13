@@ -12,7 +12,7 @@ import Testing
     #expect(!zip.update && !zip.password && !zip.splitVolumes)
     for format in [ArchiveFormat.sevenZip, .rar] {
         let capabilities = ArchiveCapabilityMatrix.capabilities(for: format)
-        #expect(!capabilities.browse && !capabilities.extract && !capabilities.create)
+        #expect(capabilities.browse && capabilities.extract && !capabilities.create)
         #expect(!capabilities.update && !capabilities.password && !capabilities.splitVolumes)
     }
 }

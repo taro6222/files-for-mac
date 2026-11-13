@@ -210,7 +210,15 @@ private func extractSynchronously(_ archiveURL: URL, to destination: URL, limits
 private func withReader<T>(_ url: URL, _ body: (OpaquePointer) throws -> T) throws -> T {
     guard let reader = archive_read_new() else { throw ZipArchiveError.cannotOpen(url.path) }
     defer { archive_read_close(reader); archive_read_free(reader) }
-    archive_read_support_filter_all(reader); archive_read_support_format_zip(reader)
+    archive_read_support_filter_all(reader)
+    switch ArchiveFormat.detect(url) {
+    case .zip: archive_read_support_format_zip(reader)
+    case .sevenZip: archive_read_support_format_7zip(reader)
+    case .rar:
+        archive_read_support_format_rar(reader)
+        archive_read_support_format_rar5(reader)
+    case nil: throw ZipArchiveError.cannotOpen("unsupported archive format")
+    }
     let status = url.withUnsafeFileSystemRepresentation { path in archive_read_open_filename(reader, path, 64 * 1024) }
     guard status == FILES_ARCHIVE_OK else { throw ZipArchiveError.cannotOpen(errorText(reader)) }
     return try body(reader)
