@@ -64,4 +64,16 @@ final class RemoteBrowserWindow: NSWindowController, NSTableViewDataSource, NSTa
     @objc private func goUp(_ sender: Any?) { model.goUp() }
     @objc private func reload(_ sender: Any?) { model.reload() }
     @objc private func stopLoading(_ sender: Any?) { model.cancel() }
+#if DEBUG
+    var qaRowCount: Int { model.entries.count }
+    var qaPath: String { model.path }
+    var qaDownloadEnabled: Bool { download.isEnabled }
+    var qaContentView: NSView? { window?.contentView }
+    func qaSelect(row: Int) { table.selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false); updateSelection() }
+    func qaOpen(row: Int) { qaSelect(row: row); openSelection(nil) }
+    func qaBack() { model.goBack() }
+    func qaForward() { model.goForward() }
+    func qaUp() { model.goUp() }
+    func qaDownload() { downloadSelection(nil) }
+#endif
 }
