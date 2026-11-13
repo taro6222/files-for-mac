@@ -58,3 +58,26 @@ func curlFTPPlansKeepCredentialsOffArgumentsAndDescriptions(remoteProtocol: Remo
     #expect(throws: RemoteBackendError.invalidListing) { try FTPRemoteProvider.parseList(Data("nested/name\n".utf8), parent: "/") }
     #expect(throws: RemoteBackendError.listingLimitExceeded) { try FTPRemoteProvider.parseList(Data("one\ntwo\n".utf8), parent: "/", maximumEntries: 1) }
 }
+
+@Test func ftpDownloadPublishIsSameDirectoryAtomicAndNeverReplaces() throws {
+    let fm = FileManager.default, root = fm.temporaryDirectory.appendingPathComponent("ftp-download-\(UUID())", isDirectory: true)
+    defer { try? fm.removeItem(at: root) }; try fm.createDirectory(at: root, withIntermediateDirectories: true)
+    let staging = root.appendingPathComponent(".files-download-fixture.tmp"), destination = root.appendingPathComponent("한글 file.txt")
+    try Data("complete".utf8).write(to: staging)
+    try FTPRemoteProvider.publishDownload(staging: staging, destination: destination, fileManager: fm)
+    #expect(!fm.fileExists(atPath: staging.path)); #expect(try String(contentsOf: destination, encoding: .utf8) == "complete")
+    let replacement = root.appendingPathComponent(".files-download-replacement.tmp"); try Data("new".utf8).write(to: replacement)
+    #expect(throws: RemoteBackendError.destinationExists) { try FTPRemoteProvider.publishDownload(staging: replacement, destination: destination, fileManager: fm) }
+    #expect(try String(contentsOf: destination, encoding: .utf8) == "complete"); #expect(try String(contentsOf: replacement, encoding: .utf8) == "new")
+}
+
+@Test func ftpDownloadPublishRejectsLinksForeignStagingAndMissingFiles() throws {
+    let fm = FileManager.default, root = fm.temporaryDirectory.appendingPathComponent("ftp-download-invalid-\(UUID())", isDirectory: true)
+    defer { try? fm.removeItem(at: root) }; try fm.createDirectory(at: root, withIntermediateDirectories: true)
+    let destination = root.appendingPathComponent("result.txt"), real = root.appendingPathComponent("real.txt"), link = root.appendingPathComponent(".files-download-link.tmp")
+    try Data("real".utf8).write(to: real); try fm.createSymbolicLink(at: link, withDestinationURL: real)
+    #expect(throws: RemoteBackendError.invalidStaging) { try FTPRemoteProvider.publishDownload(staging: link, destination: destination, fileManager: fm) }
+    let foreign = fm.temporaryDirectory.appendingPathComponent(".files-download-foreign-\(UUID()).tmp"); defer { try? fm.removeItem(at: foreign) }; try Data().write(to: foreign)
+    #expect(throws: RemoteBackendError.invalidStaging) { try FTPRemoteProvider.publishDownload(staging: foreign, destination: destination, fileManager: fm) }
+    #expect(throws: RemoteBackendError.invalidStaging) { try FTPRemoteProvider.publishDownload(staging: root.appendingPathComponent(".files-download-missing.tmp"), destination: destination, fileManager: fm) }
+}

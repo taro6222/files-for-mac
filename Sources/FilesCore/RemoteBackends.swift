@@ -27,7 +27,7 @@ public struct RemoteBackendProbe: Sendable {
 public enum RemoteTransferIntent: Sendable, Equatable { case list, download(local: URL), upload(local: URL) }
 
 public enum RemoteBackendError: Error, Sendable, Equatable {
-    case unsupportedProtocol, invalidRemotePath, invalidCredential, invalidListing, listingLimitExceeded
+    case unsupportedProtocol, invalidRemotePath, invalidCredential, invalidListing, listingLimitExceeded, destinationExists, invalidStaging
 }
 
 public struct RemoteDirectoryEntry: Sendable, Equatable, Identifiable {
@@ -44,6 +44,27 @@ public struct FTPRemoteProvider: Sendable {
         let plan = try builder.command(profile: profile, credential: credential, remotePath: remotePath, intent: .list)
         let result = try await executor.execute(plan, outputLimit: 4 * 1_024 * 1_024)
         return try Self.parseList(result.standardOutput, parent: remotePath, maximumEntries: maximumEntries)
+    }
+    public func download(profile: RemoteConnectionProfile, credential: RemoteCredential, remotePath: String,
+                         destination: URL, fileManager: FileManager = .default) async throws -> URL {
+        let parent = destination.deletingLastPathComponent().standardizedFileURL
+        guard !fileManager.fileExists(atPath: destination.path) else { throw RemoteBackendError.destinationExists }
+        let staging = parent.appendingPathComponent(".files-download-\(UUID().uuidString).tmp")
+        defer { try? fileManager.removeItem(at: staging) }
+        let plan = try builder.command(profile: profile, credential: credential, remotePath: remotePath, intent: .download(local: staging))
+        _ = try await executor.execute(plan)
+        try Self.publishDownload(staging: staging, destination: destination, fileManager: fileManager)
+        return destination
+    }
+    public static func publishDownload(staging: URL, destination: URL, fileManager: FileManager = .default) throws {
+        let parent = destination.deletingLastPathComponent().standardizedFileURL
+        guard !fileManager.fileExists(atPath: destination.path) else { throw RemoteBackendError.destinationExists }
+        guard staging.deletingLastPathComponent().standardizedFileURL == parent,
+              staging.lastPathComponent.hasPrefix(".files-download-"), staging.pathExtension == "tmp",
+              let values = try? staging.resourceValues(forKeys: [.isRegularFileKey, .isSymbolicLinkKey]),
+              values.isRegularFile == true, values.isSymbolicLink != true else { throw RemoteBackendError.invalidStaging }
+        do { try fileManager.moveItem(at: staging, to: destination) }
+        catch { if fileManager.fileExists(atPath: destination.path) { throw RemoteBackendError.destinationExists }; throw error }
     }
     public static func parseList(_ data: Data, parent: String, maximumEntries: Int = 100_000) throws -> [RemoteDirectoryEntry] {
         guard parent.hasPrefix("/"), let text = String(data: data, encoding: .utf8) else { throw RemoteBackendError.invalidListing }
