@@ -7,12 +7,19 @@ final class FileColumnView: NSView {
         var onActivate: (() -> Void)?
         var onRight: (() -> Void)?
         var onLeft: (() -> Void)?
+        var onValidateDrop: ((any NSDraggingInfo, Int) -> NSDragOperation)?
+        var onAcceptDrop: ((any NSDraggingInfo, Int) -> Bool)?
         override func becomeFirstResponder() -> Bool { onActivate?(); return super.becomeFirstResponder() }
         override func mouseDown(with event: NSEvent) { onActivate?(); super.mouseDown(with: event) }
         override func keyDown(with event: NSEvent) {
             if event.keyCode == 124 { onRight?(); return }
             if event.keyCode == 123 { onLeft?(); return }
             super.keyDown(with: event)
+        }
+        override func menu(for event: NSEvent) -> NSMenu? {
+            onActivate?(); let target = row(at: convert(event.locationInWindow, from: nil))
+            if target >= 0 && !selectedRowIndexes.contains(target) { selectRowIndexes([target], byExtendingSelection: false) }
+            return super.menu(for: event)
         }
     }
     @MainActor private final class Column: NSObject, NSTableViewDataSource, NSTableViewDelegate {
@@ -31,6 +38,9 @@ final class FileColumnView: NSView {
             table.onActivate = { [weak self] in self?.owner?.activate(column: self) }
             table.onRight = { [weak self] in self?.owner?.expand(column: self) }
             table.onLeft = { [weak self] in self?.owner?.moveLeft(from: self) }
+            table.onValidateDrop = { [weak self] info, row in self?.owner?.validateDrop(info, column: self, row: row) ?? [] }
+            table.onAcceptDrop = { [weak self] info, row in self?.owner?.acceptDrop(info, column: self, row: row) ?? false }
+            table.registerForDraggedTypes([.fileURL]); table.setDraggingSourceOperationMask([.copy, .move], forLocal: true); table.setDraggingSourceOperationMask(.copy, forLocal: false)
             let name = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("name")); name.resizingMask = .autoresizingMask; table.addTableColumn(name)
             scroll.documentView = table; scroll.hasVerticalScroller = true; scroll.translatesAutoresizingMaskIntoConstraints = false
             view.addSubview(scroll)
@@ -62,6 +72,15 @@ final class FileColumnView: NSView {
         func tableViewSelectionDidChange(_ notification: Notification) {
             guard !suppress else { return }; owner?.selectionChanged(column: self)
         }
+        func tableView(_ tableView: NSTableView, pasteboardWriterForRow row: Int) -> (any NSPasteboardWriting)? {
+            guard items.indices.contains(row) else { return nil }; return items[row].url as NSURL
+        }
+        func tableView(_ tableView: NSTableView, validateDrop info: any NSDraggingInfo, proposedRow row: Int, proposedDropOperation operation: NSTableView.DropOperation) -> NSDragOperation {
+            owner?.validateDrop(info, column: self, row: operation == .on ? row : -1) ?? []
+        }
+        func tableView(_ tableView: NSTableView, acceptDrop info: any NSDraggingInfo, row: Int, dropOperation operation: NSTableView.DropOperation) -> Bool {
+            owner?.acceptDrop(info, column: self, row: operation == .on ? row : -1) ?? false
+        }
         @objc private func open(_ sender: Any?) { owner?.open(column: self) }
     }
 
@@ -77,6 +96,8 @@ final class FileColumnView: NSView {
     var onSelectionChange: ((Set<String>) -> Void)?
     var onOpen: ((FileItem) -> Void)?
     var onActivate: (() -> Void)?
+    var onFileDrop: (([URL], FileItem?, URL, FileDropIntent) -> Bool)?
+    var contextMenu: NSMenu? { didSet { columns.forEach { $0.table.menu = contextMenu } } }
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect); translatesAutoresizingMaskIntoConstraints = false
@@ -100,7 +121,8 @@ final class FileColumnView: NSView {
     func focus() { if let table = columns.last?.table { window?.makeFirstResponder(table) } }
     private func reset() { loadGeneration += 1; columns.removeAll(); stack.arrangedSubviews.forEach { $0.removeFromSuperview() }; baseURL = nil; baseIDs = [] }
     private func append(url: URL, items: [FileItem]) {
-        let column = Column(owner: self, url: url, items: sortOrder.sorted(items)); columns.append(column); stack.addArrangedSubview(column.view)
+        let column = Column(owner: self, url: url, items: sortOrder.sorted(items)); column.table.menu = contextMenu
+        columns.append(column); stack.addArrangedSubview(column.view)
         DispatchQueue.main.async { [weak self] in self?.scrollToEnd() }
     }
     private func scrollToEnd() { document.layoutSubtreeIfNeeded(); scroll.contentView.scroll(to: NSPoint(x: max(0, document.bounds.width - scroll.contentView.bounds.width), y: 0)); scroll.reflectScrolledClipView(scroll.contentView) }
@@ -136,6 +158,24 @@ final class FileColumnView: NSView {
         for column in columns[(index + 1)...] { column.view.removeFromSuperview() }
         columns.removeSubrange((index + 1)...)
     }
+    private func draggedURLs(_ info: any NSDraggingInfo) -> [URL] {
+        (info.draggingPasteboard.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [NSURL] ?? []).map { $0 as URL }
+    }
+    private func dropIntent(_ info: any NSDraggingInfo) -> FileDropIntent {
+        let flags = NSApp.currentEvent?.modifierFlags ?? []; var modifiers: DropModifiers = []
+        if flags.contains(.option) { modifiers.insert(.option) }; if flags.contains(.command) { modifiers.insert(.command) }
+        return .resolve(modifiers: modifiers, sourceAllowsMove: info.draggingSourceOperationMask.contains(.move))
+    }
+    private func validateDrop(_ info: any NSDraggingInfo, column: Column?, row: Int) -> NSDragOperation {
+        guard let column, !draggedURLs(info).isEmpty else { return [] }
+        if row >= 0, column.items.indices.contains(row), !column.items[row].isBrowsable { return [] }
+        return dropIntent(info) == .move ? .move : .copy
+    }
+    private func acceptDrop(_ info: any NSDraggingInfo, column: Column?, row: Int) -> Bool {
+        guard let column else { return false }; let urls = draggedURLs(info); guard !urls.isEmpty else { return false }
+        let item = row >= 0 && column.items.indices.contains(row) ? column.items[row] : nil
+        return onFileDrop?(urls, item, column.url, dropIntent(info)) ?? false
+    }
 
 #if DEBUG
     var qaColumnCount: Int { columns.count }
@@ -145,5 +185,10 @@ final class FileColumnView: NSView {
         columns[index].table.selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false)
     }
     func qaMoveLeft() { moveLeft(from: columns.last) }
+    var qaHasDropHandler: Bool { onFileDrop != nil && contextMenu != nil }
+    func qaPasteboardURL(column index: Int = 0, row: Int = 0) -> URL? {
+        guard columns.indices.contains(index) else { return nil }
+        return (columns[index].tableView(columns[index].table, pasteboardWriterForRow: row) as? NSURL) as URL?
+    }
 #endif
 }

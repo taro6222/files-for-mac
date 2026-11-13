@@ -71,7 +71,7 @@ final class SecondaryBrowserPane: NSView, NSTableViewDataSource, NSTableViewDele
     func stopLoading() { model.cancelLoad() }
     func setViewMode(_ mode: BrowserViewMode) { activate(); model.setViewMode(mode) }
     func applyPreferences() { render() }
-    func setContextMenu(_ menu: NSMenu?) { gridView.contextMenu = menu; listView.contextMenu = menu }
+    func setContextMenu(_ menu: NSMenu?) { gridView.contextMenu = menu; listView.contextMenu = menu; columnView.contextMenu = menu }
     func openSelected() {
         if renderedViewMode == .grid, let item = gridView.selectedItems.first { openGridItem(item) }
         else if renderedViewMode == .list, let item = listView.selectedItems.first { openGridItem(item) }
@@ -165,6 +165,10 @@ final class SecondaryBrowserPane: NSView, NSTableViewDataSource, NSTableViewDele
         }
         columnView.onActivate = { [weak self] in self?.activate() }
         columnView.onOpen = { [weak self] item in self?.openGridItem(item) }
+        columnView.onFileDrop = { [weak self] sources, item, columnURL, intent in
+            guard let self else { return false }; self.activate()
+            return self.onFileDrop?(sources, item?.isBrowsable == true ? item!.url : columnURL, intent) ?? false
+        }
         stack.addArrangedSubview(browserContent)
         status.font = .systemFont(ofSize: 11); status.textColor = .secondaryLabelColor
         let footer = NSStackView(); footer.edgeInsets = NSEdgeInsets(top: 6, left: 10, bottom: 6, right: 10)
@@ -340,6 +344,7 @@ final class SecondaryBrowserPane: NSView, NSTableViewDataSource, NSTableViewDele
     var qaRenderedViewMode: BrowserViewMode { renderedViewMode }
     var qaGridItemSize: NSSize { gridView.qaItemSize }
     var qaListRowHeight: CGFloat { listView.qaRowHeight }
+    var qaColumnIntegration: (ready: Bool, source: URL?) { (columnView.qaHasDropHandler, columnView.qaPasteboardURL()) }
     #endif
 }
 

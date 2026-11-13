@@ -339,6 +339,13 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         }
         columnView.onActivate = { [weak self] in self?.setSecondaryActive(false) }
         columnView.onOpen = { [weak self] item in self?.openRenderedItem(item) }
+        columnView.onFileDrop = { [weak self] sources, item, columnURL, intent in
+            guard let self else { return false }
+            let destination = item?.isBrowsable == true ? item!.url : columnURL
+            if intent == .move { self.prepareMove(sources: sources, destination: destination) }
+            else { self.prepareCopy(sources: sources, destination: destination) }
+            return true
+        }
         let menu = NSMenu()
         let folder = menu.addItem(withTitle: L("새 폴더…", "New Folder…"), action: #selector(createFolder(_:)), keyEquivalent: ""); folder.target = self
         let folderFromSelection = menu.addItem(withTitle: L("선택 항목으로 새 폴더…", "New Folder with Selection…"), action: #selector(createFolderFromSelection(_:)), keyEquivalent: ""); folderFromSelection.target = self
@@ -356,7 +363,7 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         restore.isEnabled = false
         permanentDelete.isEnabled = false
         let reveal = menu.addItem(withTitle: L("Finder에서 보기", "Reveal in Finder"), action: #selector(revealSelection(_:)), keyEquivalent: ""); reveal.target = self
-        table.menu = menu; gridView.contextMenu = menu; listView.contextMenu = menu
+        table.menu = menu; gridView.contextMenu = menu; listView.contextMenu = menu; columnView.contextMenu = menu
     }
     private func configure(_ b: NSButton, _ symbol: String, _ title: String, _ action: Selector) {
         b.image = NSImage(systemSymbolName: symbol, accessibilityDescription: title)
@@ -1946,6 +1953,10 @@ extension BrowserWindow {
             checks["secondaryColumnsHierarchy"] = secondary.qaColumnCount == 2
                 && secondary.selectedItems.map(\.id) == [secondaryColumnFolder.id]
             checks["secondaryColumnsSession"] = secondary.snapshot().viewMode == .columns
+            let primaryColumnIntegration = (controller.columnView.qaHasDropHandler, controller.columnView.qaPasteboardURL())
+            let secondaryColumnIntegration = secondary.qaColumnIntegration
+            checks["columnContextCommands"] = primaryColumnIntegration.0 && secondaryColumnIntegration.ready
+            checks["columnDragSources"] = primaryColumnIntegration.1 != nil && secondaryColumnIntegration.source != nil
             secondary.model.setViewMode(.adaptive)
             content.layoutSubtreeIfNeeded(); content.displayIfNeeded()
             checks["secondaryAdaptiveCompactList"] = secondary.snapshot().viewMode == .adaptive
