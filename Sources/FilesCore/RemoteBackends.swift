@@ -50,8 +50,9 @@ public struct RemoteDirectoryEntry: Sendable, Equatable, Identifiable {
 }
 
 public struct FTPRemoteProvider: Sendable {
-    private let builder = CurlFTPCommandBuilder(), executor = RemoteCommandExecutor()
-    public init() {}
+    private let builder: CurlFTPCommandBuilder
+    private let executor = RemoteCommandExecutor()
+    public init(trustedCAFile: URL? = nil) { builder = CurlFTPCommandBuilder(trustedCAFile: trustedCAFile) }
     public func list(profile: RemoteConnectionProfile, credential: RemoteCredential, remotePath: String,
                      maximumEntries: Int = 100_000) async throws -> [RemoteDirectoryEntry] {
         let plan = try builder.command(profile: profile, credential: credential, remotePath: remotePath, intent: .list)
@@ -214,7 +215,8 @@ public struct RemoteCommandExecutor: Sendable {
 }
 
 public struct CurlFTPCommandBuilder: Sendable {
-    public init() {}
+    private let trustedCAFile: URL?
+    public init(trustedCAFile: URL? = nil) { self.trustedCAFile = trustedCAFile }
     public func command(profile: RemoteConnectionProfile, credential: RemoteCredential,
                         remotePath: String, intent: RemoteTransferIntent) throws -> RemoteCommandPlan {
         guard profile.remoteProtocol == .ftp || profile.remoteProtocol == .ftps else { throw RemoteBackendError.unsupportedProtocol }
@@ -252,7 +254,10 @@ public struct CurlFTPCommandBuilder: Sendable {
             lines.append("quote = \(quoted("DELE " + remotePath))")
             lines.append("list-only")
         }
-        if profile.remoteProtocol == .ftps { lines.append("ssl-reqd") }
+        if profile.remoteProtocol == .ftps {
+            lines.append("ssl-reqd")
+            if let trustedCAFile { lines.append("cacert = \(quoted(trustedCAFile.path))") }
+        }
         let input = Data((lines.joined(separator: "\n") + "\n").utf8)
         return RemoteCommandPlan(executable: URL(fileURLWithPath: "/usr/bin/curl"), arguments: ["-q", "--config", "-"],
             standardInput: input, redactedDescription: "curl \(profile.remoteProtocol.rawValue)://<redacted>/<redacted>")

@@ -130,3 +130,28 @@ func curlFTPPlansKeepCredentialsOffArgumentsAndDescriptions(remoteProtocol: Remo
     let probeArtifacts = afterProbe.filter { $0.name.hasPrefix(".files-probe-") }
     #expect(probeArtifacts.isEmpty)
 }
+
+@Test func ftpsLocalFixtureValidatesCertificateAndHostnameThroughRealCurl() async throws {
+    let environment = ProcessInfo.processInfo.environment
+    guard let validPortText = environment["FILES_TEST_FTPS_VALID_PORT"], let validPort = Int(validPortText),
+          let mismatchPortText = environment["FILES_TEST_FTPS_MISMATCH_PORT"], let mismatchPort = Int(mismatchPortText),
+          let username = environment["FILES_TEST_FTP_USERNAME"], let password = environment["FILES_TEST_FTP_PASSWORD"],
+          let caPath = environment["FILES_TEST_FTPS_CA"] else { return }
+    let credential = RemoteCredential(username: username, secret: Data(password.utf8))
+    let valid = try RemoteConnectionProfile(name: "Valid FTPS", remoteProtocol: .ftps, host: "localhost", port: validPort)
+    let provider = FTPRemoteProvider(trustedCAFile: URL(fileURLWithPath: caPath))
+    let entries = try await provider.list(profile: valid, credential: credential, remotePath: "/")
+    #expect(entries.contains { $0.name == "fixture-한글.txt" })
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent("ftps-live-\(UUID())", isDirectory: true)
+    defer { try? FileManager.default.removeItem(at: root) }; try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+    let destination = root.appendingPathComponent("downloaded.txt")
+    _ = try await provider.download(profile: valid, credential: credential, remotePath: "/fixture-한글.txt", destination: destination)
+    #expect(try String(contentsOf: destination, encoding: .utf8) == "live-ftps-fixture")
+    await #expect(throws: RemoteExecutionError.self) {
+        try await FTPRemoteProvider().list(profile: valid, credential: credential, remotePath: "/")
+    }
+    let mismatch = try RemoteConnectionProfile(name: "Mismatch FTPS", remoteProtocol: .ftps, host: "localhost", port: mismatchPort)
+    await #expect(throws: RemoteExecutionError.self) {
+        try await provider.list(profile: mismatch, credential: credential, remotePath: "/")
+    }
+}
