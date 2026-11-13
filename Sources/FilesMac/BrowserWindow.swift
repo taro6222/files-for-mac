@@ -1763,6 +1763,13 @@ extension BrowserWindow {
             controller.infoWindow?.close(); window.makeKeyAndOrderFront(nil)
             let tagRefresh = ContinuousClock.now
             while controller.model.isLoading && tagRefresh.duration(to: .now) < .seconds(10) { try await Task.sleep(for: .milliseconds(10)) }
+            controller.showSearch(nil); controller.searchWindow?.qaSearchAdvanced("long-file-name", tag: "QA", minimum: "1", maximum: "10")
+            let advancedSearch = ContinuousClock.now
+            while controller.searchWindow?.qaIsSearching == true && advancedSearch.duration(to: .now) < .seconds(10) { try await Task.sleep(for: .milliseconds(10)) }
+            checks["searchMetadataFilters"] = controller.searchWindow?.qaResultCount == 1
+            controller.searchWindow?.qaInvalidSize(); checks["searchSizeValidation"] = controller.searchWindow?.qaValidationError == true
+            try capture("search-advanced", view: controller.searchWindow?.window?.contentView)
+            controller.searchWindow?.close(); window.makeKeyAndOrderFront(nil)
             controller.showQuickLook(nil); try await Task.sleep(for: .milliseconds(500))
             checks["quickLookWindow"] = controller.quickLook.qaVisible
             checks["quickLookItems"] = controller.quickLook.qaItemCount == 1
