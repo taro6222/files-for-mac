@@ -724,7 +724,7 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         gridView.apply(viewSize: effectiveViewSize)
         listView.apply(viewSize: effectiveViewSize)
         gridView.update(items: model.items, selection: model.history.current.selection,
-                        scrollOffset: model.history.current.scrollOffset)
+                        scrollOffset: model.history.current.scrollOffset, grouping: model.grouping)
         listView.update(items: model.items, selection: model.history.current.selection,
                         scrollOffset: model.history.current.scrollOffset)
         columnView.showHidden = model.showHidden; columnView.sortOrder = model.sortOrder
@@ -2804,6 +2804,11 @@ extension BrowserWindow {
             root.layoutSubtreeIfNeeded(); root.displayIfNeeded()
             checks["gridVisible"] = !controller.gridView.isHidden && controller.scroll.isHidden
             checks["gridSelectionIdentity"] = controller.gridView.selectedItems.map(\.id) == [gridFolder.path]
+            controller.model.setGrouping(.init(field: .name)); controller.render()
+            checks["gridGroupingSections"] = controller.gridView.qaSectionCount > 1
+                && !controller.gridView.qaSectionTitles.contains("")
+                && controller.gridView.selectedItems.map(\.id) == [gridFolder.path]
+            controller.model.setGrouping(FileGroupOptions()); controller.render()
             preferences.setViewSize(.large)
             checks["largeViewSizeApplied"] = controller.gridView.qaItemSize == NSSize(width: 142, height: 124)
                 && controller.listView.qaRowHeight == 38

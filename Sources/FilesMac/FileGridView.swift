@@ -6,8 +6,8 @@ final class FileGridView: NSView, NSCollectionViewDataSource, NSCollectionViewDe
     private final class CollectionView: NSCollectionView {
         var onOpen: (() -> Void)?
         var onActivate: (() -> Void)?
-        var onValidateDrop: ((any NSDraggingInfo, Int?) -> NSDragOperation)?
-        var onAcceptDrop: ((any NSDraggingInfo, Int?) -> Bool)?
+        var onValidateDrop: ((any NSDraggingInfo, IndexPath?) -> NSDragOperation)?
+        var onAcceptDrop: ((any NSDraggingInfo, IndexPath?) -> Bool)?
         override func mouseDown(with event: NSEvent) {
             onActivate?()
             super.mouseDown(with: event)
@@ -22,9 +22,9 @@ final class FileGridView: NSView, NSCollectionViewDataSource, NSCollectionViewDe
             }
             return super.menu(for: event)
         }
-        private func targetIndex(_ sender: any NSDraggingInfo) -> Int? {
+        private func targetIndex(_ sender: any NSDraggingInfo) -> IndexPath? {
             let point = convert(sender.draggingLocation, from: nil)
-            return indexPathForItem(at: point)?.item
+            return indexPathForItem(at: point)
         }
         override func draggingEntered(_ sender: any NSDraggingInfo) -> NSDragOperation {
             onValidateDrop?(sender, targetIndex(sender)) ?? []
@@ -71,9 +71,24 @@ final class FileGridView: NSView, NSCollectionViewDataSource, NSCollectionViewDe
         }
     }
 
+    private final class Header: NSView {
+        static let identifier = NSUserInterfaceItemIdentifier("FileGridHeader")
+        private let label = NSTextField(labelWithString: "")
+        override init(frame frameRect: NSRect) {
+            super.init(frame: frameRect)
+            label.font = .systemFont(ofSize: NSFont.systemFontSize, weight: .semibold)
+            label.textColor = .secondaryLabelColor; label.translatesAutoresizingMaskIntoConstraints = false
+            addSubview(label); NSLayoutConstraint.activate([label.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 12), label.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor, constant: -12), label.centerYAnchor.constraint(equalTo: centerYAnchor)])
+        }
+        required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
+        func configure(_ title: String) { label.stringValue = title; setAccessibilityLabel(title) }
+    }
+
     private let collection = CollectionView()
     private let scroll = NSScrollView()
     private(set) var items: [FileItem] = []
+    private var groups: [FileItemGroup] = []
+    private var grouping = FileGroupOptions()
     private var suppressSelectionNotification = false
     private var iconSize: CGFloat = 56
     private var viewSize: BrowserViewSize = .medium
@@ -91,14 +106,15 @@ final class FileGridView: NSView, NSCollectionViewDataSource, NSCollectionViewDe
         collection.collectionViewLayout = layout; collection.isSelectable = true; collection.allowsMultipleSelection = true
         collection.dataSource = self; collection.delegate = self
         collection.register(Item.self, forItemWithIdentifier: Item.identifier)
+        collection.register(Header.self, forSupplementaryViewOfKind: NSCollectionView.elementKindSectionHeader, withIdentifier: Header.identifier)
         collection.registerForDraggedTypes([.fileURL])
         collection.setDraggingSourceOperationMask([.copy, .move], forLocal: true)
         collection.setDraggingSourceOperationMask(.copy, forLocal: false)
         collection.setAccessibilityLabel(L("파일 그리드", "File grid"))
         collection.onActivate = { [weak self] in self?.onActivate?() }
         collection.onOpen = { [weak self] in
-            guard let self, let index = self.collection.selectionIndexPaths.first?.item, self.items.indices.contains(index) else { return }
-            self.onOpen?(self.items[index])
+            guard let self, let path = self.collection.selectionIndexPaths.first, let item = self.item(at: path) else { return }
+            self.onOpen?(item)
         }
         collection.onValidateDrop = { [weak self] info, index in self?.validateDrop(info, index: index) ?? [] }
         collection.onAcceptDrop = { [weak self] info, index in self?.acceptDrop(info, index: index) ?? false }
@@ -107,19 +123,25 @@ final class FileGridView: NSView, NSCollectionViewDataSource, NSCollectionViewDe
         NSLayoutConstraint.activate([scroll.leadingAnchor.constraint(equalTo: leadingAnchor), scroll.trailingAnchor.constraint(equalTo: trailingAnchor), scroll.topAnchor.constraint(equalTo: topAnchor), scroll.bottomAnchor.constraint(equalTo: bottomAnchor)])
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
-    var selectedItems: [FileItem] { collection.selectionIndexPaths.compactMap { items.indices.contains($0.item) ? items[$0.item] : nil } }
+    private func item(at path: IndexPath) -> FileItem? {
+        guard groups.indices.contains(path.section), groups[path.section].items.indices.contains(path.item) else { return nil }
+        return groups[path.section].items[path.item]
+    }
+    var selectedItems: [FileItem] { collection.selectionIndexPaths.compactMap(item(at:)) }
     func replaceSelection(with ids: Set<String>) {
         suppressSelectionNotification = true
-        collection.selectionIndexPaths = Set(items.indices.filter { ids.contains(items[$0].id) }.map { IndexPath(item: $0, section: 0) })
+        collection.selectionIndexPaths = Set(groups.indices.flatMap { section in groups[section].items.indices.compactMap { ids.contains(groups[section].items[$0].id) ? IndexPath(item: $0, section: section) : nil } })
         suppressSelectionNotification = false; selectionChanged()
     }
     func invertSelection() { replaceSelection(with: Set(items.map(\.id)).subtracting(selectedItems.map(\.id))) }
-    func update(items: [FileItem], selection: Set<String>, scrollOffset: Double) {
+    func update(items: [FileItem], selection: Set<String>, scrollOffset: Double, grouping: FileGroupOptions = FileGroupOptions()) {
         suppressSelectionNotification = true
-        self.items = items; collection.reloadData()
+        self.items = items; self.grouping = grouping; groups = FileGrouping.groups(items, options: grouping)
+        (collection.collectionViewLayout as? NSCollectionViewFlowLayout)?.headerReferenceSize = grouping.field == .none ? .zero : NSSize(width: 100, height: 30)
+        collection.reloadData()
         collection.collectionViewLayout?.invalidateLayout()
         collection.layoutSubtreeIfNeeded()
-        collection.selectionIndexPaths = Set(items.indices.filter { selection.contains(items[$0].id) }.map { IndexPath(item: $0, section: 0) })
+        collection.selectionIndexPaths = Set(groups.indices.flatMap { section in groups[section].items.indices.compactMap { selection.contains(groups[section].items[$0].id) ? IndexPath(item: $0, section: section) : nil } })
         scroll.contentView.scroll(to: NSPoint(x: 0, y: max(0, scrollOffset))); scroll.reflectScrolledClipView(scroll.contentView)
         DispatchQueue.main.async { [weak self] in self?.suppressSelectionNotification = false }
     }
@@ -146,16 +168,21 @@ final class FileGridView: NSView, NSCollectionViewDataSource, NSCollectionViewDe
         collection.backgroundColors = enabled ? [.clear] : []
     }
     func currentScrollOffset() -> Double { scroll.contentView.bounds.origin.y }
-    func numberOfSections(in collectionView: NSCollectionView) -> Int { 1 }
-    func collectionView(_ collectionView: NSCollectionView, numberOfItemsInSection section: Int) -> Int { items.count }
+    func numberOfSections(in collectionView: NSCollectionView) -> Int { groups.count }
+    func collectionView(_ collectionView: NSCollectionView, numberOfItemsInSection section: Int) -> Int { groups.indices.contains(section) ? groups[section].items.count : 0 }
     func collectionView(_ collectionView: NSCollectionView, itemForRepresentedObjectAt indexPath: IndexPath) -> NSCollectionViewItem {
         let item = collectionView.makeItem(withIdentifier: Item.identifier, for: indexPath)
-        if let item = item as? Item, items.indices.contains(indexPath.item) { item.configure(item: items[indexPath.item], iconSize: iconSize) }
+        if let view = item as? Item, let value = self.item(at: indexPath) { view.configure(item: value, iconSize: iconSize) }
         return item
     }
+    func collectionView(_ collectionView: NSCollectionView, viewForSupplementaryElementOfKind kind: NSCollectionView.SupplementaryElementKind, at indexPath: IndexPath) -> NSView {
+        let header = collectionView.makeSupplementaryView(ofKind: kind, withIdentifier: Header.identifier, for: indexPath)
+        if let header = header as? Header, groups.indices.contains(indexPath.section) { header.configure(fileGroupTitle(groups[indexPath.section].key, field: grouping.field)) }
+        return header
+    }
     func collectionView(_ collectionView: NSCollectionView, pasteboardWriterForItemAt indexPath: IndexPath) -> (any NSPasteboardWriting)? {
-        guard items.indices.contains(indexPath.item) else { return nil }
-        return items[indexPath.item].url as NSURL
+        guard let item = item(at: indexPath) else { return nil }
+        return item.url as NSURL
     }
     func collectionView(_ collectionView: NSCollectionView, didSelectItemsAt indexPaths: Set<IndexPath>) { selectionChanged() }
     func collectionView(_ collectionView: NSCollectionView, didDeselectItemsAt indexPaths: Set<IndexPath>) { selectionChanged() }
@@ -173,22 +200,25 @@ final class FileGridView: NSView, NSCollectionViewDataSource, NSCollectionViewDe
         if flags.contains(.command) { modifiers.insert(.command) }
         return .resolve(modifiers: modifiers, sourceAllowsMove: info.draggingSourceOperationMask.contains(.move))
     }
-    private func validateDrop(_ info: any NSDraggingInfo, index: Int?) -> NSDragOperation {
+    private func validateDrop(_ info: any NSDraggingInfo, index: IndexPath?) -> NSDragOperation {
         guard !draggedURLs(info).isEmpty else { return [] }
-        if let index, items.indices.contains(index), !items[index].isBrowsable { return [] }
+        if let index, item(at: index)?.isBrowsable != true { return [] }
         return dropIntent(info) == .move ? .move : .copy
     }
-    private func acceptDrop(_ info: any NSDraggingInfo, index: Int?) -> Bool {
+    private func acceptDrop(_ info: any NSDraggingInfo, index: IndexPath?) -> Bool {
         let urls = draggedURLs(info); guard !urls.isEmpty else { return false }
-        let item = index.flatMap { items.indices.contains($0) ? items[$0] : nil }
+        let item = index.flatMap(item(at:))
         return onFileDrop?(urls, item, dropIntent(info)) ?? false
     }
     #if DEBUG
     var qaHasDropHandler: Bool { onFileDrop != nil }
     func qaPasteboardURL(at index: Int) -> URL? {
         guard items.indices.contains(index) else { return nil }
-        return (collectionView(collection, pasteboardWriterForItemAt: IndexPath(item: index, section: 0)) as? NSURL) as URL?
+        guard let path = groups.indices.lazy.compactMap({ section in self.groups[section].items.firstIndex(where: { $0.id == self.items[index].id }).map { IndexPath(item: $0, section: section) } }).first else { return nil }
+        return (collectionView(collection, pasteboardWriterForItemAt: path) as? NSURL) as URL?
     }
     var qaItemSize: NSSize { (collection.collectionViewLayout as? NSCollectionViewFlowLayout)?.itemSize ?? .zero }
+    var qaSectionCount: Int { groups.count }
+    var qaSectionTitles: [String] { groups.map { fileGroupTitle($0.key, field: grouping.field) } }
     #endif
 }
