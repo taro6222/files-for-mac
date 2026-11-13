@@ -19,7 +19,9 @@ final class ArchiveCreationWindow: NSWindowController, NSWindowDelegate {
         operations.append(controller); controller.showWindow(nil); controller.window?.makeKeyAndOrderFront(nil)
         controller.task = Task { [weak controller] in
             do {
-                _ = try await ZipArchiveProvider().create(from: sources, at: destination)
+                _ = try await ZipArchiveProvider().create(from: sources, at: destination) { [weak controller] update in
+                    Task { @MainActor [weak controller] in controller?.update(update) }
+                }
                 guard let controller, !Task.isCancelled else { return }
                 controller.finish(success: true, message: L("ZIP 생성을 완료했습니다.", "ZIP archive created.")); completion()
             } catch is CancellationError {
@@ -49,6 +51,15 @@ final class ArchiveCreationWindow: NSWindowController, NSWindowDelegate {
     @objc private func cancel(_ sender: Any?) {
         if !running { close(); return }
         task?.cancel(); cancelButton.isEnabled = false; label.stringValue = L("중단 요청됨 — 안전한 지점에서 임시 파일을 정리합니다.", "Stop requested — temporary output will be cleaned at a safe point.")
+    }
+    private func update(_ update: ArchiveProgress) {
+        guard running else { return }
+        progress.isIndeterminate = update.totalBytes == 0 && update.totalEntries == 0
+        let byteFraction = update.totalBytes > 0 ? Double(update.completedBytes) / Double(update.totalBytes) : 0
+        let entryFraction = update.totalEntries > 0 ? Double(update.completedEntries) / Double(update.totalEntries) : 0
+        progress.doubleValue = max(byteFraction, entryFraction)
+        let phase = update.phase == .publishing ? L("결과 확정", "Publishing") : L("ZIP 생성", "Creating ZIP")
+        label.stringValue = "\(phase) · \(update.completedEntries)/\(update.totalEntries) · \(ByteCountFormatter.string(fromByteCount: update.completedBytes, countStyle: .file))" + (update.currentPath.map { " · \($0)" } ?? "")
     }
     private func finish(success: Bool, message: String) {
         running = false; succeeded = success; progress.stopAnimation(nil); progress.isIndeterminate = false; progress.doubleValue = success ? 1 : 0; label.stringValue = message; cancelButton.title = L("닫기", "Close"); cancelButton.isEnabled = true

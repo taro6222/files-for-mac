@@ -26,7 +26,7 @@ final class ArchiveWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         let scroll = NSScrollView(); scroll.documentView = table; scroll.hasVerticalScroller = true; stack.addArrangedSubview(scroll)
         let footer = NSStackView(); footer.orientation = .horizontal; footer.spacing = 8
         status.textColor = .secondaryLabelColor; status.lineBreakMode = .byTruncatingMiddle; footer.addArrangedSubview(status)
-        progress.style = .spinning; progress.controlSize = .small; progress.isDisplayedWhenStopped = false; footer.addArrangedSubview(progress)
+        progress.style = .bar; progress.controlSize = .small; progress.isIndeterminate = true; progress.minValue = 0; progress.maxValue = 1; progress.isDisplayedWhenStopped = false; progress.widthAnchor.constraint(equalToConstant: 130).isActive = true; footer.addArrangedSubview(progress)
         cancelButton.title = L("중단", "Stop"); configureFooterButton(cancelButton); cancelButton.target = self; cancelButton.action = #selector(cancel(_:)); footer.addArrangedSubview(cancelButton)
         extractButton.title = L("추출…", "Extract…"); configureFooterButton(extractButton); extractButton.target = self; extractButton.action = #selector(chooseDestination(_:)); footer.addArrangedSubview(extractButton)
         stack.addArrangedSubview(footer); render()
@@ -63,7 +63,9 @@ final class ArchiveWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         guard let archiveURL else { return }; task?.cancel(); status.stringValue = L("안전하게 추출하는 중…", "Extracting safely…"); setRunning(true)
         task = Task { [weak self, provider] in
             do {
-                let report = try await provider.extract(archiveURL, to: destination)
+                let report = try await provider.extract(archiveURL, to: destination) { [weak self] update in
+                    Task { @MainActor [weak self] in self?.updateProgress(update) }
+                }
                 guard let self, !Task.isCancelled else { return }
                 self.status.stringValue = L("\(report.entries)개 항목을 추출했습니다.", "Extracted \(report.entries) items."); self.setRunning(false)
             } catch is CancellationError { guard let self else { return }; self.status.stringValue = L("추출을 중단했습니다.", "Extraction stopped."); self.setRunning(false) }
@@ -71,7 +73,16 @@ final class ArchiveWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         }
     }
     @objc private func cancel(_ sender: Any?) { task?.cancel() }
-    private func setRunning(_ running: Bool) { running ? progress.startAnimation(nil) : progress.stopAnimation(nil); cancelButton.isEnabled = running; extractButton.isEnabled = !running && !entries.isEmpty }
+    private func updateProgress(_ update: ArchiveProgress) {
+        guard cancelButton.isEnabled else { return }
+        progress.isIndeterminate = update.totalBytes == 0 && update.totalEntries == 0
+        let byteFraction = update.totalBytes > 0 ? Double(update.completedBytes) / Double(update.totalBytes) : 0
+        let entryFraction = update.totalEntries > 0 ? Double(update.completedEntries) / Double(update.totalEntries) : 0
+        progress.doubleValue = max(byteFraction, entryFraction)
+        let phase = update.phase == .publishing ? L("결과 확정", "Publishing") : L("추출", "Extracting")
+        status.stringValue = "\(phase) · \(update.completedEntries)/\(update.totalEntries) · \(ByteCountFormatter.string(fromByteCount: update.completedBytes, countStyle: .file))" + (update.currentPath.map { " · \($0)" } ?? "")
+    }
+    private func setRunning(_ running: Bool) { if running { progress.isIndeterminate = true; progress.startAnimation(nil) } else { progress.stopAnimation(nil) }; cancelButton.isEnabled = running; extractButton.isEnabled = !running && !entries.isEmpty }
     private func render() { setRunning(false); status.stringValue = L("압축 파일을 여세요.", "Open an archive.") }
     func numberOfRows(in tableView: NSTableView) -> Int { entries.count }
     func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {

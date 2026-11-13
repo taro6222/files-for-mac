@@ -2,6 +2,13 @@ import Foundation
 import Testing
 @testable import FilesCore
 
+private final class ProgressRecorder: @unchecked Sendable {
+    private let lock = NSLock()
+    private var values: [ArchiveProgress] = []
+    func append(_ value: ArchiveProgress) { lock.withLock { values.append(value) } }
+    var snapshot: [ArchiveProgress] { lock.withLock { values } }
+}
+
 private func makeZip(source: URL, archive: URL) throws {
     let process = Process(); process.executableURL = URL(fileURLWithPath: "/usr/bin/ditto")
     process.arguments = ["-c", "-k", "--norsrc", "--noextattr", source.path, archive.path]
@@ -84,4 +91,20 @@ private func makeZip(source: URL, archive: URL) throws {
     await #expect(throws: (any Error).self) { try await provider.create(from: [link], at: root.appendingPathComponent("link.zip")) }
     #expect(!fm.fileExists(atPath: root.appendingPathComponent("link.zip").path))
     #expect((try fm.contentsOfDirectory(atPath: root.path)).allSatisfy { !$0.hasPrefix(".files-create-") })
+}
+
+@Test func zipProviderReportsMonotonicCreateAndExtractProgress() async throws {
+    let fm = FileManager.default, root = fm.temporaryDirectory.appendingPathComponent("zip-progress-\(UUID())", isDirectory: true)
+    defer { try? fm.removeItem(at: root) }
+    let source = root.appendingPathComponent("payload.bin"), archive = root.appendingPathComponent("payload.zip"), destination = root.appendingPathComponent("destination", isDirectory: true)
+    try fm.createDirectory(at: root, withIntermediateDirectories: true); try fm.createDirectory(at: destination, withIntermediateDirectories: true)
+    try Data(repeating: 0x5a, count: 256 * 1024).write(to: source)
+    let create = ProgressRecorder(), extract = ProgressRecorder(), provider = ZipArchiveProvider()
+    _ = try await provider.create(from: [source], at: archive, progress: create.append)
+    _ = try await provider.extract(archive, to: destination, progress: extract.append)
+    for events in [create.snapshot, extract.snapshot] {
+        #expect(!events.isEmpty); #expect(events.last?.phase == .publishing)
+        #expect(events.last?.completedEntries == 1); #expect(events.last?.completedBytes == Int64(256 * 1024))
+        #expect(zip(events, events.dropFirst()).allSatisfy { $0.completedEntries <= $1.completedEntries && $0.completedBytes <= $1.completedBytes })
+    }
 }

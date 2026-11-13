@@ -17,6 +17,24 @@ public struct ArchiveExtractionReport: Sendable, Equatable {
     public let publishedURLs: [URL]
 }
 
+public enum ArchiveProgressPhase: String, Sendable, Equatable { case planning, reading, writing, publishing }
+
+public struct ArchiveProgress: Sendable, Equatable {
+    public let phase: ArchiveProgressPhase
+    public let completedEntries: Int
+    public let totalEntries: Int
+    public let completedBytes: Int64
+    public let totalBytes: Int64
+    public let currentPath: String?
+
+    public init(phase: ArchiveProgressPhase, completedEntries: Int, totalEntries: Int, completedBytes: Int64, totalBytes: Int64, currentPath: String?) {
+        self.phase = phase; self.completedEntries = completedEntries; self.totalEntries = totalEntries
+        self.completedBytes = completedBytes; self.totalBytes = totalBytes; self.currentPath = currentPath
+    }
+}
+
+public typealias ArchiveProgressHandler = @Sendable (ArchiveProgress) -> Void
+
 public struct ZipArchiveProvider: Sendable {
     public init() {}
 
@@ -34,12 +52,12 @@ public struct ZipArchiveProvider: Sendable {
         }
     }
 
-    public func extract(_ archiveURL: URL, to destination: URL, limits: ArchiveExtractionLimits = .init()) async throws -> ArchiveExtractionReport {
-        try await Task.detached(priority: .userInitiated) { try extractSynchronously(archiveURL, to: destination, limits: limits) }.value
+    public func extract(_ archiveURL: URL, to destination: URL, limits: ArchiveExtractionLimits = .init(), progress: ArchiveProgressHandler? = nil) async throws -> ArchiveExtractionReport {
+        try await Task.detached(priority: .userInitiated) { try extractSynchronously(archiveURL, to: destination, limits: limits, progress: progress) }.value
     }
 
-    public func create(from sources: [URL], at archiveURL: URL) async throws -> URL {
-        try await Task.detached(priority: .userInitiated) { try createSynchronously(from: sources, at: archiveURL) }.value
+    public func create(from sources: [URL], at archiveURL: URL, progress: ArchiveProgressHandler? = nil) async throws -> URL {
+        try await Task.detached(priority: .userInitiated) { try createSynchronously(from: sources, at: archiveURL, progress: progress) }.value
     }
 }
 
@@ -51,7 +69,7 @@ private struct ZipSourceEntry {
     let permissions: Int
 }
 
-private func createSynchronously(from sourceURLs: [URL], at archiveURL: URL) throws -> URL {
+private func createSynchronously(from sourceURLs: [URL], at archiveURL: URL, progress: ArchiveProgressHandler?) throws -> URL {
     let fm = FileManager.default, sources = sourceURLs.map(\.standardizedFileURL)
     guard !sources.isEmpty, Set(sources).count == sources.count, !fm.fileExists(atPath: archiveURL.path) else { throw ZipArchiveError.invalidSource(archiveURL.path) }
     var planned: [ZipSourceEntry] = [], descriptors: [ArchiveEntryDescriptor] = []
@@ -79,6 +97,9 @@ private func createSynchronously(from sourceURLs: [URL], at archiveURL: URL) thr
         }
     }
     _ = try ArchiveExtractionValidator.validate(descriptors, limits: .init())
+    let totalBytes = planned.reduce(Int64(0)) { $0 + $1.size }
+    var completedBytes: Int64 = 0, completedEntries = 0
+    progress?(ArchiveProgress(phase: .writing, completedEntries: 0, totalEntries: planned.count, completedBytes: 0, totalBytes: totalBytes, currentPath: nil))
     let parent = archiveURL.deletingLastPathComponent(); try fm.createDirectory(at: parent, withIntermediateDirectories: true)
     let staging = parent.appendingPathComponent(".files-create-\(UUID().uuidString).zip")
     defer { try? fm.removeItem(at: staging) }
@@ -92,26 +113,34 @@ private func createSynchronously(from sourceURLs: [URL], at archiveURL: URL) thr
             archive_entry_set_perm(entry, mode_t(item.permissions & 0o777)); archive_entry_set_size(entry, item.size)
             if let modified = item.modified { archive_entry_set_mtime(entry, time_t(modified.timeIntervalSince1970), 0) }
             guard archive_write_header(writer, entry) == FILES_ARCHIVE_OK else { throw ZipArchiveError.readFailed(errorText(writer)) }
-            guard !item.isDirectory else { continue }
+            if item.isDirectory {
+                completedEntries += 1
+                progress?(ArchiveProgress(phase: .writing, completedEntries: completedEntries, totalEntries: planned.count, completedBytes: completedBytes, totalBytes: totalBytes, currentPath: item.archivePath))
+                continue
+            }
             let handle = try FileHandle(forReadingFrom: item.url); defer { try? handle.close() }
             var written: Int64 = 0
             while let data = try handle.read(upToCount: 64 * 1024), !data.isEmpty {
                 try Task<Never, Never>.checkCancellation()
                 let count = data.withUnsafeBytes { archive_write_data(writer, $0.baseAddress, $0.count) }
                 guard count == data.count else { throw ZipArchiveError.readFailed(errorText(writer)) }
-                written += Int64(count)
+                written += Int64(count); completedBytes += Int64(count)
+                progress?(ArchiveProgress(phase: .writing, completedEntries: completedEntries, totalEntries: planned.count, completedBytes: completedBytes, totalBytes: totalBytes, currentPath: item.archivePath))
             }
             guard written == item.size else { throw ZipArchiveError.invalidSource(item.url.path) }
             let current = try item.url.resourceValues(forKeys: [.fileSizeKey, .contentModificationDateKey])
             guard Int64(current.fileSize ?? -1) == item.size, current.contentModificationDate == item.modified else { throw ZipArchiveError.invalidSource(item.url.path) }
+            completedEntries += 1
+            progress?(ArchiveProgress(phase: .writing, completedEntries: completedEntries, totalEntries: planned.count, completedBytes: completedBytes, totalBytes: totalBytes, currentPath: item.archivePath))
         }
     }
     guard !fm.fileExists(atPath: archiveURL.path) else { throw ZipArchiveError.destinationConflict(archiveURL.lastPathComponent) }
+    progress?(ArchiveProgress(phase: .publishing, completedEntries: completedEntries, totalEntries: planned.count, completedBytes: completedBytes, totalBytes: totalBytes, currentPath: archiveURL.lastPathComponent))
     try fm.moveItem(at: staging, to: archiveURL)
     return archiveURL
 }
 
-private func extractSynchronously(_ archiveURL: URL, to destination: URL, limits: ArchiveExtractionLimits) throws -> ArchiveExtractionReport {
+private func extractSynchronously(_ archiveURL: URL, to destination: URL, limits: ArchiveExtractionLimits, progress: ArchiveProgressHandler?) throws -> ArchiveExtractionReport {
     let fm = FileManager.default
     guard (try? destination.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true else { throw ZipArchiveError.destinationNotDirectory }
     let provider = ZipArchiveProvider(), descriptors = try provider.entries(at: archiveURL)
@@ -122,6 +151,8 @@ private func extractSynchronously(_ archiveURL: URL, to destination: URL, limits
     try fm.createDirectory(at: staging, withIntermediateDirectories: false)
     defer { try? fm.removeItem(at: staging) }
     var actualTotal: Int64 = 0
+    let totalBytes = validated.reduce(Int64(0)) { $0 + $1.uncompressedSize }
+    progress?(ArchiveProgress(phase: .reading, completedEntries: 0, totalEntries: validated.count, completedBytes: 0, totalBytes: totalBytes, currentPath: nil))
     try withReader(archiveURL) { reader in
         var entry: OpaquePointer?, index = 0
         while true {
@@ -148,15 +179,18 @@ private func extractSynchronously(_ archiveURL: URL, to destination: URL, limits
                         throw ArchiveValidationError.totalSizeLimit
                     }
                     try handle.write(contentsOf: Data(buffer[0..<Int(count)]))
+                    progress?(ArchiveProgress(phase: .reading, completedEntries: index, totalEntries: validated.count, completedBytes: actualTotal, totalBytes: totalBytes, currentPath: item.relativePath))
                 }
                 guard written == item.uncompressedSize else { throw ZipArchiveError.readFailed(item.relativePath) }
             default: throw ZipArchiveError.invalidEntry(item.relativePath)
             }
             index += 1
+            progress?(ArchiveProgress(phase: .reading, completedEntries: index, totalEntries: validated.count, completedBytes: actualTotal, totalBytes: totalBytes, currentPath: item.relativePath))
         }
         guard index == validated.count else { throw ZipArchiveError.readFailed("entry count changed") }
     }
     var published: [URL] = []
+    progress?(ArchiveProgress(phase: .publishing, completedEntries: validated.count, totalEntries: validated.count, completedBytes: actualTotal, totalBytes: totalBytes, currentPath: nil))
     do {
         for name in topLevel {
             let source = staging.appendingPathComponent(name), target = destination.appendingPathComponent(name)
