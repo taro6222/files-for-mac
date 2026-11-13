@@ -81,3 +81,28 @@ func curlFTPPlansKeepCredentialsOffArgumentsAndDescriptions(remoteProtocol: Remo
     #expect(throws: RemoteBackendError.invalidStaging) { try FTPRemoteProvider.publishDownload(staging: foreign, destination: destination, fileManager: fm) }
     #expect(throws: RemoteBackendError.invalidStaging) { try FTPRemoteProvider.publishDownload(staging: root.appendingPathComponent(".files-download-missing.tmp"), destination: destination, fileManager: fm) }
 }
+
+@Test func ftpUploadPlansUseRemoteStagingRenameAndCleanupWithoutArgumentSecrets() throws {
+    let profile = try RemoteConnectionProfile(name: "FTP", remoteProtocol: .ftps, host: "files.example.com")
+    let credential = RemoteCredential(username: "alice", secret: Data("secret".utf8)), source = URL(fileURLWithPath: "/tmp/local file.txt")
+    let builder = CurlFTPCommandBuilder(), staging = "/team/.files-upload-fixture.tmp", final = "/team/final file.txt"
+    let upload = try builder.command(profile: profile, credential: credential, remotePath: staging, intent: .uploadAndRename(local: source, finalRemotePath: final))
+    let config = String(decoding: upload.standardInput, as: UTF8.self)
+    #expect(config.contains("upload-file =")); #expect(config.contains("RNFR \(staging)")); #expect(config.contains("RNTO \(final)"))
+    #expect(!upload.arguments.joined().contains("alice")); #expect(!upload.arguments.joined().contains("secret"))
+    let cleanup = try builder.command(profile: profile, credential: credential, remotePath: staging, intent: .delete)
+    let cleanupConfig = String(decoding: cleanup.standardInput, as: UTF8.self)
+    #expect(cleanupConfig.contains("DELE \(staging)")); #expect(cleanupConfig.contains("no-body"))
+    #expect(FTPServerCapabilities().renameRefusesExistingDestination == false)
+}
+
+@Test func ftpUploadPlansRejectUnsafeFinalPathsAndSources() async throws {
+    let profile = try RemoteConnectionProfile(name: "FTP", remoteProtocol: .ftp, host: "host")
+    let credential = RemoteCredential(username: "user", secret: Data("secret".utf8)), source = URL(fileURLWithPath: "/tmp/file")
+    #expect(throws: RemoteBackendError.invalidRemotePath) {
+        try CurlFTPCommandBuilder().command(profile: profile, credential: credential, remotePath: "/.files-upload.tmp", intent: .uploadAndRename(local: source, finalRemotePath: "relative"))
+    }
+    await #expect(throws: RemoteBackendError.unverifiedServerCapability) {
+        try await FTPRemoteProvider().upload(profile: profile, credential: credential, source: source, remotePath: "/file", capabilities: .init())
+    }
+}

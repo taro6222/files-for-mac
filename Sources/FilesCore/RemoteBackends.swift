@@ -24,10 +24,19 @@ public struct RemoteBackendProbe: Sendable {
     }
 }
 
-public enum RemoteTransferIntent: Sendable, Equatable { case list, download(local: URL), upload(local: URL) }
+public enum RemoteTransferIntent: Sendable, Equatable {
+    case list, download(local: URL), upload(local: URL)
+    case uploadAndRename(local: URL, finalRemotePath: String)
+    case delete
+}
 
 public enum RemoteBackendError: Error, Sendable, Equatable {
-    case unsupportedProtocol, invalidRemotePath, invalidCredential, invalidListing, listingLimitExceeded, destinationExists, invalidStaging
+    case unsupportedProtocol, invalidRemotePath, invalidCredential, invalidListing, listingLimitExceeded, destinationExists, invalidStaging, unverifiedServerCapability, invalidUploadSource
+}
+
+public struct FTPServerCapabilities: Sendable, Equatable {
+    public let renameRefusesExistingDestination: Bool
+    public init(renameRefusesExistingDestination: Bool = false) { self.renameRefusesExistingDestination = renameRefusesExistingDestination }
 }
 
 public struct RemoteDirectoryEntry: Sendable, Equatable, Identifiable {
@@ -55,6 +64,23 @@ public struct FTPRemoteProvider: Sendable {
         _ = try await executor.execute(plan)
         try Self.publishDownload(staging: staging, destination: destination, fileManager: fileManager)
         return destination
+    }
+    public func upload(profile: RemoteConnectionProfile, credential: RemoteCredential, source: URL, remotePath: String,
+                       capabilities: FTPServerCapabilities) async throws {
+        guard capabilities.renameRefusesExistingDestination else { throw RemoteBackendError.unverifiedServerCapability }
+        guard let values = try? source.resourceValues(forKeys: [.isRegularFileKey, .isSymbolicLinkKey]),
+              values.isRegularFile == true, values.isSymbolicLink != true else { throw RemoteBackendError.invalidUploadSource }
+        let final = remotePath as NSString, parent = final.deletingLastPathComponent
+        let staging = (parent as NSString).appendingPathComponent(".files-upload-\(UUID().uuidString).tmp")
+        let upload = try builder.command(profile: profile, credential: credential, remotePath: staging,
+            intent: .uploadAndRename(local: source, finalRemotePath: remotePath))
+        do { _ = try await executor.execute(upload) }
+        catch {
+            if let cleanup = try? builder.command(profile: profile, credential: credential, remotePath: staging, intent: .delete) {
+                _ = try? await executor.execute(cleanup)
+            }
+            throw error
+        }
     }
     public static func publishDownload(staging: URL, destination: URL, fileManager: FileManager = .default) throws {
         let parent = destination.deletingLastPathComponent().standardizedFileURL
@@ -157,6 +183,16 @@ public struct CurlFTPCommandBuilder: Sendable {
         case .list: lines.append("list-only")
         case .download(let local): lines.append("output = \(quoted(local.path))")
         case .upload(let local): lines.append("upload-file = \(quoted(local.path))")
+        case .uploadAndRename(let local, let finalRemotePath):
+            guard finalRemotePath.hasPrefix("/"), !finalRemotePath.unicodeScalars.contains(where: { CharacterSet.controlCharacters.contains($0) }) else {
+                throw RemoteBackendError.invalidRemotePath
+            }
+            lines.append("upload-file = \(quoted(local.path))")
+            lines.append("postquote = \(quoted("RNFR " + remotePath))")
+            lines.append("postquote = \(quoted("RNTO " + finalRemotePath))")
+        case .delete:
+            lines.append("quote = \(quoted("DELE " + remotePath))")
+            lines.append("no-body")
         }
         if profile.remoteProtocol == .ftps { lines.append("ssl-reqd") }
         let input = Data((lines.joined(separator: "\n") + "\n").utf8)
