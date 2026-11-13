@@ -18,12 +18,20 @@ public struct CopyMergeBatchReport: Codable, Sendable {
     public var journalError: String?
 }
 
+public struct CopyMergeBatchProgress: Sendable {
+    public let index: Int
+    public let total: Int
+    public let source: URL
+    public let state: String
+}
+
 /// Coordinates a mixed multi-selection as one user operation. Missing top-level items use the
 /// normal copy engine, folder/folder conflicts use recursive merge, and all created results share
 /// one undo record.
 public enum CopyMergeBatch {
     public static func run(sources: [URL], destination: URL, journalDirectory: URL,
-                           cancellation: CopyCancellation) async -> CopyMergeBatchReport {
+                           cancellation: CopyCancellation,
+                           progress: @escaping @Sendable (CopyMergeBatchProgress) -> Void = { _ in }) async -> CopyMergeBatchReport {
         let id = UUID()
         var report = CopyMergeBatchReport(version: 1, id: id, state: "running", items: sources.map {
             CopyMergeBatchItem(source: $0, target: destination.appendingPathComponent($0.lastPathComponent),
@@ -39,7 +47,12 @@ public enum CopyMergeBatch {
         }
         var undoItems: [CopyUndoItem] = []
         for index in sources.indices {
-            if cancellation.isCancelled { report.items[index].state = "cancelled"; continue }
+            if cancellation.isCancelled {
+                report.items[index].state = "cancelled"
+                progress(CopyMergeBatchProgress(index: index, total: sources.count,
+                                                source: sources[index], state: "cancelled"))
+                continue
+            }
             let source = sources[index]
             let target = report.items[index].target
             do {
@@ -78,7 +91,10 @@ public enum CopyMergeBatch {
                 report.items[index].state = cancellation.isCancelled ? "cancelled" : "failed"
                 report.items[index].message = error.localizedDescription
             }
-            do { try save() } catch { report.journalError = error.localizedDescription; break }
+            do { try save() } catch { report.journalError = error.localizedDescription }
+            progress(CopyMergeBatchProgress(index: index, total: sources.count,
+                                            source: source, state: report.items[index].state))
+            if report.journalError != nil { break }
         }
         let failures = report.items.filter { $0.state == "failed" }.count
         report.state = cancellation.isCancelled ? "cancelled" : (failures == 0 ? "completed" : "partiallyCompleted")

@@ -21,10 +21,12 @@ final class FolderMergeWindow: NSWindowController, NSWindowDelegate {
         let journals = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
             .appendingPathComponent(Bundle.main.bundleIdentifier ?? "org.taro6222.files-for-mac")
             .appendingPathComponent("operations")
-        Task {
+        Task { [controller] in
             let report = await CopyMergeBatch.run(sources: sources, destination: destination,
                                                   journalDirectory: journals,
-                                                  cancellation: controller.cancellation)
+                                                  cancellation: controller.cancellation) { [weak controller] update in
+                Task { @MainActor in controller?.update(update) }
+            }
             controller.finish(report)
             completion()
         }
@@ -48,7 +50,8 @@ final class FolderMergeWindow: NSWindowController, NSWindowDelegate {
             L("대상: ", "Destination: ") + destination.path + "\n" +
             L("항목: ", "Items: ") + "\(sources.count)")
         paths.isSelectable = true; stack.addArrangedSubview(paths); stack.addArrangedSubview(label)
-        progress.style = .bar; progress.isIndeterminate = true; progress.startAnimation(nil); stack.addArrangedSubview(progress)
+        progress.style = .bar; progress.isIndeterminate = false; progress.minValue = 0
+        progress.maxValue = Double(sources.count); stack.addArrangedSubview(progress)
         let scroll = NSScrollView(); scroll.hasVerticalScroller = true; scroll.borderType = .bezelBorder
         details.isEditable = false; details.isSelectable = true; details.font = .systemFont(ofSize: 12)
         scroll.documentView = details; stack.addArrangedSubview(scroll)
@@ -58,8 +61,14 @@ final class FolderMergeWindow: NSWindowController, NSWindowDelegate {
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 
+    private func update(_ update: CopyMergeBatchProgress) {
+        guard running else { return }
+        progress.doubleValue = Double(update.index + 1)
+        label.stringValue = "\(update.index + 1)/\(update.total) · \(update.state) · \(update.source.lastPathComponent)"
+    }
+
     private func finish(_ report: CopyMergeBatchReport) {
-        running = false; progress.stopAnimation(nil); progress.isIndeterminate = false; progress.doubleValue = 1
+        running = false; progress.doubleValue = progress.maxValue
         let added = report.items.reduce(0) { $0 + $1.addedCount }
         let conflicts = report.items.reduce(0) { $0 + $1.conflictCount }
         label.stringValue = L("병합 종료 · 추가 \(added) · 보존한 충돌 \(conflicts)",

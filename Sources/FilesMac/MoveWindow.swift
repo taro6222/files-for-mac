@@ -24,7 +24,7 @@ final class MoveWindow: NSWindowController, NSWindowDelegate {
         let journals = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
             .appendingPathComponent(Bundle.main.bundleIdentifier ?? "org.taro6222.files-for-mac")
             .appendingPathComponent("operations")
-        Task {
+        Task { [controller] in
             do {
                 let report = try await EntryOperations.move(sources, to: destination, conflictPolicy: conflictPolicy,
                     journalDirectory: journals, cancellation: controller.cancellation) { [weak controller] update in

@@ -271,3 +271,35 @@ private struct CopyFixture {
     #expect(!FileManager.default.fileExists(atPath: mergeTarget.appendingPathComponent("nested.txt").path))
     #expect(FileManager.default.fileExists(atPath: mergeTarget.appendingPathComponent("keep.txt").path))
 }
+
+@Test func folderMergeBatchCancellationKeepsCompletedItemAndSkipsRemainingItems() async throws {
+    let f = try CopyFixture(); defer { f.clean() }
+    let first = try f.file("first.txt", text: "first")
+    let second = try f.file("second.txt", text: "second")
+    let cancellation = CopyCancellation()
+
+    let report = await CopyMergeBatch.run(sources: [first, second], destination: f.destination,
+        journalDirectory: f.journal, cancellation: cancellation) { update in
+        if update.index == 0 { cancellation.cancel() }
+    }
+
+    #expect(report.state == "cancelled")
+    #expect(report.items.map(\.state) == ["completed", "cancelled"])
+    #expect(FileManager.default.fileExists(atPath: f.destination.appendingPathComponent("first.txt").path))
+    #expect(!FileManager.default.fileExists(atPath: f.destination.appendingPathComponent("second.txt").path))
+    let undo = try #require(CopyEngine.latestUndoCopy(journalDirectory: f.journal))
+    #expect(undo.items.count == 1)
+}
+
+@Test func folderMergeBatchJournalFailurePreventsAllMutation() async throws {
+    let f = try CopyFixture(); defer { f.clean() }
+    let source = try f.file("source.txt", text: "source")
+    try Data("not-a-directory".utf8).write(to: f.journal)
+
+    let report = await CopyMergeBatch.run(sources: [source], destination: f.destination,
+        journalDirectory: f.journal, cancellation: CopyCancellation())
+
+    #expect(report.state == "failed")
+    #expect(report.journalError != nil)
+    #expect(try FileManager.default.contentsOfDirectory(atPath: f.destination.path).isEmpty)
+}

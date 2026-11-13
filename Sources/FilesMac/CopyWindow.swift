@@ -23,7 +23,7 @@ final class CopyWindow: NSWindowController, NSWindowDelegate {
         let journals = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
             .appendingPathComponent(Bundle.main.bundleIdentifier ?? "org.taro6222.files-for-mac")
             .appendingPathComponent("operations")
-        Task {
+        Task { [controller] in
             let report = await CopyEngine.run(sources: sources, destination: destination, journalDirectory: journals,
                                               cancellation: controller.cancellation, conflictPolicy: conflictPolicy) { [weak controller] update in
                 Task { @MainActor in controller?.update(update) }
