@@ -27,6 +27,7 @@ public struct BrowserPreferencesArchive: Codable, Equatable, Sendable {
     public let viewSize: String
     public let appearance: String
     public let continueLastSession: Bool
+    public let startupLocationPath: String?
     public let developerApplicationPath: String?
     public let toolbarOrder: [String]
     public let hiddenToolbarItems: [String]
@@ -60,6 +61,7 @@ public final class BrowserPreferences {
     public private(set) var viewSize: BrowserViewSize
     public private(set) var appearance: BrowserAppearance
     public private(set) var continueLastSession: Bool
+    public private(set) var startupLocationPath: String?
     public private(set) var developerApplicationPath: String?
     public private(set) var toolbarOrder: [BrowserToolbarItem]
     public private(set) var hiddenToolbarItems: Set<BrowserToolbarItem>
@@ -87,6 +89,7 @@ public final class BrowserPreferences {
         viewSize = defaults.string(forKey: "viewSize").flatMap(BrowserViewSize.init(rawValue:)) ?? .medium
         appearance = defaults.string(forKey: "appearance").flatMap(BrowserAppearance.init(rawValue:)) ?? .system
         continueLastSession = defaults.object(forKey: "continueLastSession") as? Bool ?? true
+        startupLocationPath = defaults.string(forKey: "startupLocationPath").flatMap { $0.hasPrefix("/") ? $0 : nil }
         developerApplicationPath = defaults.string(forKey: "developerApplicationPath")
         var toolbar: [BrowserToolbarItem] = []
         for raw in defaults.stringArray(forKey: "toolbarOrder") ?? [] {
@@ -157,6 +160,13 @@ public final class BrowserPreferences {
         guard continueLastSession != value else { return }
         continueLastSession = value; defaults.set(value, forKey: "continueLastSession"); changed()
     }
+    public func setStartupLocation(_ url: URL?) {
+        let value = url?.standardizedFileURL.path
+        guard startupLocationPath != value else { return }
+        startupLocationPath = value
+        if let value { defaults.set(value, forKey: "startupLocationPath") } else { defaults.removeObject(forKey: "startupLocationPath") }
+        changed()
+    }
     public func setDeveloperApplication(_ url: URL?) {
         let value = url?.standardizedFileURL.path
         guard developerApplicationPath != value else { return }
@@ -171,7 +181,7 @@ public final class BrowserPreferences {
             showHidden: showHidden, showExtensions: showExtensions, showToolbar: showToolbar, showStatusBar: showStatusBar,
             showHomeFavorites: showHomeFavorites, showHomeVolumes: showHomeVolumes, showHomeRecent: showHomeRecent,
             viewSize: viewSize.rawValue, appearance: appearance.rawValue, continueLastSession: continueLastSession,
-            developerApplicationPath: developerApplicationPath, toolbarOrder: toolbarOrder.map(\.rawValue),
+            startupLocationPath: startupLocationPath, developerApplicationPath: developerApplicationPath, toolbarOrder: toolbarOrder.map(\.rawValue),
             hiddenToolbarItems: hiddenToolbarItems.map(\.rawValue).sorted(), folderViewPreferences: folderViewPreferences)
         let encoder = JSONEncoder(); encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         return try encoder.encode(archive)
@@ -194,11 +204,14 @@ public final class BrowserPreferences {
         if let developerApplicationPath = archive.developerApplicationPath, !developerApplicationPath.hasPrefix("/") {
             throw BrowserPreferencesArchiveError.invalidValue
         }
+        if let startupLocationPath = archive.startupLocationPath, !startupLocationPath.hasPrefix("/") {
+            throw BrowserPreferencesArchiveError.invalidValue
+        }
         sidebarOrder = importedSidebar; collapsedSidebar = Set(importedCollapsed)
         favorites = archive.favorites.map { URL(fileURLWithPath: $0) }; recent = archive.recent.map { URL(fileURLWithPath: $0) }
         showHidden = archive.showHidden; showExtensions = archive.showExtensions; showToolbar = archive.showToolbar; showStatusBar = archive.showStatusBar
         showHomeFavorites = archive.showHomeFavorites; showHomeVolumes = archive.showHomeVolumes; showHomeRecent = archive.showHomeRecent
-        viewSize = size; appearance = importedAppearance; continueLastSession = archive.continueLastSession
+        viewSize = size; appearance = importedAppearance; continueLastSession = archive.continueLastSession; startupLocationPath = archive.startupLocationPath
         developerApplicationPath = archive.developerApplicationPath; toolbarOrder = importedToolbar; hiddenToolbarItems = Set(importedHiddenToolbar)
         folderViewPreferences = archive.folderViewPreferences
         defaults.set(sidebarOrder.map(\.rawValue), forKey: "sidebarOrder"); defaults.set(collapsedSidebar.map(\.rawValue).sorted(), forKey: "collapsedSidebar")
@@ -207,6 +220,7 @@ public final class BrowserPreferences {
         defaults.set(showToolbar, forKey: "showToolbar"); defaults.set(showStatusBar, forKey: "showStatusBar")
         defaults.set(showHomeFavorites, forKey: "showHomeFavorites"); defaults.set(showHomeVolumes, forKey: "showHomeVolumes"); defaults.set(showHomeRecent, forKey: "showHomeRecent")
         defaults.set(viewSize.rawValue, forKey: "viewSize"); defaults.set(appearance.rawValue, forKey: "appearance"); defaults.set(continueLastSession, forKey: "continueLastSession")
+        if let startupLocationPath { defaults.set(startupLocationPath, forKey: "startupLocationPath") } else { defaults.removeObject(forKey: "startupLocationPath") }
         if let developerApplicationPath { defaults.set(developerApplicationPath, forKey: "developerApplicationPath") } else { defaults.removeObject(forKey: "developerApplicationPath") }
         defaults.set(toolbarOrder.map(\.rawValue), forKey: "toolbarOrder"); defaults.set(hiddenToolbarItems.map(\.rawValue).sorted(), forKey: "hiddenToolbarItems")
         saveFolderViewPreferences(); changed()

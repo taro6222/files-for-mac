@@ -43,7 +43,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
                 restored = sessionStore.load().map { SplitTabState(primary: PaneSnapshot(tab: $0)) }
             }
         }
-        if restored.isEmpty { newWindow(nil) }
+        if restored.isEmpty {
+            let startup = BrowserPreferences.shared.startupLocationPath.map { URL(fileURLWithPath: $0, isDirectory: true) }
+            var isDirectory: ObjCBool = false
+            if let startup, FileManager.default.fileExists(atPath: startup.path, isDirectory: &isDirectory), isDirectory.boolValue {
+                makeBrowser(location: startup)
+            } else { newWindow(nil) }
+        }
         else {
             var first: BrowserWindow?
             for workspace in restored {
