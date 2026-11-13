@@ -19,6 +19,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     private var releaseInfoWindow: ReleaseInfoWindow?
     private var developerSettingsWindow: DeveloperSettingsWindow?
     private var advancedSettingsWindow: AdvancedSettingsWindow?
+    private var generalSettingsWindow: GeneralSettingsWindow?
     private var preferencesToken: UUID?
     func applicationDidFinishLaunching(_ notification: Notification) {
         applyAppearance()
@@ -111,6 +112,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         if advancedSettingsWindow == nil { advancedSettingsWindow = AdvancedSettingsWindow(preferences: .shared) }
         advancedSettingsWindow?.present()
     }
+    @objc func showGeneralSettings(_ sender: Any?) {
+        if generalSettingsWindow == nil { generalSettingsWindow = GeneralSettingsWindow(preferences: .shared) }
+        generalSettingsWindow?.present()
+    }
     @objc func showArchiveCapabilities(_ sender: Any?) {
         if archiveCapabilitiesWindow == nil { archiveCapabilitiesWindow = ArchiveCapabilitiesWindow() }
         archiveCapabilitiesWindow?.present()
@@ -180,6 +185,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         let appearance = appMenu.addItem(withTitle: L("외형…", "Appearance…"), action: #selector(showAppearanceSettings(_:)), keyEquivalent: "")
         appearance.target = self
         let developer = appMenu.addItem(withTitle: L("개발자 도구…", "Developer Tools…"), action: #selector(showDeveloperSettings(_:)), keyEquivalent: ""); developer.target = self
+        let general = appMenu.addItem(withTitle: L("일반 설정…", "General Settings…"), action: #selector(showGeneralSettings(_:)), keyEquivalent: ""); general.target = self
         let advanced = appMenu.addItem(withTitle: L("고급 설정…", "Advanced Settings…"), action: #selector(showAdvancedSettings(_:)), keyEquivalent: ""); advanced.target = self
         let archiveSupport = appMenu.addItem(withTitle: L("압축 포맷 지원…", "Archive Format Support…"), action: #selector(showArchiveCapabilities(_:)), keyEquivalent: "")
         archiveSupport.target = self
@@ -308,6 +314,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     var qaReleaseInfoContentView: NSView? { releaseInfoWindow?.window?.contentView }
     var qaAdvancedSettingsVisible: Bool { advancedSettingsWindow?.qaVisible == true }
     var qaAdvancedSettingsContentView: NSView? { advancedSettingsWindow?.window?.contentView }
+    var qaGeneralSettingsVisible: Bool { generalSettingsWindow?.qaVisible == true }
+    var qaGeneralSettingsContentView: NSView? { generalSettingsWindow?.window?.contentView }
+    var qaGeneralWidgetStates: (Bool, Bool, Bool)? { generalSettingsWindow?.qaWidgetStates }
+    func qaToggleGeneralWidgets() { generalSettingsWindow?.qaToggleWidgets() }
     func qaCreateRemoteProfile() { remoteConnectionsWindow?.qaCreateProfile() }
 #endif
 }

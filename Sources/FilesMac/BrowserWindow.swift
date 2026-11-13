@@ -1953,6 +1953,12 @@ extension BrowserWindow {
                 checks["advancedSettingsWindow"] = delegate.qaAdvancedSettingsVisible
                 try capture("advanced-settings", view: delegate.qaAdvancedSettingsContentView)
                 delegate.qaAdvancedSettingsContentView?.window?.close(); window.makeKeyAndOrderFront(nil)
+                delegate.showGeneralSettings(nil); try await Task.sleep(for: .milliseconds(50)); let widgetsBefore = delegate.qaGeneralWidgetStates
+                delegate.qaToggleGeneralWidgets(); let widgetsAfter = delegate.qaGeneralWidgetStates
+                checks["generalSettingsWindow"] = delegate.qaGeneralSettingsVisible && widgetsBefore != nil && widgetsAfter != nil
+                    && widgetsAfter!.0 != widgetsBefore!.0 && widgetsAfter!.1 != widgetsBefore!.1 && widgetsAfter!.2 != widgetsBefore!.2
+                try capture("general-settings", view: delegate.qaGeneralSettingsContentView)
+                delegate.qaToggleGeneralWidgets(); delegate.qaGeneralSettingsContentView?.window?.close(); window.makeKeyAndOrderFront(nil)
                 delegate.showArchiveCapabilities(nil); try await Task.sleep(for: .milliseconds(50))
                 checks["archiveCapabilitiesWindow"] = delegate.qaArchiveCapabilitiesVisible
                 try capture("archive-capabilities", view: delegate.qaArchiveCapabilitiesContentView)

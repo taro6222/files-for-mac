@@ -334,11 +334,12 @@ private struct DelayedLoader: DirectoryLoading {
     preferences.moveFavorite(b, by: -1)
     #expect(preferences.favorites == [b, a]); #expect(firstWindow == 1 && secondWindow == 1)
     preferences.removeObserver(token)
-    preferences.setShowExtensions(false); preferences.toggleSection(.volumes); preferences.setViewSize(.large)
+    preferences.setShowExtensions(false); preferences.setSection(.volumes, visible: false); preferences.setViewSize(.large)
     #expect(firstWindow == 1 && secondWindow == 4)
     let restored = BrowserPreferences(defaults: defaults)
     #expect(restored.favorites == [b, a]); #expect(!restored.showExtensions); #expect(!restored.showHomeVolumes)
     #expect(restored.viewSize == .large)
+    preferences.setSection(.volumes, visible: false); #expect(secondWindow == 4)
 }
 
 @Test @MainActor func invalidViewSizePreferenceRepairsToMedium() {

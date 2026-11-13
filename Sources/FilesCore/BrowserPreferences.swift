@@ -242,6 +242,16 @@ public final class BrowserPreferences {
         defaults.removeObject(forKey: "toolbarOrder"); defaults.removeObject(forKey: "hiddenToolbarItems"); changed()
     }
     public enum HomeSection { case favorites, volumes, recent }
+    public func setSection(_ section: HomeSection, visible: Bool) {
+        let current: Bool
+        switch section {
+        case .favorites: current = showHomeFavorites
+        case .volumes: current = showHomeVolumes
+        case .recent: current = showHomeRecent
+        }
+        guard current != visible else { return }
+        toggleSection(section)
+    }
     public func toggleSection(_ section: HomeSection) {
         switch section {
         case .favorites: showHomeFavorites.toggle(); defaults.set(showHomeFavorites, forKey: "showHomeFavorites")
