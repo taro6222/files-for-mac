@@ -1811,8 +1811,8 @@ extension BrowserWindow {
         toolbarItem.target = self
     }
     @objc private func toggleExtensions(_ sender: Any?) { preferences.setShowExtensions(!preferences.showExtensions) }
-    @objc private func toggleSidebarVisibility(_ sender: Any?) { preferences.setShowSidebar(!preferences.showSidebar) }
-    @objc private func toggleToolbar(_ sender: Any?) { preferences.setShowToolbar(!preferences.showToolbar) }
+    @objc func toggleSidebarVisibility(_ sender: Any?) { preferences.setShowSidebar(!preferences.showSidebar) }
+    @objc func toggleToolbar(_ sender: Any?) { preferences.setShowToolbar(!preferences.showToolbar) }
     @objc private func toggleStatusBar(_ sender: Any?) { preferences.setShowStatusBar(!preferences.showStatusBar) }
     @objc private func toggleDateColumn(_ sender: Any?) { preferences.setShowDateColumn(!preferences.showDateColumn) }
     @objc private func toggleTypeColumn(_ sender: Any?) { preferences.setShowTypeColumn(!preferences.showTypeColumn) }
@@ -1851,7 +1851,7 @@ extension BrowserWindow {
         guard let location = model.location else { return }
         preferences.removeFolderViewPreference(for: location); render()
     }
-    @objc private func showToolbarSettings(_ sender: Any?) {
+    @objc func showToolbarSettings(_ sender: Any?) {
         if toolbarSettingsWindow == nil { toolbarSettingsWindow = ToolbarSettingsWindow(preferences: preferences) }
         toolbarSettingsWindow?.present()
     }
@@ -2139,6 +2139,9 @@ extension BrowserWindow {
             checks["createFileCommand"] = paletteEntries.contains { $0.item.action == #selector(createFile(_:)) }
             checks["toggleFullScreenCommand"] = paletteEntries.contains { $0.item.action == #selector(toggleFullScreen(_:)) }
             checks["themeCommands"] = [#selector(AppDelegate.setDarkTheme(_:)), #selector(AppDelegate.setLightTheme(_:)), #selector(AppDelegate.setDefaultTheme(_:)), #selector(AppDelegate.toggleAppTheme(_:))].allSatisfy { action in
+                paletteEntries.contains { $0.item.action == action }
+            }
+            checks["existingWindowCommands"] = [#selector(AppDelegate.newWindow(_:)), #selector(AppDelegate.reopenClosedTab(_:)), #selector(AppDelegate.showReleaseNotes(_:)), #selector(splitHorizontally(_:)), #selector(splitVertically(_:)), #selector(toggleSidebarVisibility(_:)), #selector(toggleToolbar(_:)), #selector(showToolbarSettings(_:))].allSatisfy { action in
                 paletteEntries.contains { $0.item.action == action }
             }
             checks["commandPaletteSearch"] = CommandPaletteCatalog.filtered(paletteEntries, query: L("숨김", "hidden")).contains { $0.item.action == #selector(toggleHidden(_:)) }
