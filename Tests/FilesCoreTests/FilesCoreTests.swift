@@ -22,6 +22,17 @@ private func fixture() throws -> URL {
     #expect(all.count == 3)
 }
 
+@Test func mountedVolumeCapabilitiesClampUsageAndRestrictEject() {
+    let external = MountedVolume(url: URL(fileURLWithPath: "/Volumes/Test"), name: "Test", totalCapacity: 100,
+        availableCapacity: 25, formatDescription: "APFS", isInternal: false, isLocal: true, isReadOnly: false,
+        isRemovable: true, isEjectable: true)
+    #expect(external.usedFraction == 0.75); #expect(external.canRequestEject)
+    let internalVolume = MountedVolume(url: URL(fileURLWithPath: "/"), name: "Macintosh HD", totalCapacity: 100,
+        availableCapacity: 120, isInternal: true, isRemovable: false, isEjectable: false)
+    #expect(internalVolume.usedFraction == 0); #expect(!internalVolume.canRequestEject)
+    #expect(MountedVolume(url: URL(fileURLWithPath: "/Volumes/Unknown"), name: "Unknown").usedFraction == nil)
+}
+
 @Test func missingDirectoryThrows() async throws {
     await #expect(throws: (any Error).self) {
         _ = try await LocalFileSystem().contents(of: URL(fileURLWithPath: "/tmp/no-such-\(UUID())"), showHidden: false)

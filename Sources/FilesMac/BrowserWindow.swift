@@ -71,7 +71,7 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
     private var completionGeneration = 0
     private var suggestions: [String] = []
     private var lastRecordedLocation: URL?
-    private var volumes: [VolumeSummary] = []
+    private var volumes: [MountedVolume] = []
     private var volumeTask: Task<Void, Never>?
     static private(set) var entryOperationRunning = false
     private static var operationJournalDirectory: URL {
@@ -530,12 +530,12 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
                 homeView.addArrangedSubview(card)
                 card.widthAnchor.constraint(equalTo: homeView.widthAnchor, constant: -64).isActive = true
                 locationButton(volume.name, symbol: "externaldrive.fill", url: volume.url, in: card)
-                let description = NSTextField(labelWithString: volume.capacityDescription)
+                let description = NSTextField(labelWithString: capacityDescription(volume))
                 description.font = .systemFont(ofSize: 11); description.textColor = .secondaryLabelColor
                 card.addArrangedSubview(description)
-                if let total = volume.total, let available = volume.available, total > 0 {
+                if let usedFraction = volume.usedFraction {
                     let meter = NSLevelIndicator(); meter.levelIndicatorStyle = .continuousCapacity
-                    meter.minValue = 0; meter.maxValue = 1; meter.doubleValue = min(1, max(0, 1 - Double(available) / Double(total)))
+                    meter.minValue = 0; meter.maxValue = 1; meter.doubleValue = usedFraction
                     meter.setAccessibilityLabel(L("사용한 공간 비율", "Used capacity"))
                     card.addArrangedSubview(meter); meter.widthAnchor.constraint(equalTo: card.widthAnchor, constant: -28).isActive = true
                 }
@@ -1319,15 +1319,12 @@ private final class BrowserFileTable: NSTableView, NSMenuItemValidation {
     }
 }
 
-private struct VolumeSummary: Sendable {
-    let url: URL
-    let name: String
-    let total: Int64?
-    let available: Int64?
-    var capacityDescription: String {
-        guard let total, let available else { return L("용량 정보 없음", "Capacity unavailable") }
-        return ByteCountFormatter.string(fromByteCount: available, countStyle: .file) + L(" 사용 가능 / ", " free of ") + ByteCountFormatter.string(fromByteCount: total, countStyle: .file)
-    }
+private func capacityDescription(_ volume: MountedVolume) -> String {
+    guard let total = volume.totalCapacity, let available = volume.availableCapacity else { return L("용량 정보 없음", "Capacity unavailable") }
+    var text = ByteCountFormatter.string(fromByteCount: available, countStyle: .file) + L(" 사용 가능 / ", " free of ") + ByteCountFormatter.string(fromByteCount: total, countStyle: .file)
+    if let format = volume.formatDescription { text += " · " + format }
+    if volume.isReadOnly == true { text += L(" · 읽기 전용", " · Read Only") }
+    return text
 }
 
 extension BrowserWindow {
@@ -1490,14 +1487,7 @@ extension BrowserWindow {
     private func refreshVolumes() {
         volumeTask?.cancel()
         volumeTask = Task { [weak self] in
-            let result = await Task.detached(priority: .utility) {
-                let keys: Set<URLResourceKey> = [.volumeNameKey, .volumeTotalCapacityKey, .volumeAvailableCapacityKey]
-                return (FileManager.default.mountedVolumeURLs(includingResourceValuesForKeys: Array(keys), options: [.skipHiddenVolumes]) ?? []).map { url in
-                    let values = try? url.resourceValues(forKeys: keys)
-                    return VolumeSummary(url: url, name: values?.volumeName ?? url.lastPathComponent,
-                        total: values?.volumeTotalCapacity.map(Int64.init), available: values?.volumeAvailableCapacity.map(Int64.init))
-                }
-            }.value
+            let result = await Task.detached(priority: .utility) { MountedVolumeProvider().mountedVolumes() }.value
             guard let self, !Task.isCancelled else { return }
             self.volumes = result; self.buildSidebar()
             if self.model.location == nil { self.buildHome() }
