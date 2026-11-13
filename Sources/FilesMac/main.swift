@@ -16,6 +16,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             Task { @MainActor in await BrowserWindow.runUIVerification(output: output) }
             return
         }
+        if let output = ProcessInfo.processInfo.environment["FILES_M2_UI_QA_OUTPUT"] {
+            Task { @MainActor in await BrowserWindow.runM2UIVerification(output: output) }
+            return
+        }
         #endif
         var restored = workspaceStore.load()
         if restored.isEmpty {

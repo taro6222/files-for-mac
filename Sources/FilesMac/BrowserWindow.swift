@@ -1280,8 +1280,7 @@ extension BrowserWindow {
             return !Self.entryOperationRunning && !MoveWindow.isRunning &&
                 EntryOperations.latestUndoMove(journalDirectory: Self.operationJournalDirectory) != nil
         case #selector(undoLastCopy(_:)):
-            return !Self.entryOperationRunning && !CopyWindow.isRunning &&
-                CopyEngine.latestUndoCopy(journalDirectory: Self.operationJournalDirectory) != nil
+            return canUndoCopy(journalDirectory: Self.operationJournalDirectory)
         case #selector(deleteSelection(_:)): return canDeleteSelection
         case #selector(restoreSelection(_:)): return canRestoreSelection
         case #selector(permanentlyDeleteSelection(_:)): return canPermanentDeleteSelection
@@ -1300,6 +1299,10 @@ extension BrowserWindow {
         case #selector(revealSelection(_:)): return !secondaryActive && !table.selectedRowIndexes.isEmpty && model.location != nil
         default: return true
         }
+    }
+    private func canUndoCopy(journalDirectory: URL) -> Bool {
+        !Self.entryOperationRunning && !CopyWindow.isRunning && !FolderMergeWindow.isRunning &&
+            CopyEngine.latestUndoCopy(journalDirectory: journalDirectory) != nil
     }
 }
 
@@ -1608,6 +1611,84 @@ extension BrowserWindow {
             DispatchQueue.main.async { exit(checks.values.allSatisfy { $0 } ? 0 : 1) }
         } catch {
             fputs("UI verification failed: \(error)\n", stderr)
+            DispatchQueue.main.async { exit(1) }
+        }
+    }
+    static func runM2UIVerification(output: String) async {
+        let fm = FileManager.default
+        let destination = URL(fileURLWithPath: output, isDirectory: true)
+        let root = destination.appendingPathComponent("m2-fixture", isDirectory: true)
+        let source = root.appendingPathComponent("source", isDirectory: true)
+        let target = root.appendingPathComponent("target", isDirectory: true)
+        let journals = root.appendingPathComponent("journals", isDirectory: true)
+        let suite = "FilesMac.M2UIVerification.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite); try? fm.removeItem(at: root) }
+        var checks: [String: Bool] = [:]
+        do {
+            try fm.createDirectory(at: source, withIntermediateDirectories: true)
+            try fm.createDirectory(at: target, withIntermediateDirectories: true)
+            let mergeSource = source.appendingPathComponent("merge", isDirectory: true)
+            let mergeTarget = target.appendingPathComponent("merge", isDirectory: true)
+            try fm.createDirectory(at: mergeSource, withIntermediateDirectories: true)
+            try fm.createDirectory(at: mergeTarget, withIntermediateDirectories: true)
+            try Data("new".utf8).write(to: source.appendingPathComponent("new.txt"))
+            try Data("nested".utf8).write(to: mergeSource.appendingPathComponent("nested.txt"))
+            try Data("keep".utf8).write(to: mergeTarget.appendingPathComponent("keep.txt"))
+            try Data("source".utf8).write(to: source.appendingPathComponent("conflict.txt"))
+            try Data("target".utf8).write(to: target.appendingPathComponent("conflict.txt"))
+            let preferences = BrowserPreferences(defaults: defaults, initialFavorites: [target])
+            let dark = ProcessInfo.processInfo.environment["FILES_UI_QA_THEME"] == "dark"
+            NSApp.appearance = NSAppearance(named: dark ? .darkAqua : .aqua)
+            let controller = BrowserWindow(preferences: preferences, restoresFrame: false)
+            guard let window = controller.window, let content = window.contentView else { throw CocoaError(.coderInvalidValue) }
+            window.appearance = NSAppearance(named: dark ? .darkAqua : .aqua)
+            window.setFrame(NSRect(x: 80, y: 80, width: 900, height: 600), display: true)
+            controller.showWindow(nil); NSApp.activate(ignoringOtherApps: true)
+            func settle() async throws {
+                let start = ContinuousClock.now
+                while controller.model.isLoading && elapsed(start) < 10 { try await Task.sleep(for: .milliseconds(10)) }
+                if controller.model.isLoading { throw CocoaError(.validationMissingMandatoryProperty) }
+                content.layoutSubtreeIfNeeded(); content.displayIfNeeded()
+            }
+            func capture(_ name: String) throws {
+                guard let bitmap = content.bitmapImageRepForCachingDisplay(in: content.bounds) else { throw CocoaError(.fileWriteUnknown) }
+                content.cacheDisplay(in: content.bounds, to: bitmap)
+                guard let png = bitmap.representation(using: .png, properties: [:]) else { throw CocoaError(.fileWriteUnknown) }
+                try png.write(to: destination.appendingPathComponent(name + ".png"))
+            }
+            controller.navigate(target); try await settle()
+            let report = await CopyMergeBatch.run(
+                sources: [source.appendingPathComponent("new.txt"), mergeSource, source.appendingPathComponent("conflict.txt")],
+                destination: target, journalDirectory: journals, cancellation: CopyCancellation())
+            controller.refresh(nil); try await settle()
+            checks["batchCompleted"] = report.state == "completed" && report.items.map(\.state) == ["completed", "merged", "conflict"]
+            checks["listReflectsCopy"] = controller.model.items.contains { $0.name == "new.txt" }
+            checks["mergePreservesConflict"] = (try String(contentsOf: target.appendingPathComponent("conflict.txt"), encoding: .utf8)) == "target"
+            checks["mergeAddsNested"] = fm.fileExists(atPath: mergeTarget.appendingPathComponent("nested.txt").path)
+            checks["splitWorkspace"] = { controller.splitVertically(nil); return controller.workspaceSnapshot().isSplit }()
+            let undoMenu = NSMenuItem(title: "", action: #selector(undoLastCopy(_:)), keyEquivalent: "")
+            checks["undoMenuAction"] = undoMenu.action == #selector(undoLastCopy(_:))
+            checks["undoMenuEnabled"] = controller.canUndoCopy(journalDirectory: journals)
+            try capture("merged-split")
+            guard let undo = CopyEngine.latestUndoCopy(journalDirectory: journals) else { throw CocoaError(.fileNoSuchFile) }
+            let undoResult = await CopyEngine.undoCopy(undo, journalDirectory: journals)
+            controller.closeSecondaryPane(nil); controller.refresh(nil); try await settle()
+            checks["undoCompleted"] = undoResult.state == "completed"
+            checks["undoUpdatesList"] = !controller.model.items.contains { $0.name == "new.txt" }
+            checks["undoPreservesExisting"] = fm.fileExists(atPath: mergeTarget.appendingPathComponent("keep.txt").path)
+                && !fm.fileExists(atPath: mergeTarget.appendingPathComponent("nested.txt").path)
+            try capture("after-undo")
+            let result: [String: Any] = ["checks": checks,
+                "language": Locale.preferredLanguages.first ?? "unknown", "theme": dark ? "dark" : "light",
+                "os": ProcessInfo.processInfo.operatingSystemVersionString]
+            try fm.createDirectory(at: destination, withIntermediateDirectories: true)
+            try JSONSerialization.data(withJSONObject: result, options: [.prettyPrinted, .sortedKeys])
+                .write(to: destination.appendingPathComponent("report.json"))
+            controller.close()
+            DispatchQueue.main.async { exit(checks.values.allSatisfy { $0 } ? 0 : 1) }
+        } catch {
+            fputs("M2 UI verification failed: \(error)\n", stderr)
             DispatchQueue.main.async { exit(1) }
         }
     }
