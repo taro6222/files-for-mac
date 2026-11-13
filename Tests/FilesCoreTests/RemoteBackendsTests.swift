@@ -92,7 +92,7 @@ func curlFTPPlansKeepCredentialsOffArgumentsAndDescriptions(remoteProtocol: Remo
     #expect(!upload.arguments.joined().contains("alice")); #expect(!upload.arguments.joined().contains("secret"))
     let cleanup = try builder.command(profile: profile, credential: credential, remotePath: staging, intent: .delete)
     let cleanupConfig = String(decoding: cleanup.standardInput, as: UTF8.self)
-    #expect(cleanupConfig.contains("DELE \(staging)")); #expect(cleanupConfig.contains("no-body"))
+    #expect(cleanupConfig.contains("DELE \(staging)")); #expect(cleanupConfig.contains("list-only"))
     #expect(FTPServerCapabilities().renameRefusesExistingDestination == false)
 }
 
@@ -121,4 +121,9 @@ func curlFTPPlansKeepCredentialsOffArgumentsAndDescriptions(remoteProtocol: Remo
     _ = try await provider.download(profile: profile, credential: credential, remotePath: "/fixture-한글.txt", destination: destination)
     #expect(try String(contentsOf: destination, encoding: .utf8) == "live-fixture")
     #expect(try FileManager.default.contentsOfDirectory(atPath: root.path).allSatisfy { !$0.hasPrefix(".files-download-") })
+    let capabilities = try await provider.probeRenameSafety(profile: profile, credential: credential)
+    #expect(capabilities.renameRefusesExistingDestination == false)
+    let afterProbe = try await provider.list(profile: profile, credential: credential, remotePath: "/")
+    let probeArtifacts = afterProbe.filter { $0.name.hasPrefix(".files-probe-") }
+    #expect(probeArtifacts.isEmpty)
 }

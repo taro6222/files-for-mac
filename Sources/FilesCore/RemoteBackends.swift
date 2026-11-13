@@ -27,7 +27,7 @@ public struct RemoteBackendProbe: Sendable {
 public enum RemoteTransferIntent: Sendable, Equatable {
     case list, download(local: URL), upload(local: URL)
     case uploadAndRename(local: URL, finalRemotePath: String)
-    case delete
+    case rename(finalRemotePath: String), delete
 }
 
 public enum RemoteBackendError: Error, Sendable, Equatable {
@@ -80,6 +80,45 @@ public struct FTPRemoteProvider: Sendable {
                 _ = try? await executor.execute(cleanup)
             }
             throw error
+        }
+    }
+    public func probeRenameSafety(profile: RemoteConnectionProfile, credential: RemoteCredential,
+                                  parent: String = "/", fileManager: FileManager = .default) async throws -> FTPServerCapabilities {
+        guard parent.hasPrefix("/"), !parent.unicodeScalars.contains(where: { CharacterSet.controlCharacters.contains($0) }) else {
+            throw RemoteBackendError.invalidRemotePath
+        }
+        let token = UUID().uuidString, localRoot = fileManager.temporaryDirectory.appendingPathComponent("ftp-probe-\(token)", isDirectory: true)
+        try fileManager.createDirectory(at: localRoot, withIntermediateDirectories: true)
+        defer { try? fileManager.removeItem(at: localRoot) }
+        let localA = localRoot.appendingPathComponent("a"), localB = localRoot.appendingPathComponent("b")
+        let dataA = Data("probe-a-\(token)".utf8), dataB = Data("probe-b-\(token)".utf8)
+        try dataA.write(to: localA); try dataB.write(to: localB)
+        let base = parent == "/" ? "" : parent.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        let remoteA = "/" + ([base, ".files-probe-a-\(token)"].filter { !$0.isEmpty }.joined(separator: "/"))
+        let remoteB = "/" + ([base, ".files-probe-b-\(token)"].filter { !$0.isEmpty }.joined(separator: "/"))
+        func execute(_ path: String, _ intent: RemoteTransferIntent) async throws {
+            _ = try await executor.execute(builder.command(profile: profile, credential: credential, remotePath: path, intent: intent))
+        }
+        do {
+            try await execute(remoteA, .upload(local: localA)); try await execute(remoteB, .upload(local: localB))
+            do {
+                try await execute(remoteA, .rename(finalRemotePath: remoteB))
+                await cleanupProbe(profile: profile, credential: credential, paths: [remoteA, remoteB])
+                return FTPServerCapabilities(renameRefusesExistingDestination: false)
+            } catch RemoteExecutionError.nonzeroExit {
+                let verifyA = localRoot.appendingPathComponent("verify-a"), verifyB = localRoot.appendingPathComponent("verify-b")
+                try await execute(remoteA, .download(local: verifyA)); try await execute(remoteB, .download(local: verifyB))
+                let preserved = try Data(contentsOf: verifyA) == dataA && Data(contentsOf: verifyB) == dataB
+                await cleanupProbe(profile: profile, credential: credential, paths: [remoteA, remoteB])
+                return FTPServerCapabilities(renameRefusesExistingDestination: preserved)
+            }
+        } catch {
+            await cleanupProbe(profile: profile, credential: credential, paths: [remoteA, remoteB]); throw error
+        }
+    }
+    private func cleanupProbe(profile: RemoteConnectionProfile, credential: RemoteCredential, paths: [String]) async {
+        for path in paths {
+            if let plan = try? builder.command(profile: profile, credential: credential, remotePath: path, intent: .delete) { _ = try? await executor.execute(plan) }
         }
     }
     public static func publishDownload(staging: URL, destination: URL, fileManager: FileManager = .default) throws {
@@ -190,9 +229,16 @@ public struct CurlFTPCommandBuilder: Sendable {
             lines.append("upload-file = \(quoted(local.path))")
             lines.append("postquote = \(quoted("RNFR " + remotePath))")
             lines.append("postquote = \(quoted("RNTO " + finalRemotePath))")
+        case .rename(let finalRemotePath):
+            guard finalRemotePath.hasPrefix("/"), !finalRemotePath.unicodeScalars.contains(where: { CharacterSet.controlCharacters.contains($0) }) else {
+                throw RemoteBackendError.invalidRemotePath
+            }
+            lines.append("quote = \(quoted("RNFR " + remotePath))")
+            lines.append("quote = \(quoted("RNTO " + finalRemotePath))")
+            lines.append("list-only")
         case .delete:
             lines.append("quote = \(quoted("DELE " + remotePath))")
-            lines.append("no-body")
+            lines.append("list-only")
         }
         if profile.remoteProtocol == .ftps { lines.append("ssl-reqd") }
         let input = Data((lines.joined(separator: "\n") + "\n").utf8)
