@@ -33,6 +33,7 @@ public struct BrowserPreferencesArchive: Codable, Equatable, Sendable {
     public let continueLastSession: Bool
     public let sizeUnit: String?
     public let openFoldersInNewTab: Bool?
+    public let scrollToPreviousFolderOnUp: Bool?
     public let startupLocationPath: String?
     public let developerApplicationPath: String?
     public let toolbarOrder: [String]
@@ -69,6 +70,7 @@ public final class BrowserPreferences {
     public private(set) var continueLastSession: Bool
     public private(set) var sizeUnit: BrowserSizeUnit
     public private(set) var openFoldersInNewTab: Bool
+    public private(set) var scrollToPreviousFolderOnUp: Bool
     public private(set) var startupLocationPath: String?
     public private(set) var developerApplicationPath: String?
     public private(set) var toolbarOrder: [BrowserToolbarItem]
@@ -99,6 +101,7 @@ public final class BrowserPreferences {
         continueLastSession = defaults.object(forKey: "continueLastSession") as? Bool ?? true
         sizeUnit = defaults.string(forKey: "sizeUnit").flatMap(BrowserSizeUnit.init(rawValue:)) ?? .binary
         openFoldersInNewTab = defaults.bool(forKey: "openFoldersInNewTab")
+        scrollToPreviousFolderOnUp = defaults.object(forKey: "scrollToPreviousFolderOnUp") as? Bool ?? true
         startupLocationPath = defaults.string(forKey: "startupLocationPath").flatMap { $0.hasPrefix("/") ? $0 : nil }
         developerApplicationPath = defaults.string(forKey: "developerApplicationPath")
         var toolbar: [BrowserToolbarItem] = []
@@ -178,6 +181,10 @@ public final class BrowserPreferences {
         guard openFoldersInNewTab != value else { return }
         openFoldersInNewTab = value; defaults.set(value, forKey: "openFoldersInNewTab"); changed()
     }
+    public func setScrollToPreviousFolderOnUp(_ value: Bool) {
+        guard scrollToPreviousFolderOnUp != value else { return }
+        scrollToPreviousFolderOnUp = value; defaults.set(value, forKey: "scrollToPreviousFolderOnUp"); changed()
+    }
     public func setStartupLocation(_ url: URL?) {
         let value = url?.standardizedFileURL.path
         guard startupLocationPath != value else { return }
@@ -198,7 +205,8 @@ public final class BrowserPreferences {
             collapsedSidebar: collapsedSidebar.map(\.rawValue).sorted(), favorites: favorites.map(\.path), recent: recent.map(\.path),
             showHidden: showHidden, showExtensions: showExtensions, showToolbar: showToolbar, showStatusBar: showStatusBar,
             showHomeFavorites: showHomeFavorites, showHomeVolumes: showHomeVolumes, showHomeRecent: showHomeRecent,
-            viewSize: viewSize.rawValue, appearance: appearance.rawValue, continueLastSession: continueLastSession, sizeUnit: sizeUnit.rawValue, openFoldersInNewTab: openFoldersInNewTab,
+            viewSize: viewSize.rawValue, appearance: appearance.rawValue, continueLastSession: continueLastSession, sizeUnit: sizeUnit.rawValue,
+            openFoldersInNewTab: openFoldersInNewTab, scrollToPreviousFolderOnUp: scrollToPreviousFolderOnUp,
             startupLocationPath: startupLocationPath, developerApplicationPath: developerApplicationPath, toolbarOrder: toolbarOrder.map(\.rawValue),
             hiddenToolbarItems: hiddenToolbarItems.map(\.rawValue).sorted(), folderViewPreferences: folderViewPreferences)
         let encoder = JSONEncoder(); encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
@@ -234,7 +242,8 @@ public final class BrowserPreferences {
         favorites = archive.favorites.map { URL(fileURLWithPath: $0) }; recent = archive.recent.map { URL(fileURLWithPath: $0) }
         showHidden = archive.showHidden; showExtensions = archive.showExtensions; showToolbar = archive.showToolbar; showStatusBar = archive.showStatusBar
         showHomeFavorites = archive.showHomeFavorites; showHomeVolumes = archive.showHomeVolumes; showHomeRecent = archive.showHomeRecent
-        viewSize = size; appearance = importedAppearance; continueLastSession = archive.continueLastSession; sizeUnit = importedSizeUnit; openFoldersInNewTab = archive.openFoldersInNewTab ?? false; startupLocationPath = archive.startupLocationPath
+        viewSize = size; appearance = importedAppearance; continueLastSession = archive.continueLastSession; sizeUnit = importedSizeUnit
+        openFoldersInNewTab = archive.openFoldersInNewTab ?? false; scrollToPreviousFolderOnUp = archive.scrollToPreviousFolderOnUp ?? true; startupLocationPath = archive.startupLocationPath
         developerApplicationPath = archive.developerApplicationPath; toolbarOrder = importedToolbar; hiddenToolbarItems = Set(importedHiddenToolbar)
         folderViewPreferences = archive.folderViewPreferences
         defaults.set(sidebarOrder.map(\.rawValue), forKey: "sidebarOrder"); defaults.set(collapsedSidebar.map(\.rawValue).sorted(), forKey: "collapsedSidebar")
@@ -242,7 +251,8 @@ public final class BrowserPreferences {
         defaults.set(showHidden, forKey: "showHidden"); defaults.set(showExtensions, forKey: "showExtensions")
         defaults.set(showToolbar, forKey: "showToolbar"); defaults.set(showStatusBar, forKey: "showStatusBar")
         defaults.set(showHomeFavorites, forKey: "showHomeFavorites"); defaults.set(showHomeVolumes, forKey: "showHomeVolumes"); defaults.set(showHomeRecent, forKey: "showHomeRecent")
-        defaults.set(viewSize.rawValue, forKey: "viewSize"); defaults.set(appearance.rawValue, forKey: "appearance"); defaults.set(continueLastSession, forKey: "continueLastSession"); defaults.set(sizeUnit.rawValue, forKey: "sizeUnit"); defaults.set(openFoldersInNewTab, forKey: "openFoldersInNewTab")
+        defaults.set(viewSize.rawValue, forKey: "viewSize"); defaults.set(appearance.rawValue, forKey: "appearance"); defaults.set(continueLastSession, forKey: "continueLastSession"); defaults.set(sizeUnit.rawValue, forKey: "sizeUnit")
+        defaults.set(openFoldersInNewTab, forKey: "openFoldersInNewTab"); defaults.set(scrollToPreviousFolderOnUp, forKey: "scrollToPreviousFolderOnUp")
         if let startupLocationPath { defaults.set(startupLocationPath, forKey: "startupLocationPath") } else { defaults.removeObject(forKey: "startupLocationPath") }
         if let developerApplicationPath { defaults.set(developerApplicationPath, forKey: "developerApplicationPath") } else { defaults.removeObject(forKey: "developerApplicationPath") }
         defaults.set(toolbarOrder.map(\.rawValue), forKey: "toolbarOrder"); defaults.set(hiddenToolbarItems.map(\.rawValue).sorted(), forKey: "hiddenToolbarItems")

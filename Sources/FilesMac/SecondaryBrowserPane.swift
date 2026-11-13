@@ -28,6 +28,7 @@ final class SecondaryBrowserPane: NSView, NSTableViewDataSource, NSTableViewDele
     private var watchedURL: URL?
     private var pendingRefresh = false
     private var rendering = false
+    private var pendingEntrySelection: URL?
 
     init(snapshot: TabSnapshot, preferences: BrowserPreferences = .shared) {
         model = BrowserModel()
@@ -59,7 +60,13 @@ final class SecondaryBrowserPane: NSView, NSTableViewDataSource, NSTableViewDele
     }
     func goBack() { activate(); savePosition(); model.back(); applyFolderViewPreference() }
     func goForward() { activate(); savePosition(); model.forward(); applyFolderViewPreference() }
-    func goUp() { activate(); if let location = model.location { navigate(location.deletingLastPathComponent()) } }
+    func goUp() {
+        activate()
+        if let location = model.location {
+            if preferences.scrollToPreviousFolderOnUp { pendingEntrySelection = location.standardizedFileURL }
+            navigate(location.deletingLastPathComponent())
+        }
+    }
     func refresh() { activate(); savePosition(); model.reload() }
     func focusPath() { activate(); window?.makeFirstResponder(pathField); pathField.selectText(nil) }
     func updateSort(field: SortField? = nil, ascending: Bool? = nil,
@@ -246,7 +253,15 @@ final class SecondaryBrowserPane: NSView, NSTableViewDataSource, NSTableViewDele
     }
     private func render() {
         rendering = true; defer { rendering = false }
-        pathField.stringValue = model.location?.path ?? ""; table.reloadData()
+        pathField.stringValue = model.location?.path ?? ""
+        var revealEntry = false
+        if let target = pendingEntrySelection, !model.isLoading {
+            pendingEntrySelection = nil
+            if target.deletingLastPathComponent().standardizedFileURL == model.location {
+                revealEntry = true; model.savePosition(selection: [target.path], scrollOffset: model.history.current.scrollOffset)
+            }
+        }
+        table.reloadData()
         if model.viewMode == .adaptive && !model.isLoading {
             adaptiveResolvedMode = adaptivePolicy.resolve(items: model.items, availableWidth: bounds.width)
             adaptiveWidth = bounds.width
@@ -261,7 +276,8 @@ final class SecondaryBrowserPane: NSView, NSTableViewDataSource, NSTableViewDele
         }) { viewModeButton.select(item) }
         let expectedSort = NSSortDescriptor(key: model.sortOrder.field.rawValue, ascending: model.sortOrder.ascending)
         if table.sortDescriptors.first != expectedSort { table.sortDescriptors = [expectedSort] }
-        table.selectRowIndexes(IndexSet(model.items.indices.filter { model.history.current.selection.contains(model.items[$0].id) }), byExtendingSelection: false)
+        let selected = IndexSet(model.items.indices.filter { model.history.current.selection.contains(model.items[$0].id) })
+        table.selectRowIndexes(selected, byExtendingSelection: false)
         gridView.apply(viewSize: effectiveViewSize)
         listView.apply(viewSize: effectiveViewSize)
         gridView.update(items: model.items, selection: model.history.current.selection,
@@ -270,7 +286,10 @@ final class SecondaryBrowserPane: NSView, NSTableViewDataSource, NSTableViewDele
                         scrollOffset: model.history.current.scrollOffset)
         columnView.showHidden = model.showHidden; columnView.sortOrder = model.sortOrder
         columnView.update(baseURL: model.location, items: model.items, selection: model.history.current.selection)
-        if !model.isLoading { scroll.contentView.scroll(to: NSPoint(x: 0, y: model.history.current.scrollOffset)); scroll.reflectScrolledClipView(scroll.contentView) }
+        if !model.isLoading {
+            scroll.contentView.scroll(to: NSPoint(x: 0, y: model.history.current.scrollOffset)); scroll.reflectScrolledClipView(scroll.contentView)
+            if revealEntry, let row = selected.first { table.scrollRowToVisible(row) }
+        }
         if model.isLoading { status.stringValue = L("읽는 중…", "Loading…") }
         else if let failure = model.failure { status.stringValue = failure.message(korean: Locale.preferredLanguages.first?.hasPrefix("ko") == true) }
         else { status.stringValue = L("\(model.items.count)개 항목", "\(model.items.count) items") }

@@ -831,7 +831,13 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
     @objc func openLocation(_ sender: LocationButton) { navigate(sender.url) }
     @objc func goBack(_ sender: Any?) { if secondaryActive { secondaryPane?.goBack() } else { window?.makeFirstResponder(nil); savePosition(); model.back(); applyFolderViewPreference() } }
     @objc func goForward(_ sender: Any?) { if secondaryActive { secondaryPane?.goForward() } else { window?.makeFirstResponder(nil); savePosition(); model.forward(); applyFolderViewPreference() } }
-    @objc func goUp(_ sender: Any?) { if secondaryActive { secondaryPane?.goUp() } else if let url = model.location { navigate(url.deletingLastPathComponent()) } }
+    @objc func goUp(_ sender: Any?) {
+        if secondaryActive { secondaryPane?.goUp() }
+        else if let url = model.location {
+            if preferences.scrollToPreviousFolderOnUp { pendingEntrySelection = url.standardizedFileURL }
+            navigate(url.deletingLastPathComponent())
+        }
+    }
     @objc func refresh(_ sender: Any?) { if secondaryActive { secondaryPane?.refresh() } else { savePosition(); model.reload() } }
     @objc func refreshOrStop(_ sender: Any?) {
         if activeModel.isLoading { stopLoading(sender) } else { refresh(sender) }
@@ -1957,13 +1963,15 @@ extension BrowserWindow {
                 delegate.qaAdvancedSettingsContentView?.window?.close(); window.makeKeyAndOrderFront(nil)
                 delegate.showGeneralSettings(nil); try await Task.sleep(for: .milliseconds(50)); let widgetsBefore = delegate.qaGeneralWidgetStates
                 let sizeUnitBefore = delegate.qaGeneralSizeUnit; let newTabBefore = delegate.qaGeneralOpenFoldersInNewTab
-                delegate.qaToggleGeneralWidgets(); delegate.qaToggleGeneralSizeUnit(); delegate.qaToggleGeneralOpenFoldersInNewTab(); let widgetsAfter = delegate.qaGeneralWidgetStates
+                let revealBefore = delegate.qaGeneralScrollToPreviousFolderOnUp
+                delegate.qaToggleGeneralWidgets(); delegate.qaToggleGeneralSizeUnit(); delegate.qaToggleGeneralOpenFoldersInNewTab(); delegate.qaToggleGeneralScrollToPreviousFolderOnUp(); let widgetsAfter = delegate.qaGeneralWidgetStates
                 checks["generalSettingsWindow"] = delegate.qaGeneralSettingsVisible && widgetsBefore != nil && widgetsAfter != nil
                     && widgetsAfter!.0 != widgetsBefore!.0 && widgetsAfter!.1 != widgetsBefore!.1 && widgetsAfter!.2 != widgetsBefore!.2
                     && delegate.qaGeneralSizeUnit != sizeUnitBefore
                     && delegate.qaGeneralOpenFoldersInNewTab != newTabBefore
+                    && delegate.qaGeneralScrollToPreviousFolderOnUp != revealBefore
                 try capture("general-settings", view: delegate.qaGeneralSettingsContentView)
-                delegate.qaToggleGeneralWidgets(); delegate.qaToggleGeneralSizeUnit(); delegate.qaToggleGeneralOpenFoldersInNewTab(); delegate.qaGeneralSettingsContentView?.window?.close(); window.makeKeyAndOrderFront(nil)
+                delegate.qaToggleGeneralWidgets(); delegate.qaToggleGeneralSizeUnit(); delegate.qaToggleGeneralOpenFoldersInNewTab(); delegate.qaToggleGeneralScrollToPreviousFolderOnUp(); delegate.qaGeneralSettingsContentView?.window?.close(); window.makeKeyAndOrderFront(nil)
                 delegate.showArchiveCapabilities(nil); try await Task.sleep(for: .milliseconds(50))
                 checks["archiveCapabilitiesWindow"] = delegate.qaArchiveCapabilitiesVisible
                 try capture("archive-capabilities", view: delegate.qaArchiveCapabilitiesContentView)
@@ -2337,6 +2345,14 @@ extension BrowserWindow {
             controller.model.setViewMode(.details); controller.render()
             checks["adaptiveManualChoiceWins"] = controller.model.viewMode == .details
                 && controller.primaryRenderedViewMode == .details && !controller.scroll.isHidden
+            controller.goUp(nil)
+            let revealParentStart = ContinuousClock.now
+            while controller.model.isLoading && revealParentStart.duration(to: .now) < .seconds(10) {
+                try await Task.sleep(for: .milliseconds(10))
+            }
+            checks["revealPreviousFolderOnUp"] = controller.model.location == gridFolder.standardizedFileURL
+                && controller.model.history.current.selection == [columnFolder.path]
+                && controller.table.selectedRowIndexes.count == 1
             preferences.setFolderViewPreference(FolderViewPreference(mode: .grid, size: .large), for: columnFolder)
             controller.navigate(fixture); controller.navigate(columnFolder); controller.render()
             checks["folderViewApplied"] = controller.model.viewMode == .grid && controller.effectiveViewSize == .large

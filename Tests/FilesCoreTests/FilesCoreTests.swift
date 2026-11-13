@@ -424,6 +424,18 @@ private struct DelayedLoader: DirectoryLoading {
     preferences.removeObserver(token)
 }
 
+@Test @MainActor func revealPreviousFolderOnUpDefaultsOnPersistsAndAvoidsDuplicateNotifications() {
+    let suite = "reveal-parent-child-tests-\(UUID())", defaults = UserDefaults(suiteName: suite)!
+    defer { defaults.removePersistentDomain(forName: suite) }
+    let preferences = BrowserPreferences(defaults: defaults, initialFavorites: [])
+    #expect(preferences.scrollToPreviousFolderOnUp)
+    var changes = 0; let token = preferences.observe { changes += 1 }
+    preferences.setScrollToPreviousFolderOnUp(false); preferences.setScrollToPreviousFolderOnUp(false)
+    #expect(!preferences.scrollToPreviousFolderOnUp && changes == 1)
+    #expect(!BrowserPreferences(defaults: defaults, initialFavorites: []).scrollToPreviousFolderOnUp)
+    preferences.removeObserver(token)
+}
+
 @Test @MainActor func toolbarAndStatusBarVisibilityPersistAndNotify() {
     let suite = "chrome-visibility-tests-\(UUID())", defaults = UserDefaults(suiteName: suite)!
     defer { defaults.removePersistentDomain(forName: suite) }
@@ -474,6 +486,7 @@ private struct DelayedLoader: DirectoryLoading {
     source.setStartupLocation(URL(fileURLWithPath: "/startup"))
     source.setSizeUnit(.decimal)
     source.setOpenFoldersInNewTab(true)
+    source.setScrollToPreviousFolderOnUp(false)
     source.setFolderViewPreference(FolderViewPreference(mode: .grid, size: .large), for: URL(fileURLWithPath: "/folder"))
     let data = try source.exportData(), destination = BrowserPreferences(defaults: secondDefaults, initialFavorites: [])
     try destination.importData(data)
@@ -482,6 +495,7 @@ private struct DelayedLoader: DirectoryLoading {
     #expect(destination.startupLocationPath == "/startup")
     #expect(destination.sizeUnit == .decimal)
     #expect(destination.openFoldersInNewTab)
+    #expect(!destination.scrollToPreviousFolderOnUp)
     #expect(destination.folderViewPreference(for: URL(fileURLWithPath: "/folder")) == FolderViewPreference(mode: .grid, size: .large))
     let before = try destination.exportData()
     var object = try #require(JSONSerialization.jsonObject(with: data) as? [String: Any]); object["viewSize"] = "huge"
