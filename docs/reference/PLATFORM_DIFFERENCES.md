@@ -20,6 +20,7 @@
 | 이미지 회전 | ImageIO가 읽고 같은 포맷으로 쓸 수 있는 단일 프레임 일반 파일에 대해 픽셀을 재압축하지 않고 EXIF/CG 방향 메타데이터를 합성한다. 애니메이션·다중 페이지·링크는 회전 명령을 비활성화한다. | M6 `implemented`; 좌우·미러 방향 매핑, 권한 보존, UI 4조합 검증 |
 | 인증서·글꼴 설치 | 앱이 신뢰 저장소나 글꼴 디렉터리를 직접 변경하지 않는다. 명시적으로 선택한 인증서/글꼴 파일을 Launch Services 기본 시스템 처리기로 열어 Keychain Access·Font Book의 확인 UI와 권한 흐름에 맡긴다. | M6 `platform-alternative`; 명시적 확장자 gate와 메뉴 등록 검증 |
 | 선택 토글·태그 그룹 | Windows의 독립 focus item/체크박스 모델 대신 macOS 선택 모델에서 포커스된 선택 항목을 토글한다. 앱 소유 태그 그룹의 ‘모두 열기’ 대신 선택 항목의 Finder 태그를 현재 위치 하위 검색에 연결해 대량 실행 위험 없이 결과를 제시한다. | M6 `platform-alternative`; 상세·그리드·목록·컬럼 선택과 실제 Finder 태그 검색 검증 |
+| 휴지통 전용 그룹화 | Windows Recycle Bin 페이지의 원래 폴더·삭제 날짜 및 연/월/일 그룹은 macOS가 모든 휴지통 항목과 해당 메타데이터를 열거하는 지원 API를 제공하지 않아 노출하지 않는다. 앱 자체 작업 저널은 앱이 이동한 항목의 복원 안전성에만 사용하며 시스템 휴지통 전체 인덱스로 가장하지 않는다. | M6 `platform-excluded`; 원본 명령의 Recycle Bin 활성 조건과 공개 API 경계 확인 |
 | 드라이브 포맷 | 앱 내부 포맷 대신 선택 볼륨을 macOS Disk Utility에서 연다. 파일 앱이 직접 erase 권한·장치 작업을 소유하지 않는다. | `platform-alternative`; 장착 볼륨 메뉴와 UI 검증 통과 |
 | 클래식 속성 | Windows classic properties 대신 macOS 네이티브 정보 패널(Get Info)을 사용한다. | `platform-alternative`; M4 정보 패널 검증 통과 |
 | 명령 키 | ⌘L, ⌘[, ⌘], ⌘↑, ⌘↓, ⇧⌘. | 전체 키보드/VoiceOver 흐름 대기 |
