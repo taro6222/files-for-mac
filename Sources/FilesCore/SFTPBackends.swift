@@ -8,7 +8,7 @@ public enum SFTPIntent: Sendable, Equatable {
 }
 
 public enum SFTPBackendError: Error, Sendable, Equatable {
-    case unsupportedProtocol, invalidPath, invalidUsername, invalidTrustStore, invalidIdentity, invalidPrivateConfiguration, invalidListing, listingLimitExceeded
+    case unsupportedProtocol, invalidPath, invalidUsername, invalidTrustStore, invalidIdentity, staleIdentity, missingIdentity, invalidPrivateConfiguration, invalidListing, listingLimitExceeded
 }
 
 public struct SFTPKeyConfiguration: Sendable, Equatable {
@@ -37,6 +37,26 @@ public struct SFTPIdentityReference: Sendable {
     private func validIdentity(_ url: URL) throws -> Bool {
         let values = try url.resourceValues(forKeys: [.isRegularFileKey, .isSymbolicLinkKey])
         return values.isRegularFile == true && values.isSymbolicLink != true
+    }
+}
+
+public struct PreparedSFTPConnection: Sendable, Equatable {
+    public let key: SFTPKeyConfiguration
+    public let identityIsStale: Bool
+}
+
+public struct SFTPConnectionPreparation: Sendable {
+    public init() {}
+    public func prepare(profile: RemoteConnectionProfile, knownHostsFile: URL,
+                        securityScoped: Bool = true) throws -> PreparedSFTPConnection {
+        guard profile.remoteProtocol == .sftp else { throw SFTPBackendError.unsupportedProtocol }
+        guard let username = profile.username, !username.isEmpty else { throw SFTPBackendError.invalidUsername }
+        guard let bookmark = profile.identityBookmark else { throw SFTPBackendError.missingIdentity }
+        let resolved = try SFTPIdentityReference().resolve(bookmark, securityScoped: securityScoped)
+        guard !resolved.stale else { throw SFTPBackendError.staleIdentity }
+        let key = SFTPKeyConfiguration(username: username, identityFile: resolved.url, knownHostsFile: knownHostsFile)
+        try SFTPCommandBuilder().validateFiles(key)
+        return PreparedSFTPConnection(key: key, identityIsStale: false)
     }
 }
 

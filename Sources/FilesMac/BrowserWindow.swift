@@ -1827,6 +1827,7 @@ extension BrowserWindow {
                 checks["smbConnectCommand"] = delegate.qaSMBConnectEnabled
                 checks["sftpTrustCommand"] = delegate.qaSFTPTrustEnabled
                 checks["sftpIdentityCommand"] = delegate.qaSFTPIdentityEnabled
+                checks["sftpConnectionGate"] = delegate.qaSFTPConnectDisabled
                 try capture("remote-connections", view: delegate.qaRemoteConnectionsContentView)
                 delegate.qaRemoteConnectionsContentView?.window?.close(); window.makeKeyAndOrderFront(nil)
             } else { checks["shortcutSettingsWindow"] = false }

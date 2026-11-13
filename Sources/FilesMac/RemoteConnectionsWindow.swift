@@ -11,7 +11,7 @@ final class RemoteConnectionsWindow: NSWindowController, NSTableViewDataSource, 
     private var pendingIdentityBookmark: Data?
     private let table = NSTableView(), name = NSTextField(), host = NSTextField(), port = NSTextField()
     private let rootPath = NSTextField(), username = NSTextField(), password = NSSecureTextField()
-    private let protocolPopup = NSPopUpButton(), saveButton = NSButton(), deleteButton = NSButton(), connectButton = NSButton(), trustButton = NSButton(), identityButton = NSButton()
+    private let protocolPopup = NSPopUpButton(), saveButton = NSButton(), deleteButton = NSButton(), connectButton = NSButton(), trustButton = NSButton(), identityButton = NSButton(), sftpConnectButton = NSButton()
 
     init(profileStore: RemoteProfileStore, credentialStore: KeychainRemoteCredentialStore = .init()) {
         self.profileStore = profileStore; self.credentialStore = credentialStore
@@ -51,6 +51,7 @@ final class RemoteConnectionsWindow: NSWindowController, NSTableViewDataSource, 
         password.placeholderString = L("변경할 때만 입력", "Enter only to change")
         let controls = NSStackView(); controls.orientation = .horizontal; controls.addArrangedSubview(NSView())
         trustButton.title = L("호스트 키 확인…", "Verify Host Key…"); trustButton.target = self; trustButton.action = #selector(verifyHostKey(_:)); controls.addArrangedSubview(trustButton)
+        sftpConnectButton.title = L("SFTP 목록 연결", "Connect SFTP Listing"); sftpConnectButton.target = self; sftpConnectButton.action = #selector(connectSFTP(_:)); controls.addArrangedSubview(sftpConnectButton)
         connectButton.title = L("Finder에서 연결", "Connect in Finder"); connectButton.target = self; connectButton.action = #selector(connectSMB(_:)); controls.addArrangedSubview(connectButton)
         saveButton.title = L("저장", "Save"); saveButton.keyEquivalent = "\r"; saveButton.target = self; saveButton.action = #selector(saveProfile(_:)); controls.addArrangedSubview(saveButton)
         form.addArrangedSubview(controls); root.addArrangedSubview(form)
@@ -77,7 +78,11 @@ final class RemoteConnectionsWindow: NSWindowController, NSTableViewDataSource, 
         pendingIdentityBookmark = profile.identityBookmark; updateIdentityTitle()
     }
     private func clearForm() { name.stringValue = ""; protocolPopup.selectItem(at: 0); host.stringValue = ""; port.stringValue = String(RemoteProtocol.ftp.defaultPort); rootPath.stringValue = "/"; username.stringValue = ""; password.stringValue = ""; pendingIdentityBookmark = nil; updateIdentityTitle() }
-    private func updateControls() { deleteButton.isEnabled = selected != nil; connectButton.isEnabled = selected?.remoteProtocol == .smb; trustButton.isEnabled = selected?.remoteProtocol == .sftp; identityButton.isEnabled = selectedProtocol == .sftp }
+    private func updateControls() {
+        deleteButton.isEnabled = selected != nil; connectButton.isEnabled = selected?.remoteProtocol == .smb
+        trustButton.isEnabled = selected?.remoteProtocol == .sftp; identityButton.isEnabled = selectedProtocol == .sftp
+        sftpConnectButton.isEnabled = selected.flatMap { try? SFTPConnectionPreparation().prepare(profile: $0, knownHostsFile: hostTrustStore.fileURL) } != nil
+    }
     @objc private func addProfile(_ sender: Any?) { table.deselectAll(nil); clearForm(); updateControls(); window?.makeFirstResponder(name) }
     @objc private func protocolChanged(_ sender: Any?) { port.stringValue = String(selectedProtocol.defaultPort); updateControls() }
     @objc private func saveProfile(_ sender: Any?) {
@@ -138,7 +143,24 @@ final class RemoteConnectionsWindow: NSWindowController, NSTableViewDataSource, 
             } catch { showError(error); updateControls() }
         }
     }
-    private func showError(_ error: Error) { guard let window else { return }; let alert = NSAlert(); alert.messageText = L("원격 연결을 저장할 수 없습니다", "Unable to Save Remote Connection"); alert.informativeText = String(describing: error); alert.beginSheetModal(for: window) }
+    @objc private func connectSFTP(_ sender: Any?) {
+        guard let profile = selected, let window else { return }; sftpConnectButton.isEnabled = false
+        Task { [weak self] in
+            guard let self else { return }
+            do {
+                let prepared = try SFTPConnectionPreparation().prepare(profile: profile, knownHostsFile: hostTrustStore.fileURL)
+                let access = prepared.key.identityFile.startAccessingSecurityScopedResource()
+                defer { if access { prepared.key.identityFile.stopAccessingSecurityScopedResource() } }
+                guard access else { throw SFTPBackendError.invalidIdentity }
+                let entries = try await SFTPRemoteProvider().list(profile: profile, key: prepared.key, remotePath: profile.rootPath)
+                let preview = entries.prefix(8).map(\.name).joined(separator: "\n")
+                let alert = NSAlert(); alert.messageText = L("SFTP 연결 성공", "SFTP Connection Succeeded")
+                alert.informativeText = L("항목 \(entries.count)개", "\(entries.count) items") + (preview.isEmpty ? "" : "\n\n" + preview)
+                alert.beginSheetModal(for: window) { _ in }; updateControls()
+            } catch { showError(error); updateControls() }
+        }
+    }
+    private func showError(_ error: Error) { guard let window else { return }; let alert = NSAlert(); alert.messageText = L("원격 연결 작업 실패", "Remote Connection Failed"); alert.informativeText = String(describing: error); alert.beginSheetModal(for: window) }
 #if DEBUG
     var qaProfileCount: Int { profiles.count }
     func qaCreateProfile() {
@@ -164,6 +186,12 @@ final class RemoteConnectionsWindow: NSWindowController, NSTableViewDataSource, 
         table.selectRowIndexes([sftp], byExtendingSelection: false); populate(profiles[sftp]); updateControls(); let enabled = identityButton.isEnabled
         if let smb = profiles.firstIndex(where: { $0.remoteProtocol == .smb }) { table.selectRowIndexes([smb], byExtendingSelection: false); populate(profiles[smb]); updateControls() }
         return enabled
+    }
+    var qaSFTPConnectDisabledWithoutTrustAndIdentity: Bool {
+        guard let sftp = profiles.firstIndex(where: { $0.remoteProtocol == .sftp }) else { return false }
+        table.selectRowIndexes([sftp], byExtendingSelection: false); populate(profiles[sftp]); updateControls(); let disabled = !sftpConnectButton.isEnabled
+        if let smb = profiles.firstIndex(where: { $0.remoteProtocol == .smb }) { table.selectRowIndexes([smb], byExtendingSelection: false); populate(profiles[smb]); updateControls() }
+        return disabled
     }
 #endif
 }

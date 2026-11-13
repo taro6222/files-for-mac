@@ -76,3 +76,19 @@ import Testing
     #expect(throws: SFTPBackendError.invalidIdentity) { try reference.create(for: link, securityScoped: false) }
     #expect(throws: (any Error).self) { try reference.resolve(Data("invalid".utf8), securityScoped: false) }
 }
+
+@Test func sftpConnectionPreparationRequiresProfileIdentityAndApprovedTrust() throws {
+    let fm = FileManager.default, root = fm.temporaryDirectory.appendingPathComponent("sftp-ready-\(UUID())", isDirectory: true)
+    defer { try? fm.removeItem(at: root) }; try fm.createDirectory(at: root, withIntermediateDirectories: true)
+    let identity = root.appendingPathComponent("id"), trust = root.appendingPathComponent("known_hosts")
+    try Data("key".utf8).write(to: identity); try Data("host key".utf8).write(to: trust)
+    let bookmark = try SFTPIdentityReference().create(for: identity, securityScoped: false)
+    let profile = try RemoteConnectionProfile(name: "SFTP", remoteProtocol: .sftp, host: "host", username: "alice", identityBookmark: bookmark)
+    let prepared = try SFTPConnectionPreparation().prepare(profile: profile, knownHostsFile: trust, securityScoped: false)
+    #expect(prepared.key.username == "alice"); #expect(prepared.key.identityFile.standardizedFileURL == identity.standardizedFileURL)
+    let missingIdentity = try RemoteConnectionProfile(name: "SFTP", remoteProtocol: .sftp, host: "host", username: "alice")
+    #expect(throws: SFTPBackendError.missingIdentity) { try SFTPConnectionPreparation().prepare(profile: missingIdentity, knownHostsFile: trust, securityScoped: false) }
+    let missingUser = try RemoteConnectionProfile(name: "SFTP", remoteProtocol: .sftp, host: "host", identityBookmark: bookmark)
+    #expect(throws: SFTPBackendError.invalidUsername) { try SFTPConnectionPreparation().prepare(profile: missingUser, knownHostsFile: trust, securityScoped: false) }
+    #expect(throws: SFTPBackendError.invalidTrustStore) { try SFTPConnectionPreparation().prepare(profile: profile, knownHostsFile: root.appendingPathComponent("missing"), securityScoped: false) }
+}
