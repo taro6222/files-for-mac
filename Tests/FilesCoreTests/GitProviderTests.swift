@@ -63,6 +63,20 @@ import Testing
     #expect(try String(contentsOf: local.appendingPathComponent("value.txt"), encoding: .utf8) == "local")
 }
 
+@Test func gitCancellationTerminatesProcessAndCleansCloneStaging() async throws {
+    let fm = FileManager.default, root = fm.temporaryDirectory.appendingPathComponent("files-git-cancel-\(UUID())", isDirectory: true)
+    defer { try? fm.removeItem(at: root) }; try fm.createDirectory(at: root, withIntermediateDirectories: true)
+    let sleeper = root.appendingPathComponent("fake-git.sh")
+    try Data("#!/bin/sh\nlast=''\nfor arg in \"$@\"; do last=\"$arg\"; done\ncase \"$1\" in clone) mkdir \"$last\" ;; esac\nexec /bin/sleep 5\n".utf8).write(to: sleeper)
+    try fm.setAttributes([.posixPermissions: 0o700], ofItemAtPath: sleeper.path)
+    let provider = GitProvider(executable: sleeper), destination = root.appendingPathComponent("destination")
+    let task = Task { try await provider.clone(from: root.appendingPathComponent("source.git"), to: destination) }
+    try await Task.sleep(for: .milliseconds(100)); task.cancel()
+    await #expect(throws: CancellationError.self) { try await task.value }
+    #expect(!fm.fileExists(atPath: destination.path))
+    #expect(try fm.contentsOfDirectory(atPath: root.path).allSatisfy { !$0.hasPrefix(".files-git-clone-") })
+}
+
 private func runGit(_ arguments: [String], at directory: URL) throws {
     let process = Process(), errors = Pipe(); process.executableURL = URL(fileURLWithPath: "/usr/bin/git"); process.arguments = ["-C", directory.path] + arguments; process.standardError = errors
     try process.run(); process.waitUntilExit()

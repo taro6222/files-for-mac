@@ -1,5 +1,21 @@
 import Foundation
 
+private final class GitProcessBox: @unchecked Sendable {
+    private let lock = NSLock()
+    private var process: Process?
+    private var cancelled = false
+    func install(_ process: Process) { lock.lock(); self.process = process; let stop = cancelled; lock.unlock(); if stop && process.isRunning { process.terminate() } }
+    func cancel() { lock.lock(); cancelled = true; let process = process; lock.unlock(); if process?.isRunning == true { process?.terminate() } }
+    var wasCancelled: Bool { lock.lock(); defer { lock.unlock() }; return cancelled }
+}
+
+private final class GitDataBox: @unchecked Sendable {
+    private let lock = NSLock()
+    private var data = Data()
+    func set(_ data: Data) { lock.lock(); self.data = data; lock.unlock() }
+    func get() -> Data { lock.lock(); defer { lock.unlock() }; return data }
+}
+
 public enum GitBackendError: Error, Sendable, Equatable {
     case gitUnavailable, invalidLocation, notRepository, commandFailed(Int32), invalidOutput, outputLimitExceeded
 }
@@ -82,8 +98,9 @@ public struct GitStatusParser: Sendable {
 }
 
 public struct GitProvider: Sendable {
-    private let executable = URL(fileURLWithPath: "/usr/bin/git")
-    public init() {}
+    private let executable: URL
+    public init() { executable = URL(fileURLWithPath: "/usr/bin/git") }
+    init(executable: URL) { self.executable = executable }
     public func snapshot(at location: URL, fileManager: FileManager = .default) async throws -> GitRepositorySnapshot {
         guard location.isFileURL, fileManager.fileExists(atPath: location.path), fileManager.isExecutableFile(atPath: executable.path) else {
             throw fileManager.isExecutableFile(atPath: executable.path) ? GitBackendError.invalidLocation : GitBackendError.gitUnavailable
@@ -149,19 +166,32 @@ public struct GitProvider: Sendable {
         guard !name.isEmpty, !name.hasPrefix("-"), !name.unicodeScalars.contains(where: CharacterSet.controlCharacters.contains) else { throw GitBackendError.invalidLocation }
     }
     private func run(_ arguments: [String], at directory: URL, outputLimit: Int = 4 * 1_024 * 1_024) async throws -> Data {
-        try await Task.detached(priority: .userInitiated) {
-            let process = Process(), output = Pipe(), errors = Pipe()
-            process.executableURL = executable; process.arguments = arguments; process.currentDirectoryURL = directory
-            var environment = ProcessInfo.processInfo.environment; environment["GIT_TERMINAL_PROMPT"] = "0"; environment["GIT_OPTIONAL_LOCKS"] = "0"; process.environment = environment
-            process.standardOutput = output; process.standardError = errors
-            do { try process.run() } catch { throw GitBackendError.gitUnavailable }
-            let stdout = output.fileHandleForReading.readDataToEndOfFile(), stderr = errors.fileHandleForReading.readDataToEndOfFile(); process.waitUntilExit()
-            guard stdout.count + stderr.count <= outputLimit else { throw GitBackendError.outputLimitExceeded }
-            guard process.terminationStatus == 0 else {
-                if arguments.contains("rev-parse") { throw GitBackendError.notRepository }
-                throw GitBackendError.commandFailed(process.terminationStatus)
-            }
-            return stdout
-        }.value
+        let box = GitProcessBox()
+        return try await withTaskCancellationHandler(operation: {
+            try Task.checkCancellation()
+            return try await Task.detached(priority: .userInitiated) {
+                try Self.runSynchronously(executable: executable, arguments: arguments, directory: directory, outputLimit: outputLimit, box: box)
+            }.value
+        }, onCancel: { box.cancel() })
+    }
+    private static func runSynchronously(executable: URL, arguments: [String], directory: URL, outputLimit: Int, box: GitProcessBox) throws -> Data {
+        let process = Process(), output = Pipe(), errors = Pipe()
+        process.executableURL = executable; process.arguments = arguments; process.currentDirectoryURL = directory
+        var environment = ProcessInfo.processInfo.environment; environment["GIT_TERMINAL_PROMPT"] = "0"; environment["GIT_OPTIONAL_LOCKS"] = "0"; process.environment = environment
+        process.standardOutput = output; process.standardError = errors
+        do { try process.run() } catch { throw GitBackendError.gitUnavailable }
+        box.install(process)
+        let group = DispatchGroup(), stdoutBox = GitDataBox(), stderrBox = GitDataBox()
+        group.enter(); DispatchQueue.global().async { stdoutBox.set(output.fileHandleForReading.readDataToEndOfFile()); group.leave() }
+        group.enter(); DispatchQueue.global().async { stderrBox.set(errors.fileHandleForReading.readDataToEndOfFile()); group.leave() }
+        process.waitUntilExit(); group.wait()
+        if box.wasCancelled { throw CancellationError() }
+        let stdout = stdoutBox.get(), stderr = stderrBox.get()
+        guard stdout.count + stderr.count <= outputLimit else { throw GitBackendError.outputLimitExceeded }
+        guard process.terminationStatus == 0 else {
+            if arguments.contains("rev-parse") { throw GitBackendError.notRepository }
+            throw GitBackendError.commandFailed(process.terminationStatus)
+        }
+        return stdout
     }
 }
