@@ -27,7 +27,8 @@ public struct FileTagService: Sendable {
         var result: [String] = []
         for raw in tags {
             let tag = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !tag.isEmpty, tag.count <= 255,
+            if tag.isEmpty { continue }
+            guard tag.count <= 255,
                   tag.unicodeScalars.allSatisfy({ !CharacterSet.controlCharacters.contains($0) }) else { throw FileTagError.invalidName }
             if !result.contains(where: { $0.compare(tag, options: [.caseInsensitive, .diacriticInsensitive]) == .orderedSame }) { result.append(tag) }
         }

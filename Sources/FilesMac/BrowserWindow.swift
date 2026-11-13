@@ -1757,13 +1757,20 @@ extension BrowserWindow {
             let hashStart = ContinuousClock.now
             while controller.infoWindow?.qaHashing == true && hashStart.duration(to: .now) < .seconds(5) { try await Task.sleep(for: .milliseconds(10)) }
             checks["fileInfoHash"] = controller.infoWindow?.qaDigest?.count == 64
+            controller.infoWindow?.qaSetTags("QA, 검토")
+            checks["fileInfoTags"] = controller.infoWindow?.qaTags == ["QA", "검토"]
             try capture("file-info", view: controller.infoWindow?.window?.contentView)
             controller.infoWindow?.close(); window.makeKeyAndOrderFront(nil)
+            let tagRefresh = ContinuousClock.now
+            while controller.model.isLoading && tagRefresh.duration(to: .now) < .seconds(10) { try await Task.sleep(for: .milliseconds(10)) }
             controller.showQuickLook(nil); try await Task.sleep(for: .milliseconds(500))
             checks["quickLookWindow"] = controller.quickLook.qaVisible
             checks["quickLookItems"] = controller.quickLook.qaItemCount == 1
             try capture("quick-look", view: controller.quickLook.qaContentView)
             controller.quickLook.close(); window.makeKeyAndOrderFront(nil)
+            try await Task.sleep(for: .milliseconds(300))
+            let metadataRefresh = ContinuousClock.now
+            while controller.model.isLoading && metadataRefresh.duration(to: .now) < .seconds(10) { try await Task.sleep(for: .milliseconds(10)) }
             controller.focusFiles(nil)
             checks["fileListFocus"] = window.firstResponder === controller.table
             try capture("files-top")
