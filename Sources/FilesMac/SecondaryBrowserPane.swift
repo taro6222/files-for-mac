@@ -21,6 +21,9 @@ final class SecondaryBrowserPane: NSView, NSTableViewDataSource, NSTableViewDele
     required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
 
     func snapshot() -> TabSnapshot { savePosition(); return model.snapshot }
+    var selectedItems: [FileItem] {
+        table.selectedRowIndexes.compactMap { model.items.indices.contains($0) ? model.items[$0] : nil }
+    }
     func setActive(_ active: Bool) {
         layer?.borderWidth = active ? 2 : 0; layer?.borderColor = NSColor.controlAccentColor.cgColor
     }
@@ -31,6 +34,8 @@ final class SecondaryBrowserPane: NSView, NSTableViewDataSource, NSTableViewDele
     func focusPath() { activate(); window?.makeFirstResponder(pathField); pathField.selectText(nil) }
     func focusFiles() { activate(); window?.makeFirstResponder(table) }
     func stopLoading() { model.cancelLoad() }
+    func openSelected() { openSelection(nil) }
+    func open(_ url: URL?) { activate(); navigate(url) }
 
     private func buildUI() {
         let stack = NSStackView(); stack.orientation = .vertical; stack.spacing = 0

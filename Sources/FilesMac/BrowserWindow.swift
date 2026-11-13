@@ -27,6 +27,12 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
     private let workspaceSplit = NSSplitView()
     private var secondaryPane: SecondaryBrowserPane?
     private var secondaryActive = false
+    private var activeModel: BrowserModel { secondaryActive ? secondaryPane?.model ?? model : model }
+    private var activeSelectedItems: [FileItem] {
+        if secondaryActive { return secondaryPane?.selectedItems ?? [] }
+        return table.selectedRowIndexes.compactMap { model.items.indices.contains($0) ? model.items[$0] : nil }
+    }
+    private func refreshActivePane() { if secondaryActive { secondaryPane?.refresh() } else { refresh(nil) } }
     private let preferences: BrowserPreferences
     private var preferencesToken: UUID?
     private var favorites: [URL] { preferences.favorites }
@@ -521,7 +527,7 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
     @objc func goUp(_ sender: Any?) { if secondaryActive { secondaryPane?.goUp() } else if let url = model.location { navigate(url.deletingLastPathComponent()) } }
     @objc func refresh(_ sender: Any?) { if secondaryActive { secondaryPane?.refresh() } else { savePosition(); model.reload() } }
     @objc func refreshOrStop(_ sender: Any?) {
-        if model.isLoading { stopLoading(sender) } else { refresh(sender) }
+        if activeModel.isLoading { stopLoading(sender) } else { refresh(sender) }
     }
     @objc func stopLoading(_ sender: Any?) {
         if secondaryActive { secondaryPane?.stopLoading(); return }
@@ -550,6 +556,7 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         }
     }
     private func openChosenFolder(_ url: URL) {
+        if secondaryActive { secondaryPane?.open(url); return }
         let sameLocation = model.location == url.standardizedFileURL
         navigate(url)
         // An explicit selection may grant access after a previous registration failed.
@@ -560,10 +567,11 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         preferences.setShowHidden(!preferences.showHidden)
     }
     @objc func toggleFavorite(_ sender: Any?) {
-        guard let url = model.location else { return }
+        guard let url = activeModel.location else { return }
         preferences.toggleFavorite(url)
     }
     @objc func openSelection(_ sender: Any?) {
+        if secondaryActive { secondaryPane?.openSelected(); return }
         if sender as? NSTableView === table && table.clickedRow < 0 { return }
         let rows = table.selectedRowIndexes
         guard let first = rows.first, model.items.indices.contains(first) else { return }
@@ -573,13 +581,12 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
     }
     @objc func createFolder(_ sender: Any?) { promptForEntryName(source: nil) }
     @objc func renameSelection(_ sender: Any?) {
-        guard table.selectedRowIndexes.count == 1, let index = table.selectedRowIndexes.first,
-              model.items.indices.contains(index) else { return }
-        promptForEntryName(source: model.items[index])
+        guard activeSelectedItems.count == 1 else { return }
+        promptForEntryName(source: activeSelectedItems[0])
     }
     @objc func batchRenameSelection(_ sender: Any?) {
-        guard table.selectedRowIndexes.count > 1, let window else { return }
-        let sources = table.selectedRowIndexes.compactMap { model.items.indices.contains($0) ? model.items[$0].url : nil }
+        guard activeSelectedItems.count > 1, let window else { return }
+        let sources = activeSelectedItems.map(\.url)
         let alert = NSAlert(); alert.messageText = L("일괄 이름 변경", "Batch Rename")
         alert.informativeText = L("방식을 선택하고 값을 입력하세요. 다음 화면에서 실제 변경 이름을 확인합니다.",
                                   "Choose a mode and enter values. Review the resulting names on the next screen.")
@@ -627,9 +634,9 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
     @objc func deleteSelection(_ sender: Any?) {
         guard canDeleteSelection else { return }
         guard let window else { return }
-        let selected = table.selectedRowIndexes.compactMap { model.items.indices.contains($0) ? model.items[$0].url : nil }
+        let selected = activeSelectedItems.map(\.url)
         guard !selected.isEmpty else { return }
-        let current = model.location?.standardizedFileURL
+        let current = activeModel.location?.standardizedFileURL
         let names = selected.map(\.lastPathComponent).joined(separator: ", ")
         let alert = NSAlert()
         alert.messageText = L("휴지통으로 이동", "Move to Trash")
@@ -640,8 +647,8 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
             guard response == .alertFirstButtonReturn else { return }
             guard let self else { return }
             DeletionWindow.start(sources: selected) { [weak self] in
-                if self?.model.location?.standardizedFileURL == current {
-                    self?.refresh(nil)
+                if self?.activeModel.location?.standardizedFileURL == current {
+                    self?.refreshActivePane()
                 }
             }
         }
@@ -649,7 +656,7 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
     @objc func restoreSelection(_ sender: Any?) {
         guard canRestoreSelection else { return }
         guard let window else { return }
-        let selected = table.selectedRowIndexes.compactMap { model.items.indices.contains($0) ? model.items[$0].url : nil }
+        let selected = activeSelectedItems.map(\.url)
         guard !selected.isEmpty else { return }
         let panel = NSOpenPanel()
         panel.canChooseDirectories = true
@@ -668,22 +675,22 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         }
     }
     private var canDeleteSelection: Bool {
-        !model.isLoading && !Self.entryOperationRunning && !CopyWindow.isRunning &&
-        !DeletionWindow.isRunning && !table.selectedRowIndexes.isEmpty
+        !activeModel.isLoading && !Self.entryOperationRunning && !CopyWindow.isRunning &&
+        !DeletionWindow.isRunning && !activeSelectedItems.isEmpty
     }
     private var canRestoreSelection: Bool {
-        !model.isLoading && !Self.entryOperationRunning && !CopyWindow.isRunning &&
-        !DeletionWindow.isRunning && !RestoreWindow.isRunning && !table.selectedRowIndexes.isEmpty
+        !activeModel.isLoading && !Self.entryOperationRunning && !CopyWindow.isRunning &&
+        !DeletionWindow.isRunning && !RestoreWindow.isRunning && !activeSelectedItems.isEmpty
     }
     private var canMoveSelection: Bool {
-        !model.isLoading && !Self.entryOperationRunning && !CopyWindow.isRunning &&
+        !activeModel.isLoading && !Self.entryOperationRunning && !CopyWindow.isRunning &&
         !DeletionWindow.isRunning && !RestoreWindow.isRunning && !MoveWindow.isRunning && !PermanentDeleteWindow.isRunning &&
-        !table.selectedRowIndexes.isEmpty
+        !activeSelectedItems.isEmpty
     }
     @objc func permanentlyDeleteSelection(_ sender: Any?) {
         guard canPermanentDeleteSelection else { return }
         guard let window else { return }
-        let selected = table.selectedRowIndexes.compactMap { model.items.indices.contains($0) ? model.items[$0].url : nil }
+        let selected = activeSelectedItems.map(\.url)
         guard !selected.isEmpty else { return }
         let names = selected.map(\.lastPathComponent).joined(separator: ", ")
         let alert = NSAlert()
@@ -701,12 +708,13 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         }
     }
     private var canPermanentDeleteSelection: Bool {
-        !model.isLoading && !Self.entryOperationRunning && !CopyWindow.isRunning &&
-        !DeletionWindow.isRunning && !RestoreWindow.isRunning && !PermanentDeleteWindow.isRunning && !table.selectedRowIndexes.isEmpty
+        !activeModel.isLoading && !Self.entryOperationRunning && !CopyWindow.isRunning &&
+        !DeletionWindow.isRunning && !RestoreWindow.isRunning && !PermanentDeleteWindow.isRunning && !activeSelectedItems.isEmpty
     }
     private func promptForEntryName(source: FileItem?) {
-        guard !Self.entryOperationRunning, !CopyWindow.isRunning, !model.isLoading,
-              let parent = model.location, let window else { return }
+        let targetModel = activeModel
+        guard !Self.entryOperationRunning, !CopyWindow.isRunning, !targetModel.isLoading,
+              let parent = targetModel.location, let window else { return }
         let alert = NSAlert()
         alert.messageText = source == nil ? L("새 폴더", "New Folder") : L("이름 변경", "Rename")
         alert.informativeText = source?.url.path ?? parent.path
@@ -733,10 +741,10 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
                     } else {
                         result = try await EntryOperations.createFolder(in: parent, name: name, journalDirectory: journal)
                     }
-                    if model.location == parent {
-                        pendingEntrySelection = result.target.standardizedFileURL
+                    if targetModel.location == parent {
+                        if targetModel === model { pendingEntrySelection = result.target.standardizedFileURL }
                         if name.hasPrefix(".") { preferences.setShowHidden(true) }
-                        model.reload()
+                        targetModel.reload()
                     }
                     if let warning = result.journalWarning { showEntryError(warning) }
                 } catch {
@@ -758,8 +766,8 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         alert.informativeText = message; alert.beginSheetModal(for: window)
     }
     @objc func copySelection(_ sender: Any?) {
-        guard !Self.entryOperationRunning, !CopyWindow.isRunning, !model.isLoading, let window else { return }
-        let sources = table.selectedRowIndexes.compactMap { model.items.indices.contains($0) ? model.items[$0].url : nil }
+        guard !Self.entryOperationRunning, !CopyWindow.isRunning, !activeModel.isLoading, let window else { return }
+        let sources = activeSelectedItems.map(\.url)
         guard !sources.isEmpty else { return }
         let panel = NSOpenPanel()
         panel.canChooseDirectories = true; panel.canChooseFiles = false; panel.allowsMultipleSelection = false
@@ -773,7 +781,7 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
     @objc func moveSelection(_ sender: Any?) {
         guard canMoveSelection else { return }
         guard let window else { return }
-        let selected = table.selectedRowIndexes.compactMap { model.items.indices.contains($0) ? model.items[$0].url : nil }
+        let selected = activeSelectedItems.map(\.url)
         guard !selected.isEmpty else { return }
         let panel = NSOpenPanel()
         panel.canChooseDirectories = true
@@ -824,8 +832,8 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         alert.beginSheetModal(for: window)
     }
     func copyFilesToClipboard() {
-        guard !model.isLoading else { return }
-        let urls = table.selectedRowIndexes.compactMap { model.items.indices.contains($0) ? model.items[$0].url as NSURL : nil }
+        guard !activeModel.isLoading else { return }
+        let urls = activeSelectedItems.map { $0.url as NSURL }
         guard !urls.isEmpty else { return }
         NSPasteboard.general.clearContents()
         NSPasteboard.general.writeObjects(urls)
@@ -833,14 +841,15 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
     private var clipboardFiles: [URL] {
         (NSPasteboard.general.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL]) ?? []
     }
-    var canCopyFiles: Bool { !model.isLoading && !table.selectedRowIndexes.isEmpty }
-    var canPasteFiles: Bool { model.location != nil && !model.isLoading && !CopyWindow.isRunning && !Self.entryOperationRunning && !clipboardFiles.isEmpty }
+    var canCopyFiles: Bool { !activeModel.isLoading && !activeSelectedItems.isEmpty }
+    var canPasteFiles: Bool { activeModel.location != nil && !activeModel.isLoading && !CopyWindow.isRunning && !Self.entryOperationRunning && !clipboardFiles.isEmpty }
     func pasteFilesFromClipboard() {
-        guard canPasteFiles, let destination = model.location else { return }
+        guard canPasteFiles, let destination = activeModel.location else { return }
         prepareCopy(sources: clipboardFiles, destination: destination)
     }
     private func prepareCopy(sources: [URL], destination: URL) {
         guard !Self.entryOperationRunning, !CopyWindow.isRunning, let window else { return }
+        let targetModel = activeModel
         let alert = NSAlert()
         alert.messageText = L("복사 시 이름 충돌 처리", "Copy conflict policy")
         alert.informativeText = L("대상: ", "Destination: ") + destination.path + "\n" +
@@ -851,15 +860,16 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         alert.beginSheetModal(for: window) { [weak self] response in
             guard response == .alertFirstButtonReturn || response == .alertSecondButtonReturn else { return }
             CopyWindow.start(sources: sources, destination: destination,
-                             conflictPolicy: response == .alertFirstButtonReturn ? .keepBoth : .skip) { [weak self] in
-                if self?.model.location?.resolvingSymlinksInPath() == destination.resolvingSymlinksInPath() {
-                    self?.refresh(nil)
+                             conflictPolicy: response == .alertFirstButtonReturn ? .keepBoth : .skip) {
+                if targetModel.location?.resolvingSymlinksInPath() == destination.resolvingSymlinksInPath() {
+                    targetModel.reload()
                 }
             }
         }
     }
     private func prepareMove(sources: [URL], destination: URL) {
         guard !Self.entryOperationRunning, !MoveWindow.isRunning, let window else { return }
+        let targetModel = activeModel
         let alert = NSAlert()
         alert.messageText = L("이동 시 이름 충돌 처리", "Move conflict policy")
         alert.informativeText = L("대상: ", "Destination: ") + destination.path + "\n" +
@@ -867,11 +877,11 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         alert.addButton(withTitle: L("건너뛰기", "Skip Conflicts"))
         alert.addButton(withTitle: L("교체", "Replace Existing"))
         alert.addButton(withTitle: L("취소", "Cancel"))
-        alert.beginSheetModal(for: window) { [weak self] response in
+        alert.beginSheetModal(for: window) { response in
             guard response == .alertFirstButtonReturn || response == .alertSecondButtonReturn else { return }
             MoveWindow.start(sources: sources, destination: destination,
-                             conflictPolicy: response == .alertSecondButtonReturn ? .replace : .skip) { [weak self] in
-                self?.refresh(nil)
+                             conflictPolicy: response == .alertSecondButtonReturn ? .replace : .skip) {
+                targetModel.reload()
             }
         }
     }
@@ -1107,20 +1117,21 @@ extension BrowserWindow {
         case #selector(undoLastMove(_:)):
             return !Self.entryOperationRunning && !MoveWindow.isRunning &&
                 EntryOperations.latestUndoMove(journalDirectory: Self.operationJournalDirectory) != nil
-        case #selector(deleteSelection(_:)): return !secondaryActive && canDeleteSelection
-        case #selector(restoreSelection(_:)): return !secondaryActive && canRestoreSelection
-        case #selector(permanentlyDeleteSelection(_:)): return !secondaryActive && canPermanentDeleteSelection
-        case #selector(moveSelection(_:)): return !secondaryActive && canMoveSelection
-        case #selector(createFolder(_:)): return !secondaryActive && model.location != nil && !model.isLoading && !Self.entryOperationRunning && !CopyWindow.isRunning
-        case #selector(renameSelection(_:)): return !secondaryActive && model.location != nil && table.selectedRowIndexes.count == 1 && !model.isLoading && !Self.entryOperationRunning && !CopyWindow.isRunning
-        case #selector(batchRenameSelection(_:)): return !secondaryActive && model.location != nil && table.selectedRowIndexes.count > 1 && !model.isLoading && !BatchRenameWindow.isRunning
+        case #selector(deleteSelection(_:)): return canDeleteSelection
+        case #selector(restoreSelection(_:)): return canRestoreSelection
+        case #selector(permanentlyDeleteSelection(_:)): return canPermanentDeleteSelection
+        case #selector(moveSelection(_:)): return canMoveSelection
+        case #selector(createFolder(_:)): return activeModel.location != nil && !activeModel.isLoading && !Self.entryOperationRunning && !CopyWindow.isRunning
+        case #selector(renameSelection(_:)): return activeModel.location != nil && activeSelectedItems.count == 1 && !activeModel.isLoading && !Self.entryOperationRunning && !CopyWindow.isRunning
+        case #selector(batchRenameSelection(_:)): return activeModel.location != nil && activeSelectedItems.count > 1 && !activeModel.isLoading && !BatchRenameWindow.isRunning
         case #selector(retryAutomaticRefresh(_:)): return model.location != nil && watcherStatus != .active
-        case #selector(copySelection(_:)): return !secondaryActive && !CopyWindow.isRunning && !model.isLoading && !table.selectedRowIndexes.isEmpty
+        case #selector(copySelection(_:)): return !CopyWindow.isRunning && !activeModel.isLoading && !activeSelectedItems.isEmpty
         case #selector(stopLoading(_:)): return secondaryActive ? secondaryPane?.model.isLoading == true : model.isLoading
         case #selector(goBack(_:)): return secondaryActive ? !(secondaryPane?.model.history.back.isEmpty ?? true) : !model.history.back.isEmpty
         case #selector(goForward(_:)): return secondaryActive ? !(secondaryPane?.model.history.forward.isEmpty ?? true) : !model.history.forward.isEmpty
         case #selector(goUp(_:)): return secondaryActive ? secondaryPane?.model.location != nil : model.location != nil && model.location?.path != "/"
-        case #selector(openSelection(_:)), #selector(revealSelection(_:)): return !table.selectedRowIndexes.isEmpty && model.location != nil
+        case #selector(openSelection(_:)): return !activeSelectedItems.isEmpty && activeModel.location != nil
+        case #selector(revealSelection(_:)): return !secondaryActive && !table.selectedRowIndexes.isEmpty && model.location != nil
         default: return true
         }
     }
