@@ -4,8 +4,9 @@ import FilesCore
 #endif
 
 @MainActor
-final class AppDelegate: NSObject, NSApplicationDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     var windows: [BrowserWindow] = []
+    private var closedTabs = ClosedTabHistory()
     func applicationDidFinishLaunching(_ notification: Notification) {
         buildMenu()
         #if DEBUG
@@ -16,15 +17,39 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         #endif
         newWindow(nil); NSApp.activate(ignoringOtherApps: true)
     }
-    @objc func newWindow(_ sender: Any?) {
-        let controller = BrowserWindow()
+    private var currentBrowser: BrowserWindow? {
+        (NSApp.keyWindow?.windowController as? BrowserWindow) ?? (NSApp.mainWindow?.windowController as? BrowserWindow)
+    }
+    @discardableResult private func makeBrowser(location: URL? = nil, tabbedTo source: BrowserWindow? = nil) -> BrowserWindow {
+        let controller = BrowserWindow(initialLocation: location)
         windows.append(controller)
         controller.onClose = { [weak self, weak controller] in
+            if let controller { self?.closedTabs.record(TabSnapshot(location: controller.tabLocation)) }
             self?.windows.removeAll { $0 === controller }
         }
         controller.showWindow(nil)
+        if let sourceWindow = source?.window, let targetWindow = controller.window {
+            sourceWindow.addTabbedWindow(targetWindow, ordered: .above)
+            targetWindow.makeKeyAndOrderFront(nil)
+        }
+        return controller
     }
-    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
+    @objc func newWindow(_ sender: Any?) { makeBrowser() }
+    @objc func newTab(_ sender: Any?) { makeBrowser(tabbedTo: currentBrowser) }
+    @objc func duplicateTab(_ sender: Any?) {
+        guard let current = currentBrowser else { return }
+        makeBrowser(location: current.tabLocation, tabbedTo: current)
+    }
+    @objc func reopenClosedTab(_ sender: Any?) {
+        guard let snapshot = closedTabs.restoreLast() else { return }
+        makeBrowser(location: snapshot.location, tabbedTo: currentBrowser)
+    }
+    func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
+        if menuItem.action == #selector(reopenClosedTab(_:)) { return closedTabs.canRestore }
+        if menuItem.action == #selector(duplicateTab(_:)) { return currentBrowser != nil }
+        return true
+    }
+    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         guard CopyWindow.isRunning || DeletionWindow.isRunning || RestoreWindow.isRunning || MoveWindow.isRunning ||
               PermanentDeleteWindow.isRunning || BatchRenameWindow.isRunning || BrowserWindow.entryOperationRunning else { return .terminateNow }
@@ -42,6 +67,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let fileItem = NSMenuItem(); fileItem.title = L("파일", "File"); menu.addItem(fileItem)
         let file = NSMenu(title: fileItem.title); fileItem.submenu = file
         let new = file.addItem(withTitle: L("새 창", "New Window"), action: #selector(newWindow(_:)), keyEquivalent: "n"); new.target = self
+        let newTab = file.addItem(withTitle: L("새 탭", "New Tab"), action: #selector(newTab(_:)), keyEquivalent: "t"); newTab.target = self
+        let duplicate = file.addItem(withTitle: L("탭 복제", "Duplicate Tab"), action: #selector(duplicateTab(_:)), keyEquivalent: "d")
+        duplicate.keyEquivalentModifierMask = [.command, .shift]; duplicate.target = self
+        let reopen = file.addItem(withTitle: L("닫은 탭 다시 열기", "Reopen Closed Tab"), action: #selector(reopenClosedTab(_:)), keyEquivalent: "t")
+        reopen.keyEquivalentModifierMask = [.command, .shift]; reopen.target = self
         file.addItem(withTitle: L("폴더 열기…", "Open Folder…"), action: #selector(BrowserWindow.chooseFolder(_:)), keyEquivalent: "o")
         file.addItem(withTitle: L("선택 항목 열기", "Open Selection"), action: #selector(BrowserWindow.openSelection(_:)), keyEquivalent: "\u{f701}")
         let folder = file.addItem(withTitle: L("새 폴더…", "New Folder…"), action: #selector(BrowserWindow.createFolder(_:)), keyEquivalent: "n")
@@ -91,6 +121,7 @@ func L(_ ko: String, _ en: String) -> String {
 }
 
 let app = NSApplication.shared
+NSWindow.allowsAutomaticWindowTabbing = true
 let delegate = AppDelegate()
 app.setActivationPolicy(.regular)
 app.delegate = delegate

@@ -57,7 +57,8 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         let d = DateFormatter(); d.dateStyle = .medium; d.timeStyle = .short; return d
     }()
 
-    init(preferences: BrowserPreferences = .shared, restoresFrame: Bool = true,
+    var tabLocation: URL? { model.location }
+    init(preferences: BrowserPreferences = .shared, restoresFrame: Bool = true, initialLocation: URL? = nil,
          loader: any DirectoryLoading = LocalFileSystem(),
          makeWatcher: @escaping @Sendable (URL) -> DirectoryWatcher? = { DirectoryWatcher(url: $0) }) {
         self.model = BrowserModel(loader: loader)
@@ -76,7 +77,7 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         setupUI(restoresLayout: restoresFrame)
         model.onChange = { [weak self] in self?.render() }
         preferencesToken = preferences.observe { [weak self] in self?.preferencesChanged() }
-        model.navigate(nil)
+        model.navigate(initialLocation)
         refreshVolumes()
         for name in [NSWorkspace.didMountNotification, NSWorkspace.didUnmountNotification] {
             observerTokens.append(NSWorkspace.shared.notificationCenter.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in

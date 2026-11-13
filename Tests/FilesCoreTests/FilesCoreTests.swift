@@ -45,6 +45,29 @@ private func fixture() throws -> URL {
     h.visit(URL(fileURLWithPath: "/c")); #expect(h.forward.isEmpty)
 }
 
+@Test func closedTabHistoryRestoresMostRecentLocationFirst() {
+    var history = ClosedTabHistory()
+    let first = TabSnapshot(location: URL(fileURLWithPath: "/first"))
+    let home = TabSnapshot(location: nil)
+    history.record(first)
+    history.record(home)
+
+    #expect(history.canRestore)
+    #expect(history.restoreLast() == home)
+    #expect(history.restoreLast() == first)
+    #expect(history.restoreLast() == nil)
+    #expect(!history.canRestore)
+}
+
+@Test func closedTabHistoryHonorsCapacity() {
+    var history = ClosedTabHistory(capacity: 2)
+    history.record(TabSnapshot(location: URL(fileURLWithPath: "/one")))
+    history.record(TabSnapshot(location: URL(fileURLWithPath: "/two")))
+    history.record(TabSnapshot(location: URL(fileURLWithPath: "/three")))
+
+    #expect(history.snapshots.map(\.location?.path) == ["/two", "/three"])
+}
+
 @Test func sortingKeepsFoldersFirstAndNaturalNames() {
     let items = [FileItem(url: URL(fileURLWithPath: "/file10"), name: "file10", isDirectory: false),
         FileItem(url: URL(fileURLWithPath: "/file2"), name: "file2", isDirectory: false),
