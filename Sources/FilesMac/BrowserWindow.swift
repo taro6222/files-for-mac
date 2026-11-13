@@ -39,6 +39,7 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
     private var toolbarSettingsWindow: ToolbarSettingsWindow?
     private var searchWindow: SearchWindow?
     private var infoWindow: FileInfoWindow?
+    private let quickLook = QuickLookController()
     private let homeView = NSStackView()
     private let sidebar = NSStackView()
     private let content = NSView()
@@ -775,6 +776,11 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         guard !items.isEmpty else { return }
         if infoWindow == nil { infoWindow = FileInfoWindow() }
         infoWindow?.present(items: items)
+    }
+    @objc func showQuickLook(_ sender: Any?) {
+        let items = activeSelectedItems
+        guard !items.isEmpty else { return }
+        quickLook.present(items: items)
     }
     @objc func submitPath(_ sender: Any?) {
         let path = (pathField.stringValue as NSString).expandingTildeInPath
@@ -1753,6 +1759,11 @@ extension BrowserWindow {
             checks["fileInfoHash"] = controller.infoWindow?.qaDigest?.count == 64
             try capture("file-info", view: controller.infoWindow?.window?.contentView)
             controller.infoWindow?.close(); window.makeKeyAndOrderFront(nil)
+            controller.showQuickLook(nil); try await Task.sleep(for: .milliseconds(500))
+            checks["quickLookWindow"] = controller.quickLook.qaVisible
+            checks["quickLookItems"] = controller.quickLook.qaItemCount == 1
+            try capture("quick-look", view: controller.quickLook.qaContentView)
+            controller.quickLook.close(); window.makeKeyAndOrderFront(nil)
             controller.focusFiles(nil)
             checks["fileListFocus"] = window.firstResponder === controller.table
             try capture("files-top")
