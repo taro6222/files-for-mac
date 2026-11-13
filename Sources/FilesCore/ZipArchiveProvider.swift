@@ -8,6 +8,7 @@ public enum ZipArchiveError: Error, Sendable, Equatable {
     case destinationNotDirectory
     case destinationConflict(String)
     case publishFailed(String)
+    case invalidSource(String)
 }
 
 public struct ArchiveExtractionReport: Sendable, Equatable {
@@ -36,6 +37,78 @@ public struct ZipArchiveProvider: Sendable {
     public func extract(_ archiveURL: URL, to destination: URL, limits: ArchiveExtractionLimits = .init()) async throws -> ArchiveExtractionReport {
         try await Task.detached(priority: .userInitiated) { try extractSynchronously(archiveURL, to: destination, limits: limits) }.value
     }
+
+    public func create(from sources: [URL], at archiveURL: URL) async throws -> URL {
+        try await Task.detached(priority: .userInitiated) { try createSynchronously(from: sources, at: archiveURL) }.value
+    }
+}
+
+private struct ZipSourceEntry {
+    let url: URL, archivePath: String
+    let isDirectory: Bool
+    let size: Int64
+    let modified: Date?
+    let permissions: Int
+}
+
+private func createSynchronously(from sourceURLs: [URL], at archiveURL: URL) throws -> URL {
+    let fm = FileManager.default, sources = sourceURLs.map(\.standardizedFileURL)
+    guard !sources.isEmpty, Set(sources).count == sources.count, !fm.fileExists(atPath: archiveURL.path) else { throw ZipArchiveError.invalidSource(archiveURL.path) }
+    var planned: [ZipSourceEntry] = [], descriptors: [ArchiveEntryDescriptor] = []
+    let keys: Set<URLResourceKey> = [.isDirectoryKey, .isRegularFileKey, .isSymbolicLinkKey, .fileSizeKey, .contentModificationDateKey]
+    func append(_ url: URL, path: String) throws {
+        let values = try url.resourceValues(forKeys: keys)
+        guard values.isSymbolicLink != true, values.isDirectory == true || values.isRegularFile == true else { throw ZipArchiveError.invalidSource(url.path) }
+        let directory = values.isDirectory == true, size = directory ? 0 : Int64(values.fileSize ?? 0)
+        let archivePath = directory ? path + "/" : path
+        let permissions = ((try? fm.attributesOfItem(atPath: url.path)[.posixPermissions]) as? NSNumber)?.intValue ?? (directory ? 0o755 : 0o644)
+        planned.append(ZipSourceEntry(url: url, archivePath: archivePath, isDirectory: directory, size: size,
+                                      modified: values.contentModificationDate, permissions: permissions))
+        descriptors.append(ArchiveEntryDescriptor(path: archivePath, kind: directory ? .directory : .regularFile, uncompressedSize: size))
+    }
+    for source in sources {
+        try append(source, path: source.lastPathComponent)
+        let values = try source.resourceValues(forKeys: [.isDirectoryKey])
+        if values.isDirectory == true {
+            guard let enumerator = fm.enumerator(at: source, includingPropertiesForKeys: Array(keys), options: [], errorHandler: { _, _ in false }) else { throw ZipArchiveError.invalidSource(source.path) }
+            while let child = enumerator.nextObject() as? URL {
+                try Task<Never, Never>.checkCancellation()
+                let relative = child.pathComponents.suffix(enumerator.level).joined(separator: "/")
+                try append(child, path: source.lastPathComponent + "/" + relative)
+            }
+        }
+    }
+    _ = try ArchiveExtractionValidator.validate(descriptors, limits: .init())
+    let parent = archiveURL.deletingLastPathComponent(); try fm.createDirectory(at: parent, withIntermediateDirectories: true)
+    let staging = parent.appendingPathComponent(".files-create-\(UUID().uuidString).zip")
+    defer { try? fm.removeItem(at: staging) }
+    try withWriter(staging) { writer in
+        for item in planned {
+            try Task<Never, Never>.checkCancellation()
+            guard let entry = archive_entry_new() else { throw ZipArchiveError.readFailed("cannot allocate archive entry") }
+            defer { archive_entry_free(entry) }
+            item.archivePath.withCString { archive_entry_set_pathname_utf8(entry, $0) }
+            archive_entry_set_filetype(entry, UInt32(item.isDirectory ? FILES_AE_IFDIR : FILES_AE_IFREG))
+            archive_entry_set_perm(entry, mode_t(item.permissions & 0o777)); archive_entry_set_size(entry, item.size)
+            if let modified = item.modified { archive_entry_set_mtime(entry, time_t(modified.timeIntervalSince1970), 0) }
+            guard archive_write_header(writer, entry) == FILES_ARCHIVE_OK else { throw ZipArchiveError.readFailed(errorText(writer)) }
+            guard !item.isDirectory else { continue }
+            let handle = try FileHandle(forReadingFrom: item.url); defer { try? handle.close() }
+            var written: Int64 = 0
+            while let data = try handle.read(upToCount: 64 * 1024), !data.isEmpty {
+                try Task<Never, Never>.checkCancellation()
+                let count = data.withUnsafeBytes { archive_write_data(writer, $0.baseAddress, $0.count) }
+                guard count == data.count else { throw ZipArchiveError.readFailed(errorText(writer)) }
+                written += Int64(count)
+            }
+            guard written == item.size else { throw ZipArchiveError.invalidSource(item.url.path) }
+            let current = try item.url.resourceValues(forKeys: [.fileSizeKey, .contentModificationDateKey])
+            guard Int64(current.fileSize ?? -1) == item.size, current.contentModificationDate == item.modified else { throw ZipArchiveError.invalidSource(item.url.path) }
+        }
+    }
+    guard !fm.fileExists(atPath: archiveURL.path) else { throw ZipArchiveError.destinationConflict(archiveURL.lastPathComponent) }
+    try fm.moveItem(at: staging, to: archiveURL)
+    return archiveURL
 }
 
 private func extractSynchronously(_ archiveURL: URL, to destination: URL, limits: ArchiveExtractionLimits) throws -> ArchiveExtractionReport {
@@ -107,6 +180,16 @@ private func withReader<T>(_ url: URL, _ body: (OpaquePointer) throws -> T) thro
     let status = url.withUnsafeFileSystemRepresentation { path in archive_read_open_filename(reader, path, 64 * 1024) }
     guard status == FILES_ARCHIVE_OK else { throw ZipArchiveError.cannotOpen(errorText(reader)) }
     return try body(reader)
+}
+
+private func withWriter<T>(_ url: URL, _ body: (OpaquePointer) throws -> T) throws -> T {
+    guard let writer = archive_write_new() else { throw ZipArchiveError.cannotOpen(url.path) }
+    defer { archive_write_close(writer); archive_write_free(writer) }
+    guard archive_write_set_format_zip(writer) == FILES_ARCHIVE_OK,
+          archive_write_add_filter_none(writer) == FILES_ARCHIVE_OK else { throw ZipArchiveError.cannotOpen(errorText(writer)) }
+    let status = url.withUnsafeFileSystemRepresentation { path in archive_write_open_filename(writer, path) }
+    guard status == FILES_ARCHIVE_OK else { throw ZipArchiveError.cannotOpen(errorText(writer)) }
+    return try body(writer)
 }
 
 private func descriptor(_ entry: OpaquePointer) throws -> ArchiveEntryDescriptor {

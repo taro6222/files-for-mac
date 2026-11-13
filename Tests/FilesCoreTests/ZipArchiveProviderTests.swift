@@ -61,3 +61,27 @@ private func makeZip(source: URL, archive: URL) throws {
     }
     #expect(try fm.contentsOfDirectory(atPath: destination.path).isEmpty)
 }
+
+@Test func zipProviderCreatesReopenableArchiveAndRejectsUnsafeSources() async throws {
+    let fm = FileManager.default, root = fm.temporaryDirectory.appendingPathComponent("zip-provider-create-\(UUID())", isDirectory: true)
+    defer { try? fm.removeItem(at: root) }
+    let folder = root.appendingPathComponent("자료-é", isDirectory: true), nested = folder.appendingPathComponent("nested", isDirectory: true)
+    let standalone = root.appendingPathComponent("단독.txt"), archive = root.appendingPathComponent("created.zip"), destination = root.appendingPathComponent("destination", isDirectory: true)
+    try fm.createDirectory(at: nested, withIntermediateDirectories: true); try fm.createDirectory(at: destination, withIntermediateDirectories: true)
+    try Data("nested payload".utf8).write(to: nested.appendingPathComponent("📁.txt")); try Data("standalone".utf8).write(to: standalone)
+    let provider = ZipArchiveProvider(); #expect(try await provider.create(from: [folder, standalone], at: archive) == archive)
+    let entries = try provider.entries(at: archive)
+    let nestedEntry = try #require(entries.first { $0.path.precomposedStringWithCanonicalMapping == "자료-é/nested/📁.txt" })
+    let standaloneEntry = try #require(entries.first { $0.path.precomposedStringWithCanonicalMapping == "단독.txt" })
+    _ = try await provider.extract(archive, to: destination)
+    #expect(try String(contentsOf: destination.appendingPathComponent(nestedEntry.path), encoding: .utf8) == "nested payload")
+    #expect(try String(contentsOf: destination.appendingPathComponent(standaloneEntry.path), encoding: .utf8) == "standalone")
+
+    let existing = root.appendingPathComponent("existing.zip"); try Data("existing".utf8).write(to: existing)
+    await #expect(throws: (any Error).self) { try await provider.create(from: [standalone], at: existing) }
+    #expect(try String(contentsOf: existing, encoding: .utf8) == "existing")
+    let link = root.appendingPathComponent("link"); try fm.createSymbolicLink(atPath: link.path, withDestinationPath: standalone.path)
+    await #expect(throws: (any Error).self) { try await provider.create(from: [link], at: root.appendingPathComponent("link.zip")) }
+    #expect(!fm.fileExists(atPath: root.appendingPathComponent("link.zip").path))
+    #expect((try fm.contentsOfDirectory(atPath: root.path)).allSatisfy { !$0.hasPrefix(".files-create-") })
+}
