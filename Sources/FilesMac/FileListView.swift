@@ -1,0 +1,103 @@
+import AppKit
+import FilesCore
+
+@MainActor
+final class FileListView: NSView, NSTableViewDataSource, NSTableViewDelegate {
+    private final class Row: NSTableRowView {
+        override func drawSelection(in dirtyRect: NSRect) {
+            guard selectionHighlightStyle != .none else { return }
+            NSColor.selectedContentBackgroundColor.withAlphaComponent(0.8).setFill()
+            NSBezierPath(roundedRect: bounds.insetBy(dx: 4, dy: 1), xRadius: 5, yRadius: 5).fill()
+        }
+    }
+    private final class Table: NSTableView {
+        var onActivate: (() -> Void)?
+        override func mouseDown(with event: NSEvent) { onActivate?(); super.mouseDown(with: event) }
+        override func becomeFirstResponder() -> Bool { onActivate?(); return super.becomeFirstResponder() }
+        override func menu(for event: NSEvent) -> NSMenu? {
+            onActivate?()
+            let row = self.row(at: convert(event.locationInWindow, from: nil))
+            if row >= 0 && !selectedRowIndexes.contains(row) { selectRowIndexes([row], byExtendingSelection: false) }
+            return super.menu(for: event)
+        }
+    }
+
+    private let table = Table()
+    private let scroll = NSScrollView()
+    private(set) var items: [FileItem] = []
+    private var suppressSelectionNotification = false
+    var onSelectionChange: ((Set<String>) -> Void)?
+    var onOpen: ((FileItem) -> Void)?
+    var onActivate: (() -> Void)?
+    var onFileDrop: (([URL], FileItem?, FileDropIntent) -> Bool)?
+    var contextMenu: NSMenu? { get { table.menu } set { table.menu = newValue } }
+
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect); translatesAutoresizingMaskIntoConstraints = false
+        table.headerView = nil; table.rowHeight = 30; table.style = .fullWidth
+        table.selectionHighlightStyle = .regular
+        table.allowsMultipleSelection = true; table.dataSource = self; table.delegate = self
+        table.target = self; table.doubleAction = #selector(openSelection(_:))
+        table.onActivate = { [weak self] in self?.onActivate?() }
+        table.registerForDraggedTypes([.fileURL])
+        table.setDraggingSourceOperationMask([.copy, .move], forLocal: true)
+        table.setDraggingSourceOperationMask(.copy, forLocal: false)
+        let column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("name")); column.resizingMask = .autoresizingMask
+        table.addTableColumn(column); table.setAccessibilityLabel(L("파일 목록 보기", "File list view"))
+        scroll.documentView = table; scroll.hasVerticalScroller = true; scroll.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(scroll)
+        NSLayoutConstraint.activate([scroll.leadingAnchor.constraint(equalTo: leadingAnchor), scroll.trailingAnchor.constraint(equalTo: trailingAnchor), scroll.topAnchor.constraint(equalTo: topAnchor), scroll.bottomAnchor.constraint(equalTo: bottomAnchor)])
+    }
+    required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
+    var selectedItems: [FileItem] { table.selectedRowIndexes.compactMap { items.indices.contains($0) ? items[$0] : nil } }
+    func update(items: [FileItem], selection: Set<String>, scrollOffset: Double) {
+        suppressSelectionNotification = true; self.items = items; table.reloadData()
+        table.selectRowIndexes(IndexSet(items.indices.filter { selection.contains(items[$0].id) }), byExtendingSelection: false)
+        scroll.contentView.scroll(to: NSPoint(x: 0, y: max(0, scrollOffset))); scroll.reflectScrolledClipView(scroll.contentView)
+        DispatchQueue.main.async { [weak self] in self?.suppressSelectionNotification = false }
+    }
+    func focus() { window?.makeFirstResponder(table) }
+    func currentScrollOffset() -> Double { scroll.contentView.bounds.origin.y }
+    func numberOfRows(in tableView: NSTableView) -> Int { items.count }
+    func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
+        guard items.indices.contains(row) else { return nil }
+        let id = NSUserInterfaceItemIdentifier("FileListCell")
+        let cell = tableView.makeView(withIdentifier: id, owner: self) as? NSTableCellView ?? {
+            let cell = NSTableCellView(); cell.identifier = id
+            let icon = NSImageView(); icon.translatesAutoresizingMaskIntoConstraints = false; icon.imageScaling = .scaleProportionallyUpOrDown
+            let label = NSTextField(labelWithString: ""); label.translatesAutoresizingMaskIntoConstraints = false; label.lineBreakMode = .byTruncatingMiddle
+            cell.addSubview(icon); cell.addSubview(label); cell.imageView = icon; cell.textField = label
+            NSLayoutConstraint.activate([icon.leadingAnchor.constraint(equalTo: cell.leadingAnchor, constant: 8), icon.centerYAnchor.constraint(equalTo: cell.centerYAnchor), icon.widthAnchor.constraint(equalToConstant: 20), icon.heightAnchor.constraint(equalToConstant: 20), label.leadingAnchor.constraint(equalTo: icon.trailingAnchor, constant: 7), label.trailingAnchor.constraint(equalTo: cell.trailingAnchor, constant: -8), label.centerYAnchor.constraint(equalTo: cell.centerYAnchor)])
+            return cell
+        }()
+        let item = items[row]; cell.imageView?.image = NSWorkspace.shared.icon(forFile: item.url.path)
+        cell.textField?.stringValue = item.displayName(showExtensions: true); return cell
+    }
+    func tableView(_ tableView: NSTableView, rowViewForRow row: Int) -> NSTableRowView? { Row() }
+    func tableViewSelectionDidChange(_ notification: Notification) {
+        guard !suppressSelectionNotification else { return }
+        onSelectionChange?(Set(selectedItems.map(\.id)))
+    }
+    func tableView(_ tableView: NSTableView, pasteboardWriterForRow row: Int) -> (any NSPasteboardWriting)? {
+        guard items.indices.contains(row) else { return nil }; return items[row].url as NSURL
+    }
+    func tableView(_ tableView: NSTableView, validateDrop info: any NSDraggingInfo, proposedRow row: Int, proposedDropOperation operation: NSTableView.DropOperation) -> NSDragOperation {
+        guard !draggedURLs(info).isEmpty else { return [] }
+        if operation == .on, items.indices.contains(row), !items[row].isBrowsable { return [] }
+        return dropIntent(info) == .move ? .move : .copy
+    }
+    func tableView(_ tableView: NSTableView, acceptDrop info: any NSDraggingInfo, row: Int, dropOperation operation: NSTableView.DropOperation) -> Bool {
+        let urls = draggedURLs(info); guard !urls.isEmpty else { return false }
+        let item = operation == .on && items.indices.contains(row) ? items[row] : nil
+        return onFileDrop?(urls, item, dropIntent(info)) ?? false
+    }
+    @objc private func openSelection(_ sender: Any?) { if let item = selectedItems.first { onOpen?(item) } }
+    private func draggedURLs(_ info: any NSDraggingInfo) -> [URL] {
+        (info.draggingPasteboard.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [NSURL] ?? []).map { $0 as URL }
+    }
+    private func dropIntent(_ info: any NSDraggingInfo) -> FileDropIntent {
+        let flags = NSApp.currentEvent?.modifierFlags ?? []; var modifiers: DropModifiers = []
+        if flags.contains(.option) { modifiers.insert(.option) }; if flags.contains(.command) { modifiers.insert(.command) }
+        return .resolve(modifiers: modifiers, sourceAllowsMove: info.draggingSourceOperationMask.contains(.move))
+    }
+}

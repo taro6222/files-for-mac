@@ -10,6 +10,7 @@ final class SecondaryBrowserPane: NSView, NSTableViewDataSource, NSTableViewDele
     private let table = ActivatingTableView()
     private let scroll = NSScrollView()
     private let gridView = FileGridView()
+    private let listView = FileListView()
     private let status = NSTextField(labelWithString: "")
     private let hiddenButton = NSButton()
     private let viewModeButton = NSPopUpButton()
@@ -32,6 +33,7 @@ final class SecondaryBrowserPane: NSView, NSTableViewDataSource, NSTableViewDele
     func snapshot() -> TabSnapshot { savePosition(); return model.snapshot }
     var selectedItems: [FileItem] {
         if model.viewMode == .grid { return gridView.selectedItems }
+        if model.viewMode == .list { return listView.selectedItems }
         return table.selectedRowIndexes.compactMap { model.items.indices.contains($0) ? model.items[$0] : nil }
     }
     func setActive(_ active: Bool) {
@@ -42,12 +44,18 @@ final class SecondaryBrowserPane: NSView, NSTableViewDataSource, NSTableViewDele
     func goUp() { activate(); if let location = model.location { navigate(location.deletingLastPathComponent()) } }
     func refresh() { activate(); savePosition(); model.reload() }
     func focusPath() { activate(); window?.makeFirstResponder(pathField); pathField.selectText(nil) }
-    func focusFiles() { activate(); if model.viewMode == .grid { gridView.focus() } else { window?.makeFirstResponder(table) } }
+    func focusFiles() {
+        activate()
+        if model.viewMode == .grid { gridView.focus() }
+        else if model.viewMode == .list { listView.focus() }
+        else { window?.makeFirstResponder(table) }
+    }
     func stopLoading() { model.cancelLoad() }
     func setViewMode(_ mode: BrowserViewMode) { activate(); model.setViewMode(mode) }
-    func setContextMenu(_ menu: NSMenu?) { gridView.contextMenu = menu }
+    func setContextMenu(_ menu: NSMenu?) { gridView.contextMenu = menu; listView.contextMenu = menu }
     func openSelected() {
         if model.viewMode == .grid, let item = gridView.selectedItems.first { openGridItem(item) }
+        else if model.viewMode == .list, let item = listView.selectedItems.first { openGridItem(item) }
         else { openSelection(nil) }
     }
     func open(_ url: URL?) { activate(); navigate(url) }
@@ -98,12 +106,14 @@ final class SecondaryBrowserPane: NSView, NSTableViewDataSource, NSTableViewDele
         table.sortDescriptors = [NSSortDescriptor(key: model.sortOrder.field.rawValue, ascending: model.sortOrder.ascending)]
         scroll.documentView = table; scroll.hasVerticalScroller = true; scroll.hasHorizontalScroller = true
         let browserContent = NSView(); browserContent.translatesAutoresizingMaskIntoConstraints = false
-        scroll.translatesAutoresizingMaskIntoConstraints = false; browserContent.addSubview(scroll); browserContent.addSubview(gridView)
+        scroll.translatesAutoresizingMaskIntoConstraints = false; browserContent.addSubview(scroll); browserContent.addSubview(gridView); browserContent.addSubview(listView)
         NSLayoutConstraint.activate([
             scroll.leadingAnchor.constraint(equalTo: browserContent.leadingAnchor), scroll.trailingAnchor.constraint(equalTo: browserContent.trailingAnchor),
             scroll.topAnchor.constraint(equalTo: browserContent.topAnchor), scroll.bottomAnchor.constraint(equalTo: browserContent.bottomAnchor),
             gridView.leadingAnchor.constraint(equalTo: browserContent.leadingAnchor), gridView.trailingAnchor.constraint(equalTo: browserContent.trailingAnchor),
-            gridView.topAnchor.constraint(equalTo: browserContent.topAnchor), gridView.bottomAnchor.constraint(equalTo: browserContent.bottomAnchor)
+            gridView.topAnchor.constraint(equalTo: browserContent.topAnchor), gridView.bottomAnchor.constraint(equalTo: browserContent.bottomAnchor),
+            listView.leadingAnchor.constraint(equalTo: browserContent.leadingAnchor), listView.trailingAnchor.constraint(equalTo: browserContent.trailingAnchor),
+            listView.topAnchor.constraint(equalTo: browserContent.topAnchor), listView.bottomAnchor.constraint(equalTo: browserContent.bottomAnchor)
         ])
         gridView.onSelectionChange = { [weak self] selection in
             guard let self, !self.rendering, self.model.viewMode == .grid else { return }
@@ -116,6 +126,16 @@ final class SecondaryBrowserPane: NSView, NSTableViewDataSource, NSTableViewDele
             guard let self, let destination = item?.isBrowsable == true ? item?.url : self.model.location else { return false }
             self.activate()
             return self.onFileDrop?(sources, destination, intent) ?? false
+        }
+        listView.onSelectionChange = { [weak self] selection in
+            guard let self, !self.rendering, self.model.viewMode == .list else { return }
+            self.model.savePosition(selection: selection, scrollOffset: self.listView.currentScrollOffset()); self.render()
+        }
+        listView.onActivate = { [weak self] in self?.activate() }
+        listView.onOpen = { [weak self] item in self?.openGridItem(item) }
+        listView.onFileDrop = { [weak self] sources, item, intent in
+            guard let self, let destination = item?.isBrowsable == true ? item?.url : self.model.location else { return false }
+            self.activate(); return self.onFileDrop?(sources, destination, intent) ?? false
         }
         stack.addArrangedSubview(browserContent)
         status.font = .systemFont(ofSize: 11); status.textColor = .secondaryLabelColor
@@ -131,9 +151,13 @@ final class SecondaryBrowserPane: NSView, NSTableViewDataSource, NSTableViewDele
     private func activate() { onActivate?() }
     private func savePosition() {
         guard !rendering else { return }
-        let grid = model.viewMode == .grid
-        let selection = grid ? Set(gridView.selectedItems.map(\.id)) : Set(table.selectedRowIndexes.compactMap { model.items.indices.contains($0) ? model.items[$0].id : nil })
-        model.savePosition(selection: selection, scrollOffset: grid ? gridView.currentScrollOffset() : scroll.contentView.bounds.origin.y)
+        let selection: Set<String>; let offset: Double
+        switch model.viewMode {
+        case .grid: selection = Set(gridView.selectedItems.map(\.id)); offset = gridView.currentScrollOffset()
+        case .list: selection = Set(listView.selectedItems.map(\.id)); offset = listView.currentScrollOffset()
+        default: selection = Set(table.selectedRowIndexes.compactMap { model.items.indices.contains($0) ? model.items[$0].id : nil }); offset = scroll.contentView.bounds.origin.y
+        }
+        model.savePosition(selection: selection, scrollOffset: offset)
     }
     private func navigate(_ url: URL?) { savePosition(); model.navigate(url) }
     private func modelChanged() {
@@ -147,7 +171,8 @@ final class SecondaryBrowserPane: NSView, NSTableViewDataSource, NSTableViewDele
         rendering = true; defer { rendering = false }
         pathField.stringValue = model.location?.path ?? ""; table.reloadData()
         let showsGrid = model.viewMode == .grid
-        scroll.isHidden = showsGrid; gridView.isHidden = !showsGrid
+        let showsList = model.viewMode == .list
+        scroll.isHidden = showsGrid || showsList; gridView.isHidden = !showsGrid; listView.isHidden = !showsList
         hiddenButton.contentTintColor = model.showHidden ? .systemBlue : .labelColor
         if let item = viewModeButton.itemArray.first(where: {
             ($0.representedObject as? String) == model.viewMode.rawValue
@@ -156,6 +181,8 @@ final class SecondaryBrowserPane: NSView, NSTableViewDataSource, NSTableViewDele
         if table.sortDescriptors.first != expectedSort { table.sortDescriptors = [expectedSort] }
         table.selectRowIndexes(IndexSet(model.items.indices.filter { model.history.current.selection.contains(model.items[$0].id) }), byExtendingSelection: false)
         gridView.update(items: model.items, selection: model.history.current.selection,
+                        scrollOffset: model.history.current.scrollOffset)
+        listView.update(items: model.items, selection: model.history.current.selection,
                         scrollOffset: model.history.current.scrollOffset)
         if !model.isLoading { scroll.contentView.scroll(to: NSPoint(x: 0, y: model.history.current.scrollOffset)); scroll.reflectScrolledClipView(scroll.contentView) }
         if model.isLoading { status.stringValue = L("읽는 중…", "Loading…") }

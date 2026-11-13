@@ -10,6 +10,7 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
     private let table = BrowserFileTable()
     private let scroll = NSScrollView()
     private let gridView = FileGridView()
+    private let listView = FileListView()
     private let pathField = NSComboBox()
     private let status = NSTextField(labelWithString: "")
     private let message = NSTextField(wrappingLabelWithString: "")
@@ -32,10 +33,14 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
     private var primaryPaneID = UUID()
     private var secondaryPaneID: UUID?
     private var activeModel: BrowserModel { secondaryActive ? secondaryPane?.model ?? model : model }
+    private var primarySelectedItems: [FileItem] {
+        if model.viewMode == .grid { return gridView.selectedItems }
+        if model.viewMode == .list { return listView.selectedItems }
+        return table.selectedRowIndexes.compactMap { model.items.indices.contains($0) ? model.items[$0] : nil }
+    }
     private var activeSelectedItems: [FileItem] {
         if secondaryActive { return secondaryPane?.selectedItems ?? [] }
-        if model.viewMode == .grid { return gridView.selectedItems }
-        return table.selectedRowIndexes.compactMap { model.items.indices.contains($0) ? model.items[$0] : nil }
+        return primarySelectedItems
     }
     private func refreshActivePane() { if secondaryActive { secondaryPane?.refresh() } else { refresh(nil) } }
     private let preferences: BrowserPreferences
@@ -287,6 +292,8 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         NSLayoutConstraint.activate([scroll.leadingAnchor.constraint(equalTo: content.leadingAnchor), scroll.trailingAnchor.constraint(equalTo: content.trailingAnchor), scroll.topAnchor.constraint(equalTo: content.topAnchor), scroll.bottomAnchor.constraint(equalTo: content.bottomAnchor)])
         content.addSubview(gridView)
         NSLayoutConstraint.activate([gridView.leadingAnchor.constraint(equalTo: content.leadingAnchor), gridView.trailingAnchor.constraint(equalTo: content.trailingAnchor), gridView.topAnchor.constraint(equalTo: content.topAnchor), gridView.bottomAnchor.constraint(equalTo: content.bottomAnchor)])
+        content.addSubview(listView)
+        NSLayoutConstraint.activate([listView.leadingAnchor.constraint(equalTo: content.leadingAnchor), listView.trailingAnchor.constraint(equalTo: content.trailingAnchor), listView.topAnchor.constraint(equalTo: content.topAnchor), listView.bottomAnchor.constraint(equalTo: content.bottomAnchor)])
         gridView.onSelectionChange = { [weak self] selection in
             guard let self, !self.rendering, self.model.viewMode == .grid else { return }
             self.model.savePosition(selection: selection, scrollOffset: self.gridView.currentScrollOffset())
@@ -299,6 +306,17 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
             if intent == .move { self.prepareMove(sources: sources, destination: destination) }
             else { self.prepareCopy(sources: sources, destination: destination) }
             return true
+        }
+        listView.onSelectionChange = { [weak self] selection in
+            guard let self, !self.rendering, self.model.viewMode == .list else { return }
+            self.model.savePosition(selection: selection, scrollOffset: self.listView.currentScrollOffset()); self.render()
+        }
+        listView.onActivate = { [weak self] in self?.setSecondaryActive(false) }
+        listView.onOpen = { [weak self] item in self?.openRenderedItem(item) }
+        listView.onFileDrop = { [weak self] sources, item, intent in
+            guard let self, let destination = item?.isBrowsable == true ? item?.url : self.model.location else { return false }
+            if intent == .move { self.prepareMove(sources: sources, destination: destination) }
+            else { self.prepareCopy(sources: sources, destination: destination) }; return true
         }
         let menu = NSMenu()
         let folder = menu.addItem(withTitle: L("새 폴더…", "New Folder…"), action: #selector(createFolder(_:)), keyEquivalent: ""); folder.target = self
@@ -317,7 +335,7 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         restore.isEnabled = false
         permanentDelete.isEnabled = false
         let reveal = menu.addItem(withTitle: L("Finder에서 보기", "Reveal in Finder"), action: #selector(revealSelection(_:)), keyEquivalent: ""); reveal.target = self
-        table.menu = menu; gridView.contextMenu = menu
+        table.menu = menu; gridView.contextMenu = menu; listView.contextMenu = menu
     }
     private func configure(_ b: NSButton, _ symbol: String, _ title: String, _ action: Selector) {
         b.image = NSImage(systemSymbolName: symbol, accessibilityDescription: title)
@@ -451,9 +469,13 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
     private func savePosition(allowWhileLoading: Bool = false) {
         // Partial rows may not contain the selection awaiting history restoration.
         guard !rendering, allowWhileLoading || (!model.isLoading && !model.wasCancelled) else { return }
-        let grid = model.viewMode == .grid
-        let ids = grid ? Set(gridView.selectedItems.map(\.id)) : Set(table.selectedRowIndexes.compactMap { model.items.indices.contains($0) ? model.items[$0].id : nil })
-        model.savePosition(selection: ids, scrollOffset: grid ? gridView.currentScrollOffset() : scroll.contentView.bounds.origin.y)
+        let ids: Set<String>; let offset: Double
+        switch model.viewMode {
+        case .grid: ids = Set(gridView.selectedItems.map(\.id)); offset = gridView.currentScrollOffset()
+        case .list: ids = Set(listView.selectedItems.map(\.id)); offset = listView.currentScrollOffset()
+        default: ids = Set(table.selectedRowIndexes.compactMap { model.items.indices.contains($0) ? model.items[$0].id : nil }); offset = scroll.contentView.bounds.origin.y
+        }
+        model.savePosition(selection: ids, scrollOffset: offset)
     }
     private func navigate(_ url: URL?) {
         completionTask?.cancel(); completionGeneration += 1
@@ -487,8 +509,10 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         refreshButton.image = NSImage(systemSymbolName: model.isLoading ? "xmark" : "arrow.clockwise", accessibilityDescription: refreshTitle)
         refreshButton.toolTip = refreshTitle; refreshButton.setAccessibilityLabel(refreshTitle)
         let showsGrid = model.location != nil && model.viewMode == .grid
-        scroll.isHidden = model.location == nil || showsGrid
+        let showsList = model.location != nil && model.viewMode == .list
+        scroll.isHidden = model.location == nil || showsGrid || showsList
         gridView.isHidden = model.location == nil || !showsGrid
+        listView.isHidden = model.location == nil || !showsList
         homeScroll.isHidden = model.location != nil
         if model.location == nil { lastRecordedLocation = nil; buildHome() }
         var revealEntry = false
@@ -503,6 +527,8 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         let selected = IndexSet(model.items.indices.filter { model.history.current.selection.contains(model.items[$0].id) })
         table.selectRowIndexes(selected, byExtendingSelection: false)
         gridView.update(items: model.items, selection: model.history.current.selection,
+                        scrollOffset: model.history.current.scrollOffset)
+        listView.update(items: model.items, selection: model.history.current.selection,
                         scrollOffset: model.history.current.scrollOffset)
         if !model.isLoading {
             scroll.contentView.scroll(to: NSPoint(x: 0, y: model.history.current.scrollOffset))
@@ -527,13 +553,13 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         }
         updateStatus()
         if model.location != nil && window?.firstResponder === window {
-            if showsGrid { gridView.focus() } else { window?.makeFirstResponder(table) }
+            if showsGrid { gridView.focus() } else if showsList { listView.focus() } else { window?.makeFirstResponder(table) }
         }
     }
     private func updateStatus() {
         if model.location == nil { status.stringValue = L("준비됨", "Ready"); return }
         status.stringValue = "\(model.items.count) " + L("개 항목", "items")
-        let selectedItems = model.viewMode == .grid ? gridView.selectedItems : table.selectedRowIndexes.compactMap { model.items.indices.contains($0) ? model.items[$0] : nil }
+        let selectedItems = primarySelectedItems
         if !selectedItems.isEmpty {
             status.stringValue += "  ·  \(selectedItems.count) " + L("개 선택", "selected")
             let bytes = selectedItems.reduce(Int64(0)) { total, item in
@@ -668,6 +694,7 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
     @objc func openSelection(_ sender: Any?) {
         if secondaryActive { secondaryPane?.openSelected(); return }
         if model.viewMode == .grid, let item = gridView.selectedItems.first { openGridItem(item); return }
+        if model.viewMode == .list, let item = listView.selectedItems.first { openRenderedItem(item); return }
         if sender as? NSTableView === table && table.clickedRow < 0 { return }
         let rows = table.selectedRowIndexes
         guard let first = rows.first, model.items.indices.contains(first) else { return }
@@ -676,6 +703,9 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         else { NSWorkspace.shared.open(item.url) }
     }
     private func openGridItem(_ item: FileItem) {
+        openRenderedItem(item)
+    }
+    private func openRenderedItem(_ item: FileItem) {
         if item.isBrowsable { navigate(item.url) }
         else { NSWorkspace.shared.open(item.url) }
     }
@@ -1323,6 +1353,7 @@ extension BrowserWindow {
         if secondaryActive { secondaryPane?.focusFiles() }
         else if model.location == nil { focusSidebar(nil) }
         else if model.viewMode == .grid { gridView.focus() }
+        else if model.viewMode == .list { listView.focus() }
         else { window?.makeFirstResponder(table) }
     }
     @objc func focusSidebar(_ sender: Any?) {
@@ -1509,6 +1540,22 @@ extension BrowserWindow {
                 try await Task.sleep(for: .milliseconds(10))
             }
             checks["gridModeRestoredAfterNavigation"] = controller.model.viewMode == .grid && controller.model.location == fixture.standardizedFileURL
+            controller.model.savePosition(selection: [gridFolder.path], scrollOffset: 0)
+            controller.model.setViewMode(.list)
+            controller.render(); root.layoutSubtreeIfNeeded(); root.displayIfNeeded()
+            checks["listVisible"] = !controller.listView.isHidden && controller.scroll.isHidden
+            checks["listSelectionIdentity"] = controller.listView.selectedItems.map(\.id) == [gridFolder.path]
+            controller.focusFiles(nil)
+            checks["listFocus"] = (window.firstResponder as? NSView)?.isDescendant(of: controller.listView) == true
+            try capture("files-list")
+            controller.openRenderedItem(controller.listView.selectedItems[0])
+            checks["listFolderOpen"] = controller.model.location == gridFolder.standardizedFileURL
+            controller.goBack(nil)
+            let listBackStart = ContinuousClock.now
+            while controller.model.isLoading && listBackStart.duration(to: .now) < .seconds(30) {
+                try await Task.sleep(for: .milliseconds(10))
+            }
+            checks["listModeRestoredAfterNavigation"] = controller.model.viewMode == .list && controller.model.location == fixture.standardizedFileURL
             controller.model.setViewMode(.details)
             controller.navigate(fixture.appendingPathComponent("missing-directory"))
             let errorStart = ContinuousClock.now
@@ -1776,6 +1823,19 @@ extension BrowserWindow {
             let secondaryBackStart = ContinuousClock.now
             while secondary.model.isLoading && elapsed(secondaryBackStart) < 10 { try await Task.sleep(for: .milliseconds(10)) }
             checks["secondaryGridSession"] = secondary.snapshot().viewMode == .grid
+            guard let secondaryMergeAgain = secondary.model.items.first(where: { $0.url.standardizedFileURL == mergeTarget.standardizedFileURL }) else {
+                throw CocoaError(.fileNoSuchFile)
+            }
+            secondary.model.savePosition(selection: [secondaryMergeAgain.id], scrollOffset: 0)
+            secondary.model.setViewMode(.list)
+            content.layoutSubtreeIfNeeded(); content.displayIfNeeded()
+            checks["secondaryListSelection"] = secondary.selectedItems.map(\.id) == [secondaryMergeAgain.id]
+            secondary.openSelected()
+            checks["secondaryListFolderOpen"] = secondary.model.location == mergeTarget.standardizedFileURL
+            secondary.goBack()
+            let secondaryListBackStart = ContinuousClock.now
+            while secondary.model.isLoading && elapsed(secondaryListBackStart) < 10 { try await Task.sleep(for: .milliseconds(10)) }
+            checks["secondaryListSession"] = secondary.snapshot().viewMode == .list
             let undoMenu = NSMenuItem(title: "", action: #selector(undoLastCopy(_:)), keyEquivalent: "")
             checks["undoMenuAction"] = undoMenu.action == #selector(undoLastCopy(_:))
             checks["undoMenuEnabled"] = controller.canUndoCopy(journalDirectory: journals)
