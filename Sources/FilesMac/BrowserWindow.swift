@@ -1197,35 +1197,46 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         alert.beginSheetModal(for: window) { [self] response in
             guard response == .alertFirstButtonReturn, !Self.entryOperationRunning, !CopyWindow.isRunning else { return }
             let name = field.stringValue
-            Self.entryOperationRunning = true
-            Task {
-                defer { Self.entryOperationRunning = false }
-                do {
-                    let journal = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-                        .appendingPathComponent(Bundle.main.bundleIdentifier ?? "org.taro6222.files-for-mac")
-                        .appendingPathComponent("operations")
-                    let result: EntryOperationResult
-                    if let source {
-                        result = try await EntryOperations.rename(source.url, to: name, expectedIdentity: source.identity, journalDirectory: journal)
-                    } else {
-                        result = try await EntryOperations.createFolder(in: parent, name: name, journalDirectory: journal)
-                    }
-                    if targetModel.location == parent {
-                        if targetModel === model { pendingEntrySelection = result.target.standardizedFileURL }
-                        if name.hasPrefix(".") { preferences.setShowHidden(true) }
-                        targetModel.reload()
-                    }
-                    if let warning = result.journalWarning { showEntryError(warning) }
-                } catch {
-                    let message: String
-                    switch error {
-                    case EntryOperationError.invalidName: message = L("이름을 입력하세요. /, :, NUL 및 . 또는 .. 이름은 사용할 수 없습니다.", "Enter a name without /, :, NUL; . and .. are not allowed.")
-                    case EntryOperationError.conflict: message = L("같은 이름의 항목이 있습니다. 기존 항목은 변경하지 않았습니다.", "An item with this name exists. It was not changed.")
-                    case EntryOperationError.sourceChanged: message = L("원본 또는 상위 폴더가 변경됐습니다. 새로고침 후 다시 시도하세요.", "The source or parent changed. Refresh and try again.")
-                    default: message = error.localizedDescription
-                    }
-                    showEntryError(message)
+            if let source, preferences.showFileExtensionWarning,
+               changesFileExtension(originalName: source.name, newName: name, isDirectory: source.isDirectory) {
+                let warning = NSAlert(); warning.messageText = L("파일 확장자를 변경하시겠습니까?", "Change the file extension?")
+                warning.informativeText = L("확장자를 변경하면 파일을 여는 앱이 달라지거나 파일을 사용하지 못할 수 있습니다.", "Changing the extension may change which app opens the file or make it unusable.")
+                warning.addButton(withTitle: L("확장자 변경", "Change Extension")); warning.addButton(withTitle: L("취소", "Cancel"))
+                warning.beginSheetModal(for: window) { [weak self] response in
+                    if response == .alertFirstButtonReturn { self?.executeEntryNameChange(source: source, name: name, parent: parent, targetModel: targetModel) }
                 }
+            } else {
+                executeEntryNameChange(source: source, name: name, parent: parent, targetModel: targetModel)
+            }
+        }
+    }
+    private func executeEntryNameChange(source: FileItem?, name: String, parent: URL, targetModel: BrowserModel) {
+        guard !Self.entryOperationRunning, !CopyWindow.isRunning else { return }
+        Self.entryOperationRunning = true
+        Task {
+            defer { Self.entryOperationRunning = false }
+            do {
+                let journal = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+                    .appendingPathComponent(Bundle.main.bundleIdentifier ?? "org.taro6222.files-for-mac")
+                    .appendingPathComponent("operations")
+                let result: EntryOperationResult
+                if let source { result = try await EntryOperations.rename(source.url, to: name, expectedIdentity: source.identity, journalDirectory: journal) }
+                else { result = try await EntryOperations.createFolder(in: parent, name: name, journalDirectory: journal) }
+                if targetModel.location == parent {
+                    if targetModel === model { pendingEntrySelection = result.target.standardizedFileURL }
+                    if name.hasPrefix(".") { preferences.setShowHidden(true) }
+                    targetModel.reload()
+                }
+                if let warning = result.journalWarning { showEntryError(warning) }
+            } catch {
+                let message: String
+                switch error {
+                case EntryOperationError.invalidName: message = L("이름을 입력하세요. /, :, NUL 및 . 또는 .. 이름은 사용할 수 없습니다.", "Enter a name without /, :, NUL; . and .. are not allowed.")
+                case EntryOperationError.conflict: message = L("같은 이름의 항목이 있습니다. 기존 항목은 변경하지 않았습니다.", "An item with this name exists. It was not changed.")
+                case EntryOperationError.sourceChanged: message = L("원본 또는 상위 폴더가 변경됐습니다. 새로고침 후 다시 시도하세요.", "The source or parent changed. Refresh and try again.")
+                default: message = error.localizedDescription
+                }
+                showEntryError(message)
             }
         }
     }
@@ -1964,14 +1975,16 @@ extension BrowserWindow {
                 delegate.showGeneralSettings(nil); try await Task.sleep(for: .milliseconds(50)); let widgetsBefore = delegate.qaGeneralWidgetStates
                 let sizeUnitBefore = delegate.qaGeneralSizeUnit; let newTabBefore = delegate.qaGeneralOpenFoldersInNewTab
                 let revealBefore = delegate.qaGeneralScrollToPreviousFolderOnUp
-                delegate.qaToggleGeneralWidgets(); delegate.qaToggleGeneralSizeUnit(); delegate.qaToggleGeneralOpenFoldersInNewTab(); delegate.qaToggleGeneralScrollToPreviousFolderOnUp(); let widgetsAfter = delegate.qaGeneralWidgetStates
+                let extensionWarningBefore = delegate.qaGeneralShowFileExtensionWarning
+                delegate.qaToggleGeneralWidgets(); delegate.qaToggleGeneralSizeUnit(); delegate.qaToggleGeneralOpenFoldersInNewTab(); delegate.qaToggleGeneralScrollToPreviousFolderOnUp(); delegate.qaToggleGeneralShowFileExtensionWarning(); let widgetsAfter = delegate.qaGeneralWidgetStates
                 checks["generalSettingsWindow"] = delegate.qaGeneralSettingsVisible && widgetsBefore != nil && widgetsAfter != nil
                     && widgetsAfter!.0 != widgetsBefore!.0 && widgetsAfter!.1 != widgetsBefore!.1 && widgetsAfter!.2 != widgetsBefore!.2
                     && delegate.qaGeneralSizeUnit != sizeUnitBefore
                     && delegate.qaGeneralOpenFoldersInNewTab != newTabBefore
                     && delegate.qaGeneralScrollToPreviousFolderOnUp != revealBefore
+                    && delegate.qaGeneralShowFileExtensionWarning != extensionWarningBefore
                 try capture("general-settings", view: delegate.qaGeneralSettingsContentView)
-                delegate.qaToggleGeneralWidgets(); delegate.qaToggleGeneralSizeUnit(); delegate.qaToggleGeneralOpenFoldersInNewTab(); delegate.qaToggleGeneralScrollToPreviousFolderOnUp(); delegate.qaGeneralSettingsContentView?.window?.close(); window.makeKeyAndOrderFront(nil)
+                delegate.qaToggleGeneralWidgets(); delegate.qaToggleGeneralSizeUnit(); delegate.qaToggleGeneralOpenFoldersInNewTab(); delegate.qaToggleGeneralScrollToPreviousFolderOnUp(); delegate.qaToggleGeneralShowFileExtensionWarning(); delegate.qaGeneralSettingsContentView?.window?.close(); window.makeKeyAndOrderFront(nil)
                 delegate.showArchiveCapabilities(nil); try await Task.sleep(for: .milliseconds(50))
                 checks["archiveCapabilitiesWindow"] = delegate.qaArchiveCapabilitiesVisible
                 try capture("archive-capabilities", view: delegate.qaArchiveCapabilitiesContentView)
@@ -2526,7 +2539,10 @@ extension BrowserWindow {
             checks["cancelledReadStaysStopped"] = cancellable.model.wasCancelled && !cancellable.model.isLoading
                 && cancellable.model.items.isEmpty && !cancellable.message.isHidden
             cancellable.retryButton.performClick(nil)
-            try await Task.sleep(for: .milliseconds(400))
+            let cancelledRetryStart = ContinuousClock.now
+            while cancellable.model.isLoading && elapsed(cancelledRetryStart) < 3 {
+                try await Task.sleep(for: .milliseconds(10))
+            }
             checks["cancelledReadRetries"] = !cancellable.model.isLoading && !cancellable.model.wasCancelled
                 && cancellable.model.items.map(\.name) == ["ready.txt"] && cancellable.recoveryActions.isHidden
             cancellable.close()

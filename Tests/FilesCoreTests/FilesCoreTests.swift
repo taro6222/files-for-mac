@@ -436,6 +436,21 @@ private struct DelayedLoader: DirectoryLoading {
     preferences.removeObserver(token)
 }
 
+@Test @MainActor func fileExtensionWarningDefaultsOnPersistsAndAvoidsDuplicateNotifications() {
+    let suite = "extension-warning-tests-\(UUID())", defaults = UserDefaults(suiteName: suite)!
+    defer { defaults.removePersistentDomain(forName: suite) }
+    let preferences = BrowserPreferences(defaults: defaults, initialFavorites: [])
+    #expect(preferences.showFileExtensionWarning)
+    var changes = 0; let token = preferences.observe { changes += 1 }
+    preferences.setShowFileExtensionWarning(false); preferences.setShowFileExtensionWarning(false)
+    #expect(!preferences.showFileExtensionWarning && changes == 1)
+    #expect(!BrowserPreferences(defaults: defaults, initialFavorites: []).showFileExtensionWarning)
+    preferences.removeObserver(token)
+    #expect(changesFileExtension(originalName: "report.txt", newName: "report.pdf", isDirectory: false))
+    #expect(!changesFileExtension(originalName: "report.TXT", newName: "report.txt", isDirectory: false))
+    #expect(!changesFileExtension(originalName: "folder.txt", newName: "folder.pdf", isDirectory: true))
+}
+
 @Test @MainActor func toolbarAndStatusBarVisibilityPersistAndNotify() {
     let suite = "chrome-visibility-tests-\(UUID())", defaults = UserDefaults(suiteName: suite)!
     defer { defaults.removePersistentDomain(forName: suite) }
@@ -487,6 +502,7 @@ private struct DelayedLoader: DirectoryLoading {
     source.setSizeUnit(.decimal)
     source.setOpenFoldersInNewTab(true)
     source.setScrollToPreviousFolderOnUp(false)
+    source.setShowFileExtensionWarning(false)
     source.setFolderViewPreference(FolderViewPreference(mode: .grid, size: .large), for: URL(fileURLWithPath: "/folder"))
     let data = try source.exportData(), destination = BrowserPreferences(defaults: secondDefaults, initialFavorites: [])
     try destination.importData(data)
@@ -496,6 +512,7 @@ private struct DelayedLoader: DirectoryLoading {
     #expect(destination.sizeUnit == .decimal)
     #expect(destination.openFoldersInNewTab)
     #expect(!destination.scrollToPreviousFolderOnUp)
+    #expect(!destination.showFileExtensionWarning)
     #expect(destination.folderViewPreference(for: URL(fileURLWithPath: "/folder")) == FolderViewPreference(mode: .grid, size: .large))
     let before = try destination.exportData()
     var object = try #require(JSONSerialization.jsonObject(with: data) as? [String: Any]); object["viewSize"] = "huge"

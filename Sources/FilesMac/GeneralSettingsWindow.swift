@@ -12,10 +12,11 @@ final class GeneralSettingsWindow: NSWindowController {
     private let sizeUnit = NSPopUpButton()
     private let openFoldersInNewTab = NSButton(checkboxWithTitle: L("폴더를 새 탭에서 열기", "Open Folders in New Tabs"), target: nil, action: nil)
     private let scrollToPreviousFolderOnUp = NSButton(checkboxWithTitle: L("상위 이동 시 이전 폴더 표시", "Reveal Previous Folder When Going Up"), target: nil, action: nil)
+    private let showFileExtensionWarning = NSButton(checkboxWithTitle: L("파일 확장자 변경 경고", "Warn When Changing File Extensions"), target: nil, action: nil)
 
     init(preferences: BrowserPreferences) {
         self.preferences = preferences
-        let panel = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 520, height: 470), styleMask: [.titled, .closable, .utilityWindow], backing: .buffered, defer: false)
+        let panel = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 520, height: 500), styleMask: [.titled, .closable, .utilityWindow], backing: .buffered, defer: false)
         super.init(window: panel); panel.title = L("일반 설정", "General Settings"); panel.isReleasedWhenClosed = false
         guard let content = panel.contentView else { return }
         let stack = NSStackView(); stack.orientation = .vertical; stack.alignment = .leading; stack.spacing = 10
@@ -32,6 +33,7 @@ final class GeneralSettingsWindow: NSWindowController {
         sizeUnit.addItems(withTitles: [L("이진 단위 (1024)", "Binary units (1024)"), L("십진 단위 (1000)", "Decimal units (1000)")]); sizeUnit.target = self; sizeUnit.action = #selector(changeSizeUnit(_:)); stack.addArrangedSubview(sizeUnit)
         configure(openFoldersInNewTab, action: #selector(changeOpenFoldersInNewTab(_:))); stack.addArrangedSubview(openFoldersInNewTab)
         configure(scrollToPreviousFolderOnUp, action: #selector(changeScrollToPreviousFolderOnUp(_:))); stack.addArrangedSubview(scrollToPreviousFolderOnUp)
+        configure(showFileExtensionWarning, action: #selector(changeShowFileExtensionWarning(_:))); stack.addArrangedSubview(showFileExtensionWarning)
         let homeTitle = NSTextField(labelWithString: L("홈 위젯", "Home Widgets")); homeTitle.font = .systemFont(ofSize: 14, weight: .semibold); stack.addArrangedSubview(homeTitle)
         configure(favorites, action: #selector(changeFavorites(_:))); configure(volumes, action: #selector(changeVolumes(_:))); configure(recent, action: #selector(changeRecent(_:)))
         stack.addArrangedSubview(favorites); stack.addArrangedSubview(volumes); stack.addArrangedSubview(recent)
@@ -46,6 +48,7 @@ final class GeneralSettingsWindow: NSWindowController {
         sizeUnit.selectItem(at: preferences.sizeUnit == .binary ? 0 : 1)
         openFoldersInNewTab.state = preferences.openFoldersInNewTab ? .on : .off
         scrollToPreviousFolderOnUp.state = preferences.scrollToPreviousFolderOnUp ? .on : .off
+        showFileExtensionWarning.state = preferences.showFileExtensionWarning ? .on : .off
         favorites.state = preferences.showHomeFavorites ? .on : .off; volumes.state = preferences.showHomeVolumes ? .on : .off; recent.state = preferences.showHomeRecent ? .on : .off
     }
     @objc private func changeContinueSession(_ sender: Any?) { preferences.setContinueLastSession(continueSession.state == .on) }
@@ -58,6 +61,7 @@ final class GeneralSettingsWindow: NSWindowController {
     @objc private func changeSizeUnit(_ sender: Any?) { preferences.setSizeUnit(sizeUnit.indexOfSelectedItem == 0 ? .binary : .decimal) }
     @objc private func changeOpenFoldersInNewTab(_ sender: Any?) { preferences.setOpenFoldersInNewTab(openFoldersInNewTab.state == .on) }
     @objc private func changeScrollToPreviousFolderOnUp(_ sender: Any?) { preferences.setScrollToPreviousFolderOnUp(scrollToPreviousFolderOnUp.state == .on) }
+    @objc private func changeShowFileExtensionWarning(_ sender: Any?) { preferences.setShowFileExtensionWarning(showFileExtensionWarning.state == .on) }
     @objc private func changeFavorites(_ sender: Any?) { preferences.setSection(.favorites, visible: favorites.state == .on) }
     @objc private func changeVolumes(_ sender: Any?) { preferences.setSection(.volumes, visible: volumes.state == .on) }
     @objc private func changeRecent(_ sender: Any?) { preferences.setSection(.recent, visible: recent.state == .on) }
@@ -67,9 +71,11 @@ final class GeneralSettingsWindow: NSWindowController {
     var qaSizeUnit: BrowserSizeUnit { preferences.sizeUnit }
     var qaOpenFoldersInNewTab: Bool { preferences.openFoldersInNewTab }
     var qaScrollToPreviousFolderOnUp: Bool { preferences.scrollToPreviousFolderOnUp }
+    var qaShowFileExtensionWarning: Bool { preferences.showFileExtensionWarning }
     func qaToggleWidgets() { favorites.performClick(nil); volumes.performClick(nil); recent.performClick(nil) }
     func qaToggleSizeUnit() { sizeUnit.selectItem(at: sizeUnit.indexOfSelectedItem == 0 ? 1 : 0); changeSizeUnit(nil) }
     func qaToggleOpenFoldersInNewTab() { openFoldersInNewTab.performClick(nil) }
     func qaToggleScrollToPreviousFolderOnUp() { scrollToPreviousFolderOnUp.performClick(nil) }
+    func qaToggleShowFileExtensionWarning() { showFileExtensionWarning.performClick(nil) }
 #endif
 }

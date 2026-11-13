@@ -331,6 +331,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     func qaToggleGeneralOpenFoldersInNewTab() { generalSettingsWindow?.qaToggleOpenFoldersInNewTab() }
     var qaGeneralScrollToPreviousFolderOnUp: Bool? { generalSettingsWindow?.qaScrollToPreviousFolderOnUp }
     func qaToggleGeneralScrollToPreviousFolderOnUp() { generalSettingsWindow?.qaToggleScrollToPreviousFolderOnUp() }
+    var qaGeneralShowFileExtensionWarning: Bool? { generalSettingsWindow?.qaShowFileExtensionWarning }
+    func qaToggleGeneralShowFileExtensionWarning() { generalSettingsWindow?.qaToggleShowFileExtensionWarning() }
     func qaCreateRemoteProfile() { remoteConnectionsWindow?.qaCreateProfile() }
 #endif
 }
