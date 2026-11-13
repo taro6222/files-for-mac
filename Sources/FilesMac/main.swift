@@ -14,6 +14,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     private var appearanceSettingsWindow: AppearanceSettingsWindow?
     private var archiveCapabilitiesWindow: ArchiveCapabilitiesWindow?
     private var remoteConnectionsWindow: RemoteConnectionsWindow?
+    private var gitWindow: GitWindow?
     private var preferencesToken: UUID?
     func applicationDidFinishLaunching(_ notification: Notification) {
         applyAppearance()
@@ -104,6 +105,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         }
         remoteConnectionsWindow?.present()
     }
+    @objc func showGitStatus(_ sender: Any?) {
+        guard let location = currentBrowser?.activeLocation else { return }
+        if gitWindow == nil { gitWindow = GitWindow() }
+        gitWindow?.present(location: location)
+    }
     private func applyAppearance() { NSApp.appearance = BrowserWindow.appearance(BrowserPreferences.shared.appearance) }
     private func configureShortcuts() {
         let entries = CommandPaletteCatalog.entries(from: NSApp.mainMenu)
@@ -118,6 +124,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
         if menuItem.action == #selector(reopenClosedTab(_:)) { return !closedWorkspaces.isEmpty }
         if menuItem.action == #selector(duplicateTab(_:)) { return currentBrowser != nil }
+        if menuItem.action == #selector(showGitStatus(_:)) { return currentBrowser?.activeLocation != nil }
         return true
     }
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
@@ -146,6 +153,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         archiveSupport.target = self
         let remoteConnections = appMenu.addItem(withTitle: L("원격 연결…", "Remote Connections…"), action: #selector(showRemoteConnections(_:)), keyEquivalent: "")
         remoteConnections.target = self
+        let gitStatus = appMenu.addItem(withTitle: L("Git 상태…", "Git Status…"), action: #selector(showGitStatus(_:)), keyEquivalent: "")
+        gitStatus.target = self
         appMenu.addItem(.separator())
         appMenu.addItem(withTitle: L("Files macOS 종료", "Quit Files macOS"), action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         let fileItem = NSMenuItem(); fileItem.title = L("파일", "File"); menu.addItem(fileItem)

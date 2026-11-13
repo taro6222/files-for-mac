@@ -51,6 +51,7 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
     private var primaryPaneID = UUID()
     private var secondaryPaneID: UUID?
     private var activeModel: BrowserModel { secondaryActive ? secondaryPane?.model ?? model : model }
+    var activeLocation: URL? { activeModel.location }
     private var primarySelectedItems: [FileItem] {
         if primaryRenderedViewMode == .grid { return gridView.selectedItems }
         if primaryRenderedViewMode == .list { return listView.selectedItems }
@@ -1850,6 +1851,13 @@ extension BrowserWindow {
                 checks["remoteBrowserNavigation"] = openedRemoteFolder && remoteBack && remoteForward && remoteUp
                 remotePane.qaSelect(row: 1); remotePane.qaOpen(row: 1); checks["remoteBrowserDownloadSelection"] = remotePane.qaDownloadEnabled && remotePane.qaDeleteUnavailable && requestedRemoteDownload == "/team/한글 file.txt"
                 try capture("remote-browser", view: remotePane.qaContentView); remotePane.close(); window.makeKeyAndOrderFront(nil)
+                let gitPanel = GitWindow(); gitPanel.present(location: URL(fileURLWithPath: fm.currentDirectoryPath, isDirectory: true))
+                let gitLoad = ContinuousClock.now
+                while !gitPanel.qaLoaded && gitLoad.duration(to: .now) < .seconds(10) { try await Task.sleep(for: .milliseconds(10)) }
+                checks["gitWindow"] = gitPanel.window?.isVisible == true && gitPanel.qaLoaded && gitPanel.qaBranch != nil
+                checks["gitAccessibility"] = gitPanel.qaAccessibilityReady
+                checks["gitMenuCommand"] = paletteEntries.contains { $0.item.action == #selector(AppDelegate.showGitStatus(_:)) }
+                try capture("git-status", view: gitPanel.window?.contentView); gitPanel.close(); window.makeKeyAndOrderFront(nil)
             } else { checks["shortcutSettingsWindow"] = false }
             controller.showToolbarSettings(nil); try await Task.sleep(for: .milliseconds(50))
             checks["toolbarSettingsWindow"] = controller.toolbarSettingsWindow?.window?.isVisible == true
