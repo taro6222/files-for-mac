@@ -345,6 +345,7 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
             if key != "git" { column.sortDescriptorPrototype = NSSortDescriptor(key: key, ascending: true) }
             table.addTableColumn(column)
         }
+        applyColumnVisibility()
         table.sortDescriptors = [NSSortDescriptor(key: "name", ascending: true)]
         scroll.documentView = table; scroll.hasVerticalScroller = true; scroll.hasHorizontalScroller = true
         scroll.translatesAutoresizingMaskIntoConstraints = false; content.addSubview(scroll)
@@ -1607,6 +1608,7 @@ extension BrowserWindow {
         toolbar.isHidden = !preferences.showToolbar
         bottom.isHidden = !preferences.showStatusBar
         sidebarContainer.isHidden = !preferences.showSidebar
+        applyColumnVisibility()
         rootSplit.adjustSubviews()
         rootSplit.layoutSubtreeIfNeeded()
         buildSidebar()
@@ -1641,6 +1643,10 @@ extension BrowserWindow {
             (L("상태 막대 표시", "Show Status Bar"), #selector(toggleStatusBar(_:)), preferences.showStatusBar),
             (L("파일 확장자 표시", "Show File Extensions"), #selector(toggleExtensions(_:)), preferences.showExtensions),
             (L("숨김 항목 표시", "Show Hidden Files"), #selector(toggleHidden(_:)), preferences.showHidden),
+            (L("수정일 열 표시", "Show Date Modified Column"), #selector(toggleDateColumn(_:)), preferences.showDateColumn),
+            (L("종류 열 표시", "Show Kind Column"), #selector(toggleTypeColumn(_:)), preferences.showTypeColumn),
+            (L("크기 열 표시", "Show Size Column"), #selector(toggleSizeColumn(_:)), preferences.showSizeColumn),
+            (L("Git 상태 열 표시", "Show Git Status Column"), #selector(toggleGitColumn(_:)), preferences.showGitStatusColumn),
             (L("홈: 빠른 접근", "Home: Quick Access"), #selector(toggleHomeFavorites(_:)), preferences.showHomeFavorites),
             (L("홈: 드라이브", "Home: Drives"), #selector(toggleHomeVolumes(_:)), preferences.showHomeVolumes),
             (L("홈: 최근 위치", "Home: Recent Locations"), #selector(toggleHomeRecent(_:)), preferences.showHomeRecent)
@@ -1673,6 +1679,16 @@ extension BrowserWindow {
     @objc private func toggleSidebarVisibility(_ sender: Any?) { preferences.setShowSidebar(!preferences.showSidebar) }
     @objc private func toggleToolbar(_ sender: Any?) { preferences.setShowToolbar(!preferences.showToolbar) }
     @objc private func toggleStatusBar(_ sender: Any?) { preferences.setShowStatusBar(!preferences.showStatusBar) }
+    @objc private func toggleDateColumn(_ sender: Any?) { preferences.setShowDateColumn(!preferences.showDateColumn) }
+    @objc private func toggleTypeColumn(_ sender: Any?) { preferences.setShowTypeColumn(!preferences.showTypeColumn) }
+    @objc private func toggleSizeColumn(_ sender: Any?) { preferences.setShowSizeColumn(!preferences.showSizeColumn) }
+    @objc private func toggleGitColumn(_ sender: Any?) { preferences.setShowGitStatusColumn(!preferences.showGitStatusColumn) }
+    private func applyColumnVisibility() {
+        table.tableColumn(withIdentifier: .init("modified"))?.isHidden = !preferences.showDateColumn
+        table.tableColumn(withIdentifier: .init("kind"))?.isHidden = !preferences.showTypeColumn
+        table.tableColumn(withIdentifier: .init("size"))?.isHidden = !preferences.showSizeColumn
+        table.tableColumn(withIdentifier: .init("git"))?.isHidden = !preferences.showGitStatusColumn
+    }
     @objc private func setViewSize(_ sender: NSMenuItem) {
         guard let raw = sender.representedObject as? String, let size = BrowserViewSize(rawValue: raw) else { return }
         if let location = model.location, preferences.folderViewPreference(for: location) != nil {
@@ -1899,7 +1915,8 @@ extension BrowserWindow {
     var qaSidebarVisible: Bool { !sidebarContainer.isHidden }
     var qaGitLoading: Bool { gitTask != nil }
     var qaGitMarkedRows: Int { model.items.filter { !gitStatus(for: $0).isEmpty }.count }
-    var qaGitColumnVisible: Bool { table.tableColumns.contains { $0.identifier.rawValue == "git" } }
+    var qaGitColumnVisible: Bool { table.tableColumns.contains { $0.identifier.rawValue == "git" && !$0.isHidden } }
+    var qaVisibleDetailColumns: Set<String> { Set(table.tableColumns.filter { !$0.isHidden }.map { $0.identifier.rawValue }) }
 #endif
     static func runUIVerification(output: String) async {
         let fm = FileManager.default
@@ -2049,11 +2066,13 @@ extension BrowserWindow {
                 try capture("git-clone", view: clonePanel.window?.contentView); clonePanel.close(); window.makeKeyAndOrderFront(nil)
                 let qaGitFile = cloneDestination.appendingPathComponent("qa-untracked.txt")
                 try Data("Git column QA".utf8).write(to: qaGitFile, options: .atomic)
+                preferences.setShowGitStatusColumn(true)
                 let gitList = BrowserWindow(preferences: preferences, restoresFrame: false, initialLocation: cloneDestination, cloudProvider: qaCloudProvider)
                 gitList.showWindow(nil); let gitListWait = ContinuousClock.now
                 while (gitList.model.isLoading || gitList.qaGitLoading) && gitListWait.duration(to: .now) < .seconds(15) { try await Task.sleep(for: .milliseconds(20)) }
                 checks["gitFileColumn"] = gitList.qaGitColumnVisible && gitList.qaGitMarkedRows > 0
                 try capture("git-file-column", view: gitList.window?.contentView); gitList.close(); window.makeKeyAndOrderFront(nil)
+                preferences.setShowGitStatusColumn(false)
             } else { checks["shortcutSettingsWindow"] = false }
             controller.showToolbarSettings(nil); try await Task.sleep(for: .milliseconds(50))
             checks["toolbarSettingsWindow"] = controller.toolbarSettingsWindow?.window?.isVisible == true
@@ -2077,6 +2096,10 @@ extension BrowserWindow {
             checks["browserChromeVisibilityPreference"] = controller.toolbar.isHidden && controller.bottom.isHidden && !controller.qaSidebarVisible
             preferences.setShowToolbar(true); preferences.setShowStatusBar(true); preferences.setShowSidebar(true)
             checks["browserChromeVisibilityRestored"] = !controller.toolbar.isHidden && !controller.bottom.isHidden && controller.qaSidebarVisible
+            preferences.setShowDateColumn(false); preferences.setShowTypeColumn(false); preferences.setShowSizeColumn(false); preferences.setShowGitStatusColumn(true)
+            checks["detailColumnVisibilityPreference"] = controller.qaVisibleDetailColumns.isSuperset(of: ["name", "git"])
+                && controller.qaVisibleDetailColumns.isDisjoint(with: ["modified", "kind", "size"])
+            preferences.setShowDateColumn(true); preferences.setShowTypeColumn(true); preferences.setShowSizeColumn(true); preferences.setShowGitStatusColumn(false)
             let optionsIndex = preferences.toolbarOrder.firstIndex(of: .options)!
             preferences.moveToolbarItem(.options, by: -1)
             checks["toolbarOrderPreference"] = preferences.toolbarOrder.firstIndex(of: .options) == optionsIndex - 1
