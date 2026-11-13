@@ -38,6 +38,7 @@ public final class BrowserPreferences {
     public private(set) var viewSize: BrowserViewSize
     public private(set) var appearance: BrowserAppearance
     public private(set) var continueLastSession: Bool
+    public private(set) var developerApplicationPath: String?
     public private(set) var toolbarOrder: [BrowserToolbarItem]
     public private(set) var hiddenToolbarItems: Set<BrowserToolbarItem>
     public private(set) var folderViewPreferences: [String: FolderViewPreference]
@@ -64,6 +65,7 @@ public final class BrowserPreferences {
         viewSize = defaults.string(forKey: "viewSize").flatMap(BrowserViewSize.init(rawValue:)) ?? .medium
         appearance = defaults.string(forKey: "appearance").flatMap(BrowserAppearance.init(rawValue:)) ?? .system
         continueLastSession = defaults.object(forKey: "continueLastSession") as? Bool ?? true
+        developerApplicationPath = defaults.string(forKey: "developerApplicationPath")
         var toolbar: [BrowserToolbarItem] = []
         for raw in defaults.stringArray(forKey: "toolbarOrder") ?? [] {
             if let item = BrowserToolbarItem(rawValue: raw), !toolbar.contains(item) { toolbar.append(item) }
@@ -132,6 +134,14 @@ public final class BrowserPreferences {
     public func setContinueLastSession(_ value: Bool) {
         guard continueLastSession != value else { return }
         continueLastSession = value; defaults.set(value, forKey: "continueLastSession"); changed()
+    }
+    public func setDeveloperApplication(_ url: URL?) {
+        let value = url?.standardizedFileURL.path
+        guard developerApplicationPath != value else { return }
+        developerApplicationPath = value
+        if let value { defaults.set(value, forKey: "developerApplicationPath") }
+        else { defaults.removeObject(forKey: "developerApplicationPath") }
+        changed()
     }
     public func folderViewPreference(for url: URL) -> FolderViewPreference? {
         folderViewPreferences[url.standardizedFileURL.path]

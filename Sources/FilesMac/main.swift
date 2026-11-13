@@ -17,6 +17,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     private var gitWindow: GitWindow?
     private var gitCloneWindow: GitCloneWindow?
     private var releaseInfoWindow: ReleaseInfoWindow?
+    private var developerSettingsWindow: DeveloperSettingsWindow?
     private var preferencesToken: UUID?
     func applicationDidFinishLaunching(_ notification: Notification) {
         applyAppearance()
@@ -101,6 +102,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         if releaseInfoWindow == nil { releaseInfoWindow = ReleaseInfoWindow() }
         releaseInfoWindow?.present(.releaseNotes)
     }
+    @objc func showDeveloperSettings(_ sender: Any?) {
+        if developerSettingsWindow == nil { developerSettingsWindow = DeveloperSettingsWindow(preferences: .shared) }
+        developerSettingsWindow?.present()
+    }
     @objc func showArchiveCapabilities(_ sender: Any?) {
         if archiveCapabilitiesWindow == nil { archiveCapabilitiesWindow = ArchiveCapabilitiesWindow() }
         archiveCapabilitiesWindow?.present()
@@ -169,6 +174,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         shortcuts.target = self
         let appearance = appMenu.addItem(withTitle: L("외형…", "Appearance…"), action: #selector(showAppearanceSettings(_:)), keyEquivalent: "")
         appearance.target = self
+        let developer = appMenu.addItem(withTitle: L("개발자 도구…", "Developer Tools…"), action: #selector(showDeveloperSettings(_:)), keyEquivalent: ""); developer.target = self
         let archiveSupport = appMenu.addItem(withTitle: L("압축 포맷 지원…", "Archive Format Support…"), action: #selector(showArchiveCapabilities(_:)), keyEquivalent: "")
         archiveSupport.target = self
         let remoteConnections = appMenu.addItem(withTitle: L("원격 연결…", "Remote Connections…"), action: #selector(showRemoteConnections(_:)), keyEquivalent: "")
@@ -195,6 +201,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         file.addItem(withTitle: L("공간 비우기", "Free Up Space"), action: #selector(BrowserWindow.evictCloudSelection(_:)), keyEquivalent: "")
         file.addItem(withTitle: L("Finder에서 보기", "Reveal in Finder"), action: #selector(BrowserWindow.revealSelection(_:)), keyEquivalent: "")
         file.addItem(withTitle: L("다른 앱으로 열기…", "Open With…"), action: #selector(BrowserWindow.openWithApplication(_:)), keyEquivalent: "")
+        file.addItem(withTitle: L("개발 앱에서 열기", "Open in Developer Application"), action: #selector(BrowserWindow.openInDeveloperApplication(_:)), keyEquivalent: "")
         file.addItem(withTitle: L("공유…", "Share…"), action: #selector(BrowserWindow.shareSelection(_:)), keyEquivalent: "")
         file.addItem(withTitle: L("터미널에서 열기", "Open in Terminal"), action: #selector(BrowserWindow.openInTerminal(_:)), keyEquivalent: "")
         file.addItem(withTitle: L("정보 가져오기", "Get Info"), action: #selector(BrowserWindow.showInfo(_:)), keyEquivalent: "i")

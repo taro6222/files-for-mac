@@ -419,6 +419,17 @@ private struct DelayedLoader: DirectoryLoading {
     #expect(parsed.authorities == ["Developer ID Application: Example", "Developer ID Certification Authority"])
 }
 
+@Test @MainActor func developerApplicationPreferencePersistsAndClears() {
+    let suite = "developer-app-tests-\(UUID())", defaults = UserDefaults(suiteName: suite)!
+    defer { defaults.removePersistentDomain(forName: suite) }
+    let preferences = BrowserPreferences(defaults: defaults, initialFavorites: [])
+    let app = URL(fileURLWithPath: "/Applications/Example.app")
+    preferences.setDeveloperApplication(app)
+    #expect(BrowserPreferences(defaults: defaults, initialFavorites: []).developerApplicationPath == app.path)
+    preferences.setDeveloperApplication(nil)
+    #expect(BrowserPreferences(defaults: defaults, initialFavorites: []).developerApplicationPath == nil)
+}
+
 @Test @MainActor func folderViewPreferencesPersistStandardizeRemoveAndRecoverCorruption() {
     let suite = "folder-view-preferences-tests-\(UUID())", defaults = UserDefaults(suiteName: suite)!
     defer { defaults.removePersistentDomain(forName: suite) }

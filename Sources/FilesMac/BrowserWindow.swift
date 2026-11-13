@@ -1448,6 +1448,20 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
             }
         }
     }
+    @objc func openInDeveloperApplication(_ sender: Any?) {
+        guard let path = preferences.developerApplicationPath else {
+            showEntryError(L("개발자 도구 설정에서 앱을 먼저 선택하세요.", "Choose an application in Developer Tools settings first.")); return
+        }
+        let application = URL(fileURLWithPath: path)
+        let urls = activeSelectedItems.map(\.url).isEmpty ? [activeModel.location].compactMap { $0 } : activeSelectedItems.map(\.url)
+        guard !urls.isEmpty, FileManager.default.fileExists(atPath: application.path) else {
+            showEntryError(L("선택한 개발 앱 또는 열 위치를 찾을 수 없습니다.", "The selected developer app or location could not be found.")); return
+        }
+        Task { @MainActor in
+            do { try await NSWorkspace.shared.open(urls, withApplicationAt: application, configuration: .init()) }
+            catch { showEntryError(L("개발 앱에서 열지 못했습니다: ", "Could not open in developer application: ") + error.localizedDescription) }
+        }
+    }
     private func updateWatcher(force: Bool = false) {
         guard force || watchedURL != model.location else { return }
         watcherTask?.cancel()
@@ -1794,6 +1808,7 @@ extension BrowserWindow {
         case #selector(downloadCloudSelection(_:)): return activeSelectedItems.count == 1 && activeSelectedItems.first.map { cloudProvider.capabilities(for: $0.url).downloadNow } == true
         case #selector(evictCloudSelection(_:)): return activeSelectedItems.count == 1 && activeSelectedItems.first.map { cloudProvider.capabilities(for: $0.url).evictLocalCopy } == true
         case #selector(revealSelection(_:)), #selector(shareSelection(_:)), #selector(openWithApplication(_:)): return !activeSelectedItems.isEmpty && activeModel.location != nil
+        case #selector(openInDeveloperApplication(_:)): return activeModel.location != nil && preferences.developerApplicationPath != nil
         case #selector(openInTerminal(_:)): return activeModel.location != nil
         default: return true
         }
