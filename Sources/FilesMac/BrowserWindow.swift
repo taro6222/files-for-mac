@@ -37,6 +37,7 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
     private var toolbarViews: [BrowserToolbarItem: NSView] = [:]
     private var toolbarCompact: Bool?
     private var toolbarSettingsWindow: ToolbarSettingsWindow?
+    private var searchWindow: SearchWindow?
     private let homeView = NSStackView()
     private let sidebar = NSStackView()
     private let content = NSView()
@@ -635,6 +636,11 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
             scroll.contentView.scroll(to: NSPoint(x: 0, y: model.history.current.scrollOffset))
             scroll.reflectScrolledClipView(scroll.contentView)
             if revealEntry, let row = selected.first { table.scrollRowToVisible(row) }
+            else if model.history.current.scrollOffset > 0, let row = selected.first,
+                    !NSLocationInRange(row, table.rows(in: table.visibleRect)) {
+                table.scrollRowToVisible(row)
+                Task { @MainActor [weak self] in self?.table.scrollRowToVisible(row) }
+            }
             else if model.history.current.scrollOffset == 0 && !model.items.isEmpty { table.scrollRowToVisible(0) }
         }
         if model.isLoading && model.items.isEmpty { message.stringValue = L("폴더를 읽는 중…", "Loading folder…") }
@@ -751,6 +757,18 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         model.cancelLoad()
     }
     @objc func focusPath(_ sender: Any?) { if secondaryActive { secondaryPane?.focusPath() } else { window?.makeFirstResponder(pathField); pathField.selectText(nil) } }
+    @objc func showSearch(_ sender: Any?) {
+        guard let root = activeModel.location else { return }
+        if searchWindow == nil {
+            searchWindow = SearchWindow { [weak self] item in
+                guard let self else { return }
+                self.setSecondaryActive(false); self.pendingEntrySelection = item.url
+                self.navigate(item.url.deletingLastPathComponent())
+                self.window?.makeKeyAndOrderFront(nil)
+            }
+        }
+        searchWindow?.present(root: root, showHidden: activeModel.showHidden)
+    }
     @objc func submitPath(_ sender: Any?) {
         let path = (pathField.stringValue as NSString).expandingTildeInPath
         guard !path.isEmpty else { navigate(nil); return }
@@ -1705,6 +1723,18 @@ extension BrowserWindow {
             metrics["firstNonemptyAppKitDisplaySeconds"] = firstLayout ?? elapsed(start)
             metrics["completeAppKitDisplaySeconds"] = elapsed(start)
             checks["tenThousandRows"] = !controller.model.isLoading && controller.model.error == nil && controller.table.numberOfRows == 10_000
+            controller.showSearch(nil); controller.searchWindow?.qaSearch("long-file-name", scope: .currentFolder)
+            let searchStart = ContinuousClock.now
+            while controller.searchWindow?.qaIsSearching == true && searchStart.duration(to: .now) < .seconds(10) { try await Task.sleep(for: .milliseconds(10)) }
+            checks["searchWindow"] = controller.searchWindow?.window?.isVisible == true
+            checks["searchResults"] = controller.searchWindow?.qaResultCount == 1
+            checks["searchCapability"] = controller.searchWindow?.qaShowsDirectEnumeration == true
+            try capture("search", view: controller.searchWindow?.window?.contentView)
+            controller.searchWindow?.close(); window.makeKeyAndOrderFront(nil)
+            let postSearchRefresh = ContinuousClock.now
+            while controller.model.isLoading && postSearchRefresh.duration(to: .now) < .seconds(30) {
+                try await Task.sleep(for: .milliseconds(10))
+            }
             controller.focusFiles(nil)
             checks["fileListFocus"] = window.firstResponder === controller.table
             try capture("files-top")
@@ -1722,7 +1752,12 @@ extension BrowserWindow {
             while controller.model.isLoading && restorationStart.duration(to: .now) < .seconds(30) {
                 try await Task.sleep(for: .milliseconds(10))
             }
-            root.layoutSubtreeIfNeeded()
+            let historyDisplayStart = ContinuousClock.now
+            while !NSLocationInRange(9_999, controller.table.rows(in: controller.table.visibleRect))
+                    && historyDisplayStart.duration(to: .now) < .seconds(1) {
+                root.layoutSubtreeIfNeeded(); root.displayIfNeeded()
+                try await Task.sleep(for: .milliseconds(10))
+            }
             checks["historySelection"] = controller.table.selectedRowIndexes == IndexSet(integer: 9_999)
             checks["historyScroll"] = NSLocationInRange(9_999, controller.table.rows(in: controller.table.visibleRect))
             controller.model.setViewMode(.grid)
