@@ -1858,6 +1858,16 @@ extension BrowserWindow {
                 checks["gitAccessibility"] = gitPanel.qaAccessibilityReady
                 checks["gitMenuCommand"] = paletteEntries.contains { $0.item.action == #selector(AppDelegate.showGitStatus(_:)) }
                 try capture("git-status", view: gitPanel.window?.contentView); gitPanel.close(); window.makeKeyAndOrderFront(nil)
+                var clonedLocation: URL?
+                let clonePanel = GitCloneWindow { clonedLocation = $0 }
+                clonePanel.present(); let cloneDestination = destination.appendingPathComponent("git-clone-ui", isDirectory: true); try? fm.removeItem(at: cloneDestination)
+                clonePanel.qaClone(source: URL(fileURLWithPath: fm.currentDirectoryPath, isDirectory: true), destination: cloneDestination)
+                let cloneWait = ContinuousClock.now
+                while clonePanel.qaRunning && cloneWait.duration(to: .now) < .seconds(20) { try await Task.sleep(for: .milliseconds(20)) }
+                checks["gitCloneWindow"] = clonePanel.qaSucceeded && clonedLocation?.standardizedFileURL.path == cloneDestination.standardizedFileURL.path && fm.fileExists(atPath: cloneDestination.appendingPathComponent(".git", isDirectory: true).path)
+                checks["gitCloneAccessibility"] = clonePanel.qaAccessibilityReady
+                checks["gitCloneMenuCommand"] = paletteEntries.contains { $0.item.action == #selector(AppDelegate.showGitClone(_:)) }
+                try capture("git-clone", view: clonePanel.window?.contentView); clonePanel.close(); window.makeKeyAndOrderFront(nil)
             } else { checks["shortcutSettingsWindow"] = false }
             controller.showToolbarSettings(nil); try await Task.sleep(for: .milliseconds(50))
             checks["toolbarSettingsWindow"] = controller.toolbarSettingsWindow?.window?.isVisible == true

@@ -15,6 +15,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     private var archiveCapabilitiesWindow: ArchiveCapabilitiesWindow?
     private var remoteConnectionsWindow: RemoteConnectionsWindow?
     private var gitWindow: GitWindow?
+    private var gitCloneWindow: GitCloneWindow?
     private var preferencesToken: UUID?
     func applicationDidFinishLaunching(_ notification: Notification) {
         applyAppearance()
@@ -110,6 +111,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         if gitWindow == nil { gitWindow = GitWindow() }
         gitWindow?.present(location: location)
     }
+    @objc func showGitClone(_ sender: Any?) {
+        if gitCloneWindow == nil { gitCloneWindow = GitCloneWindow { [weak self] location in self?.makeBrowser(location: location) } }
+        gitCloneWindow?.present()
+    }
     private func applyAppearance() { NSApp.appearance = BrowserWindow.appearance(BrowserPreferences.shared.appearance) }
     private func configureShortcuts() {
         let entries = CommandPaletteCatalog.entries(from: NSApp.mainMenu)
@@ -134,7 +139,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     }
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         guard CopyWindow.isRunning || DeletionWindow.isRunning || RestoreWindow.isRunning || MoveWindow.isRunning ||
-              PermanentDeleteWindow.isRunning || BatchRenameWindow.isRunning || BrowserWindow.entryOperationRunning else { return .terminateNow }
+              PermanentDeleteWindow.isRunning || BatchRenameWindow.isRunning || GitCloneWindow.isRunning || BrowserWindow.entryOperationRunning else { return .terminateNow }
         let alert = NSAlert()
         alert.messageText = L("파일 작업이 진행 중입니다", "A file operation is running")
         alert.informativeText = L("작업 완료 후 종료하세요. 복사와 이동은 작업 창에서 취소할 수 있습니다.", "Quit after the operation finishes. Copies and moves can be cancelled in their operation windows.")
@@ -155,6 +160,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         remoteConnections.target = self
         let gitStatus = appMenu.addItem(withTitle: L("Git 상태…", "Git Status…"), action: #selector(showGitStatus(_:)), keyEquivalent: "")
         gitStatus.target = self
+        let gitClone = appMenu.addItem(withTitle: L("Git 저장소 복제…", "Clone Git Repository…"), action: #selector(showGitClone(_:)), keyEquivalent: "")
+        gitClone.target = self
         appMenu.addItem(.separator())
         appMenu.addItem(withTitle: L("Files macOS 종료", "Quit Files macOS"), action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         let fileItem = NSMenuItem(); fileItem.title = L("파일", "File"); menu.addItem(fileItem)
