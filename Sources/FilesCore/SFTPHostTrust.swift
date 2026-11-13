@@ -55,3 +55,30 @@ public struct SFTPHostTrustStore: Sendable {
         try fileManager.setAttributes([.posixPermissions: 0o600], ofItemAtPath: fileURL.path)
     }
 }
+
+public struct SFTPHostKeyScanner: Sendable {
+    private let executor = RemoteCommandExecutor()
+    public init() {}
+    public func command(profile: RemoteConnectionProfile) throws -> RemoteCommandPlan {
+        guard profile.remoteProtocol == .sftp else { throw SFTPBackendError.unsupportedProtocol }
+        return RemoteCommandPlan(executable: URL(fileURLWithPath: "/usr/bin/ssh-keyscan"),
+            arguments: ["-T", "5", "-p", String(profile.port), "-t", "ed25519,ecdsa,rsa", "-f", "-"],
+            standardInput: Data((profile.host + "\n").utf8), redactedDescription: "ssh-keyscan <redacted>")
+    }
+    public func scan(profile: RemoteConnectionProfile) async throws -> [SFTPHostKeyCandidate] {
+        let result = try await executor.execute(command(profile: profile), outputLimit: 256 * 1_024)
+        return try Self.parse(result.standardOutput, host: profile.host, port: profile.port)
+    }
+    public static func parse(_ data: Data, host: String, port: Int) throws -> [SFTPHostKeyCandidate] {
+        guard let text = String(data: data, encoding: .utf8) else { throw SFTPHostTrustError.invalidLine }
+        var seen = Set<String>(), candidates: [SFTPHostKeyCandidate] = []
+        for raw in text.split(whereSeparator: \Character.isNewline).map(String.init) {
+            let line = raw.trimmingCharacters(in: .whitespaces)
+            guard !line.isEmpty, !line.hasPrefix("#") else { continue }
+            let candidate = try SFTPHostKeyCandidate.parse(line, host: host, port: port)
+            if seen.insert(candidate.sourceLine).inserted { candidates.append(candidate) }
+        }
+        guard !candidates.isEmpty else { throw SFTPHostTrustError.invalidLine }
+        return candidates.sorted { $0.keyType < $1.keyType }
+    }
+}

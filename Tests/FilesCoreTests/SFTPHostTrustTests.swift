@@ -28,3 +28,15 @@ import Testing
     #expect(throws: SFTPHostTrustError.hostKeyChanged) { try store.approve(changed, fingerprint: changed.sha256Fingerprint, fileManager: fm) }
     #expect(try String(contentsOf: store.fileURL, encoding: .utf8).contains(first.sourceLine))
 }
+
+@Test func sftpKeyscanUsesStdinAndParsesCandidatesWithoutAutoTrust() throws {
+    let profile = try RemoteConnectionProfile(name: "SFTP", remoteProtocol: .sftp, host: "ssh.example.com", port: 2222)
+    let command = try SFTPHostKeyScanner().command(profile: profile)
+    #expect(command.executable.path == "/usr/bin/ssh-keyscan"); #expect(command.arguments.contains("-f")); #expect(command.arguments.last == "-")
+    #expect(!command.arguments.joined().contains("ssh.example.com")); #expect(String(decoding: command.standardInput, as: UTF8.self) == "ssh.example.com\n")
+    let one = Data("first-key".utf8).base64EncodedString(), two = Data("second-key".utf8).base64EncodedString()
+    let output = Data(("# banner\n[ssh.example.com]:2222 ssh-ed25519 \(one)\n[ssh.example.com]:2222 ecdsa-sha2-nistp256 \(two)\n[ssh.example.com]:2222 ssh-ed25519 \(one)\n").utf8)
+    let candidates = try SFTPHostKeyScanner.parse(output, host: profile.host, port: profile.port)
+    #expect(candidates.count == 2); #expect(Set(candidates.map(\.keyType)) == ["ssh-ed25519", "ecdsa-sha2-nistp256"])
+    #expect(throws: SFTPHostTrustError.invalidLine) { try SFTPHostKeyScanner.parse(Data("# comments only\n".utf8), host: profile.host, port: profile.port) }
+}

@@ -5,13 +5,16 @@ import FilesCore
 final class RemoteConnectionsWindow: NSWindowController, NSTableViewDataSource, NSTableViewDelegate {
     private let profileStore: RemoteProfileStore
     private let credentialStore: KeychainRemoteCredentialStore
+    private let hostTrustStore: SFTPHostTrustStore
+    private let hostKeyScanner = SFTPHostKeyScanner()
     private var profiles: [RemoteConnectionProfile] = []
     private let table = NSTableView(), name = NSTextField(), host = NSTextField(), port = NSTextField()
     private let rootPath = NSTextField(), username = NSTextField(), password = NSSecureTextField()
-    private let protocolPopup = NSPopUpButton(), saveButton = NSButton(), deleteButton = NSButton(), connectButton = NSButton()
+    private let protocolPopup = NSPopUpButton(), saveButton = NSButton(), deleteButton = NSButton(), connectButton = NSButton(), trustButton = NSButton()
 
     init(profileStore: RemoteProfileStore, credentialStore: KeychainRemoteCredentialStore = .init()) {
         self.profileStore = profileStore; self.credentialStore = credentialStore
+        self.hostTrustStore = SFTPHostTrustStore(fileURL: profileStore.fileURL.deletingLastPathComponent().appendingPathComponent("known_hosts"))
         let panel = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 760, height: 520),
             styleMask: [.titled, .closable, .resizable], backing: .buffered, defer: false)
         super.init(window: panel); panel.title = L("원격 연결", "Remote Connections"); panel.isReleasedWhenClosed = false
@@ -42,6 +45,7 @@ final class RemoteConnectionsWindow: NSWindowController, NSTableViewDataSource, 
         }
         password.placeholderString = L("변경할 때만 입력", "Enter only to change")
         let controls = NSStackView(); controls.orientation = .horizontal; controls.addArrangedSubview(NSView())
+        trustButton.title = L("호스트 키 확인…", "Verify Host Key…"); trustButton.target = self; trustButton.action = #selector(verifyHostKey(_:)); controls.addArrangedSubview(trustButton)
         connectButton.title = L("Finder에서 연결", "Connect in Finder"); connectButton.target = self; connectButton.action = #selector(connectSMB(_:)); controls.addArrangedSubview(connectButton)
         saveButton.title = L("저장", "Save"); saveButton.keyEquivalent = "\r"; saveButton.target = self; saveButton.action = #selector(saveProfile(_:)); controls.addArrangedSubview(saveButton)
         form.addArrangedSubview(controls); root.addArrangedSubview(form)
@@ -67,7 +71,7 @@ final class RemoteConnectionsWindow: NSWindowController, NSTableViewDataSource, 
         username.stringValue = profile.username ?? ""; password.stringValue = ""
     }
     private func clearForm() { name.stringValue = ""; protocolPopup.selectItem(at: 0); host.stringValue = ""; port.stringValue = String(RemoteProtocol.ftp.defaultPort); rootPath.stringValue = "/"; username.stringValue = ""; password.stringValue = "" }
-    private func updateControls() { deleteButton.isEnabled = selected != nil; connectButton.isEnabled = selected?.remoteProtocol == .smb }
+    private func updateControls() { deleteButton.isEnabled = selected != nil; connectButton.isEnabled = selected?.remoteProtocol == .smb; trustButton.isEnabled = selected?.remoteProtocol == .sftp }
     @objc private func addProfile(_ sender: Any?) { table.deselectAll(nil); clearForm(); updateControls(); window?.makeFirstResponder(name) }
     @objc private func protocolChanged(_ sender: Any?) { port.stringValue = String(selectedProtocol.defaultPort) }
     @objc private func saveProfile(_ sender: Any?) {
@@ -93,6 +97,25 @@ final class RemoteConnectionsWindow: NSWindowController, NSTableViewDataSource, 
         do { guard let selected else { return }; NSWorkspace.shared.open(try selected.smbMountURL()) }
         catch { showError(error) }
     }
+    @objc private func verifyHostKey(_ sender: Any?) {
+        guard let profile = selected, profile.remoteProtocol == .sftp, let window else { return }
+        trustButton.isEnabled = false
+        Task { [weak self] in
+            guard let self else { return }
+            do {
+                let candidates = try await hostKeyScanner.scan(profile: profile)
+                let candidate = candidates.first(where: { $0.keyType == "ssh-ed25519" }) ?? candidates[0]
+                let alert = NSAlert(); alert.messageText = L("SFTP 호스트 키를 신뢰하시겠습니까?", "Trust This SFTP Host Key?")
+                alert.informativeText = "\(profile.host):\(profile.port)\n\(candidate.keyType)\n\(candidate.sha256Fingerprint)\n\n" + L("서버 관리자가 제공한 fingerprint와 직접 비교한 뒤 승인하세요.", "Compare this fingerprint directly with the server administrator before approving.")
+                alert.addButton(withTitle: L("일치함 — 신뢰", "Matches — Trust")); alert.addButton(withTitle: L("취소", "Cancel"))
+                alert.beginSheetModal(for: window) { [weak self] response in
+                    guard response == .alertFirstButtonReturn, let self else { self?.updateControls(); return }
+                    do { try self.hostTrustStore.approve(candidate, fingerprint: candidate.sha256Fingerprint); self.updateControls() }
+                    catch { self.showError(error); self.updateControls() }
+                }
+            } catch { showError(error); updateControls() }
+        }
+    }
     private func showError(_ error: Error) { guard let window else { return }; let alert = NSAlert(); alert.messageText = L("원격 연결을 저장할 수 없습니다", "Unable to Save Remote Connection"); alert.informativeText = String(describing: error); alert.beginSheetModal(for: window) }
 #if DEBUG
     var qaProfileCount: Int { profiles.count }
@@ -108,6 +131,12 @@ final class RemoteConnectionsWindow: NSWindowController, NSTableViewDataSource, 
         if let index = profiles.firstIndex(where: { $0.name == "QA SMB" }) { table.selectRowIndexes([index], byExtendingSelection: false); populate(profiles[index]); updateControls() }
     }
     var qaSMBConnectEnabled: Bool { connectButton.isEnabled }
+    func qaSFTPTrustEnabled() -> Bool {
+        guard let sftp = profiles.firstIndex(where: { $0.remoteProtocol == .sftp }) else { return false }
+        table.selectRowIndexes([sftp], byExtendingSelection: false); populate(profiles[sftp]); updateControls(); let enabled = trustButton.isEnabled
+        if let smb = profiles.firstIndex(where: { $0.remoteProtocol == .smb }) { table.selectRowIndexes([smb], byExtendingSelection: false); populate(profiles[smb]); updateControls() }
+        return enabled
+    }
 #endif
 }
 
