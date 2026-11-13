@@ -16,6 +16,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     private var remoteConnectionsWindow: RemoteConnectionsWindow?
     private var gitWindow: GitWindow?
     private var gitCloneWindow: GitCloneWindow?
+    private var releaseInfoWindow: ReleaseInfoWindow?
     private var preferencesToken: UUID?
     func applicationDidFinishLaunching(_ notification: Notification) {
         applyAppearance()
@@ -92,6 +93,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         if appearanceSettingsWindow == nil { appearanceSettingsWindow = AppearanceSettingsWindow(preferences: .shared) }
         appearanceSettingsWindow?.present()
     }
+    @objc func showAbout(_ sender: Any?) {
+        if releaseInfoWindow == nil { releaseInfoWindow = ReleaseInfoWindow() }
+        releaseInfoWindow?.present(.about)
+    }
+    @objc func showReleaseNotes(_ sender: Any?) {
+        if releaseInfoWindow == nil { releaseInfoWindow = ReleaseInfoWindow() }
+        releaseInfoWindow?.present(.releaseNotes)
+    }
     @objc func showArchiveCapabilities(_ sender: Any?) {
         if archiveCapabilitiesWindow == nil { archiveCapabilitiesWindow = ArchiveCapabilitiesWindow() }
         archiveCapabilitiesWindow?.present()
@@ -153,6 +162,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         let menu = NSMenu()
         let appItem = NSMenuItem(); appItem.title = "Files macOS"; menu.addItem(appItem)
         let appMenu = NSMenu(); appItem.submenu = appMenu
+        let about = appMenu.addItem(withTitle: L("Files macOS 정보", "About Files macOS"), action: #selector(showAbout(_:)), keyEquivalent: ""); about.target = self
+        let releaseNotes = appMenu.addItem(withTitle: L("릴리스 노트…", "Release Notes…"), action: #selector(showReleaseNotes(_:)), keyEquivalent: ""); releaseNotes.target = self
+        appMenu.addItem(.separator())
         let shortcuts = appMenu.addItem(withTitle: L("키보드 단축키…", "Keyboard Shortcuts…"), action: #selector(showShortcutSettings(_:)), keyEquivalent: ",")
         shortcuts.target = self
         let appearance = appMenu.addItem(withTitle: L("외형…", "Appearance…"), action: #selector(showAppearanceSettings(_:)), keyEquivalent: "")
@@ -278,6 +290,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     var qaSFTPConnectDisabled: Bool { remoteConnectionsWindow?.qaSFTPConnectDisabledWithoutTrustAndIdentity == true }
     var qaSFTPDownloadDisabled: Bool { remoteConnectionsWindow?.qaSFTPDownloadDisabledWithoutTrustAndIdentity == true }
     var qaFTPConnectDisabled: Bool { remoteConnectionsWindow?.qaFTPConnectDisabledWithoutCredential == true }
+    var qaReleaseInfoVisible: Bool { releaseInfoWindow?.qaVisible == true }
+    var qaReleaseInfoText: String { releaseInfoWindow?.qaText ?? "" }
+    var qaReleaseInfoContentView: NSView? { releaseInfoWindow?.window?.contentView }
     func qaCreateRemoteProfile() { remoteConnectionsWindow?.qaCreateProfile() }
 #endif
 }

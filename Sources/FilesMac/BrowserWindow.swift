@@ -1923,6 +1923,12 @@ extension BrowserWindow {
             try capture("command-palette", view: controller.commandPalette.window?.contentView)
             controller.commandPalette.close(); window.makeKeyAndOrderFront(nil)
             if let delegate = NSApp.delegate as? AppDelegate {
+                delegate.showAbout(nil); try await Task.sleep(for: .milliseconds(50))
+                checks["aboutWindow"] = delegate.qaReleaseInfoVisible && delegate.qaReleaseInfoText.contains("Files v4.2.9")
+                try capture("about", view: delegate.qaReleaseInfoContentView); delegate.qaReleaseInfoContentView?.window?.close(); window.makeKeyAndOrderFront(nil)
+                delegate.showReleaseNotes(nil); try await Task.sleep(for: .milliseconds(50))
+                checks["releaseNotesWindow"] = delegate.qaReleaseInfoVisible && delegate.qaReleaseInfoText.contains(L("개발 프리뷰", "Development Preview"))
+                try capture("release-notes", view: delegate.qaReleaseInfoContentView); delegate.qaReleaseInfoContentView?.window?.close(); window.makeKeyAndOrderFront(nil)
                 delegate.showShortcutSettings(nil); try await Task.sleep(for: .milliseconds(50))
                 checks["shortcutSettingsCommands"] = delegate.qaShortcutRowCount >= 15
                 checks["shortcutSettingsWindow"] = delegate.qaShortcutWindowVisible
