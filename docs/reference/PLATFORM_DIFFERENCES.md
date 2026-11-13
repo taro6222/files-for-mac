@@ -18,6 +18,7 @@
 | 시스템 배경 | 선택한 정지 이미지는 공개 `NSWorkspace.setDesktopImageURL`로 현재 디스플레이들에 적용하고 기존 디스플레이 옵션을 보존한다. Windows 잠금 화면 및 슬라이드쇼 명령은 macOS 공개 AppKit에 동등한 per-file 명령이 없고 System Settings·Spaces 정책을 침범하므로 노출하지 않는다. | M6 데스크탑 배경 명령은 `platform-alternative`; 잠금 화면·슬라이드쇼는 `platform-excluded` |
 | 앱 배경 | 선택한 정지 이미지를 검증 후 Application Support 관리 복사본으로 게시하고 모든 로컬 보기와 pane의 배경에 aspect-fill로 그린다. 동적 Windows 배경 엔진을 복제하지 않으며 시스템 대비·투명도 접근성 설정을 우선한다. | M6 `implemented`; 관리 복사·손상 복구·4개 UI 조합 검증 |
 | 이미지 회전 | ImageIO가 읽고 같은 포맷으로 쓸 수 있는 단일 프레임 일반 파일에 대해 픽셀을 재압축하지 않고 EXIF/CG 방향 메타데이터를 합성한다. 애니메이션·다중 페이지·링크는 회전 명령을 비활성화한다. | M6 `implemented`; 좌우·미러 방향 매핑, 권한 보존, UI 4조합 검증 |
+| 인증서·글꼴 설치 | 앱이 신뢰 저장소나 글꼴 디렉터리를 직접 변경하지 않는다. 명시적으로 선택한 인증서/글꼴 파일을 Launch Services 기본 시스템 처리기로 열어 Keychain Access·Font Book의 확인 UI와 권한 흐름에 맡긴다. | M6 `platform-alternative`; 명시적 확장자 gate와 메뉴 등록 검증 |
 | 드라이브 포맷 | 앱 내부 포맷 대신 선택 볼륨을 macOS Disk Utility에서 연다. 파일 앱이 직접 erase 권한·장치 작업을 소유하지 않는다. | `platform-alternative`; 장착 볼륨 메뉴와 UI 검증 통과 |
 | 클래식 속성 | Windows classic properties 대신 macOS 네이티브 정보 패널(Get Info)을 사용한다. | `platform-alternative`; M4 정보 패널 검증 통과 |
 | 명령 키 | ⌘L, ⌘[, ⌘], ⌘↑, ⌘↓, ⇧⌘. | 전체 키보드/VoiceOver 흐름 대기 |

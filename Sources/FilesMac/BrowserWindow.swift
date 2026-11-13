@@ -426,6 +426,9 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         let clearAppBackground = menu.addItem(withTitle: L("앱 배경 지우기", "Clear App Background"), action: #selector(clearAppBackground(_:)), keyEquivalent: ""); clearAppBackground.target = self
         let rotateLeft = menu.addItem(withTitle: L("왼쪽으로 회전", "Rotate Left"), action: #selector(rotateImagesLeft(_:)), keyEquivalent: ""); rotateLeft.target = self
         let rotateRight = menu.addItem(withTitle: L("오른쪽으로 회전", "Rotate Right"), action: #selector(rotateImagesRight(_:)), keyEquivalent: ""); rotateRight.target = self
+        let installCertificate = menu.addItem(withTitle: L("인증서 설치…", "Install Certificate…"), action: #selector(installCertificates(_:)), keyEquivalent: ""); installCertificate.target = self
+        let installFont = menu.addItem(withTitle: L("글꼴 설치…", "Install Font…"), action: #selector(installFonts(_:)), keyEquivalent: ""); installFont.target = self
+        let playAll = menu.addItem(withTitle: L("선택 미디어 모두 재생", "Play All Selected Media"), action: #selector(playAllMedia(_:)), keyEquivalent: ""); playAll.target = self
         let archive = menu.addItem(withTitle: L("압축 파일 탐색", "Browse Archive"), action: #selector(openArchive(_:)), keyEquivalent: ""); archive.target = self
         let createArchive = menu.addItem(withTitle: L("선택 항목 압축…", "Compress Selection…"), action: #selector(createArchive(_:)), keyEquivalent: ""); createArchive.target = self
         let extractHere = menu.addItem(withTitle: L("여기에 압축 해제", "Extract Here"), action: #selector(extractArchivesHere(_:)), keyEquivalent: ""); extractHere.target = self
@@ -1113,6 +1116,16 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         guard !urls.isEmpty, !ImageRotationWindow.isRunning else { return }
         let target = activeModel
         ImageRotationWindow.start(urls: urls, direction: direction) { target.reload() }
+    }
+    @objc func installCertificates(_ sender: Any?) { openSelectedUsingSystemHandler(matching: SystemContentCompatibility.isCertificate, failure: L("인증서 가져오기 화면을 열지 못했습니다.", "The certificate import UI could not be opened.")) }
+    @objc func installFonts(_ sender: Any?) { openSelectedUsingSystemHandler(matching: SystemContentCompatibility.isFont, failure: L("글꼴 설치 화면을 열지 못했습니다.", "The font installation UI could not be opened.")) }
+    @objc func playAllMedia(_ sender: Any?) { openSelectedUsingSystemHandler(matching: SystemContentCompatibility.isMedia, failure: L("선택한 미디어를 열지 못했습니다.", "The selected media could not be opened.")) }
+    private func openSelectedUsingSystemHandler(matching predicate: (URL) -> Bool, failure: String) {
+        let urls = activeSelectedItems.map(\.url)
+        guard !urls.isEmpty, urls.allSatisfy(predicate) else { return }
+        var failed = false
+        for url in urls where !NSWorkspace.shared.open(url) { failed = true }
+        if failed { showEntryError(failure) }
     }
     private func startArchiveExtraction(_ placement: ArchiveExtractionPlacement) {
         let archives = selectedArchiveURLs
@@ -2090,6 +2103,9 @@ extension BrowserWindow {
         case #selector(setAsDesktopWallpaper(_:)), #selector(setAsAppBackground(_:)): return activeSelectedItems.count == 1 && !activeSelectedItems[0].isBrowsable && NSImage(contentsOf: activeSelectedItems[0].url) != nil
         case #selector(clearAppBackground(_:)): return preferences.appBackgroundPath != nil
         case #selector(rotateImagesLeft(_:)), #selector(rotateImagesRight(_:)): return !ImageRotationWindow.isRunning && !selectedRotatableImageURLs.isEmpty
+        case #selector(installCertificates(_:)): return !activeSelectedItems.isEmpty && activeSelectedItems.map(\.url).allSatisfy(SystemContentCompatibility.isCertificate)
+        case #selector(installFonts(_:)): return !activeSelectedItems.isEmpty && activeSelectedItems.map(\.url).allSatisfy(SystemContentCompatibility.isFont)
+        case #selector(playAllMedia(_:)): return !activeSelectedItems.isEmpty && activeSelectedItems.map(\.url).allSatisfy(SystemContentCompatibility.isMedia)
         case #selector(createSymbolicLink(_:)): return activeModel.location != nil && activeSelectedItems.count == 1 && !activeModel.isLoading && !Self.entryOperationRunning
         case #selector(createSymbolicLinkFromDialog(_:)): return activeModel.location != nil && !activeModel.isLoading && !Self.entryOperationRunning
         case #selector(toggleSelectedFavorite(_:)): return activeModel.location != nil && (activeSelectedItems.isEmpty || (activeSelectedItems.count == 1 && activeSelectedItems[0].isBrowsable))
@@ -2285,6 +2301,7 @@ extension BrowserWindow {
             checks["desktopWallpaperCommand"] = paletteEntries.contains { $0.item.action == #selector(setAsDesktopWallpaper(_:)) }
             checks["appBackgroundCommands"] = [#selector(setAsAppBackground(_:)), #selector(clearAppBackground(_:))].allSatisfy { action in paletteEntries.contains { $0.item.action == action } }
             checks["imageRotationCommands"] = [#selector(rotateImagesLeft(_:)), #selector(rotateImagesRight(_:))].allSatisfy { action in paletteEntries.contains { $0.item.action == action } }
+            checks["systemInstallAndMediaCommands"] = [#selector(installCertificates(_:)), #selector(installFonts(_:)), #selector(playAllMedia(_:))].allSatisfy { action in paletteEntries.contains { $0.item.action == action } }
             checks["commandPaletteSearch"] = CommandPaletteCatalog.filtered(paletteEntries, query: L("숨김", "hidden")).contains { $0.item.action == #selector(toggleHidden(_:)) }
             controller.showCommandPalette(nil); try await Task.sleep(for: .milliseconds(50))
             controller.commandPalette.qaSetQuery(L("숨김", "hidden"))
