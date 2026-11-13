@@ -11,6 +11,6 @@
 | 패키징 | SwiftPM 코어/실행 + 같은 소스를 쓰는 Xcode 앱 타깃 | 정식 배포 전 코어를 별도 패키지 참조로 연결 정리 |
 | 휴지통 전체 복원 | 미확정 | 공개 API 실험 대기 |
 | 클라우드 상태·명령 | CloudStorage/iCloud 위치를 로컬 탐색; ubiquitous resource value가 있는 항목만 상태 표시하고 공개 FileManager API로 지금 다운로드·공간 비우기 제공. 일반 File Provider 상태는 unknown, 영구 오프라인 유지 명령은 미노출 | fixture 위치·unknown·비지원 명령 무변경·UI 4조합 통과; 실제 공급자별 수용 검증 대기 |
-| 원격 연결 | FTP/FTPS는 macOS curl, SFTP는 OpenSSH, SMB는 Finder. 비밀은 표준입력 config; subprocess stdout/stderr·종료 상태·출력 한도·Task 취소 처리, FTPS 인증서·SFTP host key 검증 필수 | subprocess 정상/오류/한도/취소와 UI 4조합 통과; 실제 서버·SFTP 신뢰 흐름은 검증 대기 |
+| 원격 연결 | FTP/FTPS는 macOS curl list-only·UTF-8 parser, SFTP는 OpenSSH, SMB는 Finder. 비밀 표준입력, subprocess 오류·한도·취소 처리, FTPS 인증서·SFTP host key 검증 필수 | FTP 목록 Unicode/오류/항목 한도와 UI 4조합 통과; 실제 서버·전송·SFTP 신뢰 흐름은 검증 대기 |
 | 압축 backend | macOS 시스템 libarchive 직접 연결; ZIP/7z 생성·탐색·안전 추출, RAR 탐색·안전 추출; 암호·분할·수정은 미지원 | ZIP/7z Unicode 생성·재열기·추출, 공식 7z/RAR fixture, 앱 UI 4조합 통과 |
 | Intel/최소 OS | 배포 타깃만 설정 | 실기기 실행 대기 |

@@ -48,3 +48,13 @@ func curlFTPPlansKeepCredentialsOffArgumentsAndDescriptions(remoteProtocol: Remo
     try await Task.sleep(for: .milliseconds(50)); task.cancel()
     await #expect(throws: CancellationError.self) { try await task.value }
 }
+
+@Test func ftpListParserPreservesUnicodePathsAndRejectsAmbiguousEntries() throws {
+    let entries = try FTPRemoteProvider.parseList(Data("alpha.txt\r\n한글 폴더\n.\n..\n".utf8), parent: "/team")
+    #expect(entries == [RemoteDirectoryEntry(name: "alpha.txt", remotePath: "/team/alpha.txt"),
+                        RemoteDirectoryEntry(name: "한글 폴더", remotePath: "/team/한글 폴더")])
+    #expect(try FTPRemoteProvider.parseList(Data("root.txt\n".utf8), parent: "/").first?.remotePath == "/root.txt")
+    #expect(throws: RemoteBackendError.invalidListing) { try FTPRemoteProvider.parseList(Data([0xff]), parent: "/") }
+    #expect(throws: RemoteBackendError.invalidListing) { try FTPRemoteProvider.parseList(Data("nested/name\n".utf8), parent: "/") }
+    #expect(throws: RemoteBackendError.listingLimitExceeded) { try FTPRemoteProvider.parseList(Data("one\ntwo\n".utf8), parent: "/", maximumEntries: 1) }
+}

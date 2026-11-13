@@ -27,7 +27,34 @@ public struct RemoteBackendProbe: Sendable {
 public enum RemoteTransferIntent: Sendable, Equatable { case list, download(local: URL), upload(local: URL) }
 
 public enum RemoteBackendError: Error, Sendable, Equatable {
-    case unsupportedProtocol, invalidRemotePath, invalidCredential
+    case unsupportedProtocol, invalidRemotePath, invalidCredential, invalidListing, listingLimitExceeded
+}
+
+public struct RemoteDirectoryEntry: Sendable, Equatable, Identifiable {
+    public let name: String
+    public let remotePath: String
+    public var id: String { remotePath }
+}
+
+public struct FTPRemoteProvider: Sendable {
+    private let builder = CurlFTPCommandBuilder(), executor = RemoteCommandExecutor()
+    public init() {}
+    public func list(profile: RemoteConnectionProfile, credential: RemoteCredential, remotePath: String,
+                     maximumEntries: Int = 100_000) async throws -> [RemoteDirectoryEntry] {
+        let plan = try builder.command(profile: profile, credential: credential, remotePath: remotePath, intent: .list)
+        let result = try await executor.execute(plan, outputLimit: 4 * 1_024 * 1_024)
+        return try Self.parseList(result.standardOutput, parent: remotePath, maximumEntries: maximumEntries)
+    }
+    public static func parseList(_ data: Data, parent: String, maximumEntries: Int = 100_000) throws -> [RemoteDirectoryEntry] {
+        guard parent.hasPrefix("/"), let text = String(data: data, encoding: .utf8) else { throw RemoteBackendError.invalidListing }
+        let names = text.split(whereSeparator: \Character.isNewline).map(String.init).filter { !$0.isEmpty && $0 != "." && $0 != ".." }
+        guard names.count <= maximumEntries else { throw RemoteBackendError.listingLimitExceeded }
+        guard names.allSatisfy({ !$0.contains("/") && !$0.unicodeScalars.contains(where: { CharacterSet.controlCharacters.contains($0) }) }) else {
+            throw RemoteBackendError.invalidListing
+        }
+        let base = parent == "/" ? "" : parent.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        return names.map { RemoteDirectoryEntry(name: $0, remotePath: "/" + ([base, $0].filter { !$0.isEmpty }.joined(separator: "/"))) }
+    }
 }
 
 public struct RemoteCommandPlan: Sendable, Equatable {
