@@ -47,6 +47,22 @@ import Testing
     await #expect(throws: GitBackendError.invalidLocation) { try await provider.push(at: first, remote: "--force") }
 }
 
+@Test func gitPullRejectsDivergenceWithoutChangingHeadOrWorkTree() async throws {
+    let fm = FileManager.default, root = fm.temporaryDirectory.appendingPathComponent("files-git-diverged-\(UUID())", isDirectory: true)
+    defer { try? fm.removeItem(at: root) }; try fm.createDirectory(at: root, withIntermediateDirectories: true)
+    let bare = root.appendingPathComponent("remote.git"), seed = root.appendingPathComponent("seed"), local = root.appendingPathComponent("local"), peer = root.appendingPathComponent("peer")
+    try runGit(["init", "--bare", "--initial-branch=main", bare.path], at: root); try fm.createDirectory(at: seed, withIntermediateDirectories: true)
+    try runGit(["init", "-b", "main"], at: seed); try configureIdentity(seed); try Data("base".utf8).write(to: seed.appendingPathComponent("value.txt")); try runGit(["add", "value.txt"], at: seed); try runGit(["commit", "-m", "base"], at: seed); try runGit(["remote", "add", "origin", bare.path], at: seed); try runGit(["push", "-u", "origin", "main"], at: seed)
+    let provider = GitProvider(); _ = try await provider.clone(from: bare, to: local); _ = try await provider.clone(from: bare, to: peer); try configureIdentity(local); try configureIdentity(peer)
+    try Data("local".utf8).write(to: local.appendingPathComponent("value.txt")); try runGit(["add", "value.txt"], at: local); try runGit(["commit", "-m", "local"], at: local)
+    try Data("peer".utf8).write(to: peer.appendingPathComponent("value.txt")); try runGit(["add", "value.txt"], at: peer); try runGit(["commit", "-m", "peer"], at: peer); try runGit(["push"], at: peer)
+    try await provider.fetch(at: local); let diverged = try await provider.snapshot(at: local); #expect(diverged.ahead == 1); #expect(diverged.behind == 1)
+    let headBefore = try gitOutput(["rev-parse", "HEAD"], at: local)
+    await #expect(throws: GitBackendError.commandFailed(128)) { try await provider.pullFastForwardOnly(at: local) }
+    #expect(try gitOutput(["rev-parse", "HEAD"], at: local) == headBefore)
+    #expect(try String(contentsOf: local.appendingPathComponent("value.txt"), encoding: .utf8) == "local")
+}
+
 private func runGit(_ arguments: [String], at directory: URL) throws {
     let process = Process(), errors = Pipe(); process.executableURL = URL(fileURLWithPath: "/usr/bin/git"); process.arguments = ["-C", directory.path] + arguments; process.standardError = errors
     try process.run(); process.waitUntilExit()
@@ -55,4 +71,10 @@ private func runGit(_ arguments: [String], at directory: URL) throws {
 
 private func configureIdentity(_ repository: URL) throws {
     try runGit(["config", "user.name", "Files Test"], at: repository); try runGit(["config", "user.email", "files@example.invalid"], at: repository)
+}
+
+private func gitOutput(_ arguments: [String], at directory: URL) throws -> String {
+    let process = Process(), output = Pipe(); process.executableURL = URL(fileURLWithPath: "/usr/bin/git"); process.arguments = ["-C", directory.path] + arguments; process.standardOutput = output
+    try process.run(); process.waitUntilExit(); guard process.terminationStatus == 0 else { throw CocoaError(.fileReadUnknown) }
+    return String(decoding: output.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
 }
