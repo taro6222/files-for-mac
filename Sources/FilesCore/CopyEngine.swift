@@ -67,6 +67,8 @@ private struct CopyFailure: LocalizedError {
     var errorDescription: String? { text }
 }
 
+enum CopyPublicationError: Error { case conflict }
+
 private final class CopyDelegate: NSObject, FileManagerDelegate, @unchecked Sendable {
     let cancellation: CopyCancellation
     init(_ cancellation: CopyCancellation) { self.cancellation = cancellation }
@@ -145,6 +147,7 @@ public enum CopyEngine {
                 } else {
                     guard exists || lookupError == ENOENT else { throw POSIXError(POSIXErrorCode(rawValue: lookupError) ?? .EIO) }
                     let before = try snapshot(source, cancellation: cancellation)
+                    let contentBefore = try contentSnapshot(source, cancellation: cancellation)
                     let temporary = destination.appendingPathComponent(".files-copy-" + report.id.uuidString + "-\(index)")
                     report.items[index].temporary = temporary
                     report.items[index].state = "copying"; try save()
@@ -161,7 +164,7 @@ public enum CopyEngine {
                     try fm.copyItem(at: source, to: payload)
                     try cancellation.check()
                     emit("verifying")
-                    guard try snapshot(payload, cancellation: cancellation) == before,
+                    guard try contentSnapshot(payload, cancellation: cancellation) == contentBefore,
                           try snapshot(source, cancellation: cancellation) == before else {
                         throw CopyFailure(text: "Source changed or copied contents did not match.")
                     }
@@ -176,13 +179,17 @@ public enum CopyEngine {
                         let name = copyName(source, isDirectory: attrs[.type] as? FileAttributeType == .typeDirectory, suffix: suffix)
                         report.items[index].target = destination.appendingPathComponent(name)
                         try save() // Persist the actual proposed name before publishing it.
-                        if renameatx_np(stageFD, "payload", destinationFD, name, UInt32(RENAME_EXCL)) == 0 {
+                        do {
+                            try publishNoReplace(payload: payload,
+                                                 target: report.items[index].target,
+                                                 sourceDirectoryFD: stageFD, sourceName: "payload",
+                                                 destinationDirectoryFD: destinationFD, destinationName: name)
                             report.items[index].state = "completed"
                             report.items[index].targetIdentity = try entryIdentity(report.items[index].target)
-                            report.items[index].targetSnapshot = before
+                            report.items[index].targetSnapshot = try snapshot(report.items[index].target,
+                                                                              cancellation: cancellation)
                             break
-                        }
-                        guard errno == EEXIST else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
+                        } catch CopyPublicationError.conflict {}
                         if conflictPolicy == .skip {
                             report.items[index].state = "conflict"
                             report.items[index].message = "Destination appeared during copying; skipped."
@@ -286,6 +293,31 @@ public enum CopyEngine {
         return stem + " (\(suffix + 1))" + (ext.isEmpty ? "" : "." + ext)
     }
 
+    /// APFS supports descriptor-relative no-replace rename. Some removable file systems return
+    /// ENOTSUP; FileManager's move contract is used there after an explicit no-follow absence check.
+    /// Any destination observed before or after a failed fallback is reported as a conflict.
+    static func publishNoReplace(payload: URL, target: URL,
+                                 sourceDirectoryFD: Int32, sourceName: String,
+                                 destinationDirectoryFD: Int32, destinationName: String) throws {
+        if renameatx_np(sourceDirectoryFD, sourceName, destinationDirectoryFD,
+                        destinationName, UInt32(RENAME_EXCL)) == 0 { return }
+        let publicationError = errno
+        if publicationError == EEXIST { throw CopyPublicationError.conflict }
+        guard publicationError == ENOTSUP || publicationError == EINVAL else {
+            throw POSIXError(POSIXErrorCode(rawValue: publicationError) ?? .EIO)
+        }
+        var existing = stat()
+        if fstatat(destinationDirectoryFD, destinationName, &existing, AT_SYMLINK_NOFOLLOW) == 0 {
+            throw CopyPublicationError.conflict
+        }
+        guard errno == ENOENT else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
+        do { try FileManager.default.moveItem(at: payload, to: target) }
+        catch {
+            if lstat(target.path, &existing) == 0 { throw CopyPublicationError.conflict }
+            throw error
+        }
+    }
+
     private static func matches(_ url: URL, descriptor: Int32) -> Bool {
         var pathInfo = stat(); var descriptorInfo = stat()
         return descriptor >= 0 && lstat(url.path, &pathInfo) == 0 && fstat(descriptor, &descriptorInfo) == 0 &&
@@ -307,7 +339,20 @@ public enum CopyEngine {
         try snapshot(root, cancellation: cancellation)
     }
 
+    static func verifiedContentSnapshot(_ root: URL, cancellation: CopyCancellation = CopyCancellation()) throws -> [String: String] {
+        try contentSnapshot(root, cancellation: cancellation)
+    }
+
     private static func snapshot(_ root: URL, cancellation: CopyCancellation) throws -> [String: String] {
+        try makeSnapshot(root, cancellation: cancellation, includePermissions: true)
+    }
+
+    private static func contentSnapshot(_ root: URL, cancellation: CopyCancellation) throws -> [String: String] {
+        try makeSnapshot(root, cancellation: cancellation, includePermissions: false)
+    }
+
+    private static func makeSnapshot(_ root: URL, cancellation: CopyCancellation,
+                                     includePermissions: Bool) throws -> [String: String] {
         let fm = FileManager()
         var result: [String: String] = [:]
         func visit(_ url: URL, relative: String) throws {
@@ -318,7 +363,7 @@ public enum CopyEngine {
             case .typeSymbolicLink:
                 result[relative] = "link:" + (try fm.destinationOfSymbolicLink(atPath: url.path))
             case .typeDirectory:
-                result[relative] = "directory:\(attrs[.posixPermissions] ?? 0)"
+                result[relative] = includePermissions ? "directory:\(attrs[.posixPermissions] ?? 0)" : "directory"
                 for child in try fm.contentsOfDirectory(at: url, includingPropertiesForKeys: nil) {
                     try visit(child, relative: relative + "/" + child.lastPathComponent)
                 }
@@ -329,7 +374,8 @@ public enum CopyEngine {
                 while let data = try handle.read(upToCount: 1024 * 1024), !data.isEmpty {
                     try cancellation.check(); hash.update(data: data)
                 }
-                result[relative] = "file:\(attrs[.posixPermissions] ?? 0):" + hash.finalize().map { String(format: "%02x", $0) }.joined()
+                let digest = hash.finalize().map { String(format: "%02x", $0) }.joined()
+                result[relative] = includePermissions ? "file:\(attrs[.posixPermissions] ?? 0):" + digest : "file:" + digest
             default: throw CopyFailure(text: "Unsupported special file: " + url.path)
             }
         }

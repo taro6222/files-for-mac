@@ -163,11 +163,12 @@ public enum CopyMergeExecutor {
                 case .copyMissing:
                     report.items[index].state = "copying"; try save(); try cancellation.check()
                     let before = try CopyEngine.verifiedSnapshot(action.source, cancellation: cancellation)
+                    let contentBefore = try CopyEngine.verifiedContentSnapshot(action.source, cancellation: cancellation)
                     let temporary = parent.appendingPathComponent(".files-merge-\(report.id.uuidString)-\(index)")
                     try fm.copyItem(at: action.source, to: temporary)
                     defer { try? fm.removeItem(at: temporary) }
                     try cancellation.check()
-                    guard try CopyEngine.verifiedSnapshot(temporary, cancellation: cancellation) == before,
+                    guard try CopyEngine.verifiedContentSnapshot(temporary, cancellation: cancellation) == contentBefore,
                           try CopyEngine.verifiedSnapshot(action.source, cancellation: cancellation) == before else {
                         throw MergeFailure(text: "Source changed or copied contents did not match.")
                     }
@@ -177,17 +178,18 @@ public enum CopyMergeExecutor {
                     let parentFD = open(parent.path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
                     guard parentFD >= 0 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
                     defer { close(parentFD) }
-                    guard renameatx_np(parentFD, temporary.lastPathComponent, parentFD,
-                                       action.target.lastPathComponent, UInt32(RENAME_EXCL)) == 0 else {
-                        if errno == EEXIST { throw MergeConflict() }
-                        throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
-                    }
+                    do {
+                        try CopyEngine.publishNoReplace(payload: temporary, target: action.target,
+                            sourceDirectoryFD: parentFD, sourceName: temporary.lastPathComponent,
+                            destinationDirectoryFD: parentFD, destinationName: action.target.lastPathComponent)
+                    } catch CopyPublicationError.conflict { throw MergeConflict() }
                     let targetIdentity = try identity(action.target)
                     report.items[index].state = "completed"
                     report.items[index].targetIdentity = targetIdentity
-                    report.items[index].targetSnapshot = before
+                    let targetSnapshot = try CopyEngine.verifiedSnapshot(action.target, cancellation: cancellation)
+                    report.items[index].targetSnapshot = targetSnapshot
                     undoItems.append(CopyUndoItem(target: action.target, targetIdentity: targetIdentity,
-                                                  targetSnapshot: before))
+                                                  targetSnapshot: targetSnapshot))
                 }
             } catch is MergeConflict {
                 report.items[index].state = "conflict"

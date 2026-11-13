@@ -150,12 +150,13 @@ public enum EntryOperations {
         let fm = FileManager.default
         if !crossVolume { try fm.moveItem(at: source, to: target); return }
         let before = try CopyEngine.verifiedSnapshot(source)
+        let contentBefore = try CopyEngine.verifiedContentSnapshot(source)
         let stage = target.deletingLastPathComponent().appendingPathComponent(".files-undo-\(UUID().uuidString)")
         try fm.createDirectory(at: stage, withIntermediateDirectories: false)
         defer { if entryExists(stage) { try? fm.removeItem(at: stage) } }
         let payload = stage.appendingPathComponent("payload")
         try fm.copyItem(at: source, to: payload)
-        guard try CopyEngine.verifiedSnapshot(payload) == before,
+        guard try CopyEngine.verifiedContentSnapshot(payload) == contentBefore,
               try CopyEngine.verifiedSnapshot(source) == before else {
             throw MoveFailure(text: LString.crossVolumeVerificationFailed)
         }
@@ -167,7 +168,7 @@ public enum EntryOperations {
             try fm.removeItem(at: source)
         } catch {
             let originalError = error
-            if entryExists(target), (try? CopyEngine.verifiedSnapshot(target)) == before { try? fm.removeItem(at: target) }
+            if entryExists(target), (try? CopyEngine.verifiedContentSnapshot(target)) == contentBefore { try? fm.removeItem(at: target) }
             throw originalError
         }
     }
@@ -586,15 +587,17 @@ public enum EntryOperations {
                                 backupURLs[index] = proposedBackup
                                 itemStates[index] = MoveItemOperationResult(source: source, target: target, state: "backingUp", message: nil)
                                 try save(state: finalState); emit("backingUp"); try cancellation.check()
-                                guard renameatx_np(destinationFD, target.lastPathComponent, destinationFD,
-                                                   proposedBackup.lastPathComponent, UInt32(RENAME_EXCL)) == 0 else {
-                                    throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
-                                }
+                                do {
+                                    try CopyEngine.publishNoReplace(payload: target, target: proposedBackup,
+                                        sourceDirectoryFD: destinationFD, sourceName: target.lastPathComponent,
+                                        destinationDirectoryFD: destinationFD, destinationName: proposedBackup.lastPathComponent)
+                                } catch CopyPublicationError.conflict { throw EntryOperationError.conflict }
                                 backup = proposedBackup
                                 backupURLs[index] = proposedBackup
                             }
                             if crossVolume {
                                 let before = try CopyEngine.verifiedSnapshot(source, cancellation: cancellation)
+                                let contentBefore = try CopyEngine.verifiedContentSnapshot(source, cancellation: cancellation)
                                 let stage = normalizedDestination.appendingPathComponent(".files-move-\(operationId)-\(index)")
                                 try fm.createDirectory(at: stage, withIntermediateDirectories: false)
                                 defer { if entryExists(stage) { try? fm.removeItem(at: stage) } }
@@ -605,7 +608,7 @@ public enum EntryOperations {
                                 try cancellation.check()
                                 itemStates[index] = MoveItemOperationResult(source: source, target: target, state: "verifying", message: nil)
                                 try save(state: finalState); emit("verifying")
-                                guard try CopyEngine.verifiedSnapshot(payload, cancellation: cancellation) == before,
+                                guard try CopyEngine.verifiedContentSnapshot(payload, cancellation: cancellation) == contentBefore,
                                       try CopyEngine.verifiedSnapshot(source, cancellation: cancellation) == before else {
                                     throw MoveFailure(text: LString.crossVolumeVerificationFailed)
                                 }
@@ -613,10 +616,11 @@ public enum EntryOperations {
                                 let stageFD = open(stage.path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
                                 guard stageFD >= 0 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
                                 defer { close(stageFD) }
-                                guard renameatx_np(stageFD, "payload", destinationFD, target.lastPathComponent, UInt32(RENAME_EXCL)) == 0 else {
-                                    if errno == EEXIST { throw EntryOperationError.conflict }
-                                    throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
-                                }
+                                do {
+                                    try CopyEngine.publishNoReplace(payload: payload, target: target,
+                                        sourceDirectoryFD: stageFD, sourceName: "payload",
+                                        destinationDirectoryFD: destinationFD, destinationName: target.lastPathComponent)
+                                } catch CopyPublicationError.conflict { throw EntryOperationError.conflict }
                                 do {
                                     try cancellation.check(); emit("removingSource")
                                     guard try CopyEngine.verifiedSnapshot(source, cancellation: cancellation) == before else {
@@ -625,7 +629,7 @@ public enum EntryOperations {
                                     try fm.removeItem(at: source)
                                 } catch {
                                     let originalError = error
-                                    if entryExists(target), (try? CopyEngine.verifiedSnapshot(target)) == before { try? fm.removeItem(at: target) }
+                                    if entryExists(target), (try? CopyEngine.verifiedContentSnapshot(target)) == contentBefore { try? fm.removeItem(at: target) }
                                     throw originalError
                                 }
                             } else {
