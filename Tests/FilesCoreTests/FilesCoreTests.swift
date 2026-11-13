@@ -486,14 +486,15 @@ private struct DelayedLoader: DirectoryLoading {
     let suite = "context-menu-visibility-tests-\(UUID())", defaults = UserDefaults(suiteName: suite)!
     defer { defaults.removePersistentDomain(forName: suite) }
     let preferences = BrowserPreferences(defaults: defaults, initialFavorites: [])
-    #expect(preferences.showCompressionOptions && preferences.showOpenTerminal && preferences.showCreateFolderWithSelection && preferences.showPinToSidebar)
+    #expect(preferences.showCompressionOptions && preferences.showOpenTerminal && preferences.showCreateFolderWithSelection && preferences.showPinToSidebar && preferences.showSendToMenu)
     var notifications = 0; let token = preferences.observe { notifications += 1 }
     preferences.setShowCompressionOptions(false); preferences.setShowOpenTerminal(false); preferences.setShowCreateFolderWithSelection(false)
     preferences.setShowPinToSidebar(false)
+    preferences.setShowSendToMenu(false)
     preferences.setShowCompressionOptions(false); preferences.setShowOpenTerminal(false)
     let restored = BrowserPreferences(defaults: defaults, initialFavorites: [])
-    #expect(!restored.showCompressionOptions && !restored.showOpenTerminal && !restored.showCreateFolderWithSelection && !restored.showPinToSidebar)
-    #expect(notifications == 4)
+    #expect(!restored.showCompressionOptions && !restored.showOpenTerminal && !restored.showCreateFolderWithSelection && !restored.showPinToSidebar && !restored.showSendToMenu)
+    #expect(notifications == 5)
     preferences.removeObserver(token)
 }
 
@@ -537,6 +538,7 @@ private struct DelayedLoader: DirectoryLoading {
     source.setShowDateColumn(false); source.setShowTypeColumn(false); source.setShowSizeColumn(false); source.setShowGitStatusColumn(true)
     source.setShowCompressionOptions(false); source.setShowOpenTerminal(false); source.setShowCreateFolderWithSelection(false)
     source.setShowPinToSidebar(false)
+    source.setShowSendToMenu(false)
     source.setFolderViewPreference(FolderViewPreference(mode: .grid, size: .large), for: URL(fileURLWithPath: "/folder"))
     let data = try source.exportData(), destination = BrowserPreferences(defaults: secondDefaults, initialFavorites: [])
     try destination.importData(data)
@@ -550,6 +552,7 @@ private struct DelayedLoader: DirectoryLoading {
     #expect(!destination.showDateColumn && !destination.showTypeColumn && !destination.showSizeColumn && destination.showGitStatusColumn)
     #expect(!destination.showCompressionOptions && !destination.showOpenTerminal && !destination.showCreateFolderWithSelection)
     #expect(!destination.showPinToSidebar)
+    #expect(!destination.showSendToMenu)
     #expect(destination.folderViewPreference(for: URL(fileURLWithPath: "/folder")) == FolderViewPreference(mode: .grid, size: .large))
     let before = try destination.exportData()
     var object = try #require(JSONSerialization.jsonObject(with: data) as? [String: Any]); object["viewSize"] = "huge"

@@ -76,6 +76,7 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
     private var openTerminalMenuItem: NSMenuItem?
     private var createFolderWithSelectionMenuItem: NSMenuItem?
     private var pinToSidebarMenuItem: NSMenuItem?
+    private var shareMenuItem: NSMenuItem?
     private lazy var commandPalette = CommandPaletteWindow()
     private var sharingPicker: NSSharingServicePicker?
     private var completionTask: Task<Void, Never>?
@@ -423,6 +424,7 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         permanentDelete.isEnabled = false
         let reveal = menu.addItem(withTitle: L("Finder에서 보기", "Reveal in Finder"), action: #selector(revealSelection(_:)), keyEquivalent: ""); reveal.target = self
         let share = menu.addItem(withTitle: L("공유…", "Share…"), action: #selector(shareSelection(_:)), keyEquivalent: ""); share.target = self
+        shareMenuItem = share
         let terminal = menu.addItem(withTitle: L("터미널에서 열기", "Open in Terminal"), action: #selector(openInTerminal(_:)), keyEquivalent: ""); terminal.target = self
         openTerminalMenuItem = terminal
         let openWith = menu.addItem(withTitle: L("다른 앱으로 열기…", "Open With…"), action: #selector(openWithApplication(_:)), keyEquivalent: ""); openWith.target = self
@@ -1709,6 +1711,7 @@ extension BrowserWindow {
         openTerminalMenuItem?.isHidden = !preferences.showOpenTerminal
         createFolderWithSelectionMenuItem?.isHidden = !preferences.showCreateFolderWithSelection
         pinToSidebarMenuItem?.isHidden = !preferences.showPinToSidebar
+        shareMenuItem?.isHidden = !preferences.showSendToMenu
     }
     @objc private func setViewSize(_ sender: NSMenuItem) {
         guard let raw = sender.representedObject as? String, let size = BrowserViewSize(rawValue: raw) else { return }
@@ -2039,12 +2042,14 @@ extension BrowserWindow {
                     && delegate.qaGeneralContextMenuStates?.1 != contextMenuBefore?.1
                     && delegate.qaGeneralContextMenuStates?.2 != contextMenuBefore?.2
                     && delegate.qaGeneralContextMenuStates?.3 != contextMenuBefore?.3
-                preferences.setShowCompressionOptions(false); preferences.setShowOpenTerminal(false); preferences.setShowCreateFolderWithSelection(false); preferences.setShowPinToSidebar(false)
+                    && delegate.qaGeneralContextMenuStates?.4 != contextMenuBefore?.4
+                preferences.setShowCompressionOptions(false); preferences.setShowOpenTerminal(false); preferences.setShowCreateFolderWithSelection(false); preferences.setShowPinToSidebar(false); preferences.setShowSendToMenu(false)
                 checks["contextMenuCompressionVisibilityPreference"] = !controller.qaVisibleContextActions.contains(NSStringFromSelector(#selector(createArchive(_:))))
                 checks["contextMenuTerminalVisibilityPreference"] = !controller.qaVisibleContextActions.contains(NSStringFromSelector(#selector(openInTerminal(_:))))
                 checks["contextMenuFolderVisibilityPreference"] = !controller.qaVisibleContextActions.contains(NSStringFromSelector(#selector(createFolderFromSelection(_:))))
                 checks["contextMenuPinVisibilityPreference"] = !controller.qaVisibleContextActions.contains(NSStringFromSelector(#selector(toggleSelectedFavorite(_:))))
-                preferences.setShowCompressionOptions(true); preferences.setShowOpenTerminal(true); preferences.setShowCreateFolderWithSelection(true); preferences.setShowPinToSidebar(true)
+                checks["contextMenuShareVisibilityPreference"] = !controller.qaVisibleContextActions.contains(NSStringFromSelector(#selector(shareSelection(_:))))
+                preferences.setShowCompressionOptions(true); preferences.setShowOpenTerminal(true); preferences.setShowCreateFolderWithSelection(true); preferences.setShowPinToSidebar(true); preferences.setShowSendToMenu(true)
                 try capture("general-settings", view: delegate.qaGeneralSettingsContentView)
                 delegate.qaToggleGeneralWidgets(); delegate.qaToggleGeneralSizeUnit(); delegate.qaToggleGeneralOpenFoldersInNewTab(); delegate.qaToggleGeneralScrollToPreviousFolderOnUp(); delegate.qaToggleGeneralShowFileExtensionWarning(); delegate.qaToggleGeneralContextMenuItems(); delegate.qaGeneralSettingsContentView?.window?.close(); window.makeKeyAndOrderFront(nil)
                 delegate.showArchiveCapabilities(nil); try await Task.sleep(for: .milliseconds(50))
