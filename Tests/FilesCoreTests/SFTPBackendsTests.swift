@@ -64,3 +64,15 @@ import Testing
     #expect(throws: SFTPBackendError.invalidListing) { try SFTPRemoteProvider.parseList(Data("nested/name\n".utf8), parent: "/") }
     #expect(throws: SFTPBackendError.listingLimitExceeded) { try SFTPRemoteProvider.parseList(Data("one\ntwo\n".utf8), parent: "/", maximumEntries: 1) }
 }
+
+@Test func sftpIdentityBookmarksRoundTripRegularFilesAndRejectLinks() throws {
+    let fm = FileManager.default, root = fm.temporaryDirectory.appendingPathComponent("sftp-bookmark-\(UUID())", isDirectory: true)
+    defer { try? fm.removeItem(at: root) }; try fm.createDirectory(at: root, withIntermediateDirectories: true)
+    let identity = root.appendingPathComponent("id_ed25519"), link = root.appendingPathComponent("linked-key")
+    try Data("private-key-fixture".utf8).write(to: identity); try fm.createSymbolicLink(at: link, withDestinationURL: identity)
+    let reference = SFTPIdentityReference(), bookmark = try reference.create(for: identity, securityScoped: false)
+    let resolved = try reference.resolve(bookmark, securityScoped: false)
+    #expect(resolved.url.standardizedFileURL == identity.standardizedFileURL); #expect(resolved.stale == false)
+    #expect(throws: SFTPBackendError.invalidIdentity) { try reference.create(for: link, securityScoped: false) }
+    #expect(throws: (any Error).self) { try reference.resolve(Data("invalid".utf8), securityScoped: false) }
+}

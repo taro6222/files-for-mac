@@ -8,9 +8,10 @@ final class RemoteConnectionsWindow: NSWindowController, NSTableViewDataSource, 
     private let hostTrustStore: SFTPHostTrustStore
     private let hostKeyScanner = SFTPHostKeyScanner()
     private var profiles: [RemoteConnectionProfile] = []
+    private var pendingIdentityBookmark: Data?
     private let table = NSTableView(), name = NSTextField(), host = NSTextField(), port = NSTextField()
     private let rootPath = NSTextField(), username = NSTextField(), password = NSSecureTextField()
-    private let protocolPopup = NSPopUpButton(), saveButton = NSButton(), deleteButton = NSButton(), connectButton = NSButton(), trustButton = NSButton()
+    private let protocolPopup = NSPopUpButton(), saveButton = NSButton(), deleteButton = NSButton(), connectButton = NSButton(), trustButton = NSButton(), identityButton = NSButton()
 
     init(profileStore: RemoteProfileStore, credentialStore: KeychainRemoteCredentialStore = .init()) {
         self.profileStore = profileStore; self.credentialStore = credentialStore
@@ -38,11 +39,15 @@ final class RemoteConnectionsWindow: NSWindowController, NSTableViewDataSource, 
         let form = NSStackView(); form.orientation = .vertical; form.spacing = 8
         form.addArrangedSubview(NSTextField(wrappingLabelWithString: L("암호는 프로필 파일이 아니라 macOS Keychain에 저장됩니다. 인증서와 SSH host key 검증은 연결 시 생략하지 않습니다.", "Passwords are stored in macOS Keychain, not the profile file. Certificate and SSH host-key validation is never skipped when connecting.")))
         protocolPopup.addItems(withTitles: RemoteProtocol.allCases.map { $0.rawValue.uppercased() }); protocolPopup.target = self; protocolPopup.action = #selector(protocolChanged(_:))
+        identityButton.title = L("개인 키 선택…", "Choose Private Key…"); identityButton.target = self; identityButton.action = #selector(chooseIdentity(_:))
         for (label, field) in [(L("이름", "Name"), name), (L("프로토콜", "Protocol"), protocolPopup), (L("호스트", "Host"), host), (L("포트", "Port"), port), (L("루트 경로", "Root Path"), rootPath), (L("사용자 이름", "Username"), username), (L("암호", "Password"), password)] {
             let row = NSStackView(); row.orientation = .horizontal; row.spacing = 8
             let title = NSTextField(labelWithString: label); title.alignment = .right; title.widthAnchor.constraint(equalToConstant: 100).isActive = true
             row.addArrangedSubview(title); row.addArrangedSubview(field); form.addArrangedSubview(row)
         }
+        let identityRow = NSStackView(); identityRow.orientation = .horizontal; identityRow.spacing = 8
+        let identityLabel = NSTextField(labelWithString: L("SFTP 개인 키", "SFTP Private Key")); identityLabel.alignment = .right; identityLabel.widthAnchor.constraint(equalToConstant: 100).isActive = true
+        identityRow.addArrangedSubview(identityLabel); identityRow.addArrangedSubview(identityButton); form.addArrangedSubview(identityRow)
         password.placeholderString = L("변경할 때만 입력", "Enter only to change")
         let controls = NSStackView(); controls.orientation = .horizontal; controls.addArrangedSubview(NSView())
         trustButton.title = L("호스트 키 확인…", "Verify Host Key…"); trustButton.target = self; trustButton.action = #selector(verifyHostKey(_:)); controls.addArrangedSubview(trustButton)
@@ -69,17 +74,18 @@ final class RemoteConnectionsWindow: NSWindowController, NSTableViewDataSource, 
         name.stringValue = profile.name; protocolPopup.selectItem(at: RemoteProtocol.allCases.firstIndex(of: profile.remoteProtocol) ?? 0)
         host.stringValue = profile.host; port.stringValue = String(profile.port); rootPath.stringValue = profile.rootPath
         username.stringValue = profile.username ?? ""; password.stringValue = ""
+        pendingIdentityBookmark = profile.identityBookmark; updateIdentityTitle()
     }
-    private func clearForm() { name.stringValue = ""; protocolPopup.selectItem(at: 0); host.stringValue = ""; port.stringValue = String(RemoteProtocol.ftp.defaultPort); rootPath.stringValue = "/"; username.stringValue = ""; password.stringValue = "" }
-    private func updateControls() { deleteButton.isEnabled = selected != nil; connectButton.isEnabled = selected?.remoteProtocol == .smb; trustButton.isEnabled = selected?.remoteProtocol == .sftp }
+    private func clearForm() { name.stringValue = ""; protocolPopup.selectItem(at: 0); host.stringValue = ""; port.stringValue = String(RemoteProtocol.ftp.defaultPort); rootPath.stringValue = "/"; username.stringValue = ""; password.stringValue = ""; pendingIdentityBookmark = nil; updateIdentityTitle() }
+    private func updateControls() { deleteButton.isEnabled = selected != nil; connectButton.isEnabled = selected?.remoteProtocol == .smb; trustButton.isEnabled = selected?.remoteProtocol == .sftp; identityButton.isEnabled = selectedProtocol == .sftp }
     @objc private func addProfile(_ sender: Any?) { table.deselectAll(nil); clearForm(); updateControls(); window?.makeFirstResponder(name) }
-    @objc private func protocolChanged(_ sender: Any?) { port.stringValue = String(selectedProtocol.defaultPort) }
+    @objc private func protocolChanged(_ sender: Any?) { port.stringValue = String(selectedProtocol.defaultPort); updateControls() }
     @objc private func saveProfile(_ sender: Any?) {
         do {
             let current = selected, credentialID = password.stringValue.isEmpty ? current?.credentialID : (current?.credentialID ?? UUID().uuidString)
             let profile = try RemoteConnectionProfile(id: current?.id ?? UUID(), name: name.stringValue, remoteProtocol: selectedProtocol,
                 host: host.stringValue, port: Int(port.stringValue), rootPath: rootPath.stringValue,
-                username: username.stringValue, credentialID: credentialID)
+                username: username.stringValue, credentialID: credentialID, identityBookmark: pendingIdentityBookmark)
             if !password.stringValue.isEmpty, let credentialID {
                 try credentialStore.save(RemoteCredential(username: profile.username ?? "", secret: Data(password.stringValue.utf8)), id: credentialID)
             }
@@ -96,6 +102,22 @@ final class RemoteConnectionsWindow: NSWindowController, NSTableViewDataSource, 
     @objc private func connectSMB(_ sender: Any?) {
         do { guard let selected else { return }; NSWorkspace.shared.open(try selected.smbMountURL()) }
         catch { showError(error) }
+    }
+    @objc private func chooseIdentity(_ sender: Any?) {
+        guard let window else { return }; let panel = NSOpenPanel(); panel.canChooseFiles = true; panel.canChooseDirectories = false; panel.allowsMultipleSelection = false
+        panel.message = L("SFTP 인증에 사용할 개인 키 파일을 선택하세요.", "Choose the private key file used for SFTP authentication.")
+        panel.beginSheetModal(for: window) { [weak self] response in
+            guard response == .OK, let self, let url = panel.url else { return }
+            do { self.pendingIdentityBookmark = try SFTPIdentityReference().create(for: url); self.updateIdentityTitle() }
+            catch { self.showError(error) }
+        }
+    }
+    private func updateIdentityTitle() {
+        guard let pendingIdentityBookmark,
+              let resolved = try? SFTPIdentityReference().resolve(pendingIdentityBookmark) else {
+            identityButton.title = L("개인 키 선택…", "Choose Private Key…"); return
+        }
+        identityButton.title = resolved.url.lastPathComponent + (resolved.stale ? L(" (다시 선택 필요)", " (Reselect Required)") : "")
     }
     @objc private func verifyHostKey(_ sender: Any?) {
         guard let profile = selected, profile.remoteProtocol == .sftp, let window else { return }
@@ -134,6 +156,12 @@ final class RemoteConnectionsWindow: NSWindowController, NSTableViewDataSource, 
     func qaSFTPTrustEnabled() -> Bool {
         guard let sftp = profiles.firstIndex(where: { $0.remoteProtocol == .sftp }) else { return false }
         table.selectRowIndexes([sftp], byExtendingSelection: false); populate(profiles[sftp]); updateControls(); let enabled = trustButton.isEnabled
+        if let smb = profiles.firstIndex(where: { $0.remoteProtocol == .smb }) { table.selectRowIndexes([smb], byExtendingSelection: false); populate(profiles[smb]); updateControls() }
+        return enabled
+    }
+    func qaSFTPIdentityEnabled() -> Bool {
+        guard let sftp = profiles.firstIndex(where: { $0.remoteProtocol == .sftp }) else { return false }
+        table.selectRowIndexes([sftp], byExtendingSelection: false); populate(profiles[sftp]); updateControls(); let enabled = identityButton.isEnabled
         if let smb = profiles.firstIndex(where: { $0.remoteProtocol == .smb }) { table.selectRowIndexes([smb], byExtendingSelection: false); populate(profiles[smb]); updateControls() }
         return enabled
     }

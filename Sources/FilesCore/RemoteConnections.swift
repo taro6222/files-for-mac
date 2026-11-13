@@ -26,10 +26,11 @@ public struct RemoteConnectionProfile: Codable, Equatable, Identifiable, Sendabl
     public let rootPath: String
     public let username: String?
     public let credentialID: String?
+    public let identityBookmark: Data?
 
     public init(id: UUID = UUID(), name: String, remoteProtocol: RemoteProtocol, host: String,
                 port: Int? = nil, rootPath: String = "/", username: String? = nil,
-                credentialID: String? = nil) throws {
+                credentialID: String? = nil, identityBookmark: Data? = nil) throws {
         let cleanName = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !cleanName.isEmpty else { throw RemoteConnectionValidationError.emptyName }
         let cleanHost = host.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
@@ -46,7 +47,7 @@ public struct RemoteConnectionProfile: Codable, Equatable, Identifiable, Sendabl
         }
         self.id = id; self.name = cleanName; self.remoteProtocol = remoteProtocol
         self.host = cleanHost; self.port = resolvedPort; self.rootPath = rootPath
-        self.username = cleanUsername.flatMap { $0.isEmpty ? nil : $0 }; self.credentialID = credentialID
+        self.username = cleanUsername.flatMap { $0.isEmpty ? nil : $0 }; self.credentialID = credentialID; self.identityBookmark = identityBookmark
     }
 
     public var endpoint: String { "\(remoteProtocol.rawValue)://\(host):\(port)\(rootPath)" }
@@ -90,7 +91,7 @@ public struct RemoteProfileStore: Sendable {
         let decoded = try JSONDecoder().decode([RemoteConnectionProfile].self, from: Data(contentsOf: fileURL))
         return try decoded.map {
             try RemoteConnectionProfile(id: $0.id, name: $0.name, remoteProtocol: $0.remoteProtocol, host: $0.host,
-                port: $0.port, rootPath: $0.rootPath, username: $0.username, credentialID: $0.credentialID)
+                port: $0.port, rootPath: $0.rootPath, username: $0.username, credentialID: $0.credentialID, identityBookmark: $0.identityBookmark)
         }
     }
 

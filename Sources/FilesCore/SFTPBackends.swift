@@ -20,6 +20,26 @@ public struct SFTPKeyConfiguration: Sendable, Equatable {
     }
 }
 
+public struct SFTPIdentityReference: Sendable {
+    public init() {}
+    public func create(for url: URL, securityScoped: Bool = true) throws -> Data {
+        guard try validIdentity(url) else { throw SFTPBackendError.invalidIdentity }
+        let options: URL.BookmarkCreationOptions = securityScoped ? [.withSecurityScope, .securityScopeAllowOnlyReadAccess] : [.minimalBookmark]
+        return try url.bookmarkData(options: options, includingResourceValuesForKeys: [.isRegularFileKey, .isSymbolicLinkKey], relativeTo: nil)
+    }
+    public func resolve(_ data: Data, securityScoped: Bool = true) throws -> (url: URL, stale: Bool) {
+        var stale = false
+        let options: URL.BookmarkResolutionOptions = securityScoped ? [.withSecurityScope, .withoutUI] : [.withoutUI]
+        let url = try URL(resolvingBookmarkData: data, options: options, relativeTo: nil, bookmarkDataIsStale: &stale)
+        guard try validIdentity(url) else { throw SFTPBackendError.invalidIdentity }
+        return (url, stale)
+    }
+    private func validIdentity(_ url: URL) throws -> Bool {
+        let values = try url.resourceValues(forKeys: [.isRegularFileKey, .isSymbolicLinkKey])
+        return values.isRegularFile == true && values.isSymbolicLink != true
+    }
+}
+
 public struct SFTPCommandPlan: Sendable, Equatable {
     public let executable: URL
     public let arguments: [String]
