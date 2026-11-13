@@ -401,6 +401,18 @@ private struct DelayedLoader: DirectoryLoading {
     #expect(BrowserPreferences(defaults: defaults, initialFavorites: []).startupLocationPath == nil)
 }
 
+@Test @MainActor func sizeUnitDefaultsToBinaryPersistsAndRepairsInvalidValue() {
+    let suite = "size-unit-tests-\(UUID())", defaults = UserDefaults(suiteName: suite)!
+    defer { defaults.removePersistentDomain(forName: suite) }
+    let preferences = BrowserPreferences(defaults: defaults, initialFavorites: [])
+    #expect(preferences.sizeUnit == .binary)
+    preferences.setSizeUnit(.decimal)
+    #expect(BrowserPreferences(defaults: defaults, initialFavorites: []).sizeUnit == .decimal)
+    defaults.set("invalid", forKey: "sizeUnit")
+    #expect(BrowserPreferences(defaults: defaults, initialFavorites: []).sizeUnit == .binary)
+    #expect(!formatByteCount(1_500, unit: .binary).isEmpty && !formatByteCount(1_500, unit: .decimal).isEmpty)
+}
+
 @Test @MainActor func toolbarAndStatusBarVisibilityPersistAndNotify() {
     let suite = "chrome-visibility-tests-\(UUID())", defaults = UserDefaults(suiteName: suite)!
     defer { defaults.removePersistentDomain(forName: suite) }
@@ -449,12 +461,14 @@ private struct DelayedLoader: DirectoryLoading {
     let source = BrowserPreferences(defaults: firstDefaults, initialFavorites: [URL(fileURLWithPath: "/source")])
     source.setShowHidden(true); source.setShowToolbar(false); source.setAppearance(.dark); source.setDeveloperApplication(URL(fileURLWithPath: "/Applications/Editor.app"))
     source.setStartupLocation(URL(fileURLWithPath: "/startup"))
+    source.setSizeUnit(.decimal)
     source.setFolderViewPreference(FolderViewPreference(mode: .grid, size: .large), for: URL(fileURLWithPath: "/folder"))
     let data = try source.exportData(), destination = BrowserPreferences(defaults: secondDefaults, initialFavorites: [])
     try destination.importData(data)
     #expect(destination.showHidden && !destination.showToolbar && destination.appearance == .dark)
     #expect(destination.developerApplicationPath == "/Applications/Editor.app")
     #expect(destination.startupLocationPath == "/startup")
+    #expect(destination.sizeUnit == .decimal)
     #expect(destination.folderViewPreference(for: URL(fileURLWithPath: "/folder")) == FolderViewPreference(mode: .grid, size: .large))
     let before = try destination.exportData()
     var object = try #require(JSONSerialization.jsonObject(with: data) as? [String: Any]); object["viewSize"] = "huge"

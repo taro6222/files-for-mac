@@ -324,6 +324,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     var qaGeneralSettingsContentView: NSView? { generalSettingsWindow?.window?.contentView }
     var qaGeneralWidgetStates: (Bool, Bool, Bool)? { generalSettingsWindow?.qaWidgetStates }
     func qaToggleGeneralWidgets() { generalSettingsWindow?.qaToggleWidgets() }
+    var qaGeneralSizeUnit: BrowserSizeUnit? { generalSettingsWindow?.qaSizeUnit }
+    func qaToggleGeneralSizeUnit() { generalSettingsWindow?.qaToggleSizeUnit() }
     func qaCreateRemoteProfile() { remoteConnectionsWindow?.qaCreateProfile() }
 #endif
 }

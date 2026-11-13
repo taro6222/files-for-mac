@@ -282,7 +282,7 @@ final class SecondaryBrowserPane: NSView, NSTableViewDataSource, NSTableViewDele
         switch id.rawValue {
         case "name": cell.textField?.stringValue = item.displayName(showExtensions: true)
         case "kind": cell.textField?.stringValue = item.kind
-        case "size": cell.textField?.stringValue = item.isDirectory ? "—" : item.size.map { ByteCountFormatter.string(fromByteCount: $0, countStyle: .file) } ?? "—"
+        case "size": cell.textField?.stringValue = item.isDirectory ? "—" : item.size.map { formatByteCount($0, unit: preferences.sizeUnit) } ?? "—"
         default: break
         }
         return cell

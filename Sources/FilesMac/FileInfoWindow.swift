@@ -64,7 +64,7 @@ final class FileInfoWindow: NSWindowController {
         for view in details.arrangedSubviews { details.removeArrangedSubview(view); view.removeFromSuperview() }
         guard items.count == 1 else {
             row(L("선택", "Selection"), L("\(items.count)개 항목", "\(items.count) items"));
-            let bytes = items.reduce(Int64(0)) { $0 + ($1.isDirectory ? 0 : ($1.size ?? 0)) }; row(L("파일 크기 합계", "Total file size"), ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file)); hashButton.isEnabled = false; tagField.isEnabled = false; saveTagsButton.isEnabled = false; return
+            let bytes = items.reduce(Int64(0)) { $0 + ($1.isDirectory ? 0 : ($1.size ?? 0)) }; row(L("파일 크기 합계", "Total file size"), formatByteCount(bytes, unit: BrowserPreferences.shared.sizeUnit)); hashButton.isEnabled = false; tagField.isEnabled = false; saveTagsButton.isEnabled = false; return
         }
         let item = items[0]; row(L("이름", "Name"), item.name); row(L("위치", "Location"), item.url.deletingLastPathComponent().path)
         guard let p = properties else { hashButton.isEnabled = !item.isDirectory; return }
@@ -77,7 +77,7 @@ final class FileInfoWindow: NSWindowController {
         hashButton.isEnabled = !p.isDirectory; tagField.isEnabled = true; saveTagsButton.isEnabled = true
     }
     private func row(_ label: String, _ value: String) { let field = NSTextField(wrappingLabelWithString: "\(label):  \(value)"); field.lineBreakMode = .byTruncatingMiddle; details.addArrangedSubview(field) }
-    private func size(_ value: Int64?) -> String { value.map { ByteCountFormatter.string(fromByteCount: $0, countStyle: .file) } ?? "—" }
+    private func size(_ value: Int64?) -> String { value.map { formatByteCount($0, unit: BrowserPreferences.shared.sizeUnit) } ?? "—" }
     private func date(_ value: Date?) -> String { value.map { DateFormatter.localizedString(from: $0, dateStyle: .medium, timeStyle: .medium) } ?? "—" }
     @objc private func toggleHash(_ sender: Any?) { hashTask == nil ? startHash() : cancelHash() }
     @objc private func saveTags(_ sender: Any?) {

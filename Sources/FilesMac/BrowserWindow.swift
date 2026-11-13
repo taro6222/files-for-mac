@@ -717,7 +717,7 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
             let bytes = selectedItems.reduce(Int64(0)) { total, item in
                 item.isDirectory ? total : total + (item.size ?? 0)
             }
-            status.stringValue += " · " + ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file)
+            status.stringValue += " · " + formatByteCount(bytes, unit: preferences.sizeUnit)
         }
         if model.isLoading { status.stringValue += " · " + L("읽는 중…", "Loading…") }
         if model.wasCancelled { status.stringValue += " · " + L("읽기 중단 · 불완전한 목록일 수 있음", "Loading stopped · List may be incomplete") }
@@ -742,7 +742,7 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         case "git": cell.textField?.stringValue = gitStatus(for: item)
         case "modified": cell.textField?.stringValue = item.modified.map(dateFormatter.string) ?? "—"
         case "kind": cell.textField?.stringValue = item.kind == "Folder" ? L("폴더", "Folder") : (item.kind == "File" ? L("파일", "File") : item.kind)
-        case "size": cell.textField?.stringValue = item.isDirectory ? "—" : item.size.map { ByteCountFormatter.string(fromByteCount: $0, countStyle: .file) } ?? "—"
+        case "size": cell.textField?.stringValue = item.isDirectory ? "—" : item.size.map { formatByteCount($0, unit: preferences.sizeUnit) } ?? "—"
         default: break
         }
         cell.textField?.textColor = item.isHidden ? .secondaryLabelColor : .labelColor
@@ -1954,11 +1954,12 @@ extension BrowserWindow {
                 try capture("advanced-settings", view: delegate.qaAdvancedSettingsContentView)
                 delegate.qaAdvancedSettingsContentView?.window?.close(); window.makeKeyAndOrderFront(nil)
                 delegate.showGeneralSettings(nil); try await Task.sleep(for: .milliseconds(50)); let widgetsBefore = delegate.qaGeneralWidgetStates
-                delegate.qaToggleGeneralWidgets(); let widgetsAfter = delegate.qaGeneralWidgetStates
+                let sizeUnitBefore = delegate.qaGeneralSizeUnit; delegate.qaToggleGeneralWidgets(); delegate.qaToggleGeneralSizeUnit(); let widgetsAfter = delegate.qaGeneralWidgetStates
                 checks["generalSettingsWindow"] = delegate.qaGeneralSettingsVisible && widgetsBefore != nil && widgetsAfter != nil
                     && widgetsAfter!.0 != widgetsBefore!.0 && widgetsAfter!.1 != widgetsBefore!.1 && widgetsAfter!.2 != widgetsBefore!.2
+                    && delegate.qaGeneralSizeUnit != sizeUnitBefore
                 try capture("general-settings", view: delegate.qaGeneralSettingsContentView)
-                delegate.qaToggleGeneralWidgets(); delegate.qaGeneralSettingsContentView?.window?.close(); window.makeKeyAndOrderFront(nil)
+                delegate.qaToggleGeneralWidgets(); delegate.qaToggleGeneralSizeUnit(); delegate.qaGeneralSettingsContentView?.window?.close(); window.makeKeyAndOrderFront(nil)
                 delegate.showArchiveCapabilities(nil); try await Task.sleep(for: .milliseconds(50))
                 checks["archiveCapabilitiesWindow"] = delegate.qaArchiveCapabilitiesVisible
                 try capture("archive-capabilities", view: delegate.qaArchiveCapabilitiesContentView)

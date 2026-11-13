@@ -6,6 +6,10 @@ public enum BrowserViewSize: String, Codable, CaseIterable, Sendable {
 public enum BrowserAppearance: String, CaseIterable, Sendable {
     case system, light, dark
 }
+public enum BrowserSizeUnit: String, CaseIterable, Sendable { case binary, decimal }
+public func formatByteCount(_ value: Int64, unit: BrowserSizeUnit) -> String {
+    ByteCountFormatter.string(fromByteCount: value, countStyle: unit == .binary ? .binary : .file)
+}
 public struct FolderViewPreference: Codable, Equatable, Sendable {
     public var mode: BrowserViewMode
     public var size: BrowserViewSize
@@ -27,6 +31,7 @@ public struct BrowserPreferencesArchive: Codable, Equatable, Sendable {
     public let viewSize: String
     public let appearance: String
     public let continueLastSession: Bool
+    public let sizeUnit: String?
     public let startupLocationPath: String?
     public let developerApplicationPath: String?
     public let toolbarOrder: [String]
@@ -61,6 +66,7 @@ public final class BrowserPreferences {
     public private(set) var viewSize: BrowserViewSize
     public private(set) var appearance: BrowserAppearance
     public private(set) var continueLastSession: Bool
+    public private(set) var sizeUnit: BrowserSizeUnit
     public private(set) var startupLocationPath: String?
     public private(set) var developerApplicationPath: String?
     public private(set) var toolbarOrder: [BrowserToolbarItem]
@@ -89,6 +95,7 @@ public final class BrowserPreferences {
         viewSize = defaults.string(forKey: "viewSize").flatMap(BrowserViewSize.init(rawValue:)) ?? .medium
         appearance = defaults.string(forKey: "appearance").flatMap(BrowserAppearance.init(rawValue:)) ?? .system
         continueLastSession = defaults.object(forKey: "continueLastSession") as? Bool ?? true
+        sizeUnit = defaults.string(forKey: "sizeUnit").flatMap(BrowserSizeUnit.init(rawValue:)) ?? .binary
         startupLocationPath = defaults.string(forKey: "startupLocationPath").flatMap { $0.hasPrefix("/") ? $0 : nil }
         developerApplicationPath = defaults.string(forKey: "developerApplicationPath")
         var toolbar: [BrowserToolbarItem] = []
@@ -160,6 +167,10 @@ public final class BrowserPreferences {
         guard continueLastSession != value else { return }
         continueLastSession = value; defaults.set(value, forKey: "continueLastSession"); changed()
     }
+    public func setSizeUnit(_ value: BrowserSizeUnit) {
+        guard sizeUnit != value else { return }
+        sizeUnit = value; defaults.set(value.rawValue, forKey: "sizeUnit"); changed()
+    }
     public func setStartupLocation(_ url: URL?) {
         let value = url?.standardizedFileURL.path
         guard startupLocationPath != value else { return }
@@ -180,7 +191,7 @@ public final class BrowserPreferences {
             collapsedSidebar: collapsedSidebar.map(\.rawValue).sorted(), favorites: favorites.map(\.path), recent: recent.map(\.path),
             showHidden: showHidden, showExtensions: showExtensions, showToolbar: showToolbar, showStatusBar: showStatusBar,
             showHomeFavorites: showHomeFavorites, showHomeVolumes: showHomeVolumes, showHomeRecent: showHomeRecent,
-            viewSize: viewSize.rawValue, appearance: appearance.rawValue, continueLastSession: continueLastSession,
+            viewSize: viewSize.rawValue, appearance: appearance.rawValue, continueLastSession: continueLastSession, sizeUnit: sizeUnit.rawValue,
             startupLocationPath: startupLocationPath, developerApplicationPath: developerApplicationPath, toolbarOrder: toolbarOrder.map(\.rawValue),
             hiddenToolbarItems: hiddenToolbarItems.map(\.rawValue).sorted(), folderViewPreferences: folderViewPreferences)
         let encoder = JSONEncoder(); encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
@@ -190,6 +201,11 @@ public final class BrowserPreferences {
         let archive = try JSONDecoder().decode(BrowserPreferencesArchive.self, from: data)
         guard archive.version == 1 else { throw BrowserPreferencesArchiveError.unsupportedVersion }
         guard let size = BrowserViewSize(rawValue: archive.viewSize), let importedAppearance = BrowserAppearance(rawValue: archive.appearance) else { throw BrowserPreferencesArchiveError.invalidValue }
+        let importedSizeUnit: BrowserSizeUnit
+        if let raw = archive.sizeUnit {
+            guard let value = BrowserSizeUnit(rawValue: raw) else { throw BrowserPreferencesArchiveError.invalidValue }
+            importedSizeUnit = value
+        } else { importedSizeUnit = .binary }
         let importedSidebar = archive.sidebarOrder.compactMap(SidebarSection.init(rawValue:))
         let importedToolbar = archive.toolbarOrder.compactMap(BrowserToolbarItem.init(rawValue:))
         guard importedSidebar.count == archive.sidebarOrder.count, Set(importedSidebar).count == SidebarSection.allCases.count,
@@ -211,7 +227,7 @@ public final class BrowserPreferences {
         favorites = archive.favorites.map { URL(fileURLWithPath: $0) }; recent = archive.recent.map { URL(fileURLWithPath: $0) }
         showHidden = archive.showHidden; showExtensions = archive.showExtensions; showToolbar = archive.showToolbar; showStatusBar = archive.showStatusBar
         showHomeFavorites = archive.showHomeFavorites; showHomeVolumes = archive.showHomeVolumes; showHomeRecent = archive.showHomeRecent
-        viewSize = size; appearance = importedAppearance; continueLastSession = archive.continueLastSession; startupLocationPath = archive.startupLocationPath
+        viewSize = size; appearance = importedAppearance; continueLastSession = archive.continueLastSession; sizeUnit = importedSizeUnit; startupLocationPath = archive.startupLocationPath
         developerApplicationPath = archive.developerApplicationPath; toolbarOrder = importedToolbar; hiddenToolbarItems = Set(importedHiddenToolbar)
         folderViewPreferences = archive.folderViewPreferences
         defaults.set(sidebarOrder.map(\.rawValue), forKey: "sidebarOrder"); defaults.set(collapsedSidebar.map(\.rawValue).sorted(), forKey: "collapsedSidebar")
@@ -219,7 +235,7 @@ public final class BrowserPreferences {
         defaults.set(showHidden, forKey: "showHidden"); defaults.set(showExtensions, forKey: "showExtensions")
         defaults.set(showToolbar, forKey: "showToolbar"); defaults.set(showStatusBar, forKey: "showStatusBar")
         defaults.set(showHomeFavorites, forKey: "showHomeFavorites"); defaults.set(showHomeVolumes, forKey: "showHomeVolumes"); defaults.set(showHomeRecent, forKey: "showHomeRecent")
-        defaults.set(viewSize.rawValue, forKey: "viewSize"); defaults.set(appearance.rawValue, forKey: "appearance"); defaults.set(continueLastSession, forKey: "continueLastSession")
+        defaults.set(viewSize.rawValue, forKey: "viewSize"); defaults.set(appearance.rawValue, forKey: "appearance"); defaults.set(continueLastSession, forKey: "continueLastSession"); defaults.set(sizeUnit.rawValue, forKey: "sizeUnit")
         if let startupLocationPath { defaults.set(startupLocationPath, forKey: "startupLocationPath") } else { defaults.removeObject(forKey: "startupLocationPath") }
         if let developerApplicationPath { defaults.set(developerApplicationPath, forKey: "developerApplicationPath") } else { defaults.removeObject(forKey: "developerApplicationPath") }
         defaults.set(toolbarOrder.map(\.rawValue), forKey: "toolbarOrder"); defaults.set(hiddenToolbarItems.map(\.rawValue).sorted(), forKey: "hiddenToolbarItems")
