@@ -173,3 +173,30 @@ private struct CopyFixture {
     #expect(undo.state == "partiallyCompleted")
     #expect(CopyEngine.latestUndoCopy(journalDirectory: f.journal) == nil)
 }
+
+@Test func folderMergePlanSeparatesMissingNestedAndTypeConflictsWithoutMutation() throws {
+    let f = try CopyFixture(); defer { f.clean() }
+    let sourceFolder = f.source.appendingPathComponent("folder")
+    let sourceNested = sourceFolder.appendingPathComponent("nested")
+    try FileManager.default.createDirectory(at: sourceNested, withIntermediateDirectories: true)
+    try Data("new".utf8).write(to: sourceNested.appendingPathComponent("missing.txt"))
+    try Data("source".utf8).write(to: sourceNested.appendingPathComponent("same.txt"))
+    try FileManager.default.createDirectory(at: sourceFolder.appendingPathComponent("mixed"), withIntermediateDirectories: true)
+    let targetFolder = f.destination.appendingPathComponent("folder")
+    let targetNested = targetFolder.appendingPathComponent("nested")
+    try FileManager.default.createDirectory(at: targetNested, withIntermediateDirectories: true)
+    try Data("target".utf8).write(to: targetNested.appendingPathComponent("same.txt"))
+    try Data("target-file".utf8).write(to: targetFolder.appendingPathComponent("mixed"))
+
+    let plan = try CopyMergePlanner.plan(source: sourceFolder, target: targetFolder)
+
+    #expect(plan.actions.map { $0.relativePath + ":" + $0.kind.rawValue } == [
+        "mixed:typeConflict",
+        "nested:mergeDirectory",
+        "nested/missing.txt:copyMissing",
+        "nested/same.txt:fileConflict"
+    ])
+    #expect(plan.conflicts.count == 2)
+    #expect(!FileManager.default.fileExists(atPath: targetNested.appendingPathComponent("missing.txt").path))
+    #expect(try String(contentsOf: targetNested.appendingPathComponent("same.txt"), encoding: .utf8) == "target")
+}
