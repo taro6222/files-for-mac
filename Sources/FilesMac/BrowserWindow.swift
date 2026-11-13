@@ -419,6 +419,7 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         let pin = menu.addItem(withTitle: L("사이드바 즐겨찾기 전환", "Toggle Sidebar Favorite"), action: #selector(toggleSelectedFavorite(_:)), keyEquivalent: ""); pin.target = self
         pinToSidebarMenuItem = pin
         let editTags = menu.addItem(withTitle: L("Finder 태그 편집…", "Edit Finder Tags…"), action: #selector(showInfo(_:)), keyEquivalent: ""); editTags.target = self; editTagsMenuItem = editTags
+        let wallpaper = menu.addItem(withTitle: L("데스크탑 배경으로 설정", "Set as Desktop Wallpaper"), action: #selector(setAsDesktopWallpaper(_:)), keyEquivalent: ""); wallpaper.target = self
         let archive = menu.addItem(withTitle: L("압축 파일 탐색", "Browse Archive"), action: #selector(openArchive(_:)), keyEquivalent: ""); archive.target = self
         let createArchive = menu.addItem(withTitle: L("선택 항목 압축…", "Compress Selection…"), action: #selector(createArchive(_:)), keyEquivalent: ""); createArchive.target = self
         let extractHere = menu.addItem(withTitle: L("여기에 압축 해제", "Extract Here"), action: #selector(extractArchivesHere(_:)), keyEquivalent: ""); extractHere.target = self
@@ -1066,6 +1067,19 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
     @objc func extractArchivesHere(_ sender: Any?) { startArchiveExtraction(.here) }
     @objc func extractArchivesSmart(_ sender: Any?) { startArchiveExtraction(.smart) }
     @objc func extractArchivesToChildFolders(_ sender: Any?) { startArchiveExtraction(.childFolder) }
+    @objc func setAsDesktopWallpaper(_ sender: Any?) {
+        guard activeSelectedItems.count == 1, let url = activeSelectedItems.first?.url,
+              !activeSelectedItems[0].isBrowsable, NSImage(contentsOf: url) != nil else { return }
+        let workspace = NSWorkspace.shared
+        let screens = NSScreen.screens
+        let previous = screens.map { ($0, workspace.desktopImageURL(for: $0), workspace.desktopImageOptions(for: $0) ?? [:]) }
+        do {
+            for screen in screens { try workspace.setDesktopImageURL(url, for: screen, options: workspace.desktopImageOptions(for: screen) ?? [:]) }
+        } catch {
+            for (screen, oldURL, options) in previous { if let oldURL { try? workspace.setDesktopImageURL(oldURL, for: screen, options: options) } }
+            showEntryError(L("데스크탑 배경을 설정하지 못했습니다.", "The desktop wallpaper could not be set."))
+        }
+    }
     private func startArchiveExtraction(_ placement: ArchiveExtractionPlacement) {
         let archives = selectedArchiveURLs
         guard !archives.isEmpty, let parent = activeModel.location, !ArchiveExtractionWindow.isRunning else { return }
@@ -2030,6 +2044,7 @@ extension BrowserWindow {
         case #selector(createFile(_:)): return activeModel.location != nil && !activeModel.isLoading && !Self.entryOperationRunning
         case #selector(createFolderFromSelection(_:)): return activeModel.location != nil && !activeModel.isLoading && !activeSelectedItems.isEmpty && !Self.entryOperationRunning && !MoveWindow.isRunning
         case #selector(extractArchivesHere(_:)), #selector(extractArchivesSmart(_:)), #selector(extractArchivesToChildFolders(_:)): return activeModel.location != nil && !activeModel.isLoading && !selectedArchiveURLs.isEmpty && !ArchiveExtractionWindow.isRunning
+        case #selector(setAsDesktopWallpaper(_:)): return activeSelectedItems.count == 1 && !activeSelectedItems[0].isBrowsable && NSImage(contentsOf: activeSelectedItems[0].url) != nil
         case #selector(createSymbolicLink(_:)): return activeModel.location != nil && activeSelectedItems.count == 1 && !activeModel.isLoading && !Self.entryOperationRunning
         case #selector(createSymbolicLinkFromDialog(_:)): return activeModel.location != nil && !activeModel.isLoading && !Self.entryOperationRunning
         case #selector(toggleSelectedFavorite(_:)): return activeModel.location != nil && (activeSelectedItems.isEmpty || (activeSelectedItems.count == 1 && activeSelectedItems[0].isBrowsable))
@@ -2142,6 +2157,7 @@ extension BrowserWindow {
                 try Data("fixture".utf8).write(to: fixture.appendingPathComponent(name))
             }
             let archiveFixture = fixture.appendingPathComponent("99998-fixture.zip")
+            try? fm.removeItem(at: archiveFixture)
             _ = try await ZipArchiveProvider().create(from: [fixture.appendingPathComponent("00000-한글-é-📁-long-file-name.txt")], at: archiveFixture)
             let qaCloudStorage = destination.appendingPathComponent("qa-cloud-storage", isDirectory: true)
             let qaICloud = destination.appendingPathComponent("qa-icloud", isDirectory: true)
@@ -2191,6 +2207,7 @@ extension BrowserWindow {
             checks["archivePlacementCommands"] = [#selector(extractArchivesHere(_:)), #selector(extractArchivesSmart(_:)), #selector(extractArchivesToChildFolders(_:))].allSatisfy { action in
                 paletteEntries.contains { $0.item.action == action }
             }
+            checks["desktopWallpaperCommand"] = paletteEntries.contains { $0.item.action == #selector(setAsDesktopWallpaper(_:)) }
             checks["commandPaletteSearch"] = CommandPaletteCatalog.filtered(paletteEntries, query: L("숨김", "hidden")).contains { $0.item.action == #selector(toggleHidden(_:)) }
             controller.showCommandPalette(nil); try await Task.sleep(for: .milliseconds(50))
             controller.commandPalette.qaSetQuery(L("숨김", "hidden"))
@@ -2483,10 +2500,12 @@ extension BrowserWindow {
             try Data("second".utf8).write(to: secondSource)
             let singleArchive = destination.appendingPathComponent("single-tree.zip")
             let multipleArchive = destination.appendingPathComponent("multiple-roots.zip")
+            try? fm.removeItem(at: singleArchive); try? fm.removeItem(at: multipleArchive)
             _ = try await ZipArchiveProvider().create(from: [singleRoot], at: singleArchive)
             _ = try await ZipArchiveProvider().create(from: [singleRoot, secondSource], at: multipleArchive)
             func verifyPlacement(_ archive: URL, placement: ArchiveExtractionPlacement, parentName: String, expected: String, checkName: String) async throws {
                 let parent = destination.appendingPathComponent(parentName, isDirectory: true)
+                try? fm.removeItem(at: parent)
                 try fm.createDirectory(at: parent, withIntermediateDirectories: true)
                 ArchiveExtractionWindow.start(archives: [archive], parent: parent, placement: placement) {}
                 let start = ContinuousClock.now

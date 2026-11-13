@@ -233,6 +233,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         file.addItem(withTitle: L("여기에 압축 해제", "Extract Here"), action: #selector(BrowserWindow.extractArchivesHere(_:)), keyEquivalent: "")
         file.addItem(withTitle: L("여기에 스마트 압축 해제", "Extract Here Smart"), action: #selector(BrowserWindow.extractArchivesSmart(_:)), keyEquivalent: "")
         file.addItem(withTitle: L("각 하위 폴더에 압축 해제", "Extract to Child Folders"), action: #selector(BrowserWindow.extractArchivesToChildFolders(_:)), keyEquivalent: "")
+        file.addItem(withTitle: L("데스크탑 배경으로 설정", "Set as Desktop Wallpaper"), action: #selector(BrowserWindow.setAsDesktopWallpaper(_:)), keyEquivalent: "")
         file.addItem(withTitle: L("지금 다운로드", "Download Now"), action: #selector(BrowserWindow.downloadCloudSelection(_:)), keyEquivalent: "")
         file.addItem(withTitle: L("공간 비우기", "Free Up Space"), action: #selector(BrowserWindow.evictCloudSelection(_:)), keyEquivalent: "")
         file.addItem(withTitle: L("Finder에서 보기", "Reveal in Finder"), action: #selector(BrowserWindow.revealSelection(_:)), keyEquivalent: "")
