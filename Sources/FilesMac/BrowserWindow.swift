@@ -1839,6 +1839,7 @@ extension BrowserWindow {
                 let remotePane = RemoteBrowserWindow(title: "QA SFTP", model: remoteModel) { entry, _ in requestedRemoteDownload = entry.remotePath }
                 remotePane.present(); try await Task.sleep(for: .milliseconds(50))
                 checks["remoteBrowserRows"] = remotePane.qaRowCount == 2 && remotePane.qaPath == "/team"
+                checks["remoteBrowserAccessibility"] = remotePane.qaAccessibilityReady
                 remotePane.qaSelect(row: 0); checks["remoteBrowserFolderNotDownloadable"] = !remotePane.qaDownloadEnabled
                 remotePane.qaOpen(row: 0); try await Task.sleep(for: .milliseconds(50))
                 let openedRemoteFolder = remotePane.qaPath == "/team/Folder" && remotePane.qaRowCount == 1
@@ -1846,7 +1847,7 @@ extension BrowserWindow {
                 remotePane.qaForward(); try await Task.sleep(for: .milliseconds(50)); let remoteForward = remotePane.qaPath == "/team/Folder"
                 remotePane.qaUp(); try await Task.sleep(for: .milliseconds(50)); let remoteUp = remotePane.qaPath == "/team"
                 checks["remoteBrowserNavigation"] = openedRemoteFolder && remoteBack && remoteForward && remoteUp
-                remotePane.qaSelect(row: 1); remotePane.qaDownload(); checks["remoteBrowserDownloadSelection"] = remotePane.qaDownloadEnabled && requestedRemoteDownload == "/team/한글 file.txt"
+                remotePane.qaSelect(row: 1); remotePane.qaOpen(row: 1); checks["remoteBrowserDownloadSelection"] = remotePane.qaDownloadEnabled && remotePane.qaDeleteUnavailable && requestedRemoteDownload == "/team/한글 file.txt"
                 try capture("remote-browser", view: remotePane.qaContentView); remotePane.close(); window.makeKeyAndOrderFront(nil)
             } else { checks["shortcutSettingsWindow"] = false }
             controller.showToolbarSettings(nil); try await Task.sleep(for: .milliseconds(50))

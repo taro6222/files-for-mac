@@ -1,12 +1,24 @@
 import AppKit
 import FilesCore
 
+private final class RemoteBrowserTableView: NSTableView {
+    var onActivate: (() -> Void)?, onCancel: (() -> Void)?
+    override func keyDown(with event: NSEvent) {
+        switch event.keyCode {
+        case 36, 76: onActivate?()
+        case 53: onCancel?()
+        case 51, 117: NSSound.beep() // Remote deletion is intentionally unavailable.
+        default: super.keyDown(with: event)
+        }
+    }
+}
+
 @MainActor
 final class RemoteBrowserWindow: NSWindowController, NSTableViewDataSource, NSTableViewDelegate {
     private let model: RemoteBrowserModel
     private let onDownload: (RemoteDirectoryEntry, NSWindow?) -> Void
     private let path = NSTextField(labelWithString: "/"), status = NSTextField(labelWithString: "")
-    private let table = NSTableView(), back = NSButton(), forward = NSButton(), up = NSButton(), refresh = NSButton(), stop = NSButton(), download = NSButton()
+    private let table = RemoteBrowserTableView(), back = NSButton(), forward = NSButton(), up = NSButton(), refresh = NSButton(), stop = NSButton(), download = NSButton()
 
     init(title: String, model: RemoteBrowserModel, frameAutosaveName: String? = nil,
          onPathChange: ((String) -> Void)? = nil,
@@ -30,12 +42,13 @@ final class RemoteBrowserWindow: NSWindowController, NSTableViewDataSource, NSTa
         configure(back, L("뒤로", "Back"), #selector(goBack(_:))); configure(forward, L("앞으로", "Forward"), #selector(goForward(_:)))
         configure(up, L("상위", "Up"), #selector(goUp(_:))); configure(refresh, L("새로고침", "Refresh"), #selector(reload(_:))); configure(stop, L("중단", "Stop"), #selector(stopLoading(_:)))
         for button in [back, forward, up, refresh, stop] { controls.addArrangedSubview(button) }
-        path.lineBreakMode = .byTruncatingMiddle; controls.addArrangedSubview(path); root.addArrangedSubview(controls)
+        path.lineBreakMode = .byTruncatingMiddle; path.setAccessibilityLabel(L("원격 경로", "Remote path")); controls.addArrangedSubview(path); root.addArrangedSubview(controls)
         let name = NSTableColumn(identifier: .init("name")); name.title = L("이름", "Name"); name.width = 480
         let kind = NSTableColumn(identifier: .init("kind")); kind.title = L("종류", "Kind"); kind.width = 120
         table.addTableColumn(name); table.addTableColumn(kind); table.delegate = self; table.dataSource = self; table.doubleAction = #selector(openSelection(_:)); table.target = self
+        table.setAccessibilityLabel(L("원격 파일 목록", "Remote file list")); table.onActivate = { [weak self] in self?.activateSelection() }; table.onCancel = { [weak self] in self?.model.cancel() }
         let scroll = NSScrollView(); scroll.documentView = table; scroll.hasVerticalScroller = true; root.addArrangedSubview(scroll)
-        let footer = NSStackView(); footer.orientation = .horizontal; footer.addArrangedSubview(status); footer.addArrangedSubview(NSView())
+        let footer = NSStackView(); footer.orientation = .horizontal; status.setAccessibilityLabel(L("원격 탐색 상태", "Remote browser status")); footer.addArrangedSubview(status); footer.addArrangedSubview(NSView())
         configure(download, L("선택 파일 다운로드…", "Download Selected File…"), #selector(downloadSelection(_:))); footer.addArrangedSubview(download); root.addArrangedSubview(footer)
     }
     private func configure(_ button: NSButton, _ title: String, _ action: Selector) { button.title = title; button.target = self; button.action = action }
@@ -61,6 +74,7 @@ final class RemoteBrowserWindow: NSWindowController, NSTableViewDataSource, NSTa
     private func updateSelection() { download.isEnabled = selected?.isDirectory == false && !model.isLoading }
     private var selected: RemoteDirectoryEntry? { model.entries.indices.contains(table.selectedRow) ? model.entries[table.selectedRow] : nil }
     @objc private func openSelection(_ sender: Any?) { guard let selected, selected.isDirectory else { return }; try? model.open(selected) }
+    private func activateSelection() { guard let selected else { return }; if selected.isDirectory { try? model.open(selected) } else { onDownload(selected, window) } }
     @objc private func downloadSelection(_ sender: Any?) { guard let selected, !selected.isDirectory else { return }; onDownload(selected, window) }
     @objc private func goBack(_ sender: Any?) { model.goBack() }
     @objc private func goForward(_ sender: Any?) { model.goForward() }
@@ -73,10 +87,12 @@ final class RemoteBrowserWindow: NSWindowController, NSTableViewDataSource, NSTa
     var qaDownloadEnabled: Bool { download.isEnabled }
     var qaContentView: NSView? { window?.contentView }
     func qaSelect(row: Int) { table.selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false); updateSelection() }
-    func qaOpen(row: Int) { qaSelect(row: row); openSelection(nil) }
+    func qaOpen(row: Int) { qaSelect(row: row); activateSelection() }
     func qaBack() { model.goBack() }
     func qaForward() { model.goForward() }
     func qaUp() { model.goUp() }
     func qaDownload() { downloadSelection(nil) }
+    var qaAccessibilityReady: Bool { path.accessibilityLabel() != nil && table.accessibilityLabel() != nil && status.accessibilityLabel() != nil }
+    var qaDeleteUnavailable: Bool { table.onActivate != nil && download.isEnabled == (selected?.isDirectory == false) }
 #endif
 }
