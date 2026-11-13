@@ -37,6 +37,57 @@ public struct RemoteCommandPlan: Sendable, Equatable {
     public let redactedDescription: String
 }
 
+public struct RemoteCommandResult: Sendable, Equatable {
+    public let standardOutput: Data
+    public let standardError: Data
+    public let terminationStatus: Int32
+}
+
+public enum RemoteExecutionError: Error, Sendable, Equatable {
+    case launchFailed, nonzeroExit(Int32), outputLimitExceeded
+}
+
+private final class RemoteProcessBox: @unchecked Sendable {
+    private let lock = NSLock(); private var process: Process?; private var cancelled = false
+    func install(_ process: Process) { lock.lock(); self.process = process; let stop = cancelled; lock.unlock(); if stop && process.isRunning { process.terminate() } }
+    func cancel() { lock.lock(); cancelled = true; let process = process; lock.unlock(); if process?.isRunning == true { process?.terminate() } }
+    var wasCancelled: Bool { lock.lock(); defer { lock.unlock() }; return cancelled }
+}
+private final class RemoteDataBox: @unchecked Sendable {
+    private let lock = NSLock(); private var value = Data()
+    func set(_ data: Data) { lock.lock(); value = data; lock.unlock() }
+    func get() -> Data { lock.lock(); defer { lock.unlock() }; return value }
+}
+
+public struct RemoteCommandExecutor: Sendable {
+    public init() {}
+    public func execute(_ plan: RemoteCommandPlan, outputLimit: Int = 4 * 1_024 * 1_024) async throws -> RemoteCommandResult {
+        let box = RemoteProcessBox()
+        return try await withTaskCancellationHandler(operation: {
+            try Task.checkCancellation()
+            return try await Task.detached(priority: .userInitiated) {
+                try Self.runSynchronously(plan, outputLimit: outputLimit, box: box)
+            }.value
+        }, onCancel: { box.cancel() })
+    }
+    private static func runSynchronously(_ plan: RemoteCommandPlan, outputLimit: Int, box: RemoteProcessBox) throws -> RemoteCommandResult {
+        let process = Process(), output = Pipe(), errors = Pipe(), input = Pipe()
+        process.executableURL = plan.executable; process.arguments = plan.arguments
+        process.standardOutput = output; process.standardError = errors; process.standardInput = input
+        do { try process.run() } catch { throw RemoteExecutionError.launchFailed }
+        box.install(process); input.fileHandleForWriting.write(plan.standardInput); try? input.fileHandleForWriting.close()
+        let group = DispatchGroup(), stdoutBox = RemoteDataBox(), stderrBox = RemoteDataBox()
+        group.enter(); DispatchQueue.global().async { stdoutBox.set(output.fileHandleForReading.readDataToEndOfFile()); group.leave() }
+        group.enter(); DispatchQueue.global().async { stderrBox.set(errors.fileHandleForReading.readDataToEndOfFile()); group.leave() }
+        process.waitUntilExit(); group.wait()
+        if box.wasCancelled { throw CancellationError() }
+        let stdout = stdoutBox.get(), stderr = stderrBox.get()
+        guard stdout.count <= outputLimit, stderr.count <= outputLimit, stdout.count + stderr.count <= outputLimit else { throw RemoteExecutionError.outputLimitExceeded }
+        guard process.terminationStatus == 0 else { throw RemoteExecutionError.nonzeroExit(process.terminationStatus) }
+        return RemoteCommandResult(standardOutput: stdout, standardError: stderr, terminationStatus: process.terminationStatus)
+    }
+}
+
 public struct CurlFTPCommandBuilder: Sendable {
     public init() {}
     public func command(profile: RemoteConnectionProfile, credential: RemoteCredential,

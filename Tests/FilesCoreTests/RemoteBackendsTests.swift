@@ -31,3 +31,20 @@ func curlFTPPlansKeepCredentialsOffArgumentsAndDescriptions(remoteProtocol: Remo
     #expect(throws: RemoteBackendError.invalidRemotePath) { try CurlFTPCommandBuilder().command(profile: ftp, credential: credential, remotePath: "relative", intent: .list) }
     #expect(throws: RemoteBackendError.invalidCredential) { try CurlFTPCommandBuilder().command(profile: ftp, credential: .init(username: "bad\nuser", secret: Data()), remotePath: "/", intent: .list) }
 }
+
+@Test func remoteCommandExecutorSeparatesInputOutputAndExitStatus() async throws {
+    let cat = RemoteCommandPlan(executable: URL(fileURLWithPath: "/bin/cat"), arguments: [], standardInput: Data("hello".utf8), redactedDescription: "cat")
+    let result = try await RemoteCommandExecutor().execute(cat)
+    #expect(String(decoding: result.standardOutput, as: UTF8.self) == "hello"); #expect(result.standardError.isEmpty); #expect(result.terminationStatus == 0)
+    let failure = RemoteCommandPlan(executable: URL(fileURLWithPath: "/usr/bin/false"), arguments: [], standardInput: Data(), redactedDescription: "false")
+    await #expect(throws: RemoteExecutionError.nonzeroExit(1)) { try await RemoteCommandExecutor().execute(failure) }
+}
+
+@Test func remoteCommandExecutorEnforcesOutputLimitAndCancellation() async throws {
+    let output = RemoteCommandPlan(executable: URL(fileURLWithPath: "/usr/bin/printf"), arguments: ["12345"], standardInput: Data(), redactedDescription: "printf")
+    await #expect(throws: RemoteExecutionError.outputLimitExceeded) { try await RemoteCommandExecutor().execute(output, outputLimit: 4) }
+    let sleep = RemoteCommandPlan(executable: URL(fileURLWithPath: "/bin/sleep"), arguments: ["5"], standardInput: Data(), redactedDescription: "sleep")
+    let task = Task { try await RemoteCommandExecutor().execute(sleep) }
+    try await Task.sleep(for: .milliseconds(50)); task.cancel()
+    await #expect(throws: CancellationError.self) { try await task.value }
+}
