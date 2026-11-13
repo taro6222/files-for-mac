@@ -135,6 +135,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         reopen.keyEquivalentModifierMask = [.command, .shift]; reopen.target = self
         file.addItem(withTitle: L("폴더 열기…", "Open Folder…"), action: #selector(BrowserWindow.chooseFolder(_:)), keyEquivalent: "o")
         file.addItem(withTitle: L("선택 항목 열기", "Open Selection"), action: #selector(BrowserWindow.openSelection(_:)), keyEquivalent: "\u{f701}")
+        file.addItem(withTitle: L("정보 가져오기", "Get Info"), action: #selector(BrowserWindow.showInfo(_:)), keyEquivalent: "i")
         let folder = file.addItem(withTitle: L("새 폴더…", "New Folder…"), action: #selector(BrowserWindow.createFolder(_:)), keyEquivalent: "n")
         folder.keyEquivalentModifierMask = [.command, .shift]
         file.addItem(withTitle: L("선택 항목으로 새 폴더…", "New Folder with Selection…"), action: #selector(BrowserWindow.createFolderFromSelection(_:)), keyEquivalent: "")

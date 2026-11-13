@@ -38,6 +38,7 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
     private var toolbarCompact: Bool?
     private var toolbarSettingsWindow: ToolbarSettingsWindow?
     private var searchWindow: SearchWindow?
+    private var infoWindow: FileInfoWindow?
     private let homeView = NSStackView()
     private let sidebar = NSStackView()
     private let content = NSView()
@@ -768,6 +769,12 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
             }
         }
         searchWindow?.present(root: root, showHidden: activeModel.showHidden)
+    }
+    @objc func showInfo(_ sender: Any?) {
+        let items = activeSelectedItems
+        guard !items.isEmpty else { return }
+        if infoWindow == nil { infoWindow = FileInfoWindow() }
+        infoWindow?.present(items: items)
     }
     @objc func submitPath(_ sender: Any?) {
         let path = (pathField.stringValue as NSString).expandingTildeInPath
@@ -1735,6 +1742,17 @@ extension BrowserWindow {
             while controller.model.isLoading && postSearchRefresh.duration(to: .now) < .seconds(30) {
                 try await Task.sleep(for: .milliseconds(10))
             }
+            controller.table.selectRowIndexes([1], byExtendingSelection: false)
+            controller.showInfo(nil)
+            let infoStart = ContinuousClock.now
+            while controller.infoWindow?.qaLoaded != true && infoStart.duration(to: .now) < .seconds(5) { try await Task.sleep(for: .milliseconds(10)) }
+            checks["fileInfoWindow"] = controller.infoWindow?.window?.isVisible == true && controller.infoWindow?.qaLoaded == true
+            controller.infoWindow?.qaStartHash()
+            let hashStart = ContinuousClock.now
+            while controller.infoWindow?.qaHashing == true && hashStart.duration(to: .now) < .seconds(5) { try await Task.sleep(for: .milliseconds(10)) }
+            checks["fileInfoHash"] = controller.infoWindow?.qaDigest?.count == 64
+            try capture("file-info", view: controller.infoWindow?.window?.contentView)
+            controller.infoWindow?.close(); window.makeKeyAndOrderFront(nil)
             controller.focusFiles(nil)
             checks["fileListFocus"] = window.firstResponder === controller.table
             try capture("files-top")
