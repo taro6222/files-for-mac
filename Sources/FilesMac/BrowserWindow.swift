@@ -378,7 +378,7 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         let batchRename = menu.addItem(withTitle: L("일괄 이름 변경…", "Batch Rename…"), action: #selector(batchRenameSelection(_:)), keyEquivalent: ""); batchRename.target = self
         let open = menu.addItem(withTitle: L("열기", "Open"), action: #selector(openSelection(_:)), keyEquivalent: ""); open.target = self
         let archive = menu.addItem(withTitle: L("압축 파일 탐색", "Browse Archive"), action: #selector(openArchive(_:)), keyEquivalent: ""); archive.target = self
-        let createArchive = menu.addItem(withTitle: L("선택 항목을 ZIP으로…", "Compress Selection to ZIP…"), action: #selector(createArchive(_:)), keyEquivalent: ""); createArchive.target = self
+        let createArchive = menu.addItem(withTitle: L("선택 항목 압축…", "Compress Selection…"), action: #selector(createArchive(_:)), keyEquivalent: ""); createArchive.target = self
         let copy = menu.addItem(withTitle: L("선택 항목 복사…", "Copy Selection To…"), action: #selector(copySelection(_:)), keyEquivalent: ""); copy.target = self
         let move = menu.addItem(withTitle: L("선택 항목 이동…", "Move Selection To…"), action: #selector(moveSelection(_:)), keyEquivalent: ""); move.target = self
         menu.addItem(NSMenuItem.separator())
@@ -876,7 +876,7 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
     @objc func createArchive(_ sender: Any?) {
         let sources = activeSelectedItems.map(\.url)
         guard !sources.isEmpty, !activeModel.isLoading, !ArchiveCreationWindow.isRunning, let parent = activeModel.location, let window else { return }
-        let panel = NSSavePanel(); panel.allowedContentTypes = [.zip]; panel.canCreateDirectories = true
+        let panel = NSSavePanel(); panel.allowedContentTypes = [.zip, UTType(filenameExtension: "7z")!]; panel.canCreateDirectories = true; panel.isExtensionHidden = false
         panel.nameFieldStringValue = sources.count == 1 ? sources[0].deletingPathExtension().lastPathComponent + ".zip" : L("압축 파일.zip", "Archive.zip")
         panel.directoryURL = parent; panel.prompt = L("압축", "Compress")
         panel.beginSheetModal(for: window) { [weak self] response in
@@ -1928,6 +1928,13 @@ extension BrowserWindow {
             let createdEntries = try ZipArchiveProvider().entries(at: createdArchive)
             checks["archiveCreation"] = ArchiveCreationWindow.qaLatest?.qaSucceeded == true && createdEntries.count == 1
             try capture("archive-creation", view: ArchiveCreationWindow.qaLatest?.window?.contentView)
+            ArchiveCreationWindow.qaLatest?.close(); window.makeKeyAndOrderFront(nil)
+            let createdSevenZip = destination.appendingPathComponent("created-by-ui.7z"); try? fm.removeItem(at: createdSevenZip)
+            ArchiveCreationWindow.start(sources: [fixture.appendingPathComponent("00000-한글-é-📁-long-file-name.txt")], destination: createdSevenZip) {}
+            let sevenZipCreate = ContinuousClock.now
+            while ArchiveCreationWindow.qaLatest?.qaRunning == true && sevenZipCreate.duration(to: .now) < .seconds(10) { try await Task.sleep(for: .milliseconds(10)) }
+            let createdSevenZipEntries = try ZipArchiveProvider().entries(at: createdSevenZip)
+            checks["sevenZipCreation"] = ArchiveCreationWindow.qaLatest?.qaSucceeded == true && createdSevenZipEntries.count == 1
             ArchiveCreationWindow.qaLatest?.close(); window.makeKeyAndOrderFront(nil)
             try await Task.sleep(for: .milliseconds(300))
             let metadataRefresh = ContinuousClock.now

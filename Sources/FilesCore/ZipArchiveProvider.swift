@@ -71,7 +71,8 @@ private struct ZipSourceEntry {
 
 private func createSynchronously(from sourceURLs: [URL], at archiveURL: URL, progress: ArchiveProgressHandler?) throws -> URL {
     let fm = FileManager.default, sources = sourceURLs.map(\.standardizedFileURL)
-    guard !sources.isEmpty, Set(sources).count == sources.count, !fm.fileExists(atPath: archiveURL.path) else { throw ZipArchiveError.invalidSource(archiveURL.path) }
+    guard let format = ArchiveFormat.detect(archiveURL), ArchiveCapabilityMatrix.capabilities(for: format).create,
+          !sources.isEmpty, Set(sources).count == sources.count, !fm.fileExists(atPath: archiveURL.path) else { throw ZipArchiveError.invalidSource(archiveURL.path) }
     var planned: [ZipSourceEntry] = [], descriptors: [ArchiveEntryDescriptor] = []
     let keys: Set<URLResourceKey> = [.isDirectoryKey, .isRegularFileKey, .isSymbolicLinkKey, .fileSizeKey, .contentModificationDateKey]
     func append(_ url: URL, path: String) throws {
@@ -101,9 +102,9 @@ private func createSynchronously(from sourceURLs: [URL], at archiveURL: URL, pro
     var completedBytes: Int64 = 0, completedEntries = 0
     progress?(ArchiveProgress(phase: .writing, completedEntries: 0, totalEntries: planned.count, completedBytes: 0, totalBytes: totalBytes, currentPath: nil))
     let parent = archiveURL.deletingLastPathComponent(); try fm.createDirectory(at: parent, withIntermediateDirectories: true)
-    let staging = parent.appendingPathComponent(".files-create-\(UUID().uuidString).zip")
+    let staging = parent.appendingPathComponent(".files-create-\(UUID().uuidString).\(format.rawValue)")
     defer { try? fm.removeItem(at: staging) }
-    try withWriter(staging) { writer in
+    try withWriter(staging, format: format) { writer in
         for item in planned {
             try Task<Never, Never>.checkCancellation()
             guard let entry = archive_entry_new() else { throw ZipArchiveError.readFailed("cannot allocate archive entry") }
@@ -224,10 +225,11 @@ private func withReader<T>(_ url: URL, _ body: (OpaquePointer) throws -> T) thro
     return try body(reader)
 }
 
-private func withWriter<T>(_ url: URL, _ body: (OpaquePointer) throws -> T) throws -> T {
+private func withWriter<T>(_ url: URL, format: ArchiveFormat, _ body: (OpaquePointer) throws -> T) throws -> T {
     guard let writer = archive_write_new() else { throw ZipArchiveError.cannotOpen(url.path) }
     defer { archive_write_close(writer); archive_write_free(writer) }
-    guard archive_write_set_format_zip(writer) == FILES_ARCHIVE_OK,
+    let formatStatus = format == .zip ? archive_write_set_format_zip(writer) : archive_write_set_format_7zip(writer)
+    guard formatStatus == FILES_ARCHIVE_OK,
           archive_write_add_filter_none(writer) == FILES_ARCHIVE_OK else { throw ZipArchiveError.cannotOpen(errorText(writer)) }
     let status = url.withUnsafeFileSystemRepresentation { path in archive_write_open_filename(writer, path) }
     guard status == FILES_ARCHIVE_OK else { throw ZipArchiveError.cannotOpen(errorText(writer)) }

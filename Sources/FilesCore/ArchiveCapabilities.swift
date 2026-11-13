@@ -27,7 +27,7 @@ public enum ArchiveCapabilityMatrix {
     /// Only capabilities exercised by the bundled provider are advertised.
     public static let current: [ArchiveFormatCapabilities] = [
         .init(format: .zip, browse: true, extract: true, create: true, update: false, password: false, splitVolumes: false),
-        .init(format: .sevenZip, browse: true, extract: true, create: false, update: false, password: false, splitVolumes: false),
+        .init(format: .sevenZip, browse: true, extract: true, create: true, update: false, password: false, splitVolumes: false),
         .init(format: .rar, browse: true, extract: true, create: false, update: false, password: false, splitVolumes: false)
     ]
 

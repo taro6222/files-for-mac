@@ -127,3 +127,18 @@ private func makeZip(source: URL, archive: URL) throws {
         #expect(try Data(contentsOf: destination.appendingPathComponent(expectedPath)) == expectedBytes)
     }
 }
+
+@Test func libArchiveProviderCreatesReopenableSevenZipArchive() async throws {
+    let fm = FileManager.default, root = fm.temporaryDirectory.appendingPathComponent("sevenzip-create-\(UUID())", isDirectory: true)
+    defer { try? fm.removeItem(at: root) }
+    let folder = root.appendingPathComponent("자료", isDirectory: true), file = folder.appendingPathComponent("한글-📁.txt")
+    let archive = root.appendingPathComponent("created.7z"), destination = root.appendingPathComponent("destination", isDirectory: true)
+    try fm.createDirectory(at: folder, withIntermediateDirectories: true); try fm.createDirectory(at: destination, withIntermediateDirectories: true)
+    try Data("seven zip payload".utf8).write(to: file)
+    let provider = ZipArchiveProvider(); #expect(try await provider.create(from: [folder], at: archive) == archive)
+    let entries = try provider.entries(at: archive)
+    let payload = try #require(entries.first { $0.path.precomposedStringWithCanonicalMapping == "자료/한글-📁.txt" })
+    _ = try await provider.extract(archive, to: destination)
+    #expect(try String(contentsOf: destination.appendingPathComponent(payload.path), encoding: .utf8) == "seven zip payload")
+    #expect((try fm.contentsOfDirectory(atPath: root.path)).allSatisfy { !$0.hasPrefix(".files-create-") })
+}

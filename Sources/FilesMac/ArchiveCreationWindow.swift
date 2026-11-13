@@ -23,7 +23,7 @@ final class ArchiveCreationWindow: NSWindowController, NSWindowDelegate {
                     Task { @MainActor [weak controller] in controller?.update(update) }
                 }
                 guard let controller, !Task.isCancelled else { return }
-                controller.finish(success: true, message: L("ZIP 생성을 완료했습니다.", "ZIP archive created.")); completion()
+                controller.finish(success: true, message: L("압축 파일 생성을 완료했습니다.", "Archive created.")); completion()
             } catch is CancellationError {
                 controller?.finish(success: false, message: L("생성을 중단했습니다.", "Creation stopped."))
             } catch {
@@ -34,11 +34,11 @@ final class ArchiveCreationWindow: NSWindowController, NSWindowDelegate {
 
     private init(sources: [URL], destination: URL) {
         let panel = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 620, height: 360), styleMask: [.titled, .closable, .resizable, .utilityWindow], backing: .buffered, defer: false)
-        super.init(window: panel); panel.title = L("ZIP 생성", "Create ZIP Archive"); panel.delegate = self; panel.center(); panel.minSize = NSSize(width: 500, height: 300)
+        super.init(window: panel); panel.title = L("압축 파일 생성", "Create Archive"); panel.delegate = self; panel.center(); panel.minSize = NSSize(width: 500, height: 300)
         let stack = NSStackView(); stack.orientation = .vertical; stack.alignment = .leading; stack.spacing = 12; stack.translatesAutoresizingMaskIntoConstraints = false
         panel.contentView!.addSubview(stack); NSLayoutConstraint.activate([stack.leadingAnchor.constraint(equalTo: panel.contentView!.leadingAnchor, constant: 18), stack.trailingAnchor.constraint(equalTo: panel.contentView!.trailingAnchor, constant: -18), stack.topAnchor.constraint(equalTo: panel.contentView!.topAnchor, constant: 18), stack.bottomAnchor.constraint(equalTo: panel.contentView!.bottomAnchor, constant: -18)])
         let target = NSTextField(wrappingLabelWithString: L("대상: ", "Destination: ") + destination.path); target.isSelectable = true; stack.addArrangedSubview(target)
-        label.stringValue = L("원본을 검증하고 ZIP을 생성하는 중…", "Validating sources and creating ZIP…"); stack.addArrangedSubview(label)
+        label.stringValue = L("원본을 검증하고 압축 파일을 생성하는 중…", "Validating sources and creating archive…"); stack.addArrangedSubview(label)
         progress.style = .bar; progress.isIndeterminate = true; progress.startAnimation(nil); stack.addArrangedSubview(progress)
         let scroll = NSScrollView(); scroll.hasVerticalScroller = true; scroll.borderType = .bezelBorder; details.isEditable = false; details.isSelectable = true; details.font = .systemFont(ofSize: 12); details.string = sources.map(\.path).joined(separator: "\n"); scroll.documentView = details; stack.addArrangedSubview(scroll)
         cancelButton.title = L("중단", "Stop"); cancelButton.bezelStyle = .rounded; cancelButton.target = self; cancelButton.action = #selector(cancel(_:)); stack.addArrangedSubview(cancelButton)
@@ -58,7 +58,7 @@ final class ArchiveCreationWindow: NSWindowController, NSWindowDelegate {
         let byteFraction = update.totalBytes > 0 ? Double(update.completedBytes) / Double(update.totalBytes) : 0
         let entryFraction = update.totalEntries > 0 ? Double(update.completedEntries) / Double(update.totalEntries) : 0
         progress.doubleValue = max(byteFraction, entryFraction)
-        let phase = update.phase == .publishing ? L("결과 확정", "Publishing") : L("ZIP 생성", "Creating ZIP")
+        let phase = update.phase == .publishing ? L("결과 확정", "Publishing") : L("압축 생성", "Creating archive")
         label.stringValue = "\(phase) · \(update.completedEntries)/\(update.totalEntries) · \(ByteCountFormatter.string(fromByteCount: update.completedBytes, countStyle: .file))" + (update.currentPath.map { " · \($0)" } ?? "")
     }
     private func finish(success: Bool, message: String) {
