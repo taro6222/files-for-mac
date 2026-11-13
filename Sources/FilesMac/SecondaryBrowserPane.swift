@@ -30,6 +30,7 @@ final class SecondaryBrowserPane: NSView, NSTableViewDataSource, NSTableViewDele
     private var pendingRefresh = false
     private var rendering = false
     private var pendingEntrySelection: URL?
+    private var detailRows: [DetailDisplayRow] = []
 
     init(snapshot: TabSnapshot, preferences: BrowserPreferences = .shared) {
         model = BrowserModel()
@@ -54,7 +55,7 @@ final class SecondaryBrowserPane: NSView, NSTableViewDataSource, NSTableViewDele
         if renderedViewMode == .grid { return gridView.selectedItems }
         if renderedViewMode == .list { return listView.selectedItems }
         if renderedViewMode == .columns { return columnView.selectedItems }
-        return table.selectedRowIndexes.compactMap { model.items.indices.contains($0) ? model.items[$0] : nil }
+        return table.selectedRowIndexes.compactMap { detailItem(at: $0, in: detailRows) }
     }
     func setActive(_ active: Bool) {
         layer?.borderWidth = active ? 2 : 0; layer?.borderColor = NSColor.controlAccentColor.cgColor
@@ -97,7 +98,8 @@ final class SecondaryBrowserPane: NSView, NSTableViewDataSource, NSTableViewDele
         case .list: listView.invertSelection()
         case .columns: columnView.invertSelection()
         default:
-            let inverted = IndexSet(model.items.indices).subtracting(table.selectedRowIndexes)
+            let itemRows = IndexSet(detailRows.indices.filter { detailItem(at: $0, in: detailRows) != nil })
+            let inverted = itemRows.subtracting(table.selectedRowIndexes)
             table.selectRowIndexes(inverted, byExtendingSelection: false)
         }
     }
@@ -108,7 +110,7 @@ final class SecondaryBrowserPane: NSView, NSTableViewDataSource, NSTableViewDele
         case .grid: gridView.replaceSelection(with: ids)
         case .list: listView.replaceSelection(with: ids)
         case .columns: columnView.replaceSelection(with: ids)
-        default: table.selectRowIndexes(IndexSet(model.items.indices.filter { ids.contains(model.items[$0].id) }), byExtendingSelection: false)
+        default: table.selectRowIndexes(detailSelectionRows(ids: ids, in: detailRows), byExtendingSelection: false)
         }
     }
     var canAutoFitColumns: Bool { renderedViewMode == .details && !model.items.isEmpty }
@@ -258,7 +260,7 @@ final class SecondaryBrowserPane: NSView, NSTableViewDataSource, NSTableViewDele
         case .grid: selection = Set(gridView.selectedItems.map(\.id)); offset = gridView.currentScrollOffset()
         case .list: selection = Set(listView.selectedItems.map(\.id)); offset = listView.currentScrollOffset()
         case .columns: selection = Set(columnView.selectedItems.map(\.id)); offset = 0
-        default: selection = Set(table.selectedRowIndexes.compactMap { model.items.indices.contains($0) ? model.items[$0].id : nil }); offset = scroll.contentView.bounds.origin.y
+        default: selection = Set(table.selectedRowIndexes.compactMap { detailItem(at: $0, in: detailRows)?.id }); offset = scroll.contentView.bounds.origin.y
         }
         model.savePosition(selection: selection, scrollOffset: offset)
     }
@@ -293,6 +295,7 @@ final class SecondaryBrowserPane: NSView, NSTableViewDataSource, NSTableViewDele
                 revealEntry = true; model.savePosition(selection: [target.path], scrollOffset: model.history.current.scrollOffset)
             }
         }
+        detailRows = detailDisplayRows(items: model.items, grouping: model.grouping)
         table.reloadData()
         if model.viewMode == .adaptive && !model.isLoading {
             adaptiveResolvedMode = adaptivePolicy.resolve(items: model.items, availableWidth: bounds.width)
@@ -308,7 +311,7 @@ final class SecondaryBrowserPane: NSView, NSTableViewDataSource, NSTableViewDele
         }) { viewModeButton.select(item) }
         let expectedSort = NSSortDescriptor(key: model.sortOrder.field.rawValue, ascending: model.sortOrder.ascending)
         if table.sortDescriptors.first != expectedSort { table.sortDescriptors = [expectedSort] }
-        let selected = IndexSet(model.items.indices.filter { model.history.current.selection.contains(model.items[$0].id) })
+        let selected = detailSelectionRows(ids: model.history.current.selection, in: detailRows)
         table.selectRowIndexes(selected, byExtendingSelection: false)
         gridView.apply(viewSize: effectiveViewSize)
         listView.apply(viewSize: effectiveViewSize)
@@ -326,10 +329,17 @@ final class SecondaryBrowserPane: NSView, NSTableViewDataSource, NSTableViewDele
         else if let failure = model.failure { status.stringValue = failure.message(korean: Locale.preferredLanguages.first?.hasPrefix("ko") == true) }
         else { status.stringValue = L("\(model.items.count)개 항목", "\(model.items.count) items") }
     }
-    func numberOfRows(in tableView: NSTableView) -> Int { model.items.count }
+    func numberOfRows(in tableView: NSTableView) -> Int { detailRows.count }
     func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
-        guard model.items.indices.contains(row), let tableColumn else { return nil }
-        let item = model.items[row], id = tableColumn.identifier
+        guard detailRows.indices.contains(row), let tableColumn else { return nil }
+        let id = tableColumn.identifier
+        if case let .header(title) = detailRows[row] {
+            guard id.rawValue == "name" else { return nil }
+            let headerID = NSUserInterfaceItemIdentifier("SecondaryDetailGroupHeader")
+            let label = tableView.makeView(withIdentifier: headerID, owner: self) as? NSTextField ?? { let label = NSTextField(labelWithString: ""); label.identifier = headerID; label.font = .systemFont(ofSize: NSFont.systemFontSize, weight: .semibold); label.textColor = .secondaryLabelColor; return label }()
+            label.stringValue = title; label.setAccessibilityLabel(title); return label
+        }
+        guard let item = detailItem(at: row, in: detailRows) else { return nil }
         let cell = tableView.makeView(withIdentifier: id, owner: self) as? NSTableCellView ?? makeCell(id)
         switch id.rawValue {
         case "name": cell.textField?.stringValue = item.displayName(showExtensions: true)
@@ -339,10 +349,14 @@ final class SecondaryBrowserPane: NSView, NSTableViewDataSource, NSTableViewDele
         }
         return cell
     }
+    func tableView(_ tableView: NSTableView, isGroupRow row: Int) -> Bool {
+        guard detailRows.indices.contains(row) else { return false }; if case .header = detailRows[row] { return true }; return false
+    }
+    func tableView(_ tableView: NSTableView, shouldSelectRow row: Int) -> Bool { detailItem(at: row, in: detailRows) != nil }
     func tableViewSelectionDidChange(_ notification: Notification) { activate(); savePosition() }
     func tableView(_ tableView: NSTableView, pasteboardWriterForRow row: Int) -> (any NSPasteboardWriting)? {
-        guard model.items.indices.contains(row) else { return nil }
-        return model.items[row].url as NSURL
+        guard let item = detailItem(at: row, in: detailRows) else { return nil }
+        return item.url as NSURL
     }
     func tableView(_ tableView: NSTableView, validateDrop info: any NSDraggingInfo,
                    proposedRow row: Int, proposedDropOperation dropOperation: NSTableView.DropOperation) -> NSDragOperation {
@@ -389,8 +403,8 @@ final class SecondaryBrowserPane: NSView, NSTableViewDataSource, NSTableViewDele
         navigate(path.isEmpty ? nil : (path.hasPrefix("/") ? URL(fileURLWithPath: path) : base.appendingPathComponent(path)))
     }
     @objc private func openSelection(_ sender: Any?) {
-        activate(); guard let row = table.selectedRowIndexes.first, model.items.indices.contains(row) else { return }
-        let item = model.items[row]; if item.isBrowsable && preferences.openFoldersInNewTab { onOpenFolderInNewTab?(item.url) } else if item.isBrowsable { navigate(item.url) } else { NSWorkspace.shared.open(item.url) }
+        activate(); guard let row = table.selectedRowIndexes.first, let item = detailItem(at: row, in: detailRows) else { return }
+        if item.isBrowsable && preferences.openFoldersInNewTab { onOpenFolderInNewTab?(item.url) } else if item.isBrowsable { navigate(item.url) } else { NSWorkspace.shared.open(item.url) }
     }
     private func openGridItem(_ item: FileItem) {
         activate(); if item.isBrowsable && preferences.openFoldersInNewTab { onOpenFolderInNewTab?(item.url) } else if item.isBrowsable { navigate(item.url) } else { NSWorkspace.shared.open(item.url) }
@@ -420,7 +434,7 @@ final class SecondaryBrowserPane: NSView, NSTableViewDataSource, NSTableViewDele
         (info.draggingPasteboard.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [NSURL] ?? []).map { $0 as URL }
     }
     private func dropDestination(row: Int, operation: NSTableView.DropOperation) -> URL? {
-        if operation == .on, model.items.indices.contains(row), model.items[row].isBrowsable { return model.items[row].url }
+        if operation == .on, let item = detailItem(at: row, in: detailRows), item.isBrowsable { return item.url }
         return model.location
     }
     private func dropIntent(_ info: any NSDraggingInfo) -> FileDropIntent {

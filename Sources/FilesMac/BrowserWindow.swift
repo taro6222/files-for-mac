@@ -54,13 +54,14 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
     private var secondaryActive = false
     private var primaryPaneID = UUID()
     private var secondaryPaneID: UUID?
+    private var detailRows: [DetailDisplayRow] = []
     private var activeModel: BrowserModel { secondaryActive ? secondaryPane?.model ?? model : model }
     var activeLocation: URL? { activeModel.location }
     private var primarySelectedItems: [FileItem] {
         if primaryRenderedViewMode == .grid { return gridView.selectedItems }
         if primaryRenderedViewMode == .list { return listView.selectedItems }
         if primaryRenderedViewMode == .columns { return columnView.selectedItems }
-        return table.selectedRowIndexes.compactMap { model.items.indices.contains($0) ? model.items[$0] : nil }
+        return table.selectedRowIndexes.compactMap { detailItem(at: $0, in: detailRows) }
     }
     private var activeSelectedItems: [FileItem] {
         if secondaryActive { return secondaryPane?.selectedItems ?? [] }
@@ -649,7 +650,7 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         case .grid: ids = Set(gridView.selectedItems.map(\.id)); offset = gridView.currentScrollOffset()
         case .list: ids = Set(listView.selectedItems.map(\.id)); offset = listView.currentScrollOffset()
         case .columns: ids = Set(columnView.selectedItems.map(\.id)); offset = 0
-        default: ids = Set(table.selectedRowIndexes.compactMap { model.items.indices.contains($0) ? model.items[$0].id : nil }); offset = scroll.contentView.bounds.origin.y
+        default: ids = Set(table.selectedRowIndexes.compactMap { detailItem(at: $0, in: detailRows)?.id }); offset = scroll.contentView.bounds.origin.y
         }
         model.savePosition(selection: ids, scrollOffset: offset)
     }
@@ -718,8 +719,9 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
                 model.savePosition(selection: [target.path], scrollOffset: model.history.current.scrollOffset)
             }
         }
+        detailRows = detailDisplayRows(items: model.items, grouping: model.grouping)
         table.reloadData()
-        let selected = IndexSet(model.items.indices.filter { model.history.current.selection.contains(model.items[$0].id) })
+        let selected = detailSelectionRows(ids: model.history.current.selection, in: detailRows)
         table.selectRowIndexes(selected, byExtendingSelection: false)
         gridView.apply(viewSize: effectiveViewSize)
         listView.apply(viewSize: effectiveViewSize)
@@ -778,10 +780,16 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
             else if watcherStatus == .unavailable { status.stringValue += " · " + L("자동 갱신 사용 불가", "Automatic refresh unavailable") }
         }
     }
-    func numberOfRows(in tableView: NSTableView) -> Int { model.items.count }
+    func numberOfRows(in tableView: NSTableView) -> Int { detailRows.count }
     func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
-        guard model.items.indices.contains(row), let key = tableColumn?.identifier.rawValue else { return nil }
-        let item = model.items[row]
+        guard detailRows.indices.contains(row), let key = tableColumn?.identifier.rawValue else { return nil }
+        if case let .header(title) = detailRows[row] {
+            guard key == "name" else { return nil }
+            let id = NSUserInterfaceItemIdentifier("DetailGroupHeader")
+            let label = tableView.makeView(withIdentifier: id, owner: self) as? NSTextField ?? { let label = NSTextField(labelWithString: ""); label.identifier = id; label.font = .systemFont(ofSize: NSFont.systemFontSize, weight: .semibold); label.textColor = .secondaryLabelColor; return label }()
+            label.stringValue = title; label.setAccessibilityLabel(title); return label
+        }
+        guard let item = detailItem(at: row, in: detailRows) else { return nil }
         let id = NSUserInterfaceItemIdentifier(key)
         let cell = (tableView.makeView(withIdentifier: id, owner: self) as? NSTableCellView) ?? makeCell(id, icon: key == "name")
         switch key {
@@ -800,6 +808,10 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         cell.textField?.textColor = item.isHidden ? .secondaryLabelColor : .labelColor
         return cell
     }
+    func tableView(_ tableView: NSTableView, isGroupRow row: Int) -> Bool {
+        guard detailRows.indices.contains(row) else { return false }; if case .header = detailRows[row] { return true }; return false
+    }
+    func tableView(_ tableView: NSTableView, shouldSelectRow row: Int) -> Bool { detailItem(at: row, in: detailRows) != nil }
     private func refreshGitStatuses(for location: URL) {
         gitTask?.cancel(); gitGeneration += 1; let request = gitGeneration
         gitLocation = location; gitStatuses = [:]; gitChangedPaths = []; reloadGitColumn()
@@ -826,7 +838,8 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         let wasRendering = rendering
         rendering = true
         table.reloadData()
-        let selected = IndexSet(model.items.indices.filter { model.history.current.selection.contains(model.items[$0].id) })
+        detailRows = detailDisplayRows(items: model.items, grouping: model.grouping)
+        let selected = detailSelectionRows(ids: model.history.current.selection, in: detailRows)
         table.selectRowIndexes(selected, byExtendingSelection: false)
         rendering = wasRendering
     }
@@ -858,8 +871,8 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         setSecondaryActive(false); savePosition(allowWhileLoading: true); updateStatus()
     }
     func tableView(_ tableView: NSTableView, pasteboardWriterForRow row: Int) -> (any NSPasteboardWriting)? {
-        guard model.items.indices.contains(row) else { return nil }
-        return model.items[row].url as NSURL
+        guard let item = detailItem(at: row, in: detailRows) else { return nil }
+        return item.url as NSURL
     }
     func tableView(_ tableView: NSTableView, validateDrop info: any NSDraggingInfo,
                    proposedRow row: Int, proposedDropOperation dropOperation: NSTableView.DropOperation) -> NSDragOperation {
@@ -916,7 +929,8 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         case .list: listView.invertSelection()
         case .columns: columnView.invertSelection()
         default:
-            let inverted = IndexSet(model.items.indices).subtracting(table.selectedRowIndexes)
+            let itemRows = IndexSet(detailRows.indices.filter { detailItem(at: $0, in: detailRows) != nil })
+            let inverted = itemRows.subtracting(table.selectedRowIndexes)
             table.selectRowIndexes(inverted, byExtendingSelection: false)
         }
     }
@@ -1038,8 +1052,7 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         if primaryRenderedViewMode == .columns, let item = columnView.selectedItems.first { openRenderedItem(item); return }
         if sender as? NSTableView === table && table.clickedRow < 0 { return }
         let rows = table.selectedRowIndexes
-        guard let first = rows.first, model.items.indices.contains(first) else { return }
-        let item = model.items[first]
+        guard let first = rows.first, let item = detailItem(at: first, in: detailRows) else { return }
         openItem(item)
     }
     private func openGridItem(_ item: FileItem) {
@@ -1138,7 +1151,7 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         if primaryRenderedViewMode == .grid { gridView.replaceSelection(with: ids) }
         else if primaryRenderedViewMode == .list { listView.replaceSelection(with: ids) }
         else if primaryRenderedViewMode == .columns { columnView.replaceSelection(with: ids) }
-        else { table.selectRowIndexes(IndexSet(model.items.indices.filter { ids.contains(model.items[$0].id) }), byExtendingSelection: false) }
+        else { table.selectRowIndexes(detailSelectionRows(ids: ids, in: detailRows), byExtendingSelection: false) }
     }
     @objc func openAllTagged(_ sender: Any?) {
         let urls = activeSelectedItems.map(\.url), root = activeModel.location, showHidden = activeModel.showHidden
@@ -1701,7 +1714,7 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         (info.draggingPasteboard.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [NSURL] ?? []).map { $0 as URL }
     }
     private func primaryDropDestination(row: Int, operation: NSTableView.DropOperation) -> URL? {
-        if operation == .on, model.items.indices.contains(row), model.items[row].isBrowsable { return model.items[row].url }
+        if operation == .on, let item = detailItem(at: row, in: detailRows), item.isBrowsable { return item.url }
         return model.location
     }
     private func dropIntent(_ info: any NSDraggingInfo) -> FileDropIntent {
@@ -2257,6 +2270,7 @@ extension BrowserWindow {
     var qaGitMarkedRows: Int { model.items.filter { !gitStatus(for: $0).isEmpty }.count }
     var qaGitColumnVisible: Bool { table.tableColumns.contains { $0.identifier.rawValue == "git" && !$0.isHidden } }
     var qaVisibleDetailColumns: Set<String> { Set(table.tableColumns.filter { !$0.isHidden }.map { $0.identifier.rawValue }) }
+    var qaDetailGroupTitles: [String] { detailRows.compactMap { if case let .header(title) = $0 { return title }; return nil } }
     var qaVisibleContextActions: Set<String> { Set((table.menu?.items ?? []).filter { !$0.isHidden }.compactMap { $0.action.map(NSStringFromSelector) }) }
 #endif
     static func runUIVerification(output: String) async {
@@ -2570,6 +2584,14 @@ extension BrowserWindow {
             metrics["firstNonemptyAppKitDisplaySeconds"] = firstLayout ?? elapsed(start)
             metrics["completeAppKitDisplaySeconds"] = elapsed(start)
             checks["tenThousandRows"] = !controller.model.isLoading && controller.model.error == nil && controller.table.numberOfRows == 10_000
+            if let first = controller.model.items.first {
+                controller.model.savePosition(selection: [first.id], scrollOffset: 0)
+                controller.model.setGrouping(.init(field: .size)); controller.render()
+                checks["detailGroupingRows"] = controller.qaDetailGroupTitles.count > 1
+                    && !controller.qaDetailGroupTitles.contains("")
+                    && controller.primarySelectedItems.map(\.id) == [first.id]
+                controller.model.setGrouping(FileGroupOptions()); controller.render()
+            } else { checks["detailGroupingRows"] = false }
             for column in controller.table.tableColumns where !column.isHidden { column.width = column.minWidth }
             controller.autoFitColumns(nil)
             checks["autoFitColumns"] = controller.table.tableColumn(withIdentifier: .init("name"))?.width ?? 0 > 70
