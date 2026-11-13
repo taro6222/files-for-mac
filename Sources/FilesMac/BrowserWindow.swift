@@ -1769,6 +1769,11 @@ extension BrowserWindow {
             checks["searchMetadataFilters"] = controller.searchWindow?.qaResultCount == 1
             controller.searchWindow?.qaInvalidSize(); checks["searchSizeValidation"] = controller.searchWindow?.qaValidationError == true
             try capture("search-advanced", view: controller.searchWindow?.window?.contentView)
+            controller.searchWindow?.qaSearchSpotlight("files-mac-spotlight-no-match-qa")
+            let spotlightSearch = ContinuousClock.now
+            while controller.searchWindow?.qaIsSearching == true && spotlightSearch.duration(to: .now) < .seconds(10) { try await Task.sleep(for: .milliseconds(10)) }
+            checks["spotlightSearchCapability"] = controller.searchWindow?.qaShowsSpotlight == true && controller.searchWindow?.qaIsSearching == false
+            try capture("search-spotlight", view: controller.searchWindow?.window?.contentView)
             controller.searchWindow?.close(); window.makeKeyAndOrderFront(nil)
             controller.showQuickLook(nil); try await Task.sleep(for: .milliseconds(500))
             checks["quickLookWindow"] = controller.quickLook.qaVisible

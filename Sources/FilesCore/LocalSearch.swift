@@ -2,6 +2,7 @@ import Foundation
 
 public enum SearchScope: String, CaseIterable, Sendable { case currentFolder, descendants }
 public enum SearchItemKind: String, CaseIterable, Sendable { case any, files, folders }
+public enum SearchMethod: String, CaseIterable, Sendable { case fileName, spotlightContent }
 
 public struct FileSearchQuery: Sendable, Equatable {
     public var text: String
@@ -13,12 +14,14 @@ public struct FileSearchQuery: Sendable, Equatable {
     public var maximumSize: Int64?
     public var modifiedAfter: Date?
     public var modifiedBefore: Date?
+    public var method: SearchMethod
     public init(text: String, scope: SearchScope = .descendants, kind: SearchItemKind = .any, showHidden: Bool = false,
                 tagText: String = "", minimumSize: Int64? = nil, maximumSize: Int64? = nil,
-                modifiedAfter: Date? = nil, modifiedBefore: Date? = nil) {
+                modifiedAfter: Date? = nil, modifiedBefore: Date? = nil, method: SearchMethod = .fileName) {
         self.text = text; self.scope = scope; self.kind = kind; self.showHidden = showHidden
         self.tagText = tagText; self.minimumSize = minimumSize; self.maximumSize = maximumSize
         self.modifiedAfter = modifiedAfter; self.modifiedBefore = modifiedBefore
+        self.method = method
     }
 }
 
@@ -30,6 +33,20 @@ public struct FileSearchBatch: Sendable {
 
 public protocol FileSearching: Sendable {
     func batches(in root: URL, query: FileSearchQuery) -> AsyncThrowingStream<FileSearchBatch, Error>
+}
+
+public struct SearchRouter: FileSearching {
+    private let local: any FileSearching
+    private let spotlight: any FileSearching
+    public init(local: any FileSearching = LocalFileSearch(), spotlight: any FileSearching) {
+        self.local = local; self.spotlight = spotlight
+    }
+    public func batches(in root: URL, query: FileSearchQuery) -> AsyncThrowingStream<FileSearchBatch, Error> {
+        switch query.method {
+        case .fileName: local.batches(in: root, query: query)
+        case .spotlightContent: spotlight.batches(in: root, query: query)
+        }
+    }
 }
 
 public struct LocalFileSearch: FileSearching {

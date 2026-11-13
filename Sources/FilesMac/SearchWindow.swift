@@ -3,9 +3,9 @@ import FilesCore
 
 @MainActor
 final class SearchWindow: NSWindowController, NSTableViewDataSource, NSTableViewDelegate, NSSearchFieldDelegate {
-    private let model = SearchModel()
+    private let model = SearchModel(searcher: SearchRouter(spotlight: SpotlightFileSearch()))
     private let onOpen: (FileItem) -> Void
-    private let search = NSSearchField(), scope = NSPopUpButton(), kind = NSPopUpButton(), hidden = NSButton(checkboxWithTitle: L("숨김 포함", "Include Hidden"), target: nil, action: nil)
+    private let search = NSSearchField(), method = NSPopUpButton(), scope = NSPopUpButton(), kind = NSPopUpButton(), hidden = NSButton(checkboxWithTitle: L("숨김 포함", "Include Hidden"), target: nil, action: nil)
     private let tag = NSSearchField(), minimumSize = NSTextField(), maximumSize = NSTextField()
     private let afterEnabled = NSButton(checkboxWithTitle: L("수정일 이후", "Modified after"), target: nil, action: nil)
     private let beforeEnabled = NSButton(checkboxWithTitle: L("수정일 이전", "Modified before"), target: nil, action: nil)
@@ -26,6 +26,7 @@ final class SearchWindow: NSWindowController, NSTableViewDataSource, NSTableView
         content.addSubview(stack); NSLayoutConstraint.activate([stack.leadingAnchor.constraint(equalTo: content.leadingAnchor), stack.trailingAnchor.constraint(equalTo: content.trailingAnchor), stack.topAnchor.constraint(equalTo: content.topAnchor), stack.bottomAnchor.constraint(equalTo: content.bottomAnchor)])
         let controls = NSStackView(); controls.orientation = .horizontal; controls.spacing = 8
         search.placeholderString = L("파일 이름 검색", "Search file names"); search.delegate = self; search.target = self; search.action = #selector(start(_:)); search.setAccessibilityLabel(L("파일 이름 검색", "Search file names")); controls.addArrangedSubview(search)
+        method.addItems(withTitles: [L("파일 이름", "File Name"), L("Spotlight 콘텐츠", "Spotlight Content")]); method.setAccessibilityLabel(L("검색 방법", "Search method")); method.target = self; method.action = #selector(methodChanged(_:)); controls.addArrangedSubview(method)
         scope.addItems(withTitles: [L("하위 폴더 포함", "Include Subfolders"), L("현재 폴더", "Current Folder")]); scope.setAccessibilityLabel(L("검색 범위", "Search scope")); controls.addArrangedSubview(scope)
         kind.addItems(withTitles: [L("모든 항목", "All Items"), L("파일", "Files"), L("폴더", "Folders")]); kind.setAccessibilityLabel(L("항목 종류", "Item kind")); controls.addArrangedSubview(kind)
         hidden.target = self; hidden.action = #selector(start(_:)); controls.addArrangedSubview(hidden)
@@ -43,6 +44,11 @@ final class SearchWindow: NSWindowController, NSTableViewDataSource, NSTableView
         stop.title = L("중단", "Stop"); stop.target = self; stop.action = #selector(cancel(_:)); footer.addArrangedSubview(stop); stack.addArrangedSubview(footer)
     }
     func present(root: URL, showHidden: Bool) { self.root = root; hidden.state = showHidden ? .on : .off; render(); window?.center(); showWindow(nil); window?.makeKeyAndOrderFront(nil); window?.makeFirstResponder(search) }
+    @objc private func methodChanged(_ sender: Any?) {
+        let content = method.indexOfSelectedItem == 1
+        search.placeholderString = content ? L("파일 콘텐츠 검색", "Search file contents") : L("파일 이름 검색", "Search file names")
+        search.setAccessibilityLabel(search.placeholderString ?? "")
+    }
     @objc private func start(_ sender: Any?) {
         guard let root else { return }
         guard let minimum = parseSize(minimumSize.stringValue), let maximum = parseSize(maximumSize.stringValue) else { status.stringValue = L("파일 크기는 0 이상의 바이트 숫자로 입력하세요.", "File sizes must be non-negative byte values."); return }
@@ -52,7 +58,8 @@ final class SearchWindow: NSWindowController, NSTableViewDataSource, NSTableView
         model.search(in: root, query: FileSearchQuery(text: search.stringValue, scope: selectedScope, kind: selectedKind, showHidden: hidden.state == .on,
             tagText: tag.stringValue, minimumSize: minimum, maximumSize: maximum,
             modifiedAfter: afterEnabled.state == .on ? Calendar.current.startOfDay(for: afterDate.dateValue) : nil,
-            modifiedBefore: beforeEnabled.state == .on ? Calendar.current.date(byAdding: DateComponents(day: 1, second: -1), to: Calendar.current.startOfDay(for: beforeDate.dateValue)) : nil))
+            modifiedBefore: beforeEnabled.state == .on ? Calendar.current.date(byAdding: DateComponents(day: 1, second: -1), to: Calendar.current.startOfDay(for: beforeDate.dateValue)) : nil,
+            method: method.indexOfSelectedItem == 1 ? .spotlightContent : .fileName))
     }
     private func parseSize(_ value: String) -> Int64?? {
         let value = value.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -64,10 +71,12 @@ final class SearchWindow: NSWindowController, NSTableViewDataSource, NSTableView
     @objc private func openSelection(_ sender: Any?) { guard model.results.indices.contains(table.selectedRow) else { return }; onOpen(model.results[table.selectedRow]); close() }
     private func render() {
         table.reloadData(); stop.isEnabled = model.isSearching
-        if model.isSearching { status.stringValue = L("직접 열거로 검색 중… \(model.results.count)개", "Searching by direct enumeration… \(model.results.count)") }
+        let usesSpotlight = model.query?.method == .spotlightContent
+        if model.isSearching { status.stringValue = usesSpotlight ? L("Spotlight 인덱스 검색 중… \(model.results.count)개", "Searching Spotlight index… \(model.results.count)") : L("직접 열거로 검색 중… \(model.results.count)개", "Searching by direct enumeration… \(model.results.count)") }
         else if model.wasCancelled { status.stringValue = L("검색 중단 · 부분 결과 \(model.results.count)개", "Search stopped · \(model.results.count) partial results") }
         else if let error = model.error { status.stringValue = L("검색 실패: ", "Search failed: ") + error }
-        else { status.stringValue = L("직접 열거 결과 \(model.results.count)개", "\(model.results.count) results from direct enumeration") }
+        else if usesSpotlight && model.results.isEmpty { status.stringValue = L("Spotlight 결과 0개 · 이 위치의 인덱스 범위를 확인하세요.", "0 Spotlight results · Check whether this location is indexed.") }
+        else { status.stringValue = usesSpotlight ? L("Spotlight 결과 \(model.results.count)개", "\(model.results.count) Spotlight results") : L("직접 열거 결과 \(model.results.count)개", "\(model.results.count) results from direct enumeration") }
         if model.skippedLocations > 0 { status.stringValue += L(" · 접근 불가 \(model.skippedLocations)곳", " · \(model.skippedLocations) locations skipped") }
     }
     func numberOfRows(in tableView: NSTableView) -> Int { model.results.count }
@@ -80,10 +89,12 @@ final class SearchWindow: NSWindowController, NSTableViewDataSource, NSTableView
 #if DEBUG
     func qaSearch(_ text: String, scope value: SearchScope) { search.stringValue = text; scope.selectItem(at: value == .currentFolder ? 1 : 0); start(nil) }
     func qaSearchAdvanced(_ text: String, tag tagValue: String, minimum: String, maximum: String) { search.stringValue = text; tag.stringValue = tagValue; minimumSize.stringValue = minimum; maximumSize.stringValue = maximum; scope.selectItem(at: 1); start(nil) }
+    func qaSearchSpotlight(_ text: String) { method.selectItem(at: 1); methodChanged(nil); search.stringValue = text; tag.stringValue = ""; minimumSize.stringValue = ""; maximumSize.stringValue = ""; scope.selectItem(at: 1); start(nil) }
     func qaInvalidSize() { minimumSize.stringValue = "invalid"; start(nil) }
     var qaValidationError: Bool { status.stringValue.contains(L("파일 크기", "File sizes")) }
     var qaIsSearching: Bool { model.isSearching }
     var qaResultCount: Int { model.results.count }
     var qaShowsDirectEnumeration: Bool { status.stringValue.contains(L("직접 열거", "direct enumeration")) }
+    var qaShowsSpotlight: Bool { status.stringValue.contains("Spotlight") }
 #endif
 }

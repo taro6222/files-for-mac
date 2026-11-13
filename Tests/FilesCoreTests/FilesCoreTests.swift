@@ -404,6 +404,27 @@ private struct DelayedSearch: FileSearching {
     }
 }
 
+private struct FixedSearch: FileSearching {
+    let name: String
+    func batches(in root: URL, query: FileSearchQuery) -> AsyncThrowingStream<FileSearchBatch, Error> {
+        AsyncThrowingStream { continuation in
+            continuation.yield(FileSearchBatch(items: [FileItem(url: root.appendingPathComponent(name), name: name, isDirectory: false)], skippedLocations: 0))
+            continuation.finish()
+        }
+    }
+}
+
+@Test func searchRouterSeparatesEnumerationAndSpotlightAdapters() async throws {
+    let root = URL(fileURLWithPath: "/tmp"), router = SearchRouter(local: FixedSearch(name: "local"), spotlight: FixedSearch(name: "spotlight"))
+    func names(_ method: SearchMethod) async throws -> [String] {
+        var names: [String] = []
+        for try await batch in router.batches(in: root, query: FileSearchQuery(text: "query", method: method)) { names += batch.items.map(\.name) }
+        return names
+    }
+    #expect(try await names(.fileName) == ["local"])
+    #expect(try await names(.spotlightContent) == ["spotlight"])
+}
+
 @Test @MainActor func searchModelDiscardsStaleResultsAndReportsCancellation() async throws {
     let model = SearchModel(searcher: DelayedSearch()), root = URL(fileURLWithPath: "/tmp")
     model.search(in: root, query: FileSearchQuery(text: "old"))
