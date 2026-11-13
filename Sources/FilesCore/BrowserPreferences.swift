@@ -11,6 +11,28 @@ public struct FolderViewPreference: Codable, Equatable, Sendable {
     public var size: BrowserViewSize
     public init(mode: BrowserViewMode, size: BrowserViewSize) { self.mode = mode; self.size = size }
 }
+public struct BrowserPreferencesArchive: Codable, Equatable, Sendable {
+    public let version: Int
+    public let sidebarOrder: [String]
+    public let collapsedSidebar: [String]
+    public let favorites: [String]
+    public let recent: [String]
+    public let showHidden: Bool
+    public let showExtensions: Bool
+    public let showToolbar: Bool
+    public let showStatusBar: Bool
+    public let showHomeFavorites: Bool
+    public let showHomeVolumes: Bool
+    public let showHomeRecent: Bool
+    public let viewSize: String
+    public let appearance: String
+    public let continueLastSession: Bool
+    public let developerApplicationPath: String?
+    public let toolbarOrder: [String]
+    public let hiddenToolbarItems: [String]
+    public let folderViewPreferences: [String: FolderViewPreference]
+}
+public enum BrowserPreferencesArchiveError: Error, Equatable { case unsupportedVersion, invalidValue }
 public enum BrowserToolbarItem: String, CaseIterable, Sendable {
     case back, forward, up, refresh, path, hidden, viewMode, favorite, options
     public var isRequired: Bool { self == .path }
@@ -142,6 +164,52 @@ public final class BrowserPreferences {
         if let value { defaults.set(value, forKey: "developerApplicationPath") }
         else { defaults.removeObject(forKey: "developerApplicationPath") }
         changed()
+    }
+    public func exportData() throws -> Data {
+        let archive = BrowserPreferencesArchive(version: 1, sidebarOrder: sidebarOrder.map(\.rawValue),
+            collapsedSidebar: collapsedSidebar.map(\.rawValue).sorted(), favorites: favorites.map(\.path), recent: recent.map(\.path),
+            showHidden: showHidden, showExtensions: showExtensions, showToolbar: showToolbar, showStatusBar: showStatusBar,
+            showHomeFavorites: showHomeFavorites, showHomeVolumes: showHomeVolumes, showHomeRecent: showHomeRecent,
+            viewSize: viewSize.rawValue, appearance: appearance.rawValue, continueLastSession: continueLastSession,
+            developerApplicationPath: developerApplicationPath, toolbarOrder: toolbarOrder.map(\.rawValue),
+            hiddenToolbarItems: hiddenToolbarItems.map(\.rawValue).sorted(), folderViewPreferences: folderViewPreferences)
+        let encoder = JSONEncoder(); encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        return try encoder.encode(archive)
+    }
+    public func importData(_ data: Data) throws {
+        let archive = try JSONDecoder().decode(BrowserPreferencesArchive.self, from: data)
+        guard archive.version == 1 else { throw BrowserPreferencesArchiveError.unsupportedVersion }
+        guard let size = BrowserViewSize(rawValue: archive.viewSize), let importedAppearance = BrowserAppearance(rawValue: archive.appearance) else { throw BrowserPreferencesArchiveError.invalidValue }
+        let importedSidebar = archive.sidebarOrder.compactMap(SidebarSection.init(rawValue:))
+        let importedToolbar = archive.toolbarOrder.compactMap(BrowserToolbarItem.init(rawValue:))
+        guard importedSidebar.count == archive.sidebarOrder.count, Set(importedSidebar).count == SidebarSection.allCases.count,
+              Set(importedSidebar) == Set(SidebarSection.allCases), importedToolbar.count == archive.toolbarOrder.count,
+              Set(importedToolbar).count == BrowserToolbarItem.allCases.count, Set(importedToolbar) == Set(BrowserToolbarItem.allCases) else { throw BrowserPreferencesArchiveError.invalidValue }
+        let importedCollapsed = archive.collapsedSidebar.compactMap(SidebarSection.init(rawValue:))
+        let importedHiddenToolbar = archive.hiddenToolbarItems.compactMap(BrowserToolbarItem.init(rawValue:))
+        guard importedCollapsed.count == archive.collapsedSidebar.count, importedHiddenToolbar.count == archive.hiddenToolbarItems.count,
+              Set(importedCollapsed).count == importedCollapsed.count, Set(importedHiddenToolbar).count == importedHiddenToolbar.count,
+              !importedHiddenToolbar.contains(where: { $0.isRequired }), archive.favorites.allSatisfy({ $0.hasPrefix("/") }),
+              archive.recent.allSatisfy({ $0.hasPrefix("/") }), archive.folderViewPreferences.keys.allSatisfy({ $0.hasPrefix("/") }) else { throw BrowserPreferencesArchiveError.invalidValue }
+        if let developerApplicationPath = archive.developerApplicationPath, !developerApplicationPath.hasPrefix("/") {
+            throw BrowserPreferencesArchiveError.invalidValue
+        }
+        sidebarOrder = importedSidebar; collapsedSidebar = Set(importedCollapsed)
+        favorites = archive.favorites.map { URL(fileURLWithPath: $0) }; recent = archive.recent.map { URL(fileURLWithPath: $0) }
+        showHidden = archive.showHidden; showExtensions = archive.showExtensions; showToolbar = archive.showToolbar; showStatusBar = archive.showStatusBar
+        showHomeFavorites = archive.showHomeFavorites; showHomeVolumes = archive.showHomeVolumes; showHomeRecent = archive.showHomeRecent
+        viewSize = size; appearance = importedAppearance; continueLastSession = archive.continueLastSession
+        developerApplicationPath = archive.developerApplicationPath; toolbarOrder = importedToolbar; hiddenToolbarItems = Set(importedHiddenToolbar)
+        folderViewPreferences = archive.folderViewPreferences
+        defaults.set(sidebarOrder.map(\.rawValue), forKey: "sidebarOrder"); defaults.set(collapsedSidebar.map(\.rawValue).sorted(), forKey: "collapsedSidebar")
+        defaults.set(favorites.map(\.path), forKey: "favorites"); defaults.set(recent.map(\.path), forKey: "recent")
+        defaults.set(showHidden, forKey: "showHidden"); defaults.set(showExtensions, forKey: "showExtensions")
+        defaults.set(showToolbar, forKey: "showToolbar"); defaults.set(showStatusBar, forKey: "showStatusBar")
+        defaults.set(showHomeFavorites, forKey: "showHomeFavorites"); defaults.set(showHomeVolumes, forKey: "showHomeVolumes"); defaults.set(showHomeRecent, forKey: "showHomeRecent")
+        defaults.set(viewSize.rawValue, forKey: "viewSize"); defaults.set(appearance.rawValue, forKey: "appearance"); defaults.set(continueLastSession, forKey: "continueLastSession")
+        if let developerApplicationPath { defaults.set(developerApplicationPath, forKey: "developerApplicationPath") } else { defaults.removeObject(forKey: "developerApplicationPath") }
+        defaults.set(toolbarOrder.map(\.rawValue), forKey: "toolbarOrder"); defaults.set(hiddenToolbarItems.map(\.rawValue).sorted(), forKey: "hiddenToolbarItems")
+        saveFolderViewPreferences(); changed()
     }
     public func folderViewPreference(for url: URL) -> FolderViewPreference? {
         folderViewPreferences[url.standardizedFileURL.path]

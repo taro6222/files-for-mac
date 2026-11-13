@@ -18,6 +18,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     private var gitCloneWindow: GitCloneWindow?
     private var releaseInfoWindow: ReleaseInfoWindow?
     private var developerSettingsWindow: DeveloperSettingsWindow?
+    private var advancedSettingsWindow: AdvancedSettingsWindow?
     private var preferencesToken: UUID?
     func applicationDidFinishLaunching(_ notification: Notification) {
         applyAppearance()
@@ -106,6 +107,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         if developerSettingsWindow == nil { developerSettingsWindow = DeveloperSettingsWindow(preferences: .shared) }
         developerSettingsWindow?.present()
     }
+    @objc func showAdvancedSettings(_ sender: Any?) {
+        if advancedSettingsWindow == nil { advancedSettingsWindow = AdvancedSettingsWindow(preferences: .shared) }
+        advancedSettingsWindow?.present()
+    }
     @objc func showArchiveCapabilities(_ sender: Any?) {
         if archiveCapabilitiesWindow == nil { archiveCapabilitiesWindow = ArchiveCapabilitiesWindow() }
         archiveCapabilitiesWindow?.present()
@@ -175,6 +180,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         let appearance = appMenu.addItem(withTitle: L("외형…", "Appearance…"), action: #selector(showAppearanceSettings(_:)), keyEquivalent: "")
         appearance.target = self
         let developer = appMenu.addItem(withTitle: L("개발자 도구…", "Developer Tools…"), action: #selector(showDeveloperSettings(_:)), keyEquivalent: ""); developer.target = self
+        let advanced = appMenu.addItem(withTitle: L("고급 설정…", "Advanced Settings…"), action: #selector(showAdvancedSettings(_:)), keyEquivalent: ""); advanced.target = self
         let archiveSupport = appMenu.addItem(withTitle: L("압축 포맷 지원…", "Archive Format Support…"), action: #selector(showArchiveCapabilities(_:)), keyEquivalent: "")
         archiveSupport.target = self
         let remoteConnections = appMenu.addItem(withTitle: L("원격 연결…", "Remote Connections…"), action: #selector(showRemoteConnections(_:)), keyEquivalent: "")
@@ -300,6 +306,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     var qaReleaseInfoVisible: Bool { releaseInfoWindow?.qaVisible == true }
     var qaReleaseInfoText: String { releaseInfoWindow?.qaText ?? "" }
     var qaReleaseInfoContentView: NSView? { releaseInfoWindow?.window?.contentView }
+    var qaAdvancedSettingsVisible: Bool { advancedSettingsWindow?.qaVisible == true }
+    var qaAdvancedSettingsContentView: NSView? { advancedSettingsWindow?.window?.contentView }
     func qaCreateRemoteProfile() { remoteConnectionsWindow?.qaCreateProfile() }
 #endif
 }

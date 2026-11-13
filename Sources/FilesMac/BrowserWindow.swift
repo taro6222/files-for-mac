@@ -1949,6 +1949,10 @@ extension BrowserWindow {
                 checks["shortcutSettingsWindow"] = delegate.qaShortcutWindowVisible
                 try capture("keyboard-shortcuts", view: delegate.qaShortcutContentView)
                 delegate.qaShortcutContentView?.window?.close(); window.makeKeyAndOrderFront(nil)
+                delegate.showAdvancedSettings(nil); try await Task.sleep(for: .milliseconds(50))
+                checks["advancedSettingsWindow"] = delegate.qaAdvancedSettingsVisible
+                try capture("advanced-settings", view: delegate.qaAdvancedSettingsContentView)
+                delegate.qaAdvancedSettingsContentView?.window?.close(); window.makeKeyAndOrderFront(nil)
                 delegate.showArchiveCapabilities(nil); try await Task.sleep(for: .milliseconds(50))
                 checks["archiveCapabilitiesWindow"] = delegate.qaArchiveCapabilitiesVisible
                 try capture("archive-capabilities", view: delegate.qaArchiveCapabilitiesContentView)

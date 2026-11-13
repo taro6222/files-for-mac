@@ -430,6 +430,25 @@ private struct DelayedLoader: DirectoryLoading {
     #expect(BrowserPreferences(defaults: defaults, initialFavorites: []).developerApplicationPath == nil)
 }
 
+@Test @MainActor func browserPreferencesArchiveRoundTripsAndRejectsInvalidWithoutMutation() throws {
+    let firstSuite = "preferences-export-first-\(UUID())", secondSuite = "preferences-export-second-\(UUID())"
+    let firstDefaults = UserDefaults(suiteName: firstSuite)!, secondDefaults = UserDefaults(suiteName: secondSuite)!
+    defer { firstDefaults.removePersistentDomain(forName: firstSuite); secondDefaults.removePersistentDomain(forName: secondSuite) }
+    let source = BrowserPreferences(defaults: firstDefaults, initialFavorites: [URL(fileURLWithPath: "/source")])
+    source.setShowHidden(true); source.setShowToolbar(false); source.setAppearance(.dark); source.setDeveloperApplication(URL(fileURLWithPath: "/Applications/Editor.app"))
+    source.setFolderViewPreference(FolderViewPreference(mode: .grid, size: .large), for: URL(fileURLWithPath: "/folder"))
+    let data = try source.exportData(), destination = BrowserPreferences(defaults: secondDefaults, initialFavorites: [])
+    try destination.importData(data)
+    #expect(destination.showHidden && !destination.showToolbar && destination.appearance == .dark)
+    #expect(destination.developerApplicationPath == "/Applications/Editor.app")
+    #expect(destination.folderViewPreference(for: URL(fileURLWithPath: "/folder")) == FolderViewPreference(mode: .grid, size: .large))
+    let before = try destination.exportData()
+    var object = try #require(JSONSerialization.jsonObject(with: data) as? [String: Any]); object["viewSize"] = "huge"
+    let invalid = try JSONSerialization.data(withJSONObject: object)
+    #expect(throws: BrowserPreferencesArchiveError.invalidValue) { try destination.importData(invalid) }
+    #expect(try destination.exportData() == before)
+}
+
 @Test @MainActor func folderViewPreferencesPersistStandardizeRemoveAndRecoverCorruption() {
     let suite = "folder-view-preferences-tests-\(UUID())", defaults = UserDefaults(suiteName: suite)!
     defer { defaults.removePersistentDomain(forName: suite) }
