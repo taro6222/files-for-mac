@@ -302,6 +302,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         splitHorizontal.keyEquivalentModifierMask = [.command, .option, .shift]
         let closeSplit = go.addItem(withTitle: L("보조 pane 닫기", "Close Secondary Pane"), action: #selector(BrowserWindow.closeSecondaryPane(_:)), keyEquivalent: "w")
         closeSplit.keyEquivalentModifierMask = [.command, .option]
+        go.addItem(.separator())
+        let fullScreen = go.addItem(withTitle: L("전체 화면 전환", "Toggle Full Screen"), action: #selector(BrowserWindow.toggleFullScreen(_:)), keyEquivalent: "f")
+        fullScreen.keyEquivalentModifierMask = [.command, .control]
         NSApp.mainMenu = menu
     }
 #if DEBUG

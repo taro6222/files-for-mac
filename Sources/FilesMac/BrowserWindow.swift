@@ -1972,6 +1972,7 @@ extension BrowserWindow {
         optionsMenu.popUp(positioning: nil, at: NSPoint(x: content.bounds.maxX - 200, y: content.bounds.maxY), in: content)
     }
     @objc func showCommandPalette(_ sender: Any?) { commandPalette.present(relativeTo: window) }
+    @objc func toggleFullScreen(_ sender: Any?) { window?.toggleFullScreen(sender) }
     func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
         switch menuItem.action {
         case #selector(splitVertically(_:)), #selector(splitHorizontally(_:)): return true
@@ -2136,6 +2137,7 @@ extension BrowserWindow {
             checks["commandPaletteStableIDs"] = Set(paletteEntries.map(\.id)).count == paletteEntries.count
             checks["createShortcutFromDialogCommand"] = paletteEntries.contains { $0.item.action == #selector(createSymbolicLinkFromDialog(_:)) }
             checks["createFileCommand"] = paletteEntries.contains { $0.item.action == #selector(createFile(_:)) }
+            checks["toggleFullScreenCommand"] = paletteEntries.contains { $0.item.action == #selector(toggleFullScreen(_:)) }
             checks["commandPaletteSearch"] = CommandPaletteCatalog.filtered(paletteEntries, query: L("숨김", "hidden")).contains { $0.item.action == #selector(toggleHidden(_:)) }
             controller.showCommandPalette(nil); try await Task.sleep(for: .milliseconds(50))
             controller.commandPalette.qaSetQuery(L("숨김", "hidden"))
