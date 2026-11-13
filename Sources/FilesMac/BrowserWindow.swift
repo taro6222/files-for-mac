@@ -385,6 +385,8 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         let open = menu.addItem(withTitle: L("열기", "Open"), action: #selector(openSelection(_:)), keyEquivalent: ""); open.target = self
         let archive = menu.addItem(withTitle: L("압축 파일 탐색", "Browse Archive"), action: #selector(openArchive(_:)), keyEquivalent: ""); archive.target = self
         let createArchive = menu.addItem(withTitle: L("선택 항목 압축…", "Compress Selection…"), action: #selector(createArchive(_:)), keyEquivalent: ""); createArchive.target = self
+        let cloudDownload = menu.addItem(withTitle: L("지금 다운로드", "Download Now"), action: #selector(downloadCloudSelection(_:)), keyEquivalent: ""); cloudDownload.target = self
+        let cloudEvict = menu.addItem(withTitle: L("공간 비우기", "Free Up Space"), action: #selector(evictCloudSelection(_:)), keyEquivalent: ""); cloudEvict.target = self
         let copy = menu.addItem(withTitle: L("선택 항목 복사…", "Copy Selection To…"), action: #selector(copySelection(_:)), keyEquivalent: ""); copy.target = self
         let move = menu.addItem(withTitle: L("선택 항목 이동…", "Move Selection To…"), action: #selector(moveSelection(_:)), keyEquivalent: ""); move.target = self
         menu.addItem(NSMenuItem.separator())
@@ -889,6 +891,19 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         panel.beginSheetModal(for: window) { [weak self] response in
             guard response == .OK, let destination = panel.url, let self else { return }
             ArchiveCreationWindow.start(sources: sources, destination: destination) { self.refreshActivePane() }
+        }
+    }
+    @objc func downloadCloudSelection(_ sender: Any?) { performCloudOperation(evict: false) }
+    @objc func evictCloudSelection(_ sender: Any?) { performCloudOperation(evict: true) }
+    private func performCloudOperation(evict: Bool) {
+        guard activeSelectedItems.count == 1, let url = activeSelectedItems.first?.url else { return }
+        Task { [weak self, cloudProvider] in
+            do {
+                try await Task.detached(priority: .userInitiated) { evict ? try cloudProvider.evictLocalCopy(url) : try cloudProvider.requestDownload(url) }.value
+                guard let self else { return }; self.refreshActivePane()
+            } catch {
+                self?.showEntryError(evict ? L("로컬 복사본을 정리하지 못했습니다.", "The local copy could not be removed.") : L("클라우드 항목 다운로드를 시작하지 못했습니다.", "The cloud item download could not be started."))
+            }
         }
     }
     @objc func createFolder(_ sender: Any?) { promptForEntryName(source: nil) }
@@ -1670,6 +1685,8 @@ extension BrowserWindow {
         case #selector(openSelection(_:)): return !activeSelectedItems.isEmpty && activeModel.location != nil
         case #selector(openArchive(_:)): return activeSelectedItems.count == 1 && activeSelectedItems.first.map { ArchiveFormat.detect($0.url).map { ArchiveCapabilityMatrix.capabilities(for: $0).browse } == true } == true
         case #selector(createArchive(_:)): return !ArchiveCreationWindow.isRunning && !activeModel.isLoading && !activeSelectedItems.isEmpty
+        case #selector(downloadCloudSelection(_:)): return activeSelectedItems.count == 1 && activeSelectedItems.first.map { cloudProvider.capabilities(for: $0.url).downloadNow } == true
+        case #selector(evictCloudSelection(_:)): return activeSelectedItems.count == 1 && activeSelectedItems.first.map { cloudProvider.capabilities(for: $0.url).evictLocalCopy } == true
         case #selector(revealSelection(_:)), #selector(shareSelection(_:)), #selector(openWithApplication(_:)): return !activeSelectedItems.isEmpty && activeModel.location != nil
         case #selector(openInTerminal(_:)): return activeModel.location != nil
         default: return true
@@ -2341,6 +2358,11 @@ extension BrowserWindow {
             let contextActions = Set(controller.table.menu?.items.compactMap(\.action) ?? [])
             checks["systemOpenCommands"] = [#selector(revealSelection(_:)), #selector(shareSelection(_:)), #selector(openInTerminal(_:)), #selector(openWithApplication(_:))].allSatisfy(contextActions.contains)
             checks["archiveContextCommands"] = [#selector(openArchive(_:)), #selector(createArchive(_:))].allSatisfy(contextActions.contains)
+            checks["cloudContextCommands"] = [#selector(downloadCloudSelection(_:)), #selector(evictCloudSelection(_:))].allSatisfy(contextActions.contains)
+            let ordinaryProviderCapabilities = CloudLocationProvider().capabilities(for: target)
+            checks["cloudCommandsConservative"] = !ordinaryProviderCapabilities.downloadNow
+                && !ordinaryProviderCapabilities.evictLocalCopy
+                && !ordinaryProviderCapabilities.keepDownloaded
             checks["gridDragSources"] = primaryGridIntegration.1 && secondaryGridIntegration.drop
                 && primaryGridIntegration.2 != nil && secondaryGridIntegration.source != nil
             diagnostics["secondaryRequestedSelection"] = secondaryMerge.id

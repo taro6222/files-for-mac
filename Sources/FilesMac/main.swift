@@ -144,6 +144,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         file.addItem(withTitle: L("선택 항목 열기", "Open Selection"), action: #selector(BrowserWindow.openSelection(_:)), keyEquivalent: "\u{f701}")
         file.addItem(withTitle: L("압축 파일 탐색", "Browse Archive"), action: #selector(BrowserWindow.openArchive(_:)), keyEquivalent: "")
         file.addItem(withTitle: L("선택 항목 압축…", "Compress Selection…"), action: #selector(BrowserWindow.createArchive(_:)), keyEquivalent: "")
+        file.addItem(withTitle: L("지금 다운로드", "Download Now"), action: #selector(BrowserWindow.downloadCloudSelection(_:)), keyEquivalent: "")
+        file.addItem(withTitle: L("공간 비우기", "Free Up Space"), action: #selector(BrowserWindow.evictCloudSelection(_:)), keyEquivalent: "")
         file.addItem(withTitle: L("Finder에서 보기", "Reveal in Finder"), action: #selector(BrowserWindow.revealSelection(_:)), keyEquivalent: "")
         file.addItem(withTitle: L("다른 앱으로 열기…", "Open With…"), action: #selector(BrowserWindow.openWithApplication(_:)), keyEquivalent: "")
         file.addItem(withTitle: L("공유…", "Share…"), action: #selector(BrowserWindow.shareSelection(_:)), keyEquivalent: "")

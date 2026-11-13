@@ -13,6 +13,17 @@ public struct CloudLocation: Sendable, Equatable, Identifiable {
     public let exposesUbiquitousState: Bool
 }
 
+public struct CloudItemCapabilities: Sendable, Equatable {
+    public let downloadNow: Bool
+    public let evictLocalCopy: Bool
+    public let keepDownloaded: Bool
+    public init(downloadNow: Bool, evictLocalCopy: Bool, keepDownloaded: Bool) {
+        self.downloadNow = downloadNow; self.evictLocalCopy = evictLocalCopy; self.keepDownloaded = keepDownloaded
+    }
+}
+
+public enum CloudOperationError: Error, Sendable, Equatable { case unsupported }
+
 public struct CloudLocationProvider: Sendable {
     public let cloudStorageRoot: URL
     public let iCloudDriveRoot: URL
@@ -55,6 +66,23 @@ public struct CloudLocationProvider: Sendable {
         case .notDownloaded: return .onlineOnly
         default: return .unknown
         }
+    }
+
+    public func capabilities(for url: URL) -> CloudItemCapabilities {
+        let ubiquitous = isUbiquitous(url)
+        // FileManager exposes fetch/evict for ubiquitous items, but no public API that
+        // guarantees a permanent "always keep downloaded" pin.
+        return CloudItemCapabilities(downloadNow: ubiquitous, evictLocalCopy: ubiquitous, keepDownloaded: false)
+    }
+
+    public func requestDownload(_ url: URL, fileManager: FileManager = .default) throws {
+        guard capabilities(for: url).downloadNow else { throw CloudOperationError.unsupported }
+        try fileManager.startDownloadingUbiquitousItem(at: url)
+    }
+
+    public func evictLocalCopy(_ url: URL, fileManager: FileManager = .default) throws {
+        guard capabilities(for: url).evictLocalCopy else { throw CloudOperationError.unsupported }
+        try fileManager.evictUbiquitousItem(at: url)
     }
 
     private func isUbiquitous(_ url: URL) -> Bool { (try? url.resourceValues(forKeys: [.isUbiquitousItemKey]).isUbiquitousItem) == true }
