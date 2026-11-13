@@ -33,6 +33,16 @@ private func fixture() throws -> URL {
     #expect(MountedVolume(url: URL(fileURLWithPath: "/Volumes/Unknown"), name: "Unknown").usedFraction == nil)
 }
 
+@Test func searchSizeUnitsConvertDecimalsAndRejectInvalidBounds() {
+    #expect(SearchSizeUnit.bytes.byteCount(42) == 42)
+    #expect(SearchSizeUnit.kilobytes.byteCount(1.5) == 1_500)
+    #expect(SearchSizeUnit.megabytes.byteCount(2) == 2_000_000)
+    #expect(SearchSizeUnit.gigabytes.byteCount(3) == 3_000_000_000)
+    #expect(SearchSizeUnit.bytes.byteCount(-1) == nil)
+    #expect(SearchSizeUnit.gigabytes.byteCount(.infinity) == nil)
+    #expect(SearchSizeUnit.gigabytes.byteCount(Double(Int64.max)) == nil)
+}
+
 @Test func missingDirectoryThrows() async throws {
     await #expect(throws: (any Error).self) {
         _ = try await LocalFileSystem().contents(of: URL(fileURLWithPath: "/tmp/no-such-\(UUID())"), showHidden: false)

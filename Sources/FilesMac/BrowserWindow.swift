@@ -1832,6 +1832,10 @@ extension BrowserWindow {
             let advancedSearch = ContinuousClock.now
             while controller.searchWindow?.qaIsSearching == true && advancedSearch.duration(to: .now) < .seconds(10) { try await Task.sleep(for: .milliseconds(10)) }
             checks["searchMetadataFilters"] = controller.searchWindow?.qaResultCount == 1
+            controller.searchWindow?.qaSearchAdvanced("long-file-name", tag: "QA", minimum: "0.001", maximum: "0.01", unit: .kilobytes)
+            let unitSearch = ContinuousClock.now
+            while controller.searchWindow?.qaIsSearching == true && unitSearch.duration(to: .now) < .seconds(10) { try await Task.sleep(for: .milliseconds(10)) }
+            checks["searchSizeUnits"] = controller.searchWindow?.qaResultCount == 1
             controller.searchWindow?.qaInvalidSize(); checks["searchSizeValidation"] = controller.searchWindow?.qaValidationError == true
             try capture("search-advanced", view: controller.searchWindow?.window?.contentView)
             controller.searchWindow?.qaSearchSpotlight("files-mac-spotlight-no-match-qa")

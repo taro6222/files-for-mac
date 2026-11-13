@@ -3,6 +3,16 @@ import Foundation
 public enum SearchScope: String, CaseIterable, Sendable { case currentFolder, descendants }
 public enum SearchItemKind: String, CaseIterable, Sendable { case any, files, folders }
 public enum SearchMethod: String, CaseIterable, Sendable { case fileName, spotlightContent }
+public enum SearchSizeUnit: String, CaseIterable, Sendable {
+    case bytes = "B", kilobytes = "KB", megabytes = "MB", gigabytes = "GB"
+    public var multiplier: Double {
+        switch self { case .bytes: 1; case .kilobytes: 1_000; case .megabytes: 1_000_000; case .gigabytes: 1_000_000_000 }
+    }
+    public func byteCount(_ value: Double) -> Int64? {
+        guard value.isFinite, value >= 0, value <= Double(Int64.max) / multiplier else { return nil }
+        return Int64((value * multiplier).rounded())
+    }
+}
 
 public struct FileSearchQuery: Sendable, Equatable {
     public var text: String

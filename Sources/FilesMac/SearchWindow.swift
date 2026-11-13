@@ -6,7 +6,7 @@ final class SearchWindow: NSWindowController, NSTableViewDataSource, NSTableView
     private let model = SearchModel(searcher: SearchRouter(spotlight: SpotlightFileSearch()))
     private let onOpen: (FileItem) -> Void
     private let search = NSSearchField(), method = NSPopUpButton(), scope = NSPopUpButton(), kind = NSPopUpButton(), hidden = NSButton(checkboxWithTitle: L("숨김 포함", "Include Hidden"), target: nil, action: nil)
-    private let tag = NSSearchField(), minimumSize = NSTextField(), maximumSize = NSTextField()
+    private let tag = NSSearchField(), minimumSize = NSTextField(), maximumSize = NSTextField(), sizeUnit = NSPopUpButton()
     private let afterEnabled = NSButton(checkboxWithTitle: L("수정일 이후", "Modified after"), target: nil, action: nil)
     private let beforeEnabled = NSButton(checkboxWithTitle: L("수정일 이전", "Modified before"), target: nil, action: nil)
     private let afterDate = NSDatePicker(), beforeDate = NSDatePicker()
@@ -31,12 +31,16 @@ final class SearchWindow: NSWindowController, NSTableViewDataSource, NSTableView
         kind.addItems(withTitles: [L("모든 항목", "All Items"), L("파일", "Files"), L("폴더", "Folders")]); kind.setAccessibilityLabel(L("항목 종류", "Item kind")); controls.addArrangedSubview(kind)
         hidden.target = self; hidden.action = #selector(start(_:)); controls.addArrangedSubview(hidden)
         let go = NSButton(title: L("검색", "Search"), target: self, action: #selector(start(_:))); controls.addArrangedSubview(go); stack.addArrangedSubview(controls)
-        let metadata = NSStackView(); metadata.orientation = .horizontal; metadata.spacing = 8
-        tag.placeholderString = L("Finder 태그", "Finder tags"); tag.setAccessibilityLabel(L("Finder 태그 필터", "Finder tag filter")); metadata.addArrangedSubview(tag)
-        minimumSize.placeholderString = L("최소 바이트", "Min bytes"); minimumSize.setAccessibilityLabel(L("최소 파일 크기", "Minimum file size")); metadata.addArrangedSubview(minimumSize)
-        maximumSize.placeholderString = L("최대 바이트", "Max bytes"); maximumSize.setAccessibilityLabel(L("최대 파일 크기", "Maximum file size")); metadata.addArrangedSubview(maximumSize)
+        let metadata = NSStackView(); metadata.orientation = .vertical; metadata.spacing = 8
+        let tagsAndSize = NSStackView(); tagsAndSize.orientation = .horizontal; tagsAndSize.spacing = 8
+        tag.placeholderString = L("Finder 태그", "Finder tags"); tag.setAccessibilityLabel(L("Finder 태그 필터", "Finder tag filter")); tagsAndSize.addArrangedSubview(tag)
+        minimumSize.placeholderString = L("최소 크기", "Min size"); minimumSize.setAccessibilityLabel(L("최소 파일 크기", "Minimum file size")); tagsAndSize.addArrangedSubview(minimumSize)
+        maximumSize.placeholderString = L("최대 크기", "Max size"); maximumSize.setAccessibilityLabel(L("최대 파일 크기", "Maximum file size")); tagsAndSize.addArrangedSubview(maximumSize)
+        sizeUnit.addItems(withTitles: SearchSizeUnit.allCases.map(\.rawValue)); sizeUnit.setAccessibilityLabel(L("파일 크기 단위", "File size unit")); tagsAndSize.addArrangedSubview(sizeUnit)
+        metadata.addArrangedSubview(tagsAndSize)
+        let dates = NSStackView(); dates.orientation = .horizontal; dates.spacing = 8
         for picker in [afterDate, beforeDate] { picker.datePickerElements = [.yearMonthDay]; picker.datePickerStyle = .textFieldAndStepper }
-        metadata.addArrangedSubview(afterEnabled); metadata.addArrangedSubview(afterDate); metadata.addArrangedSubview(beforeEnabled); metadata.addArrangedSubview(beforeDate); stack.addArrangedSubview(metadata)
+        dates.addArrangedSubview(afterEnabled); dates.addArrangedSubview(afterDate); dates.addArrangedSubview(beforeEnabled); dates.addArrangedSubview(beforeDate); dates.addArrangedSubview(NSView()); metadata.addArrangedSubview(dates); stack.addArrangedSubview(metadata)
         for (id, title, width) in [("name", L("이름", "Name"), 240.0), ("path", L("위치", "Location"), 360.0), ("kind", L("종류", "Kind"), 90.0)] { let c = NSTableColumn(identifier: .init(id)); c.title = title; c.width = width; table.addTableColumn(c) }
         table.delegate = self; table.dataSource = self; table.target = self; table.doubleAction = #selector(openSelection(_:)); table.allowsMultipleSelection = false
         let scroll = NSScrollView(); scroll.documentView = table; scroll.hasVerticalScroller = true; scroll.setContentCompressionResistancePriority(.defaultLow, for: .vertical); stack.addArrangedSubview(scroll)
@@ -51,7 +55,8 @@ final class SearchWindow: NSWindowController, NSTableViewDataSource, NSTableView
     }
     @objc private func start(_ sender: Any?) {
         guard let root else { return }
-        guard let minimum = parseSize(minimumSize.stringValue), let maximum = parseSize(maximumSize.stringValue) else { status.stringValue = L("파일 크기는 0 이상의 바이트 숫자로 입력하세요.", "File sizes must be non-negative byte values."); return }
+        let unit = SearchSizeUnit.allCases[sizeUnit.indexOfSelectedItem]
+        guard let minimum = parseSize(minimumSize.stringValue, unit: unit), let maximum = parseSize(maximumSize.stringValue, unit: unit) else { status.stringValue = L("파일 크기는 선택한 단위의 0 이상 숫자로 입력하세요.", "File sizes must be non-negative numbers in the selected unit."); return }
         if let minimum, let maximum, minimum > maximum { status.stringValue = L("최소 크기는 최대 크기보다 클 수 없습니다.", "Minimum size cannot exceed maximum size."); return }
         let selectedScope: SearchScope = scope.indexOfSelectedItem == 1 ? .currentFolder : .descendants
         let selectedKind = SearchItemKind.allCases[kind.indexOfSelectedItem]
@@ -61,10 +66,11 @@ final class SearchWindow: NSWindowController, NSTableViewDataSource, NSTableView
             modifiedBefore: beforeEnabled.state == .on ? Calendar.current.date(byAdding: DateComponents(day: 1, second: -1), to: Calendar.current.startOfDay(for: beforeDate.dateValue)) : nil,
             method: method.indexOfSelectedItem == 1 ? .spotlightContent : .fileName))
     }
-    private func parseSize(_ value: String) -> Int64?? {
+    private func parseSize(_ value: String, unit: SearchSizeUnit) -> Int64?? {
         let value = value.trimmingCharacters(in: .whitespacesAndNewlines)
         if value.isEmpty { return .some(nil) }
-        guard let parsed = Int64(value), parsed >= 0 else { return nil }
+        let formatter = NumberFormatter(); formatter.locale = .current; formatter.numberStyle = .decimal
+        guard let number = formatter.number(from: value), let parsed = unit.byteCount(number.doubleValue) else { return nil }
         return .some(parsed)
     }
     @objc private func cancel(_ sender: Any?) { model.cancel() }
@@ -88,7 +94,7 @@ final class SearchWindow: NSWindowController, NSTableViewDataSource, NSTableView
     }
 #if DEBUG
     func qaSearch(_ text: String, scope value: SearchScope) { search.stringValue = text; scope.selectItem(at: value == .currentFolder ? 1 : 0); start(nil) }
-    func qaSearchAdvanced(_ text: String, tag tagValue: String, minimum: String, maximum: String) { search.stringValue = text; tag.stringValue = tagValue; minimumSize.stringValue = minimum; maximumSize.stringValue = maximum; scope.selectItem(at: 1); start(nil) }
+    func qaSearchAdvanced(_ text: String, tag tagValue: String, minimum: String, maximum: String, unit: SearchSizeUnit = .bytes) { search.stringValue = text; tag.stringValue = tagValue; minimumSize.stringValue = minimum; maximumSize.stringValue = maximum; sizeUnit.selectItem(at: SearchSizeUnit.allCases.firstIndex(of: unit)!); scope.selectItem(at: 1); start(nil) }
     func qaSearchSpotlight(_ text: String) { method.selectItem(at: 1); methodChanged(nil); search.stringValue = text; tag.stringValue = ""; minimumSize.stringValue = ""; maximumSize.stringValue = ""; scope.selectItem(at: 1); start(nil) }
     func qaInvalidSize() { minimumSize.stringValue = "invalid"; start(nil) }
     var qaValidationError: Bool { status.stringValue.contains(L("파일 크기", "File sizes")) }
