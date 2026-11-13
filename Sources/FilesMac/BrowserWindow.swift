@@ -27,6 +27,8 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
     private let workspaceSplit = NSSplitView()
     private var secondaryPane: SecondaryBrowserPane?
     private var secondaryActive = false
+    private var primaryPaneID = UUID()
+    private var secondaryPaneID: UUID?
     private var activeModel: BrowserModel { secondaryActive ? secondaryPane?.model ?? model : model }
     private var activeSelectedItems: [FileItem] {
         if secondaryActive { return secondaryPane?.selectedItems ?? [] }
@@ -70,8 +72,21 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         savePosition(allowWhileLoading: true)
         return model.snapshot
     }
+    func workspaceSnapshot() -> SplitTabState {
+        let primary = PaneSnapshot(id: primaryPaneID, tab: tabSnapshot())
+        guard let secondaryPane else { return SplitTabState(primary: primary) }
+        let secondary = PaneSnapshot(id: secondaryPaneID ?? UUID(), tab: secondaryPane.snapshot())
+        let dimension = workspaceSplit.isVertical ? workspaceSplit.bounds.width : workspaceSplit.bounds.height
+        let primaryFrame = workspaceSplit.arrangedSubviews[0].frame
+        let primarySize = workspaceSplit.isVertical ? primaryFrame.width : primaryFrame.height
+        let ratio = dimension > 0 ? Double(primarySize / dimension) : 0.5
+        return SplitTabState(primary: primary, secondary: secondary,
+                             axis: workspaceSplit.isVertical ? .vertical : .horizontal,
+                             ratio: ratio, activePaneID: secondaryActive ? secondary.id : primary.id)
+    }
     init(preferences: BrowserPreferences = .shared, restoresFrame: Bool = true, initialLocation: URL? = nil,
          initialSnapshot: TabSnapshot? = nil,
+         initialWorkspace: SplitTabState? = nil,
          loader: any DirectoryLoading = LocalFileSystem(),
          makeWatcher: @escaping @Sendable (URL) -> DirectoryWatcher? = { DirectoryWatcher(url: $0) }) {
         self.model = BrowserModel(loader: loader)
@@ -90,8 +105,13 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         setupUI(restoresLayout: restoresFrame)
         model.onChange = { [weak self] in self?.render() }
         preferencesToken = preferences.observe { [weak self] in self?.preferencesChanged() }
-        if let initialSnapshot { model.restore(initialSnapshot) }
+        let primarySnapshot = initialWorkspace?.panes.first?.tab ?? initialSnapshot
+        if let primarySnapshot { model.restore(primarySnapshot) }
         else { model.navigate(initialLocation) }
+        if let initialWorkspace {
+            primaryPaneID = initialWorkspace.panes[0].id
+            restoreWorkspace(initialWorkspace)
+        }
         refreshVolumes()
         for name in [NSWorkspace.didMountNotification, NSWorkspace.didUnmountNotification] {
             observerTokens.append(NSWorkspace.shared.notificationCenter.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
@@ -598,7 +618,7 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         stack.addArrangedSubview(mode); stack.addArrangedSubview(first); stack.addArrangedSubview(second); alert.accessoryView = stack
         alert.addButton(withTitle: L("미리보기", "Preview")); alert.addButton(withTitle: L("취소", "Cancel"))
         alert.window.initialFirstResponder = first
-        alert.beginSheetModal(for: window) { [weak self] response in
+        alert.beginSheetModal(for: window) { response in
             guard response == .alertFirstButtonReturn, !first.stringValue.isEmpty, let self else { return }
             let requests: [BatchRenameRequest]
             do {
@@ -968,21 +988,31 @@ extension BrowserWindow {
     @objc func closeSecondaryPane(_ sender: Any?) {
         guard let secondaryPane else { return }
         secondaryPane.model.cancelLoad(); secondaryPane.removeFromSuperview()
-        self.secondaryPane = nil; secondaryActive = false
+        self.secondaryPane = nil; secondaryPaneID = nil; secondaryActive = false
         content.wantsLayer = true; content.layer?.borderWidth = 0
         window?.makeFirstResponder(table)
     }
-    private func installSecondaryPane(axis: SplitAxis) {
+    private func installSecondaryPane(axis: SplitAxis, snapshot: TabSnapshot? = nil, id: UUID? = nil,
+                                      ratio: Double = 0.5, activate: Bool = true) {
         workspaceSplit.isVertical = axis == .vertical
         if secondaryPane == nil {
-            let pane = SecondaryBrowserPane(snapshot: tabSnapshot())
+            let pane = SecondaryBrowserPane(snapshot: snapshot ?? tabSnapshot())
             pane.onActivate = { [weak self] in self?.setSecondaryActive(true) }
-            secondaryPane = pane; workspaceSplit.addArrangedSubview(pane)
+            secondaryPane = pane; secondaryPaneID = id ?? UUID(); workspaceSplit.addArrangedSubview(pane)
         }
         workspaceSplit.adjustSubviews()
         let dimension = workspaceSplit.isVertical ? workspaceSplit.bounds.width : workspaceSplit.bounds.height
-        if dimension > 0 { workspaceSplit.setPosition(dimension / 2, ofDividerAt: 0) }
-        setSecondaryActive(true); secondaryPane?.focusFiles()
+        if dimension > 0 { workspaceSplit.setPosition(dimension * CGFloat(min(0.8, max(0.2, ratio))), ofDividerAt: 0) }
+        setSecondaryActive(activate)
+        if activate { secondaryPane?.focusFiles() }
+    }
+    private func restoreWorkspace(_ state: SplitTabState) {
+        guard state.panes.count == 2 else { return }
+        let secondary = state.panes[1]
+        Task { @MainActor [weak self] in
+            self?.installSecondaryPane(axis: state.axis, snapshot: secondary.tab, id: secondary.id,
+                                       ratio: state.ratio, activate: state.activePaneID == secondary.id)
+        }
     }
     private func setSecondaryActive(_ active: Bool) {
         secondaryActive = active && secondaryPane != nil

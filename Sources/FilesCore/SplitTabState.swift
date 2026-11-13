@@ -78,3 +78,21 @@ public struct SplitTabState: Codable, Equatable, Sendable {
         min(0.8, max(0.2, ratio.isFinite ? ratio : 0.5))
     }
 }
+
+public final class WorkspaceSessionStore: @unchecked Sendable {
+    private let defaults: UserDefaults
+    private let key: String
+
+    public init(defaults: UserDefaults = .standard, key: String = "workspaceSessionV2") {
+        self.defaults = defaults; self.key = key
+    }
+
+    public func save(_ workspaces: [SplitTabState]) throws {
+        defaults.set(try JSONEncoder().encode(workspaces), forKey: key)
+    }
+
+    public func load() -> [SplitTabState] {
+        guard let data = defaults.data(forKey: key) else { return [] }
+        return (try? JSONDecoder().decode([SplitTabState].self, from: data)) ?? []
+    }
+}

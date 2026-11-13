@@ -6,8 +6,9 @@ import FilesCore
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     var windows: [BrowserWindow] = []
-    private var closedTabs = ClosedTabHistory()
+    private var closedWorkspaces: [SplitTabState] = []
     private let sessionStore = TabSessionStore()
+    private let workspaceStore = WorkspaceSessionStore()
     func applicationDidFinishLaunching(_ notification: Notification) {
         buildMenu()
         #if DEBUG
@@ -16,12 +17,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             return
         }
         #endif
-        let restored = sessionStore.load()
+        var restored = workspaceStore.load()
+        if restored.isEmpty {
+            restored = sessionStore.load().map { SplitTabState(primary: PaneSnapshot(tab: $0)) }
+        }
         if restored.isEmpty { newWindow(nil) }
         else {
             var first: BrowserWindow?
-            for snapshot in restored {
-                let controller = makeBrowser(snapshot: snapshot, tabbedTo: first)
+            for workspace in restored {
+                let controller = makeBrowser(workspace: workspace, tabbedTo: first)
                 if first == nil { first = controller }
             }
         }
@@ -31,11 +35,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         (NSApp.keyWindow?.windowController as? BrowserWindow) ?? (NSApp.mainWindow?.windowController as? BrowserWindow)
     }
     @discardableResult private func makeBrowser(location: URL? = nil, snapshot: TabSnapshot? = nil,
+                                                 workspace: SplitTabState? = nil,
                                                  tabbedTo source: BrowserWindow? = nil) -> BrowserWindow {
-        let controller = BrowserWindow(initialLocation: location, initialSnapshot: snapshot)
+        let controller = BrowserWindow(initialLocation: location, initialSnapshot: snapshot, initialWorkspace: workspace)
         windows.append(controller)
         controller.onClose = { [weak self, weak controller] in
-            if let controller { self?.closedTabs.record(controller.tabSnapshot()) }
+            if let controller {
+                self?.closedWorkspaces.append(controller.workspaceSnapshot())
+                if let self, self.closedWorkspaces.count > 20 { self.closedWorkspaces.removeFirst(self.closedWorkspaces.count - 20) }
+            }
             self?.windows.removeAll { $0 === controller }
         }
         controller.showWindow(nil)
@@ -49,20 +57,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     @objc func newTab(_ sender: Any?) { makeBrowser(tabbedTo: currentBrowser) }
     @objc func duplicateTab(_ sender: Any?) {
         guard let current = currentBrowser else { return }
-        makeBrowser(snapshot: current.tabSnapshot(), tabbedTo: current)
+        makeBrowser(workspace: current.workspaceSnapshot(), tabbedTo: current)
     }
     @objc func reopenClosedTab(_ sender: Any?) {
-        guard let snapshot = closedTabs.restoreLast() else { return }
-        makeBrowser(snapshot: snapshot, tabbedTo: currentBrowser)
+        guard let workspace = closedWorkspaces.popLast() else { return }
+        makeBrowser(workspace: workspace, tabbedTo: currentBrowser)
     }
     func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
-        if menuItem.action == #selector(reopenClosedTab(_:)) { return closedTabs.canRestore }
+        if menuItem.action == #selector(reopenClosedTab(_:)) { return !closedWorkspaces.isEmpty }
         if menuItem.action == #selector(duplicateTab(_:)) { return currentBrowser != nil }
         return true
     }
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
     func applicationWillTerminate(_ notification: Notification) {
-        try? sessionStore.save(windows.map { $0.tabSnapshot() })
+        try? workspaceStore.save(windows.map { $0.workspaceSnapshot() })
     }
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         guard CopyWindow.isRunning || DeletionWindow.isRunning || RestoreWindow.isRunning || MoveWindow.isRunning ||

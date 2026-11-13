@@ -136,6 +136,22 @@ private func fixture() throws -> URL {
     #expect(restored.activePaneID == secondary.id)
 }
 
+@Test func workspaceSessionStorePersistsSplitTabsAndRejectsCorruption() throws {
+    let suite = "workspace-session-tests-\(UUID())"
+    let defaults = try #require(UserDefaults(suiteName: suite))
+    defer { defaults.removePersistentDomain(forName: suite) }
+    let primary = PaneSnapshot(tab: TabSnapshot(location: URL(fileURLWithPath: "/primary")))
+    let secondary = PaneSnapshot(tab: TabSnapshot(location: URL(fileURLWithPath: "/secondary")))
+    let workspace = SplitTabState(primary: primary, secondary: secondary, axis: .horizontal,
+                                  ratio: 0.6, activePaneID: secondary.id)
+    let store = WorkspaceSessionStore(defaults: defaults)
+
+    try store.save([workspace])
+    #expect(store.load() == [workspace])
+    defaults.set(Data("broken".utf8), forKey: "workspaceSessionV2")
+    #expect(store.load().isEmpty)
+}
+
 @Test func sortingKeepsFoldersFirstAndNaturalNames() {
     let items = [FileItem(url: URL(fileURLWithPath: "/file10"), name: "file10", isDirectory: false),
         FileItem(url: URL(fileURLWithPath: "/file2"), name: "file2", isDirectory: false),
