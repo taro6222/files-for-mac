@@ -1,4 +1,5 @@
 import AppKit
+import UniformTypeIdentifiers
 #if canImport(FilesCore)
 import FilesCore
 #endif
@@ -67,6 +68,7 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
     private let homeScroll = NSScrollView()
     private let optionsMenu = NSMenu()
     private lazy var commandPalette = CommandPaletteWindow()
+    private var sharingPicker: NSSharingServicePicker?
     private var completionTask: Task<Void, Never>?
     private var completionGeneration = 0
     private var suggestions: [String] = []
@@ -385,6 +387,9 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         restore.isEnabled = false
         permanentDelete.isEnabled = false
         let reveal = menu.addItem(withTitle: L("Finder에서 보기", "Reveal in Finder"), action: #selector(revealSelection(_:)), keyEquivalent: ""); reveal.target = self
+        let share = menu.addItem(withTitle: L("공유…", "Share…"), action: #selector(shareSelection(_:)), keyEquivalent: ""); share.target = self
+        let terminal = menu.addItem(withTitle: L("터미널에서 열기", "Open in Terminal"), action: #selector(openInTerminal(_:)), keyEquivalent: ""); terminal.target = self
+        let openWith = menu.addItem(withTitle: L("다른 앱으로 열기…", "Open With…"), action: #selector(openWithApplication(_:)), keyEquivalent: ""); openWith.target = self
         table.menu = menu; gridView.contextMenu = menu; listView.contextMenu = menu; columnView.contextMenu = menu
     }
     private func configure(_ b: NSButton, _ symbol: String, _ title: String, _ action: Selector) {
@@ -1266,6 +1271,36 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         let urls = activeSelectedItems.map(\.url)
         if !urls.isEmpty { NSWorkspace.shared.activateFileViewerSelecting(urls) }
     }
+    @objc func shareSelection(_ sender: Any?) {
+        let urls = activeSelectedItems.map(\.url); guard !urls.isEmpty else { return }
+        let picker = NSSharingServicePicker(items: urls); sharingPicker = picker
+        let anchor: NSView = secondaryActive ? (secondaryPane ?? content) : content
+        picker.show(relativeTo: anchor.bounds, of: anchor, preferredEdge: .minY)
+    }
+    @objc func openInTerminal(_ sender: Any?) {
+        let selected = activeSelectedItems.map { $0.isDirectory ? $0.url : $0.url.deletingLastPathComponent() }
+        let urls = Array(Set(selected.isEmpty ? [activeModel.location].compactMap { $0 } : selected)).sorted { $0.path < $1.path }
+        guard !urls.isEmpty, let terminal = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.apple.Terminal") else {
+            showEntryError(L("터미널 또는 열 위치를 찾을 수 없습니다.", "Terminal or the location could not be found.")); return
+        }
+        Task { @MainActor in
+            do { try await NSWorkspace.shared.open(urls, withApplicationAt: terminal, configuration: .init()) }
+            catch { showEntryError(L("터미널에서 열지 못했습니다: ", "Could not open in Terminal: ") + error.localizedDescription) }
+        }
+    }
+    @objc func openWithApplication(_ sender: Any?) {
+        let urls = activeSelectedItems.map(\.url); guard !urls.isEmpty, let window else { return }
+        let panel = NSOpenPanel(); panel.title = L("열 앱 선택", "Choose an Application")
+        panel.directoryURL = URL(fileURLWithPath: "/Applications", isDirectory: true); panel.canChooseDirectories = false
+        panel.canChooseFiles = true; panel.allowsMultipleSelection = false; panel.allowedContentTypes = [.applicationBundle]
+        panel.beginSheetModal(for: window) { [weak self] response in
+            guard response == .OK, let application = panel.url, let self else { return }
+            Task { @MainActor in
+                do { try await NSWorkspace.shared.open(urls, withApplicationAt: application, configuration: .init()) }
+                catch { self.showEntryError(L("선택한 앱으로 열지 못했습니다: ", "Could not open with the selected application: ") + error.localizedDescription) }
+            }
+        }
+    }
     private func updateWatcher(force: Bool = false) {
         guard force || watchedURL != model.location else { return }
         watcherTask?.cancel()
@@ -1528,10 +1563,8 @@ extension BrowserWindow {
         alert.addButton(withTitle: L("추출", "Eject")); alert.addButton(withTitle: L("취소", "Cancel"))
         alert.beginSheetModal(for: window) { [weak self] response in
             guard response == .alertFirstButtonReturn, let self else { return }
-            Task { @MainActor in
-                do { try await NSWorkspace.shared.unmountAndEjectDevice(at: url) }
-                catch { self.showEntryError(L("드라이브를 추출하지 못했습니다: ", "Could not eject the drive: ") + error.localizedDescription) }
-            }
+            do { try NSWorkspace.shared.unmountAndEjectDevice(at: url) }
+            catch { self.showEntryError(L("드라이브를 추출하지 못했습니다: ", "Could not eject the drive: ") + error.localizedDescription) }
         }
     }
 }
@@ -1595,7 +1628,8 @@ extension BrowserWindow {
         case #selector(goForward(_:)): return secondaryActive ? !(secondaryPane?.model.history.forward.isEmpty ?? true) : !model.history.forward.isEmpty
         case #selector(goUp(_:)): return secondaryActive ? secondaryPane?.model.location != nil : model.location != nil && model.location?.path != "/"
         case #selector(openSelection(_:)): return !activeSelectedItems.isEmpty && activeModel.location != nil
-        case #selector(revealSelection(_:)): return !secondaryActive && !activeSelectedItems.isEmpty && model.location != nil
+        case #selector(revealSelection(_:)), #selector(shareSelection(_:)), #selector(openWithApplication(_:)): return !activeSelectedItems.isEmpty && activeModel.location != nil
+        case #selector(openInTerminal(_:)): return activeModel.location != nil
         default: return true
         }
     }
@@ -2181,6 +2215,8 @@ extension BrowserWindow {
                                           controller.gridView.qaPasteboardURL(at: 0))
             let secondaryGridIntegration = secondary.qaGridIntegration()
             checks["gridContextCommands"] = primaryGridIntegration.0 && secondaryGridIntegration.menu
+            let contextActions = Set(controller.table.menu?.items.compactMap(\.action) ?? [])
+            checks["systemOpenCommands"] = [#selector(revealSelection(_:)), #selector(shareSelection(_:)), #selector(openInTerminal(_:)), #selector(openWithApplication(_:))].allSatisfy(contextActions.contains)
             checks["gridDragSources"] = primaryGridIntegration.1 && secondaryGridIntegration.drop
                 && primaryGridIntegration.2 != nil && secondaryGridIntegration.source != nil
             diagnostics["secondaryRequestedSelection"] = secondaryMerge.id

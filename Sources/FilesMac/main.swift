@@ -135,6 +135,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         reopen.keyEquivalentModifierMask = [.command, .shift]; reopen.target = self
         file.addItem(withTitle: L("폴더 열기…", "Open Folder…"), action: #selector(BrowserWindow.chooseFolder(_:)), keyEquivalent: "o")
         file.addItem(withTitle: L("선택 항목 열기", "Open Selection"), action: #selector(BrowserWindow.openSelection(_:)), keyEquivalent: "\u{f701}")
+        file.addItem(withTitle: L("Finder에서 보기", "Reveal in Finder"), action: #selector(BrowserWindow.revealSelection(_:)), keyEquivalent: "")
+        file.addItem(withTitle: L("다른 앱으로 열기…", "Open With…"), action: #selector(BrowserWindow.openWithApplication(_:)), keyEquivalent: "")
+        file.addItem(withTitle: L("공유…", "Share…"), action: #selector(BrowserWindow.shareSelection(_:)), keyEquivalent: "")
+        file.addItem(withTitle: L("터미널에서 열기", "Open in Terminal"), action: #selector(BrowserWindow.openInTerminal(_:)), keyEquivalent: "")
         file.addItem(withTitle: L("정보 가져오기", "Get Info"), action: #selector(BrowserWindow.showInfo(_:)), keyEquivalent: "i")
         let preview = file.addItem(withTitle: L("훑어보기", "Quick Look"), action: #selector(BrowserWindow.showQuickLook(_:)), keyEquivalent: " ")
         preview.keyEquivalentModifierMask = []
