@@ -347,3 +347,41 @@ private extension Data {
         try handle.write(contentsOf: self)
     }
 }
+
+@Test func batchRenameSupportsCyclicNameSwap() async throws {
+    let root = try entryFixture(); defer { try? FileManager.default.removeItem(at: root) }
+    let journal = root.appendingPathComponent("journal")
+    let a = root.appendingPathComponent("a.txt"), b = root.appendingPathComponent("b.txt")
+    try Data("A".utf8).write(to: a); try Data("B".utf8).write(to: b)
+    let result = try await EntryOperations.batchRename([
+        BatchRenameRequest(source: a, name: "b.txt"), BatchRenameRequest(source: b, name: "a.txt")
+    ], journalDirectory: journal)
+    #expect(result.state == "completed")
+    #expect(try String(contentsOf: a, encoding: .utf8) == "B")
+    #expect(try String(contentsOf: b, encoding: .utf8) == "A")
+}
+
+@Test func batchRenameRejectsDuplicateAndExternalConflictsBeforeMutation() async throws {
+    let root = try entryFixture(); defer { try? FileManager.default.removeItem(at: root) }
+    let journal = root.appendingPathComponent("journal")
+    let a = root.appendingPathComponent("a"), b = root.appendingPathComponent("b"), occupied = root.appendingPathComponent("occupied")
+    try Data("A".utf8).write(to: a); try Data("B".utf8).write(to: b); try Data("X".utf8).write(to: occupied)
+    let duplicate = try await EntryOperations.batchRename([
+        BatchRenameRequest(source: a, name: "same"), BatchRenameRequest(source: b, name: "same")
+    ], journalDirectory: journal)
+    #expect(duplicate.state == "rejected")
+    #expect(FileManager.default.fileExists(atPath: a.path) && FileManager.default.fileExists(atPath: b.path))
+    let external = try await EntryOperations.batchRename([
+        BatchRenameRequest(source: a, name: "occupied")
+    ], journalDirectory: journal)
+    #expect(external.state == "rejected")
+    #expect(try String(contentsOf: occupied, encoding: .utf8) == "X")
+    #expect(try String(contentsOf: a, encoding: .utf8) == "A")
+}
+
+@Test func batchRenamePatternsPreserveExtensionsAndPreviewReplacement() {
+    let root = URL(fileURLWithPath: "/tmp")
+    let sources = [root.appendingPathComponent("photo-a.jpg"), root.appendingPathComponent("photo-b.png")]
+    #expect(BatchRenamePattern.replacing(sources, find: "photo", replacement: "image").map(\.name) == ["image-a.jpg", "image-b.png"])
+    #expect(BatchRenamePattern.numbered(sources, base: "Vacation", start: 7).map(\.name) == ["Vacation 7.jpg", "Vacation 8.png"])
+}

@@ -27,7 +27,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         guard CopyWindow.isRunning || DeletionWindow.isRunning || RestoreWindow.isRunning || MoveWindow.isRunning ||
-              PermanentDeleteWindow.isRunning || BrowserWindow.entryOperationRunning else { return .terminateNow }
+              PermanentDeleteWindow.isRunning || BatchRenameWindow.isRunning || BrowserWindow.entryOperationRunning else { return .terminateNow }
         let alert = NSAlert()
         alert.messageText = L("파일 작업이 진행 중입니다", "A file operation is running")
         alert.informativeText = L("작업 완료 후 종료하세요. 복사와 이동은 작업 창에서 취소할 수 있습니다.", "Quit after the operation finishes. Copies and moves can be cancelled in their operation windows.")
@@ -47,6 +47,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let folder = file.addItem(withTitle: L("새 폴더…", "New Folder…"), action: #selector(BrowserWindow.createFolder(_:)), keyEquivalent: "n")
         folder.keyEquivalentModifierMask = [.command, .shift]
         file.addItem(withTitle: L("이름 변경…", "Rename…"), action: #selector(BrowserWindow.renameSelection(_:)), keyEquivalent: "")
+        file.addItem(withTitle: L("일괄 이름 변경…", "Batch Rename…"), action: #selector(BrowserWindow.batchRenameSelection(_:)), keyEquivalent: "")
         let copy = file.addItem(withTitle: L("선택 항목 복사…", "Copy Selection To…"), action: #selector(BrowserWindow.copySelection(_:)), keyEquivalent: "c")
         copy.keyEquivalentModifierMask = [.command, .shift]
         let move = file.addItem(withTitle: L("선택 항목 이동…", "Move Selection To…"), action: #selector(BrowserWindow.moveSelection(_:)), keyEquivalent: "v")

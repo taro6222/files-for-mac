@@ -241,6 +241,7 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         let menu = NSMenu()
         let folder = menu.addItem(withTitle: L("새 폴더…", "New Folder…"), action: #selector(createFolder(_:)), keyEquivalent: ""); folder.target = self
         let rename = menu.addItem(withTitle: L("이름 변경…", "Rename…"), action: #selector(renameSelection(_:)), keyEquivalent: ""); rename.target = self
+        let batchRename = menu.addItem(withTitle: L("일괄 이름 변경…", "Batch Rename…"), action: #selector(batchRenameSelection(_:)), keyEquivalent: ""); batchRename.target = self
         let open = menu.addItem(withTitle: L("열기", "Open"), action: #selector(openSelection(_:)), keyEquivalent: ""); open.target = self
         let copy = menu.addItem(withTitle: L("선택 항목 복사…", "Copy Selection To…"), action: #selector(copySelection(_:)), keyEquivalent: ""); copy.target = self
         let move = menu.addItem(withTitle: L("선택 항목 이동…", "Move Selection To…"), action: #selector(moveSelection(_:)), keyEquivalent: ""); move.target = self
@@ -560,6 +561,25 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         guard table.selectedRowIndexes.count == 1, let index = table.selectedRowIndexes.first,
               model.items.indices.contains(index) else { return }
         promptForEntryName(source: model.items[index])
+    }
+    @objc func batchRenameSelection(_ sender: Any?) {
+        guard table.selectedRowIndexes.count > 1, let window else { return }
+        let sources = table.selectedRowIndexes.compactMap { model.items.indices.contains($0) ? model.items[$0].url : nil }
+        let alert = NSAlert(); alert.messageText = L("일괄 이름 변경", "Batch Rename")
+        alert.informativeText = L("찾을 문자열과 바꿀 문자열을 입력하세요. 적용 전에 전체 이름의 중복과 기존 항목 충돌을 검사합니다.",
+                                  "Enter text to find and replace. Duplicate names and existing-item conflicts are checked before applying.")
+        let stack = NSStackView(); stack.orientation = .vertical; stack.spacing = 8
+        stack.frame = NSRect(x: 0, y: 0, width: 420, height: 62)
+        let find = NSTextField(); find.placeholderString = L("찾을 문자열", "Find text")
+        let replacement = NSTextField(); replacement.placeholderString = L("바꿀 문자열", "Replacement text")
+        stack.addArrangedSubview(find); stack.addArrangedSubview(replacement); alert.accessoryView = stack
+        alert.addButton(withTitle: L("미리보기 및 실행", "Preview and Run")); alert.addButton(withTitle: L("취소", "Cancel"))
+        alert.window.initialFirstResponder = find
+        alert.beginSheetModal(for: window) { [weak self] response in
+            guard response == .alertFirstButtonReturn, !find.stringValue.isEmpty else { return }
+            let requests = BatchRenamePattern.replacing(sources, find: find.stringValue, replacement: replacement.stringValue)
+            BatchRenameWindow.start(requests: requests) { [weak self] in self?.refresh(nil) }
+        }
     }
     @objc func deleteSelection(_ sender: Any?) {
         guard canDeleteSelection else { return }
@@ -1019,6 +1039,7 @@ extension BrowserWindow {
         case #selector(moveSelection(_:)): return canMoveSelection
         case #selector(createFolder(_:)): return model.location != nil && !model.isLoading && !Self.entryOperationRunning && !CopyWindow.isRunning
         case #selector(renameSelection(_:)): return model.location != nil && table.selectedRowIndexes.count == 1 && !model.isLoading && !Self.entryOperationRunning && !CopyWindow.isRunning
+        case #selector(batchRenameSelection(_:)): return model.location != nil && table.selectedRowIndexes.count > 1 && !model.isLoading && !BatchRenameWindow.isRunning
         case #selector(retryAutomaticRefresh(_:)): return model.location != nil && watcherStatus != .active
         case #selector(copySelection(_:)): return !CopyWindow.isRunning && !model.isLoading && !table.selectedRowIndexes.isEmpty
         case #selector(stopLoading(_:)): return model.isLoading
