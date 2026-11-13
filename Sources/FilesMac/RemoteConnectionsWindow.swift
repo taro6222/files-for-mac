@@ -8,7 +8,7 @@ final class RemoteConnectionsWindow: NSWindowController, NSTableViewDataSource, 
     private var profiles: [RemoteConnectionProfile] = []
     private let table = NSTableView(), name = NSTextField(), host = NSTextField(), port = NSTextField()
     private let rootPath = NSTextField(), username = NSTextField(), password = NSSecureTextField()
-    private let protocolPopup = NSPopUpButton(), saveButton = NSButton(), deleteButton = NSButton()
+    private let protocolPopup = NSPopUpButton(), saveButton = NSButton(), deleteButton = NSButton(), connectButton = NSButton()
 
     init(profileStore: RemoteProfileStore, credentialStore: KeychainRemoteCredentialStore = .init()) {
         self.profileStore = profileStore; self.credentialStore = credentialStore
@@ -42,6 +42,7 @@ final class RemoteConnectionsWindow: NSWindowController, NSTableViewDataSource, 
         }
         password.placeholderString = L("변경할 때만 입력", "Enter only to change")
         let controls = NSStackView(); controls.orientation = .horizontal; controls.addArrangedSubview(NSView())
+        connectButton.title = L("Finder에서 연결", "Connect in Finder"); connectButton.target = self; connectButton.action = #selector(connectSMB(_:)); controls.addArrangedSubview(connectButton)
         saveButton.title = L("저장", "Save"); saveButton.keyEquivalent = "\r"; saveButton.target = self; saveButton.action = #selector(saveProfile(_:)); controls.addArrangedSubview(saveButton)
         form.addArrangedSubview(controls); root.addArrangedSubview(form)
     }
@@ -66,7 +67,7 @@ final class RemoteConnectionsWindow: NSWindowController, NSTableViewDataSource, 
         username.stringValue = profile.username ?? ""; password.stringValue = ""
     }
     private func clearForm() { name.stringValue = ""; protocolPopup.selectItem(at: 0); host.stringValue = ""; port.stringValue = String(RemoteProtocol.ftp.defaultPort); rootPath.stringValue = "/"; username.stringValue = ""; password.stringValue = "" }
-    private func updateControls() { deleteButton.isEnabled = selected != nil }
+    private func updateControls() { deleteButton.isEnabled = selected != nil; connectButton.isEnabled = selected?.remoteProtocol == .smb }
     @objc private func addProfile(_ sender: Any?) { table.deselectAll(nil); clearForm(); updateControls(); window?.makeFirstResponder(name) }
     @objc private func protocolChanged(_ sender: Any?) { port.stringValue = String(selectedProtocol.defaultPort) }
     @objc private func saveProfile(_ sender: Any?) {
@@ -88,15 +89,25 @@ final class RemoteConnectionsWindow: NSWindowController, NSTableViewDataSource, 
         do { if let id = selected.credentialID { try credentialStore.remove(id: id) }; profiles.removeAll { $0.id == selected.id }; try profileStore.save(profiles); reload() }
         catch { showError(error) }
     }
+    @objc private func connectSMB(_ sender: Any?) {
+        do { guard let selected else { return }; NSWorkspace.shared.open(try selected.smbMountURL()) }
+        catch { showError(error) }
+    }
     private func showError(_ error: Error) { guard let window else { return }; let alert = NSAlert(); alert.messageText = L("원격 연결을 저장할 수 없습니다", "Unable to Save Remote Connection"); alert.informativeText = String(describing: error); alert.beginSheetModal(for: window) }
 #if DEBUG
     var qaProfileCount: Int { profiles.count }
     func qaCreateProfile() {
-        guard profiles.isEmpty else { return }
-        addProfile(nil); name.stringValue = "QA SFTP"; protocolPopup.selectItem(at: RemoteProtocol.allCases.firstIndex(of: .sftp) ?? 0)
-        host.stringValue = "qa.example.com"; port.stringValue = "22"; rootPath.stringValue = "/fixture"; username.stringValue = "qa-user"
-        saveProfile(nil)
+        if !profiles.contains(where: { $0.name == "QA SFTP" }) {
+            addProfile(nil); name.stringValue = "QA SFTP"; protocolPopup.selectItem(at: RemoteProtocol.allCases.firstIndex(of: .sftp) ?? 0)
+            host.stringValue = "qa.example.com"; port.stringValue = "22"; rootPath.stringValue = "/fixture"; username.stringValue = "qa-user"; saveProfile(nil)
+        }
+        if !profiles.contains(where: { $0.name == "QA SMB" }) {
+            addProfile(nil); name.stringValue = "QA SMB"; protocolPopup.selectItem(at: RemoteProtocol.allCases.firstIndex(of: .smb) ?? 0)
+            host.stringValue = "nas.example.com"; port.stringValue = "445"; rootPath.stringValue = "/fixture"; username.stringValue = "qa-user"; saveProfile(nil)
+        }
+        if let index = profiles.firstIndex(where: { $0.name == "QA SMB" }) { table.selectRowIndexes([index], byExtendingSelection: false); populate(profiles[index]); updateControls() }
     }
+    var qaSMBConnectEnabled: Bool { connectButton.isEnabled }
 #endif
 }
 

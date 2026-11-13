@@ -14,7 +14,7 @@ public enum RemoteProtocol: String, Codable, CaseIterable, Sendable {
 }
 
 public enum RemoteConnectionValidationError: Error, Equatable, Sendable {
-    case emptyName, invalidHost, invalidPort, invalidRootPath, embeddedCredential
+    case emptyName, invalidHost, invalidPort, invalidRootPath, embeddedCredential, unsupportedProtocol, missingShare
 }
 
 public struct RemoteConnectionProfile: Codable, Equatable, Identifiable, Sendable {
@@ -50,6 +50,16 @@ public struct RemoteConnectionProfile: Codable, Equatable, Identifiable, Sendabl
     }
 
     public var endpoint: String { "\(remoteProtocol.rawValue)://\(host):\(port)\(rootPath)" }
+
+    public func smbMountURL() throws -> URL {
+        guard remoteProtocol == .smb else { throw RemoteConnectionValidationError.unsupportedProtocol }
+        guard rootPath.split(separator: "/").first != nil else { throw RemoteConnectionValidationError.missingShare }
+        var components = URLComponents(); components.scheme = "smb"; components.host = host
+        if port != RemoteProtocol.smb.defaultPort { components.port = port }
+        components.path = rootPath
+        guard let url = components.url else { throw RemoteConnectionValidationError.invalidRootPath }
+        return url
+    }
 
     private static func isValidHost(_ host: String) -> Bool {
         guard !host.isEmpty, host.count <= 253, !host.hasPrefix("."), !host.hasSuffix(".") else { return false }

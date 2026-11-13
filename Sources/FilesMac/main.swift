@@ -231,6 +231,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     var qaRemoteConnectionsVisible: Bool { remoteConnectionsWindow?.window?.isVisible == true }
     var qaRemoteConnectionsContentView: NSView? { remoteConnectionsWindow?.window?.contentView }
     var qaRemoteProfileCount: Int { remoteConnectionsWindow?.qaProfileCount ?? -1 }
+    var qaSMBConnectEnabled: Bool { remoteConnectionsWindow?.qaSMBConnectEnabled == true }
     func qaCreateRemoteProfile() { remoteConnectionsWindow?.qaCreateProfile() }
 #endif
 }

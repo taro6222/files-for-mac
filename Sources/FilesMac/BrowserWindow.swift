@@ -1823,7 +1823,8 @@ extension BrowserWindow {
                 delegate.qaArchiveCapabilitiesContentView?.window?.close(); window.makeKeyAndOrderFront(nil)
                 delegate.showRemoteConnections(nil); try await Task.sleep(for: .milliseconds(50))
                 delegate.qaCreateRemoteProfile(); try await Task.sleep(for: .milliseconds(50))
-                checks["remoteConnectionsWindow"] = delegate.qaRemoteConnectionsVisible && delegate.qaRemoteProfileCount == 1
+                checks["remoteConnectionsWindow"] = delegate.qaRemoteConnectionsVisible && delegate.qaRemoteProfileCount == 2
+                checks["smbConnectCommand"] = delegate.qaSMBConnectEnabled
                 try capture("remote-connections", view: delegate.qaRemoteConnectionsContentView)
                 delegate.qaRemoteConnectionsContentView?.window?.close(); window.makeKeyAndOrderFront(nil)
             } else { checks["shortcutSettingsWindow"] = false }

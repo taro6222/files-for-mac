@@ -35,6 +35,17 @@ func remoteProtocolsUseExplicitSecurityAndTransportCapabilities(remoteProtocol: 
     #expect(throws: RemoteConnectionValidationError.embeddedCredential) { try RemoteConnectionProfile(name: "x", remoteProtocol: .sftp, host: "host", username: "user:name") }
 }
 
+@Test func smbMountURLsDelegateAuthenticationWithoutEmbeddingSecrets() throws {
+    let profile = try RemoteConnectionProfile(name: "NAS", remoteProtocol: .smb, host: "nas.local", rootPath: "/Team Files", username: "reader", credentialID: "keychain-id")
+    let url = try profile.smbMountURL()
+    #expect(url.scheme == "smb"); #expect(url.host == "nas.local"); #expect(url.path == "/Team Files")
+    #expect(url.user == nil); #expect(url.password == nil); #expect(!url.absoluteString.contains("reader")); #expect(!url.absoluteString.contains("keychain"))
+    let ftp = try RemoteConnectionProfile(name: "FTP", remoteProtocol: .ftp, host: "ftp.example.com")
+    #expect(throws: RemoteConnectionValidationError.unsupportedProtocol) { try ftp.smbMountURL() }
+    let noShare = try RemoteConnectionProfile(name: "NAS", remoteProtocol: .smb, host: "nas.local")
+    #expect(throws: RemoteConnectionValidationError.missingShare) { try noShare.smbMountURL() }
+}
+
 @Test func remoteProfileStoreSortsRoundTripsAndUsesPrivatePermissions() throws {
     let fm = FileManager.default, root = fm.temporaryDirectory.appendingPathComponent("remote-profiles-\(UUID())", isDirectory: true)
     defer { try? fm.removeItem(at: root) }
