@@ -23,6 +23,18 @@ public struct GitRepositorySnapshot: Sendable, Equatable {
     public let entries: [GitStatusEntry]
 }
 
+public struct GitBranch: Sendable, Equatable, Identifiable {
+    public let name: String
+    public let upstream: String?
+    public var id: String { name }
+}
+
+public struct GitRemote: Sendable, Equatable, Identifiable {
+    public let name: String
+    public let url: String
+    public var id: String { name }
+}
+
 public struct GitStatusParser: Sendable {
     public init() {}
     public func parse(_ data: Data, root: URL) throws -> GitRepositorySnapshot {
@@ -83,6 +95,58 @@ public struct GitProvider: Sendable {
         let root = URL(fileURLWithPath: rootPath, isDirectory: true).standardizedFileURL
         let status = try await run(["-C", root.path, "status", "--porcelain=v2", "--branch", "-z", "--untracked-files=all"], at: root)
         return try GitStatusParser().parse(status, root: root)
+    }
+    public func branches(at repository: URL) async throws -> [GitBranch] {
+        let data = try await run(["-C", repository.path, "for-each-ref", "--format=%(refname:short)%09%(upstream:short)", "refs/heads"], at: repository)
+        guard let text = String(data: data, encoding: .utf8) else { throw GitBackendError.invalidOutput }
+        return try text.split(whereSeparator: \Character.isNewline).map { line in
+            let fields = line.split(separator: "\t", maxSplits: 1, omittingEmptySubsequences: false)
+            guard let name = fields.first.map(String.init), !name.isEmpty, !name.unicodeScalars.contains(where: CharacterSet.controlCharacters.contains) else { throw GitBackendError.invalidOutput }
+            let upstream = fields.count == 2 && !fields[1].isEmpty ? String(fields[1]) : nil
+            return GitBranch(name: name, upstream: upstream)
+        }
+    }
+    public func remotes(at repository: URL) async throws -> [GitRemote] {
+        let namesData = try await run(["-C", repository.path, "remote"], at: repository)
+        guard let text = String(data: namesData, encoding: .utf8) else { throw GitBackendError.invalidOutput }
+        var result: [GitRemote] = []
+        for nameValue in text.split(whereSeparator: \Character.isNewline) {
+            let name = String(nameValue)
+            guard !name.unicodeScalars.contains(where: CharacterSet.controlCharacters.contains) else { throw GitBackendError.invalidOutput }
+            let urlData = try await run(["-C", repository.path, "remote", "get-url", "--", name], at: repository)
+            guard let url = String(data: urlData, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines), !url.isEmpty else { throw GitBackendError.invalidOutput }
+            result.append(.init(name: name, url: url))
+        }
+        return result
+    }
+    public func clone(from source: URL, to destination: URL, fileManager: FileManager = .default) async throws -> URL {
+        guard source.isFileURL || (["https", "ssh"].contains(source.scheme?.lowercased() ?? "") && source.user == nil && source.password == nil),
+              destination.isFileURL, !fileManager.fileExists(atPath: destination.path) else { throw GitBackendError.invalidLocation }
+        let parent = destination.deletingLastPathComponent().standardizedFileURL
+        guard fileManager.fileExists(atPath: parent.path) else { throw GitBackendError.invalidLocation }
+        let staging = parent.appendingPathComponent(".files-git-clone-\(UUID().uuidString)", isDirectory: true)
+        defer { try? fileManager.removeItem(at: staging) }
+        _ = try await run(["clone", "--", source.absoluteString, staging.path], at: parent)
+        do { try fileManager.moveItem(at: staging, to: destination) }
+        catch { if fileManager.fileExists(atPath: destination.path) { throw GitBackendError.invalidLocation }; throw error }
+        return destination
+    }
+    public func fetch(at repository: URL, remote: String = "origin") async throws {
+        try validateRemoteName(remote); _ = try await run(["-C", repository.path, "fetch", "--prune", "--", remote], at: repository)
+    }
+    public func pullFastForwardOnly(at repository: URL) async throws {
+        _ = try await run(["-C", repository.path, "pull", "--ff-only"], at: repository)
+    }
+    public func push(at repository: URL, remote: String = "origin", branch: String? = nil) async throws {
+        try validateRemoteName(remote); var arguments = ["-C", repository.path, "push", "--porcelain", "--", remote]
+        if let branch { try validateRefName(branch); arguments.append(branch) }
+        _ = try await run(arguments, at: repository)
+    }
+    private func validateRemoteName(_ name: String) throws {
+        guard !name.isEmpty, !name.hasPrefix("-"), name.allSatisfy({ $0.isLetter || $0.isNumber || "-_.".contains($0) }) else { throw GitBackendError.invalidLocation }
+    }
+    private func validateRefName(_ name: String) throws {
+        guard !name.isEmpty, !name.hasPrefix("-"), !name.unicodeScalars.contains(where: CharacterSet.controlCharacters.contains) else { throw GitBackendError.invalidLocation }
     }
     private func run(_ arguments: [String], at directory: URL, outputLimit: Int = 4 * 1_024 * 1_024) async throws -> Data {
         try await Task.detached(priority: .userInitiated) {

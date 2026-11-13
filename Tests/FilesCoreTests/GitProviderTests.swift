@@ -27,8 +27,32 @@ import Testing
     #expect(snapshot.entries.contains { $0.path == "한글 file.txt" && $0.kind == .untracked })
 }
 
+@Test func gitProviderUsesBareRemoteWithoutForceOrReset() async throws {
+    let fm = FileManager.default, root = fm.temporaryDirectory.appendingPathComponent("files-git-remote-\(UUID())", isDirectory: true)
+    defer { try? fm.removeItem(at: root) }; try fm.createDirectory(at: root, withIntermediateDirectories: true)
+    let bare = root.appendingPathComponent("remote.git"), seed = root.appendingPathComponent("seed"), first = root.appendingPathComponent("first"), second = root.appendingPathComponent("second")
+    try runGit(["init", "--bare", "--initial-branch=main", bare.path], at: root)
+    try fm.createDirectory(at: seed, withIntermediateDirectories: true); try runGit(["init", "-b", "main"], at: seed); try configureIdentity(seed)
+    try Data("one".utf8).write(to: seed.appendingPathComponent("value.txt")); try runGit(["add", "value.txt"], at: seed); try runGit(["commit", "-m", "one"], at: seed)
+    try runGit(["remote", "add", "origin", bare.path], at: seed); try runGit(["push", "-u", "origin", "main"], at: seed)
+    let provider = GitProvider(); _ = try await provider.clone(from: bare, to: first); _ = try await provider.clone(from: bare, to: second)
+    #expect(try await provider.branches(at: first) == [GitBranch(name: "main", upstream: "origin/main")])
+    #expect(try await provider.remotes(at: first).map(\.name) == ["origin"])
+    try configureIdentity(second); try Data("two".utf8).write(to: second.appendingPathComponent("value.txt")); try runGit(["add", "value.txt"], at: second); try runGit(["commit", "-m", "two"], at: second); try runGit(["push"], at: second)
+    try await provider.fetch(at: first); let behind = try await provider.snapshot(at: first); #expect(behind.behind == 1); #expect(behind.ahead == 0)
+    try await provider.pullFastForwardOnly(at: first); #expect(try String(contentsOf: first.appendingPathComponent("value.txt"), encoding: .utf8) == "two")
+    try configureIdentity(first); try Data("three".utf8).write(to: first.appendingPathComponent("value.txt")); try runGit(["add", "value.txt"], at: first); try runGit(["commit", "-m", "three"], at: first)
+    try await provider.push(at: first, branch: "main"); try runGit(["pull", "--ff-only"], at: second)
+    #expect(try String(contentsOf: second.appendingPathComponent("value.txt"), encoding: .utf8) == "three")
+    await #expect(throws: GitBackendError.invalidLocation) { try await provider.push(at: first, remote: "--force") }
+}
+
 private func runGit(_ arguments: [String], at directory: URL) throws {
     let process = Process(), errors = Pipe(); process.executableURL = URL(fileURLWithPath: "/usr/bin/git"); process.arguments = ["-C", directory.path] + arguments; process.standardError = errors
     try process.run(); process.waitUntilExit()
     guard process.terminationStatus == 0 else { throw CocoaError(.fileWriteUnknown, userInfo: [NSLocalizedDescriptionKey: String(decoding: errors.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)]) }
+}
+
+private func configureIdentity(_ repository: URL) throws {
+    try runGit(["config", "user.name", "Files Test"], at: repository); try runGit(["config", "user.email", "files@example.invalid"], at: repository)
 }
