@@ -75,6 +75,7 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
     private var compressionMenuItems: [NSMenuItem] = []
     private var openTerminalMenuItem: NSMenuItem?
     private var createFolderWithSelectionMenuItem: NSMenuItem?
+    private var createSymbolicLinkMenuItem: NSMenuItem?
     private var pinToSidebarMenuItem: NSMenuItem?
     private var shareMenuItem: NSMenuItem?
     private var copyPathMenuItems: [NSMenuItem] = []
@@ -408,6 +409,8 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         let folderFromSelection = menu.addItem(withTitle: L("선택 항목으로 새 폴더…", "New Folder with Selection…"), action: #selector(createFolderFromSelection(_:)), keyEquivalent: ""); folderFromSelection.target = self
         createFolderWithSelectionMenuItem = folderFromSelection
         let rename = menu.addItem(withTitle: L("이름 변경…", "Rename…"), action: #selector(renameSelection(_:)), keyEquivalent: ""); rename.target = self
+        let symbolicLink = menu.addItem(withTitle: L("심볼릭 링크 만들기…", "Create Symbolic Link…"), action: #selector(createSymbolicLink(_:)), keyEquivalent: ""); symbolicLink.target = self
+        createSymbolicLinkMenuItem = symbolicLink
         let batchRename = menu.addItem(withTitle: L("일괄 이름 변경…", "Batch Rename…"), action: #selector(batchRenameSelection(_:)), keyEquivalent: ""); batchRename.target = self
         let open = menu.addItem(withTitle: L("열기", "Open"), action: #selector(openSelection(_:)), keyEquivalent: ""); open.target = self
         let openTab = menu.addItem(withTitle: L("새 탭에서 열기", "Open in New Tab"), action: #selector(openInNewTab(_:)), keyEquivalent: ""); openTab.target = self; openInNewTabMenuItem = openTab
@@ -1105,6 +1108,39 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
     @objc func renameSelection(_ sender: Any?) {
         guard activeSelectedItems.count == 1 else { return }
         promptForEntryName(source: activeSelectedItems[0])
+    }
+    @objc func createSymbolicLink(_ sender: Any?) {
+        guard activeSelectedItems.count == 1, let parent = activeModel.location, let window else { return }
+        let source = activeSelectedItems[0]
+        let base = (source.name as NSString).deletingPathExtension
+        let ext = (source.name as NSString).pathExtension
+        let suggested = ext.isEmpty ? "\(source.name) alias" : "\(base) alias.\(ext)"
+        let alert = NSAlert(); alert.messageText = L("심볼릭 링크 만들기", "Create Symbolic Link")
+        alert.informativeText = L("macOS 심볼릭 링크를 현재 폴더에 만듭니다.", "Create a macOS symbolic link in the current folder.")
+        let field = NSTextField(string: suggested); field.frame = NSRect(x: 0, y: 0, width: 360, height: 26)
+        field.setAccessibilityLabel(L("심볼릭 링크 이름", "Symbolic link name")); alert.accessoryView = field
+        alert.addButton(withTitle: L("만들기", "Create")); alert.addButton(withTitle: L("취소", "Cancel"))
+        alert.window.initialFirstResponder = field
+        alert.beginSheetModal(for: window) { [weak self] response in
+            guard response == .alertFirstButtonReturn, let self, !Self.entryOperationRunning else { return }
+            Self.entryOperationRunning = true
+            Task {
+                defer { Self.entryOperationRunning = false }
+                do {
+                    let target = try await EntryOperations.createSymbolicLink(to: source.url, in: parent, name: field.stringValue)
+                    if self.activeModel.location == parent { self.pendingEntrySelection = target.standardizedFileURL; self.activeModel.reload() }
+                } catch {
+                    let message: String
+                    switch error {
+                    case EntryOperationError.invalidName: message = L("사용할 수 없는 링크 이름입니다.", "The link name is invalid.")
+                    case EntryOperationError.conflict: message = L("같은 이름의 항목이 있습니다. 기존 항목은 변경하지 않았습니다.", "An item with this name exists. It was not changed.")
+                    case EntryOperationError.sourceChanged: message = L("원본 또는 상위 폴더가 변경됐습니다. 새로고침 후 다시 시도하세요.", "The source or parent changed. Refresh and try again.")
+                    default: message = error.localizedDescription
+                    }
+                    self.showEntryError(message)
+                }
+            }
+        }
     }
     @objc func batchRenameSelection(_ sender: Any?) {
         guard activeSelectedItems.count > 1, let window else { return }
@@ -1908,6 +1944,7 @@ extension BrowserWindow {
         case #selector(moveSelection(_:)): return canMoveSelection
         case #selector(createFolder(_:)): return activeModel.location != nil && !activeModel.isLoading && !Self.entryOperationRunning && !CopyWindow.isRunning
         case #selector(createFolderFromSelection(_:)): return activeModel.location != nil && !activeModel.isLoading && !activeSelectedItems.isEmpty && !Self.entryOperationRunning && !MoveWindow.isRunning
+        case #selector(createSymbolicLink(_:)): return activeModel.location != nil && activeSelectedItems.count == 1 && !activeModel.isLoading && !Self.entryOperationRunning
         case #selector(toggleSelectedFavorite(_:)): return activeModel.location != nil && (activeSelectedItems.isEmpty || (activeSelectedItems.count == 1 && activeSelectedItems[0].isBrowsable))
         case #selector(renameSelection(_:)): return activeModel.location != nil && activeSelectedItems.count == 1 && !activeModel.isLoading && !Self.entryOperationRunning && !CopyWindow.isRunning
         case #selector(batchRenameSelection(_:)): return activeModel.location != nil && activeSelectedItems.count > 1 && !activeModel.isLoading && !BatchRenameWindow.isRunning

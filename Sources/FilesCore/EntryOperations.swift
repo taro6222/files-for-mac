@@ -197,6 +197,31 @@ public enum EntryOperations {
         try await perform(parent: parent, source: nil, expectedIdentity: nil, name: name, journalDirectory: journalDirectory)
     }
 
+    /// Creates a relative macOS symbolic link without replacing an existing entry.
+    public static func createSymbolicLink(to source: URL, in parent: URL, name: String) async throws -> URL {
+        try validateName(name)
+        return try await Task.detached(priority: .userInitiated) {
+            let source = source.standardizedFileURL
+            let parent = parent.standardizedFileURL
+            guard entryExists(source) else { throw EntryOperationError.sourceChanged }
+            let fd = open(parent.path, O_RDONLY | O_DIRECTORY | O_CLOEXEC)
+            guard fd >= 0 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
+            defer { close(fd) }
+            var opened = stat(), current = stat()
+            guard fstat(fd, &opened) == 0, stat(parent.path, &current) == 0,
+                  opened.st_dev == current.st_dev, opened.st_ino == current.st_ino else {
+                throw EntryOperationError.sourceChanged
+            }
+            let destination = parent.appendingPathComponent(name)
+            let linkTarget = source.deletingLastPathComponent() == parent ? source.lastPathComponent : source.path
+            guard symlinkat(linkTarget, fd, name) == 0 else {
+                if errno == EEXIST { throw EntryOperationError.conflict }
+                throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
+            }
+            return destination
+        }.value
+    }
+
     public static func rename(_ source: URL, to name: String, expectedIdentity: String? = nil,
                               journalDirectory: URL) async throws -> EntryOperationResult {
         try await perform(parent: source.deletingLastPathComponent(), source: source,

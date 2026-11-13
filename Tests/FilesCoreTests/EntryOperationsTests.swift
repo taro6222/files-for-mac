@@ -33,6 +33,33 @@ private func entryFixture() throws -> URL {
     }
 }
 
+@Test func createSymbolicLinkUsesRelativeTargetAndNeverReplaces() async throws {
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: root) }
+    let source = root.appendingPathComponent("원본.txt")
+    try Data("bytes".utf8).write(to: source)
+    let link = try await EntryOperations.createSymbolicLink(to: source, in: root, name: "바로가기.txt")
+    #expect(try FileManager.default.destinationOfSymbolicLink(atPath: link.path) == source.lastPathComponent)
+    #expect(try String(contentsOf: link, encoding: .utf8) == "bytes")
+    await #expect(throws: EntryOperationError.self) {
+        try await EntryOperations.createSymbolicLink(to: source, in: root, name: "바로가기.txt")
+    }
+    #expect(try FileManager.default.destinationOfSymbolicLink(atPath: link.path) == source.lastPathComponent)
+}
+
+@Test func createSymbolicLinkRejectsInvalidNameAndMissingSource() async throws {
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: root) }
+    await #expect(throws: EntryOperationError.self) {
+        try await EntryOperations.createSymbolicLink(to: root.appendingPathComponent("missing"), in: root, name: "link")
+    }
+    await #expect(throws: EntryOperationError.self) {
+        try await EntryOperations.createSymbolicLink(to: root, in: root, name: "../link")
+    }
+}
+
 @Test func entryConflictsNeverReplaceBrokenLinkOrFile() async throws {
     let root = try entryFixture(); defer { try? FileManager.default.removeItem(at: root) }
     let journal = root.appendingPathComponent("journal")
