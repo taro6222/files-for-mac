@@ -137,13 +137,21 @@ public struct FTPRemoteProvider: Sendable {
     }
     public static func parseList(_ data: Data, parent: String, maximumEntries: Int = 100_000) throws -> [RemoteDirectoryEntry] {
         guard parent.hasPrefix("/"), let text = String(data: data, encoding: .utf8) else { throw RemoteBackendError.invalidListing }
-        let names = text.split(whereSeparator: \Character.isNewline).map(String.init).filter { !$0.isEmpty && $0 != "." && $0 != ".." }
-        guard names.count <= maximumEntries else { throw RemoteBackendError.listingLimitExceeded }
-        guard names.allSatisfy({ !$0.contains("/") && !$0.unicodeScalars.contains(where: { CharacterSet.controlCharacters.contains($0) }) }) else {
+        let lines = text.split(whereSeparator: \Character.isNewline).map(String.init)
+        let parsed: [(String, Bool)] = lines.compactMap { line in
+            let fields = line.split(maxSplits: 8, omittingEmptySubsequences: true, whereSeparator: \Character.isWhitespace)
+            let long = fields.count == 9 && fields[0].count == 10 && "-dl".contains(fields[0].first ?? "?")
+            if long && fields[0].first == "l" { return nil }
+            let name = long ? String(fields[8]) : line
+            guard !name.isEmpty, name != ".", name != ".." else { return nil }
+            return (name, long && fields[0].first == "d")
+        }
+        guard parsed.count <= maximumEntries else { throw RemoteBackendError.listingLimitExceeded }
+        guard parsed.allSatisfy({ !$0.0.contains("/") && !$0.0.unicodeScalars.contains(where: { CharacterSet.controlCharacters.contains($0) }) }) else {
             throw RemoteBackendError.invalidListing
         }
         let base = parent == "/" ? "" : parent.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
-        return names.map { RemoteDirectoryEntry(name: $0, remotePath: "/" + ([base, $0].filter { !$0.isEmpty }.joined(separator: "/"))) }
+        return parsed.map { RemoteDirectoryEntry(name: $0.0, remotePath: "/" + ([base, $0.0].filter { !$0.isEmpty }.joined(separator: "/")), isDirectory: $0.1) }
     }
 }
 
@@ -223,7 +231,7 @@ public struct CurlFTPCommandBuilder: Sendable {
         var lines = ["url = \(quoted(remoteURL.absoluteString))", "user = \(quoted(credential.username + ":" + secret))",
                      "fail", "silent", "show-error", "disable-epsv"]
         switch intent {
-        case .list: lines.append("list-only")
+        case .list: break
         case .download(let local): lines.append("output = \(quoted(local.path))")
         case .upload(let local): lines.append("upload-file = \(quoted(local.path))")
         case .uploadAndRename(let local, let finalRemotePath):

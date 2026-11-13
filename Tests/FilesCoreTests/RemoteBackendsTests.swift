@@ -57,6 +57,8 @@ func curlFTPPlansKeepCredentialsOffArgumentsAndDescriptions(remoteProtocol: Remo
     #expect(throws: RemoteBackendError.invalidListing) { try FTPRemoteProvider.parseList(Data([0xff]), parent: "/") }
     #expect(throws: RemoteBackendError.invalidListing) { try FTPRemoteProvider.parseList(Data("nested/name\n".utf8), parent: "/") }
     #expect(throws: RemoteBackendError.listingLimitExceeded) { try FTPRemoteProvider.parseList(Data("one\ntwo\n".utf8), parent: "/", maximumEntries: 1) }
+    let detailed = try FTPRemoteProvider.parseList(Data("drwxr-xr-x   2 owner group 4096 Jan 01 12:00 Folder With Spaces\n-rw-r--r--   1 owner group   10 Jan 01 12:00 file name.txt\nlrwxr-xr-x   1 owner group    4 Jan 01 12:00 link -> file\n".utf8), parent: "/team")
+    #expect(detailed.map(\.name) == ["Folder With Spaces", "file name.txt"]); #expect(detailed[0].isDirectory); #expect(!detailed[1].isDirectory)
 }
 
 @Test func ftpDownloadPublishIsSameDirectoryAtomicAndNeverReplaces() throws {
@@ -115,6 +117,7 @@ func curlFTPPlansKeepCredentialsOffArgumentsAndDescriptions(remoteProtocol: Remo
     let credential = RemoteCredential(username: username, secret: Data(password.utf8)), provider = FTPRemoteProvider()
     let entries = try await provider.list(profile: profile, credential: credential, remotePath: "/")
     #expect(entries.contains { $0.name == "fixture-한글.txt" })
+    #expect(entries.contains { $0.name == "fixture-folder" && $0.isDirectory })
     let root = FileManager.default.temporaryDirectory.appendingPathComponent("ftp-live-\(UUID())", isDirectory: true)
     defer { try? FileManager.default.removeItem(at: root) }; try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
     let destination = root.appendingPathComponent("downloaded.txt")

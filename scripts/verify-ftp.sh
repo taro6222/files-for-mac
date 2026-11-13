@@ -8,6 +8,7 @@ port="$("$python_bin" -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1",
 username='files-fixture'
 password='fixture-password'
 printf 'live-fixture' >"$fixture_root/fixture-한글.txt"
+mkdir "$fixture_root/fixture-folder"
 "$python_bin" -m pyftpdlib -i 127.0.0.1 -p "$port" -u "$username" -P "$password" -d "$fixture_root" -w >"$fixture_root/server.log" 2>&1 &
 server_pid=$!
 cleanup() { kill "$server_pid" 2>/dev/null || true; wait "$server_pid" 2>/dev/null || true; rm -rf "$fixture_root"; }
