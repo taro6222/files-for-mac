@@ -31,7 +31,7 @@ public enum RemoteTransferIntent: Sendable, Equatable {
 }
 
 public enum RemoteBackendError: Error, Sendable, Equatable {
-    case unsupportedProtocol, invalidRemotePath, invalidCredential, invalidListing, listingLimitExceeded, destinationExists, invalidStaging, unverifiedServerCapability, invalidUploadSource
+    case unsupportedProtocol, invalidRemotePath, invalidCredential, invalidListing, unsupportedListingFormat, listingLimitExceeded, destinationExists, invalidStaging, unverifiedServerCapability, invalidUploadSource
 }
 
 public struct FTPServerCapabilities: Sendable, Equatable {
@@ -139,20 +139,41 @@ public struct FTPRemoteProvider: Sendable {
     public static func parseList(_ data: Data, parent: String, maximumEntries: Int = 100_000) throws -> [RemoteDirectoryEntry] {
         guard parent.hasPrefix("/"), let text = String(data: data, encoding: .utf8) else { throw RemoteBackendError.invalidListing }
         let lines = text.split(whereSeparator: \Character.isNewline).map(String.init)
+        var unsupportedDetailedFormat = false
         let parsed: [(String, Bool)] = lines.compactMap { line in
             let fields = line.split(maxSplits: 8, omittingEmptySubsequences: true, whereSeparator: \Character.isWhitespace)
             let long = fields.count == 9 && fields[0].count == 10 && "-dl".contains(fields[0].first ?? "?")
             if long && fields[0].first == "l" { return nil }
-            let name = long ? String(fields[8]) : line
+            let dosFields = line.split(maxSplits: 3, omittingEmptySubsequences: true, whereSeparator: \Character.isWhitespace)
+            let dos = dosFields.count == 4 && Self.looksLikeDOSDate(dosFields[0]) && Self.looksLikeDOSTime(dosFields[1])
+                && (dosFields[2] == "<DIR>" || Int64(dosFields[2]) != nil)
+            if !long && !dos && dosFields.count >= 3 && Self.looksLikeDOSDate(dosFields[0]) {
+                unsupportedDetailedFormat = true; return nil
+            }
+            let name = long ? String(fields[8]) : dos ? dosFields[3].trimmingCharacters(in: .whitespaces) : line
             guard !name.isEmpty, name != ".", name != ".." else { return nil }
-            return (name, long && fields[0].first == "d")
+            return (name, (long && fields[0].first == "d") || (dos && dosFields[2] == "<DIR>"))
         }
+        guard !unsupportedDetailedFormat else { throw RemoteBackendError.unsupportedListingFormat }
         guard parsed.count <= maximumEntries else { throw RemoteBackendError.listingLimitExceeded }
         guard parsed.allSatisfy({ !$0.0.contains("/") && !$0.0.unicodeScalars.contains(where: { CharacterSet.controlCharacters.contains($0) }) }) else {
             throw RemoteBackendError.invalidListing
         }
         let base = parent == "/" ? "" : parent.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
         return parsed.map { RemoteDirectoryEntry(name: $0.0, remotePath: "/" + ([base, $0.0].filter { !$0.isEmpty }.joined(separator: "/")), isDirectory: $0.1) }
+    }
+    private static func looksLikeDOSDate(_ value: Substring) -> Bool {
+        let characters = Array(value)
+        return characters.count == 8 && characters[2] == "-" && characters[5] == "-"
+            && characters.enumerated().allSatisfy { $0.offset == 2 || $0.offset == 5 || $0.element.isNumber }
+    }
+    private static func looksLikeDOSTime(_ value: Substring) -> Bool {
+        let upper = value.uppercased(), characters = Array(upper)
+        guard (characters.count == 7 || characters.count == 8), upper.hasSuffix("AM") || upper.hasSuffix("PM") else { return false }
+        let colon = characters.count - 5
+        return characters[colon] == ":" && characters.enumerated().allSatisfy {
+            $0.offset == colon || $0.offset >= characters.count - 2 || $0.element.isNumber
+        }
     }
 }
 

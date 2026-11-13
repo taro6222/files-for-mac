@@ -59,6 +59,11 @@ func curlFTPPlansKeepCredentialsOffArgumentsAndDescriptions(remoteProtocol: Remo
     #expect(throws: RemoteBackendError.listingLimitExceeded) { try FTPRemoteProvider.parseList(Data("one\ntwo\n".utf8), parent: "/", maximumEntries: 1) }
     let detailed = try FTPRemoteProvider.parseList(Data("drwxr-xr-x   2 owner group 4096 Jan 01 12:00 Folder With Spaces\n-rw-r--r--   1 owner group   10 Jan 01 12:00 file name.txt\nlrwxr-xr-x   1 owner group    4 Jan 01 12:00 link -> file\n".utf8), parent: "/team")
     #expect(detailed.map(\.name) == ["Folder With Spaces", "file name.txt"]); #expect(detailed[0].isDirectory); #expect(!detailed[1].isDirectory)
+    let dos = try FTPRemoteProvider.parseList(Data("01-29-97  11:32PM       <DIR>          Program Files\r\n04-27-00  09:09PM       2246 read me.txt\r\n".utf8), parent: "/")
+    #expect(dos.map(\.name) == ["Program Files", "read me.txt"]); #expect(dos[0].isDirectory); #expect(!dos[1].isDirectory)
+    #expect(throws: RemoteBackendError.unsupportedListingFormat) {
+        try FTPRemoteProvider.parseList(Data("01-29-97  11:32PM       ?????          ambiguous.txt\r\n".utf8), parent: "/")
+    }
 }
 
 @Test func ftpDownloadPublishIsSameDirectoryAtomicAndNeverReplaces() throws {

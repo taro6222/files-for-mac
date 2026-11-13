@@ -278,7 +278,15 @@ final class RemoteConnectionsWindow: NSWindowController, NSTableViewDataSource, 
     private func dismiss(_ alert: NSAlert, from window: NSWindow) {
         if alert.window.sheetParent === window { window.endSheet(alert.window) }
     }
-    private func showError(_ error: Error) { guard let window else { return }; let alert = NSAlert(); alert.messageText = L("원격 연결 작업 실패", "Remote Connection Failed"); alert.informativeText = String(describing: error); alert.beginSheetModal(for: window) }
+    private func showError(_ error: Error) {
+        guard let window else { return }
+        let alert = NSAlert(); alert.messageText = L("원격 연결 작업 실패", "Remote Connection Failed")
+        if let backend = error as? RemoteBackendError, backend == .unsupportedListingFormat {
+            alert.informativeText = L("서버의 디렉터리 목록 형식을 안전하게 해석할 수 없습니다. Unix LIST 또는 Windows/DOS 목록을 지원하는지 서버 설정을 확인하세요.",
+                                      "The server directory format could not be interpreted safely. Check that the server provides Unix LIST or Windows/DOS listings.")
+        } else { alert.informativeText = String(describing: error) }
+        alert.beginSheetModal(for: window)
+    }
 #if DEBUG
     var qaProfileCount: Int { profiles.count }
     func qaCreateProfile() {
