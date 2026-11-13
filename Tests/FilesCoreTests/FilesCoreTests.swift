@@ -486,16 +486,23 @@ private struct DelayedLoader: DirectoryLoading {
     let suite = "context-menu-visibility-tests-\(UUID())", defaults = UserDefaults(suiteName: suite)!
     defer { defaults.removePersistentDomain(forName: suite) }
     let preferences = BrowserPreferences(defaults: defaults, initialFavorites: [])
-    #expect(preferences.showCompressionOptions && preferences.showOpenTerminal && preferences.showCreateFolderWithSelection && preferences.showPinToSidebar && preferences.showSendToMenu)
+    #expect(preferences.showCompressionOptions && preferences.showOpenTerminal && preferences.showCreateFolderWithSelection && preferences.showPinToSidebar && preferences.showSendToMenu && preferences.showCopyPath)
     var notifications = 0; let token = preferences.observe { notifications += 1 }
     preferences.setShowCompressionOptions(false); preferences.setShowOpenTerminal(false); preferences.setShowCreateFolderWithSelection(false)
     preferences.setShowPinToSidebar(false)
     preferences.setShowSendToMenu(false)
+    preferences.setShowCopyPath(false)
     preferences.setShowCompressionOptions(false); preferences.setShowOpenTerminal(false)
     let restored = BrowserPreferences(defaults: defaults, initialFavorites: [])
-    #expect(!restored.showCompressionOptions && !restored.showOpenTerminal && !restored.showCreateFolderWithSelection && !restored.showPinToSidebar && !restored.showSendToMenu)
-    #expect(notifications == 5)
+    #expect(!restored.showCompressionOptions && !restored.showOpenTerminal && !restored.showCreateFolderWithSelection && !restored.showPinToSidebar && !restored.showSendToMenu && !restored.showCopyPath)
+    #expect(notifications == 6)
     preferences.removeObserver(token)
+}
+
+@Test func copiedPathFormattingPreservesUnicodeAndEscapesQuotedText() {
+    let urls = [URL(fileURLWithPath: "/tmp/한글 folder"), URL(fileURLWithPath: "/tmp/a\"b\\c")]
+    #expect(formatCopiedPaths(urls, quoted: false) == "/tmp/한글 folder\n/tmp/a\"b\\c")
+    #expect(formatCopiedPaths(urls, quoted: true) == "\"/tmp/한글 folder\"\n\"/tmp/a\\\"b\\\\c\"")
 }
 
 @Test func codeSignatureMetadataParserExtractsStableFields() {
@@ -539,6 +546,7 @@ private struct DelayedLoader: DirectoryLoading {
     source.setShowCompressionOptions(false); source.setShowOpenTerminal(false); source.setShowCreateFolderWithSelection(false)
     source.setShowPinToSidebar(false)
     source.setShowSendToMenu(false)
+    source.setShowCopyPath(false)
     source.setFolderViewPreference(FolderViewPreference(mode: .grid, size: .large), for: URL(fileURLWithPath: "/folder"))
     let data = try source.exportData(), destination = BrowserPreferences(defaults: secondDefaults, initialFavorites: [])
     try destination.importData(data)
@@ -553,6 +561,7 @@ private struct DelayedLoader: DirectoryLoading {
     #expect(!destination.showCompressionOptions && !destination.showOpenTerminal && !destination.showCreateFolderWithSelection)
     #expect(!destination.showPinToSidebar)
     #expect(!destination.showSendToMenu)
+    #expect(!destination.showCopyPath)
     #expect(destination.folderViewPreference(for: URL(fileURLWithPath: "/folder")) == FolderViewPreference(mode: .grid, size: .large))
     let before = try destination.exportData()
     var object = try #require(JSONSerialization.jsonObject(with: data) as? [String: Any]); object["viewSize"] = "huge"

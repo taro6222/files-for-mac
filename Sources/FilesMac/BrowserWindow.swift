@@ -77,6 +77,7 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
     private var createFolderWithSelectionMenuItem: NSMenuItem?
     private var pinToSidebarMenuItem: NSMenuItem?
     private var shareMenuItem: NSMenuItem?
+    private var copyPathMenuItems: [NSMenuItem] = []
     private lazy var commandPalette = CommandPaletteWindow()
     private var sharingPicker: NSSharingServicePicker?
     private var completionTask: Task<Void, Never>?
@@ -414,6 +415,11 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         let cloudEvict = menu.addItem(withTitle: L("공간 비우기", "Free Up Space"), action: #selector(evictCloudSelection(_:)), keyEquivalent: ""); cloudEvict.target = self
         let copy = menu.addItem(withTitle: L("선택 항목 복사…", "Copy Selection To…"), action: #selector(copySelection(_:)), keyEquivalent: ""); copy.target = self
         let move = menu.addItem(withTitle: L("선택 항목 이동…", "Move Selection To…"), action: #selector(moveSelection(_:)), keyEquivalent: ""); move.target = self
+        let copyItemPath = menu.addItem(withTitle: L("선택 항목 경로 복사", "Copy Selected Paths"), action: #selector(copyItemPath(_:)), keyEquivalent: ""); copyItemPath.target = self
+        let copyItemPathQuoted = menu.addItem(withTitle: L("선택 항목 경로 따옴표로 복사", "Copy Selected Paths with Quotes"), action: #selector(copyItemPathWithQuotes(_:)), keyEquivalent: ""); copyItemPathQuoted.target = self
+        let copyCurrentPath = menu.addItem(withTitle: L("현재 폴더 경로 복사", "Copy Current Folder Path"), action: #selector(copyCurrentPath(_:)), keyEquivalent: ""); copyCurrentPath.target = self
+        let copyCurrentPathQuoted = menu.addItem(withTitle: L("현재 폴더 경로 따옴표로 복사", "Copy Current Folder Path with Quotes"), action: #selector(copyCurrentPathWithQuotes(_:)), keyEquivalent: ""); copyCurrentPathQuoted.target = self
+        copyPathMenuItems = [copyItemPath, copyItemPathQuoted, copyCurrentPath, copyCurrentPathQuoted]
         menu.addItem(NSMenuItem.separator())
         let delete = menu.addItem(withTitle: L("휴지통으로 이동", "Move to Trash"), action: #selector(deleteSelection(_:)), keyEquivalent: ""); delete.target = self
         let restore = menu.addItem(withTitle: L("휴지통에서 복원…", "Restore From Trash…"), action: #selector(restoreSelection(_:)), keyEquivalent: ""); restore.target = self
@@ -1378,6 +1384,15 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         NSPasteboard.general.clearContents()
         NSPasteboard.general.writeObjects(urls)
     }
+    @objc func copyItemPath(_ sender: Any?) { copyPaths(activeSelectedItems.map(\.url), quoted: false) }
+    @objc func copyItemPathWithQuotes(_ sender: Any?) { copyPaths(activeSelectedItems.map(\.url), quoted: true) }
+    @objc func copyCurrentPath(_ sender: Any?) { copyPaths(activeModel.location.map { [$0] } ?? [], quoted: false) }
+    @objc func copyCurrentPathWithQuotes(_ sender: Any?) { copyPaths(activeModel.location.map { [$0] } ?? [], quoted: true) }
+    private func copyPaths(_ urls: [URL], quoted: Bool) {
+        guard !urls.isEmpty else { return }
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(formatCopiedPaths(urls, quoted: quoted), forType: .string)
+    }
     private var clipboardFiles: [URL] {
         (NSPasteboard.general.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL]) ?? []
     }
@@ -1712,6 +1727,7 @@ extension BrowserWindow {
         createFolderWithSelectionMenuItem?.isHidden = !preferences.showCreateFolderWithSelection
         pinToSidebarMenuItem?.isHidden = !preferences.showPinToSidebar
         shareMenuItem?.isHidden = !preferences.showSendToMenu
+        copyPathMenuItems.forEach { $0.isHidden = !preferences.showCopyPath }
     }
     @objc private func setViewSize(_ sender: NSMenuItem) {
         guard let raw = sender.representedObject as? String, let size = BrowserViewSize(rawValue: raw) else { return }
@@ -1868,6 +1884,8 @@ extension BrowserWindow {
         case #selector(batchRenameSelection(_:)): return activeModel.location != nil && activeSelectedItems.count > 1 && !activeModel.isLoading && !BatchRenameWindow.isRunning
         case #selector(retryAutomaticRefresh(_:)): return model.location != nil && watcherStatus != .active
         case #selector(copySelection(_:)): return !CopyWindow.isRunning && !activeModel.isLoading && !activeSelectedItems.isEmpty
+        case #selector(copyItemPath(_:)), #selector(copyItemPathWithQuotes(_:)): return !activeModel.isLoading && !activeSelectedItems.isEmpty
+        case #selector(copyCurrentPath(_:)), #selector(copyCurrentPathWithQuotes(_:)): return activeModel.location != nil
         case #selector(stopLoading(_:)): return secondaryActive ? secondaryPane?.model.isLoading == true : model.isLoading
         case #selector(goBack(_:)): return secondaryActive ? !(secondaryPane?.model.history.back.isEmpty ?? true) : !model.history.back.isEmpty
         case #selector(goForward(_:)): return secondaryActive ? !(secondaryPane?.model.history.forward.isEmpty ?? true) : !model.history.forward.isEmpty
@@ -2043,13 +2061,16 @@ extension BrowserWindow {
                     && delegate.qaGeneralContextMenuStates?.2 != contextMenuBefore?.2
                     && delegate.qaGeneralContextMenuStates?.3 != contextMenuBefore?.3
                     && delegate.qaGeneralContextMenuStates?.4 != contextMenuBefore?.4
-                preferences.setShowCompressionOptions(false); preferences.setShowOpenTerminal(false); preferences.setShowCreateFolderWithSelection(false); preferences.setShowPinToSidebar(false); preferences.setShowSendToMenu(false)
+                    && delegate.qaGeneralContextMenuStates?.5 != contextMenuBefore?.5
+                preferences.setShowCompressionOptions(false); preferences.setShowOpenTerminal(false); preferences.setShowCreateFolderWithSelection(false); preferences.setShowPinToSidebar(false); preferences.setShowSendToMenu(false); preferences.setShowCopyPath(false)
                 checks["contextMenuCompressionVisibilityPreference"] = !controller.qaVisibleContextActions.contains(NSStringFromSelector(#selector(createArchive(_:))))
                 checks["contextMenuTerminalVisibilityPreference"] = !controller.qaVisibleContextActions.contains(NSStringFromSelector(#selector(openInTerminal(_:))))
                 checks["contextMenuFolderVisibilityPreference"] = !controller.qaVisibleContextActions.contains(NSStringFromSelector(#selector(createFolderFromSelection(_:))))
                 checks["contextMenuPinVisibilityPreference"] = !controller.qaVisibleContextActions.contains(NSStringFromSelector(#selector(toggleSelectedFavorite(_:))))
                 checks["contextMenuShareVisibilityPreference"] = !controller.qaVisibleContextActions.contains(NSStringFromSelector(#selector(shareSelection(_:))))
-                preferences.setShowCompressionOptions(true); preferences.setShowOpenTerminal(true); preferences.setShowCreateFolderWithSelection(true); preferences.setShowPinToSidebar(true); preferences.setShowSendToMenu(true)
+                checks["contextMenuCopyPathVisibilityPreference"] = !controller.qaVisibleContextActions.contains(NSStringFromSelector(#selector(copyItemPath(_:))))
+                    && !controller.qaVisibleContextActions.contains(NSStringFromSelector(#selector(copyCurrentPath(_:))))
+                preferences.setShowCompressionOptions(true); preferences.setShowOpenTerminal(true); preferences.setShowCreateFolderWithSelection(true); preferences.setShowPinToSidebar(true); preferences.setShowSendToMenu(true); preferences.setShowCopyPath(true)
                 try capture("general-settings", view: delegate.qaGeneralSettingsContentView)
                 delegate.qaToggleGeneralWidgets(); delegate.qaToggleGeneralSizeUnit(); delegate.qaToggleGeneralOpenFoldersInNewTab(); delegate.qaToggleGeneralScrollToPreviousFolderOnUp(); delegate.qaToggleGeneralShowFileExtensionWarning(); delegate.qaToggleGeneralContextMenuItems(); delegate.qaGeneralSettingsContentView?.window?.close(); window.makeKeyAndOrderFront(nil)
                 delegate.showArchiveCapabilities(nil); try await Task.sleep(for: .milliseconds(50))
