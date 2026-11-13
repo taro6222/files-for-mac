@@ -94,6 +94,48 @@ private func fixture() throws -> URL {
     #expect(TabSessionStore(defaults: defaults).load().isEmpty)
 }
 
+@Test func splitTabRoutesUpdatesOnlyToActivePane() {
+    let primary = PaneSnapshot(tab: TabSnapshot(location: URL(fileURLWithPath: "/left")))
+    var state = SplitTabState(primary: primary)
+    let secondaryID = state.split(axis: .horizontal, snapshot: TabSnapshot(location: URL(fileURLWithPath: "/right")))
+
+    state.updateActive(TabSnapshot(location: URL(fileURLWithPath: "/right/child")))
+
+    #expect(state.axis == .horizontal)
+    #expect(state.panes[0].tab.location?.path == "/left")
+    #expect(state.panes[1].tab.location?.path == "/right/child")
+    state.activate(primary.id)
+    #expect(state.activePaneID == primary.id)
+    #expect(state.activePane.tab.location?.path == "/left")
+    #expect(secondaryID != primary.id)
+}
+
+@Test func splitTabClampsRatioAndReturnsToSinglePane() {
+    let primary = PaneSnapshot(tab: TabSnapshot(location: nil))
+    var state = SplitTabState(primary: primary, ratio: 9)
+    let secondaryID = state.split(axis: .vertical, snapshot: TabSnapshot(location: nil))
+    state.setRatio(-1)
+
+    #expect(state.ratio == 0.2)
+    let didClose = state.close(secondaryID)
+    #expect(didClose)
+    #expect(!state.isSplit)
+    #expect(state.activePaneID == primary.id)
+    #expect(state.ratio == 0.5)
+}
+
+@Test func splitTabStateRoundTripsThroughJSON() throws {
+    let primary = PaneSnapshot(tab: TabSnapshot(location: URL(fileURLWithPath: "/a")))
+    let secondary = PaneSnapshot(tab: TabSnapshot(location: URL(fileURLWithPath: "/b")))
+    let state = SplitTabState(primary: primary, secondary: secondary, axis: .horizontal,
+                              ratio: 0.65, activePaneID: secondary.id)
+
+    let restored = try JSONDecoder().decode(SplitTabState.self, from: JSONEncoder().encode(state))
+
+    #expect(restored == state)
+    #expect(restored.activePaneID == secondary.id)
+}
+
 @Test func sortingKeepsFoldersFirstAndNaturalNames() {
     let items = [FileItem(url: URL(fileURLWithPath: "/file10"), name: "file10", isDirectory: false),
         FileItem(url: URL(fileURLWithPath: "/file2"), name: "file2", isDirectory: false),
