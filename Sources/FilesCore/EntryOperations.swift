@@ -197,6 +197,43 @@ public enum EntryOperations {
         try await perform(parent: parent, source: nil, expectedIdentity: nil, name: name, journalDirectory: journalDirectory)
     }
 
+    public static func createFile(in parent: URL, name: String, journalDirectory: URL) async throws -> EntryOperationResult {
+        try validateName(name)
+        return try await Task.detached(priority: .userInitiated) {
+            let fm = FileManager()
+            let parent = parent.standardizedFileURL
+            let target = parent.appendingPathComponent(name)
+            let directoryFD = open(parent.path, O_RDONLY | O_DIRECTORY | O_CLOEXEC)
+            guard directoryFD >= 0 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
+            defer { close(directoryFD) }
+            var journal = Journal(operation: "createFile", source: nil, target: target, state: "planned")
+            let journalURL = journalDirectory.appendingPathComponent("entry-\(UUID()).json")
+            func save() throws {
+                try fm.createDirectory(at: journalDirectory, withIntermediateDirectories: true)
+                try JSONEncoder().encode(journal).write(to: journalURL, options: .atomic)
+            }
+            try save()
+            do {
+                var opened = stat(), current = stat()
+                guard fstat(directoryFD, &opened) == 0, stat(parent.path, &current) == 0,
+                      opened.st_dev == current.st_dev, opened.st_ino == current.st_ino else {
+                    throw EntryOperationError.sourceChanged
+                }
+                let fileFD = openat(directoryFD, name, O_WRONLY | O_CREAT | O_EXCL | O_CLOEXEC, 0o666)
+                guard fileFD >= 0 else {
+                    if errno == EEXIST { throw EntryOperationError.conflict }
+                    throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
+                }
+                close(fileFD)
+            } catch {
+                journal.state = "failed"; try? save(); throw error
+            }
+            journal.state = "completed"
+            do { try save(); return EntryOperationResult(target: target, journalWarning: nil) }
+            catch { return EntryOperationResult(target: target, journalWarning: error.localizedDescription) }
+        }.value
+    }
+
     /// Creates a relative macOS symbolic link without replacing an existing entry.
     public static func createSymbolicLink(to source: URL, in parent: URL, name: String) async throws -> URL {
         try validateName(name)

@@ -33,6 +33,21 @@ private func entryFixture() throws -> URL {
     }
 }
 
+@Test func createFileIsEmptyJournaledAndNeverReplaces() async throws {
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    let journal = root.appendingPathComponent("journal")
+    try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: root) }
+    let result = try await EntryOperations.createFile(in: root, name: "새 문서.txt", journalDirectory: journal)
+    #expect((try Data(contentsOf: result.target)).isEmpty)
+    #expect(result.journalWarning == nil)
+    try Data("keep".utf8).write(to: result.target)
+    await #expect(throws: EntryOperationError.self) {
+        try await EntryOperations.createFile(in: root, name: "새 문서.txt", journalDirectory: journal)
+    }
+    #expect(try String(contentsOf: result.target, encoding: .utf8) == "keep")
+}
+
 @Test func createSymbolicLinkUsesRelativeTargetAndNeverReplaces() async throws {
     let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
     try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)

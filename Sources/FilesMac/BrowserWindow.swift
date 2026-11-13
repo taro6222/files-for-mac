@@ -1070,6 +1070,27 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         }
     }
     @objc func createFolder(_ sender: Any?) { promptForEntryName(source: nil) }
+    @objc func createFile(_ sender: Any?) {
+        guard let parent = activeModel.location, let window else { return }
+        let alert = NSAlert(); alert.messageText = L("새 파일", "New File")
+        alert.informativeText = parent.path
+        let field = NSTextField(string: L("새 문서.txt", "New Document.txt")); field.frame = NSRect(x: 0, y: 0, width: 360, height: 26)
+        field.setAccessibilityLabel(L("파일 이름", "File name")); alert.accessoryView = field
+        alert.addButton(withTitle: L("만들기", "Create")); alert.addButton(withTitle: L("취소", "Cancel")); alert.window.initialFirstResponder = field
+        alert.beginSheetModal(for: window) { [weak self] response in
+            guard response == .alertFirstButtonReturn, let self, !Self.entryOperationRunning else { return }
+            Self.entryOperationRunning = true
+            Task {
+                defer { Self.entryOperationRunning = false }
+                do {
+                    let result = try await EntryOperations.createFile(in: parent, name: field.stringValue, journalDirectory: Self.operationJournalDirectory)
+                    if field.stringValue.hasPrefix(".") { self.preferences.setShowHidden(true) }
+                    if self.activeModel.location == parent { self.pendingEntrySelection = result.target.standardizedFileURL; self.activeModel.reload() }
+                    if let warning = result.journalWarning { self.showEntryError(warning) }
+                } catch { self.showEntryError(self.entryOperationMessage(error)) }
+            }
+        }
+    }
     @objc func createFolderFromSelection(_ sender: Any?) {
         let sources = activeSelectedItems.map(\.url), targetModel = activeModel
         guard !sources.isEmpty, !targetModel.isLoading, !Self.entryOperationRunning,
@@ -1346,6 +1367,14 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         guard let window, window.isVisible else { return }
         let alert = NSAlert(); alert.messageText = L("파일 작업 안내", "File operation notice")
         alert.informativeText = message; alert.beginSheetModal(for: window)
+    }
+    private func entryOperationMessage(_ error: Error) -> String {
+        switch error {
+        case EntryOperationError.invalidName: return L("이름을 입력하세요. /, :, NUL 및 . 또는 .. 이름은 사용할 수 없습니다.", "Enter a name without /, :, NUL; . and .. are not allowed.")
+        case EntryOperationError.conflict: return L("같은 이름의 항목이 있습니다. 기존 항목은 변경하지 않았습니다.", "An item with this name exists. It was not changed.")
+        case EntryOperationError.sourceChanged: return L("원본 또는 상위 폴더가 변경됐습니다. 새로고침 후 다시 시도하세요.", "The source or parent changed. Refresh and try again.")
+        default: return error.localizedDescription
+        }
     }
     @objc func copySelection(_ sender: Any?) {
         guard !Self.entryOperationRunning, !CopyWindow.isRunning, !activeModel.isLoading, let window else { return }
@@ -1957,6 +1986,7 @@ extension BrowserWindow {
         case #selector(permanentlyDeleteSelection(_:)): return canPermanentDeleteSelection
         case #selector(moveSelection(_:)): return canMoveSelection
         case #selector(createFolder(_:)): return activeModel.location != nil && !activeModel.isLoading && !Self.entryOperationRunning && !CopyWindow.isRunning
+        case #selector(createFile(_:)): return activeModel.location != nil && !activeModel.isLoading && !Self.entryOperationRunning
         case #selector(createFolderFromSelection(_:)): return activeModel.location != nil && !activeModel.isLoading && !activeSelectedItems.isEmpty && !Self.entryOperationRunning && !MoveWindow.isRunning
         case #selector(createSymbolicLink(_:)): return activeModel.location != nil && activeSelectedItems.count == 1 && !activeModel.isLoading && !Self.entryOperationRunning
         case #selector(createSymbolicLinkFromDialog(_:)): return activeModel.location != nil && !activeModel.isLoading && !Self.entryOperationRunning
@@ -2105,6 +2135,7 @@ extension BrowserWindow {
             checks["commandPaletteIndexesMenus"] = paletteEntries.count >= 20
             checks["commandPaletteStableIDs"] = Set(paletteEntries.map(\.id)).count == paletteEntries.count
             checks["createShortcutFromDialogCommand"] = paletteEntries.contains { $0.item.action == #selector(createSymbolicLinkFromDialog(_:)) }
+            checks["createFileCommand"] = paletteEntries.contains { $0.item.action == #selector(createFile(_:)) }
             checks["commandPaletteSearch"] = CommandPaletteCatalog.filtered(paletteEntries, query: L("숨김", "hidden")).contains { $0.item.action == #selector(toggleHidden(_:)) }
             controller.showCommandPalette(nil); try await Task.sleep(for: .milliseconds(50))
             controller.commandPalette.qaSetQuery(L("숨김", "hidden"))
