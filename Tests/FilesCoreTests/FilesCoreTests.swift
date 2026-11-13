@@ -488,7 +488,7 @@ private struct DelayedLoader: DirectoryLoading {
     let preferences = BrowserPreferences(defaults: defaults, initialFavorites: [])
     #expect(preferences.showCompressionOptions && preferences.showOpenTerminal && preferences.showCreateFolderWithSelection && preferences.showPinToSidebar && preferences.showSendToMenu && preferences.showCopyPath)
     #expect(preferences.showOpenInNewTab && preferences.showOpenInNewWindow && preferences.showOpenInNewPane)
-    #expect(preferences.showEditTagsMenu)
+    #expect(preferences.showEditTagsMenu && preferences.showCreateShortcut)
     var notifications = 0; let token = preferences.observe { notifications += 1 }
     preferences.setShowCompressionOptions(false); preferences.setShowOpenTerminal(false); preferences.setShowCreateFolderWithSelection(false)
     preferences.setShowPinToSidebar(false)
@@ -496,12 +496,13 @@ private struct DelayedLoader: DirectoryLoading {
     preferences.setShowCopyPath(false)
     preferences.setShowOpenInNewTab(false); preferences.setShowOpenInNewWindow(false); preferences.setShowOpenInNewPane(false)
     preferences.setShowEditTagsMenu(false)
+    preferences.setShowCreateShortcut(false)
     preferences.setShowCompressionOptions(false); preferences.setShowOpenTerminal(false)
     let restored = BrowserPreferences(defaults: defaults, initialFavorites: [])
     #expect(!restored.showCompressionOptions && !restored.showOpenTerminal && !restored.showCreateFolderWithSelection && !restored.showPinToSidebar && !restored.showSendToMenu && !restored.showCopyPath)
     #expect(!restored.showOpenInNewTab && !restored.showOpenInNewWindow && !restored.showOpenInNewPane)
-    #expect(!restored.showEditTagsMenu)
-    #expect(notifications == 10)
+    #expect(!restored.showEditTagsMenu && !restored.showCreateShortcut)
+    #expect(notifications == 11)
     preferences.removeObserver(token)
 }
 

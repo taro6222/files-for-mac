@@ -1793,6 +1793,7 @@ extension BrowserWindow {
         openInNewWindowMenuItem?.isHidden = !preferences.showOpenInNewWindow
         openInNewPaneMenuItem?.isHidden = !preferences.showOpenInNewPane
         editTagsMenuItem?.isHidden = !preferences.showEditTagsMenu
+        createSymbolicLinkMenuItem?.isHidden = !preferences.showCreateShortcut
     }
     @objc private func setViewSize(_ sender: NSMenuItem) {
         guard let raw = sender.representedObject as? String, let size = BrowserViewSize(rawValue: raw) else { return }
@@ -2128,7 +2129,7 @@ extension BrowserWindow {
                     && delegate.qaGeneralScrollToPreviousFolderOnUp != revealBefore
                     && delegate.qaGeneralShowFileExtensionWarning != extensionWarningBefore
                     && contextMenusToggled
-                preferences.setShowCompressionOptions(false); preferences.setShowOpenTerminal(false); preferences.setShowCreateFolderWithSelection(false); preferences.setShowPinToSidebar(false); preferences.setShowSendToMenu(false); preferences.setShowCopyPath(false); preferences.setShowOpenInNewTab(false); preferences.setShowOpenInNewWindow(false); preferences.setShowOpenInNewPane(false); preferences.setShowEditTagsMenu(false)
+                preferences.setShowCompressionOptions(false); preferences.setShowOpenTerminal(false); preferences.setShowCreateFolderWithSelection(false); preferences.setShowPinToSidebar(false); preferences.setShowSendToMenu(false); preferences.setShowCopyPath(false); preferences.setShowOpenInNewTab(false); preferences.setShowOpenInNewWindow(false); preferences.setShowOpenInNewPane(false); preferences.setShowEditTagsMenu(false); preferences.setShowCreateShortcut(false)
                 checks["contextMenuCompressionVisibilityPreference"] = !controller.qaVisibleContextActions.contains(NSStringFromSelector(#selector(createArchive(_:))))
                 checks["contextMenuTerminalVisibilityPreference"] = !controller.qaVisibleContextActions.contains(NSStringFromSelector(#selector(openInTerminal(_:))))
                 checks["contextMenuFolderVisibilityPreference"] = !controller.qaVisibleContextActions.contains(NSStringFromSelector(#selector(createFolderFromSelection(_:))))
@@ -2140,7 +2141,8 @@ extension BrowserWindow {
                     && !controller.qaVisibleContextActions.contains(NSStringFromSelector(#selector(openInNewWindow(_:))))
                     && !controller.qaVisibleContextActions.contains(NSStringFromSelector(#selector(openInNewPane(_:))))
                 checks["contextMenuEditTagsVisibilityPreference"] = !controller.qaVisibleContextActions.contains(NSStringFromSelector(#selector(showInfo(_:))))
-                preferences.setShowCompressionOptions(true); preferences.setShowOpenTerminal(true); preferences.setShowCreateFolderWithSelection(true); preferences.setShowPinToSidebar(true); preferences.setShowSendToMenu(true); preferences.setShowCopyPath(true); preferences.setShowOpenInNewTab(true); preferences.setShowOpenInNewWindow(true); preferences.setShowOpenInNewPane(true); preferences.setShowEditTagsMenu(true)
+                checks["contextMenuCreateShortcutVisibilityPreference"] = !controller.qaVisibleContextActions.contains(NSStringFromSelector(#selector(createSymbolicLink(_:))))
+                preferences.setShowCompressionOptions(true); preferences.setShowOpenTerminal(true); preferences.setShowCreateFolderWithSelection(true); preferences.setShowPinToSidebar(true); preferences.setShowSendToMenu(true); preferences.setShowCopyPath(true); preferences.setShowOpenInNewTab(true); preferences.setShowOpenInNewWindow(true); preferences.setShowOpenInNewPane(true); preferences.setShowEditTagsMenu(true); preferences.setShowCreateShortcut(true)
                 controller.closeSecondaryPane(nil)
                 controller.navigate(fixture)
                 let paneSourceWait = ContinuousClock.now
