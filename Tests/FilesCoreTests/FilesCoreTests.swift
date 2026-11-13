@@ -486,13 +486,14 @@ private struct DelayedLoader: DirectoryLoading {
     let suite = "context-menu-visibility-tests-\(UUID())", defaults = UserDefaults(suiteName: suite)!
     defer { defaults.removePersistentDomain(forName: suite) }
     let preferences = BrowserPreferences(defaults: defaults, initialFavorites: [])
-    #expect(preferences.showCompressionOptions && preferences.showOpenTerminal && preferences.showCreateFolderWithSelection)
+    #expect(preferences.showCompressionOptions && preferences.showOpenTerminal && preferences.showCreateFolderWithSelection && preferences.showPinToSidebar)
     var notifications = 0; let token = preferences.observe { notifications += 1 }
     preferences.setShowCompressionOptions(false); preferences.setShowOpenTerminal(false); preferences.setShowCreateFolderWithSelection(false)
+    preferences.setShowPinToSidebar(false)
     preferences.setShowCompressionOptions(false); preferences.setShowOpenTerminal(false)
     let restored = BrowserPreferences(defaults: defaults, initialFavorites: [])
-    #expect(!restored.showCompressionOptions && !restored.showOpenTerminal && !restored.showCreateFolderWithSelection)
-    #expect(notifications == 3)
+    #expect(!restored.showCompressionOptions && !restored.showOpenTerminal && !restored.showCreateFolderWithSelection && !restored.showPinToSidebar)
+    #expect(notifications == 4)
     preferences.removeObserver(token)
 }
 
@@ -535,6 +536,7 @@ private struct DelayedLoader: DirectoryLoading {
     source.setShowFileExtensionWarning(false)
     source.setShowDateColumn(false); source.setShowTypeColumn(false); source.setShowSizeColumn(false); source.setShowGitStatusColumn(true)
     source.setShowCompressionOptions(false); source.setShowOpenTerminal(false); source.setShowCreateFolderWithSelection(false)
+    source.setShowPinToSidebar(false)
     source.setFolderViewPreference(FolderViewPreference(mode: .grid, size: .large), for: URL(fileURLWithPath: "/folder"))
     let data = try source.exportData(), destination = BrowserPreferences(defaults: secondDefaults, initialFavorites: [])
     try destination.importData(data)
@@ -547,6 +549,7 @@ private struct DelayedLoader: DirectoryLoading {
     #expect(!destination.showFileExtensionWarning)
     #expect(!destination.showDateColumn && !destination.showTypeColumn && !destination.showSizeColumn && destination.showGitStatusColumn)
     #expect(!destination.showCompressionOptions && !destination.showOpenTerminal && !destination.showCreateFolderWithSelection)
+    #expect(!destination.showPinToSidebar)
     #expect(destination.folderViewPreference(for: URL(fileURLWithPath: "/folder")) == FolderViewPreference(mode: .grid, size: .large))
     let before = try destination.exportData()
     var object = try #require(JSONSerialization.jsonObject(with: data) as? [String: Any]); object["viewSize"] = "huge"

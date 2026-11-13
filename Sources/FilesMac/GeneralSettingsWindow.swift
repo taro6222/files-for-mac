@@ -16,6 +16,7 @@ final class GeneralSettingsWindow: NSWindowController {
     private let showCompressionOptions = NSButton(checkboxWithTitle: L("컨텍스트 메뉴에 압축 옵션 표시", "Show Compression Options in Context Menu"), target: nil, action: nil)
     private let showOpenTerminal = NSButton(checkboxWithTitle: L("컨텍스트 메뉴에 터미널 열기 표시", "Show Open in Terminal in Context Menu"), target: nil, action: nil)
     private let showCreateFolderWithSelection = NSButton(checkboxWithTitle: L("컨텍스트 메뉴에 선택 항목으로 폴더 만들기 표시", "Show New Folder with Selection in Context Menu"), target: nil, action: nil)
+    private let showPinToSidebar = NSButton(checkboxWithTitle: L("컨텍스트 메뉴에 사이드바 고정 표시", "Show Pin to Sidebar in Context Menu"), target: nil, action: nil)
 
     init(preferences: BrowserPreferences) {
         self.preferences = preferences
@@ -41,6 +42,7 @@ final class GeneralSettingsWindow: NSWindowController {
         configure(showCompressionOptions, action: #selector(changeShowCompressionOptions(_:))); stack.addArrangedSubview(showCompressionOptions)
         configure(showOpenTerminal, action: #selector(changeShowOpenTerminal(_:))); stack.addArrangedSubview(showOpenTerminal)
         configure(showCreateFolderWithSelection, action: #selector(changeShowCreateFolderWithSelection(_:))); stack.addArrangedSubview(showCreateFolderWithSelection)
+        configure(showPinToSidebar, action: #selector(changeShowPinToSidebar(_:))); stack.addArrangedSubview(showPinToSidebar)
         let homeTitle = NSTextField(labelWithString: L("홈 위젯", "Home Widgets")); homeTitle.font = .systemFont(ofSize: 14, weight: .semibold); stack.addArrangedSubview(homeTitle)
         configure(favorites, action: #selector(changeFavorites(_:))); configure(volumes, action: #selector(changeVolumes(_:))); configure(recent, action: #selector(changeRecent(_:)))
         stack.addArrangedSubview(favorites); stack.addArrangedSubview(volumes); stack.addArrangedSubview(recent)
@@ -59,6 +61,7 @@ final class GeneralSettingsWindow: NSWindowController {
         showCompressionOptions.state = preferences.showCompressionOptions ? .on : .off
         showOpenTerminal.state = preferences.showOpenTerminal ? .on : .off
         showCreateFolderWithSelection.state = preferences.showCreateFolderWithSelection ? .on : .off
+        showPinToSidebar.state = preferences.showPinToSidebar ? .on : .off
         favorites.state = preferences.showHomeFavorites ? .on : .off; volumes.state = preferences.showHomeVolumes ? .on : .off; recent.state = preferences.showHomeRecent ? .on : .off
     }
     @objc private func changeContinueSession(_ sender: Any?) { preferences.setContinueLastSession(continueSession.state == .on) }
@@ -75,6 +78,7 @@ final class GeneralSettingsWindow: NSWindowController {
     @objc private func changeShowCompressionOptions(_ sender: Any?) { preferences.setShowCompressionOptions(showCompressionOptions.state == .on) }
     @objc private func changeShowOpenTerminal(_ sender: Any?) { preferences.setShowOpenTerminal(showOpenTerminal.state == .on) }
     @objc private func changeShowCreateFolderWithSelection(_ sender: Any?) { preferences.setShowCreateFolderWithSelection(showCreateFolderWithSelection.state == .on) }
+    @objc private func changeShowPinToSidebar(_ sender: Any?) { preferences.setShowPinToSidebar(showPinToSidebar.state == .on) }
     @objc private func changeFavorites(_ sender: Any?) { preferences.setSection(.favorites, visible: favorites.state == .on) }
     @objc private func changeVolumes(_ sender: Any?) { preferences.setSection(.volumes, visible: volumes.state == .on) }
     @objc private func changeRecent(_ sender: Any?) { preferences.setSection(.recent, visible: recent.state == .on) }
@@ -85,12 +89,12 @@ final class GeneralSettingsWindow: NSWindowController {
     var qaOpenFoldersInNewTab: Bool { preferences.openFoldersInNewTab }
     var qaScrollToPreviousFolderOnUp: Bool { preferences.scrollToPreviousFolderOnUp }
     var qaShowFileExtensionWarning: Bool { preferences.showFileExtensionWarning }
-    var qaContextMenuStates: (Bool, Bool, Bool) { (preferences.showCompressionOptions, preferences.showOpenTerminal, preferences.showCreateFolderWithSelection) }
+    var qaContextMenuStates: (Bool, Bool, Bool, Bool) { (preferences.showCompressionOptions, preferences.showOpenTerminal, preferences.showCreateFolderWithSelection, preferences.showPinToSidebar) }
     func qaToggleWidgets() { favorites.performClick(nil); volumes.performClick(nil); recent.performClick(nil) }
     func qaToggleSizeUnit() { sizeUnit.selectItem(at: sizeUnit.indexOfSelectedItem == 0 ? 1 : 0); changeSizeUnit(nil) }
     func qaToggleOpenFoldersInNewTab() { openFoldersInNewTab.performClick(nil) }
     func qaToggleScrollToPreviousFolderOnUp() { scrollToPreviousFolderOnUp.performClick(nil) }
     func qaToggleShowFileExtensionWarning() { showFileExtensionWarning.performClick(nil) }
-    func qaToggleContextMenuItems() { showCompressionOptions.performClick(nil); showOpenTerminal.performClick(nil); showCreateFolderWithSelection.performClick(nil) }
+    func qaToggleContextMenuItems() { showCompressionOptions.performClick(nil); showOpenTerminal.performClick(nil); showCreateFolderWithSelection.performClick(nil); showPinToSidebar.performClick(nil) }
 #endif
 }
