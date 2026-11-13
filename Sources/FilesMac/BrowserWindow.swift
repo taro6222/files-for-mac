@@ -78,6 +78,9 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
     private var pinToSidebarMenuItem: NSMenuItem?
     private var shareMenuItem: NSMenuItem?
     private var copyPathMenuItems: [NSMenuItem] = []
+    private var openInNewTabMenuItem: NSMenuItem?
+    private var openInNewWindowMenuItem: NSMenuItem?
+    private var openInNewPaneMenuItem: NSMenuItem?
     private lazy var commandPalette = CommandPaletteWindow()
     private var sharingPicker: NSSharingServicePicker?
     private var completionTask: Task<Void, Never>?
@@ -406,6 +409,9 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         let rename = menu.addItem(withTitle: L("이름 변경…", "Rename…"), action: #selector(renameSelection(_:)), keyEquivalent: ""); rename.target = self
         let batchRename = menu.addItem(withTitle: L("일괄 이름 변경…", "Batch Rename…"), action: #selector(batchRenameSelection(_:)), keyEquivalent: ""); batchRename.target = self
         let open = menu.addItem(withTitle: L("열기", "Open"), action: #selector(openSelection(_:)), keyEquivalent: ""); open.target = self
+        let openTab = menu.addItem(withTitle: L("새 탭에서 열기", "Open in New Tab"), action: #selector(openInNewTab(_:)), keyEquivalent: ""); openTab.target = self; openInNewTabMenuItem = openTab
+        let openWindow = menu.addItem(withTitle: L("새 창에서 열기", "Open in New Window"), action: #selector(openInNewWindow(_:)), keyEquivalent: ""); openWindow.target = self; openInNewWindowMenuItem = openWindow
+        let openPane = menu.addItem(withTitle: L("새 pane에서 열기", "Open in New Pane"), action: #selector(openInNewPane(_:)), keyEquivalent: ""); openPane.target = self; openInNewPaneMenuItem = openPane
         let pin = menu.addItem(withTitle: L("사이드바 즐겨찾기 전환", "Toggle Sidebar Favorite"), action: #selector(toggleSelectedFavorite(_:)), keyEquivalent: ""); pin.target = self
         pinToSidebarMenuItem = pin
         let archive = menu.addItem(withTitle: L("압축 파일 탐색", "Browse Archive"), action: #selector(openArchive(_:)), keyEquivalent: ""); archive.target = self
@@ -985,6 +991,23 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
     @objc func toggleSelectedFavorite(_ sender: Any?) {
         if activeSelectedItems.count == 1, let item = activeSelectedItems.first, item.isBrowsable { preferences.toggleFavorite(item.url) }
         else if let location = activeModel.location { preferences.toggleFavorite(location) }
+    }
+    private var contextFolderURL: URL? {
+        if activeSelectedItems.count == 1, let item = activeSelectedItems.first, item.isBrowsable { return item.url }
+        return activeSelectedItems.isEmpty ? activeModel.location : nil
+    }
+    @objc func openInNewTab(_ sender: Any?) {
+        guard let url = contextFolderURL else { return }
+        (NSApp.delegate as? AppDelegate)?.openFolderInNewTab(url)
+    }
+    @objc func openInNewWindow(_ sender: Any?) {
+        guard let url = contextFolderURL else { return }
+        (NSApp.delegate as? AppDelegate)?.openFolderInNewWindow(url)
+    }
+    @objc func openInNewPane(_ sender: Any?) {
+        guard let url = contextFolderURL else { return }
+        if let secondaryPane { secondaryPane.openLocation(url); setSecondaryActive(true) }
+        else { installSecondaryPane(axis: .vertical, snapshot: TabSnapshot(location: url, showHidden: preferences.showHidden, viewMode: model.viewMode)) }
     }
     @objc func openSelection(_ sender: Any?) {
         if secondaryActive { secondaryPane?.openSelected(); return }
@@ -1728,6 +1751,9 @@ extension BrowserWindow {
         pinToSidebarMenuItem?.isHidden = !preferences.showPinToSidebar
         shareMenuItem?.isHidden = !preferences.showSendToMenu
         copyPathMenuItems.forEach { $0.isHidden = !preferences.showCopyPath }
+        openInNewTabMenuItem?.isHidden = !preferences.showOpenInNewTab
+        openInNewWindowMenuItem?.isHidden = !preferences.showOpenInNewWindow
+        openInNewPaneMenuItem?.isHidden = !preferences.showOpenInNewPane
     }
     @objc private func setViewSize(_ sender: NSMenuItem) {
         guard let raw = sender.representedObject as? String, let size = BrowserViewSize(rawValue: raw) else { return }
@@ -1891,6 +1917,7 @@ extension BrowserWindow {
         case #selector(goForward(_:)): return secondaryActive ? !(secondaryPane?.model.history.forward.isEmpty ?? true) : !model.history.forward.isEmpty
         case #selector(goUp(_:)): return secondaryActive ? secondaryPane?.model.location != nil : model.location != nil && model.location?.path != "/"
         case #selector(openSelection(_:)): return !activeSelectedItems.isEmpty && activeModel.location != nil
+        case #selector(openInNewTab(_:)), #selector(openInNewWindow(_:)), #selector(openInNewPane(_:)): return contextFolderURL != nil
         case #selector(openArchive(_:)): return activeSelectedItems.count == 1 && activeSelectedItems.first.map { ArchiveFormat.detect($0.url).map { ArchiveCapabilityMatrix.capabilities(for: $0).browse } == true } == true
         case #selector(createArchive(_:)): return !ArchiveCreationWindow.isRunning && !activeModel.isLoading && !activeSelectedItems.isEmpty
         case #selector(downloadCloudSelection(_:)): return activeSelectedItems.count == 1 && activeSelectedItems.first.map { cloudProvider.capabilities(for: $0.url).downloadNow } == true
@@ -2050,19 +2077,17 @@ extension BrowserWindow {
                 let extensionWarningBefore = delegate.qaGeneralShowFileExtensionWarning
                 let contextMenuBefore = delegate.qaGeneralContextMenuStates
                 delegate.qaToggleGeneralWidgets(); delegate.qaToggleGeneralSizeUnit(); delegate.qaToggleGeneralOpenFoldersInNewTab(); delegate.qaToggleGeneralScrollToPreviousFolderOnUp(); delegate.qaToggleGeneralShowFileExtensionWarning(); delegate.qaToggleGeneralContextMenuItems(); let widgetsAfter = delegate.qaGeneralWidgetStates
+                let contextMenuAfter = delegate.qaGeneralContextMenuStates
+                let contextMenusToggled = contextMenuBefore?.count == contextMenuAfter?.count
+                    && zip(contextMenuBefore ?? [], contextMenuAfter ?? []).allSatisfy { $0 != $1 }
                 checks["generalSettingsWindow"] = delegate.qaGeneralSettingsVisible && widgetsBefore != nil && widgetsAfter != nil
                     && widgetsAfter!.0 != widgetsBefore!.0 && widgetsAfter!.1 != widgetsBefore!.1 && widgetsAfter!.2 != widgetsBefore!.2
                     && delegate.qaGeneralSizeUnit != sizeUnitBefore
                     && delegate.qaGeneralOpenFoldersInNewTab != newTabBefore
                     && delegate.qaGeneralScrollToPreviousFolderOnUp != revealBefore
                     && delegate.qaGeneralShowFileExtensionWarning != extensionWarningBefore
-                    && delegate.qaGeneralContextMenuStates?.0 != contextMenuBefore?.0
-                    && delegate.qaGeneralContextMenuStates?.1 != contextMenuBefore?.1
-                    && delegate.qaGeneralContextMenuStates?.2 != contextMenuBefore?.2
-                    && delegate.qaGeneralContextMenuStates?.3 != contextMenuBefore?.3
-                    && delegate.qaGeneralContextMenuStates?.4 != contextMenuBefore?.4
-                    && delegate.qaGeneralContextMenuStates?.5 != contextMenuBefore?.5
-                preferences.setShowCompressionOptions(false); preferences.setShowOpenTerminal(false); preferences.setShowCreateFolderWithSelection(false); preferences.setShowPinToSidebar(false); preferences.setShowSendToMenu(false); preferences.setShowCopyPath(false)
+                    && contextMenusToggled
+                preferences.setShowCompressionOptions(false); preferences.setShowOpenTerminal(false); preferences.setShowCreateFolderWithSelection(false); preferences.setShowPinToSidebar(false); preferences.setShowSendToMenu(false); preferences.setShowCopyPath(false); preferences.setShowOpenInNewTab(false); preferences.setShowOpenInNewWindow(false); preferences.setShowOpenInNewPane(false)
                 checks["contextMenuCompressionVisibilityPreference"] = !controller.qaVisibleContextActions.contains(NSStringFromSelector(#selector(createArchive(_:))))
                 checks["contextMenuTerminalVisibilityPreference"] = !controller.qaVisibleContextActions.contains(NSStringFromSelector(#selector(openInTerminal(_:))))
                 checks["contextMenuFolderVisibilityPreference"] = !controller.qaVisibleContextActions.contains(NSStringFromSelector(#selector(createFolderFromSelection(_:))))
@@ -2070,7 +2095,20 @@ extension BrowserWindow {
                 checks["contextMenuShareVisibilityPreference"] = !controller.qaVisibleContextActions.contains(NSStringFromSelector(#selector(shareSelection(_:))))
                 checks["contextMenuCopyPathVisibilityPreference"] = !controller.qaVisibleContextActions.contains(NSStringFromSelector(#selector(copyItemPath(_:))))
                     && !controller.qaVisibleContextActions.contains(NSStringFromSelector(#selector(copyCurrentPath(_:))))
-                preferences.setShowCompressionOptions(true); preferences.setShowOpenTerminal(true); preferences.setShowCreateFolderWithSelection(true); preferences.setShowPinToSidebar(true); preferences.setShowSendToMenu(true); preferences.setShowCopyPath(true)
+                checks["contextMenuOpenDestinationVisibilityPreference"] = !controller.qaVisibleContextActions.contains(NSStringFromSelector(#selector(openInNewTab(_:))))
+                    && !controller.qaVisibleContextActions.contains(NSStringFromSelector(#selector(openInNewWindow(_:))))
+                    && !controller.qaVisibleContextActions.contains(NSStringFromSelector(#selector(openInNewPane(_:))))
+                preferences.setShowCompressionOptions(true); preferences.setShowOpenTerminal(true); preferences.setShowCreateFolderWithSelection(true); preferences.setShowPinToSidebar(true); preferences.setShowSendToMenu(true); preferences.setShowCopyPath(true); preferences.setShowOpenInNewTab(true); preferences.setShowOpenInNewWindow(true); preferences.setShowOpenInNewPane(true)
+                controller.closeSecondaryPane(nil)
+                controller.navigate(fixture)
+                let paneSourceWait = ContinuousClock.now
+                while controller.model.isLoading && paneSourceWait.duration(to: .now) < .seconds(5) { try await Task.sleep(for: .milliseconds(20)) }
+                controller.clearSelection(nil)
+                let expectedPaneURL = controller.contextFolderURL
+                controller.openInNewPane(nil); try await Task.sleep(for: .milliseconds(50))
+                let openedPaneState = controller.workspaceSnapshot()
+                checks["openCurrentFolderInNewPane"] = expectedPaneURL != nil && openedPaneState.panes.count == 2 && openedPaneState.panes[1].tab.location == expectedPaneURL
+                controller.closeSecondaryPane(nil)
                 try capture("general-settings", view: delegate.qaGeneralSettingsContentView)
                 delegate.qaToggleGeneralWidgets(); delegate.qaToggleGeneralSizeUnit(); delegate.qaToggleGeneralOpenFoldersInNewTab(); delegate.qaToggleGeneralScrollToPreviousFolderOnUp(); delegate.qaToggleGeneralShowFileExtensionWarning(); delegate.qaToggleGeneralContextMenuItems(); delegate.qaGeneralSettingsContentView?.window?.close(); window.makeKeyAndOrderFront(nil)
                 delegate.showArchiveCapabilities(nil); try await Task.sleep(for: .milliseconds(50))

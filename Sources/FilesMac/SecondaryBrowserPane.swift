@@ -68,6 +68,7 @@ final class SecondaryBrowserPane: NSView, NSTableViewDataSource, NSTableViewDele
         }
     }
     func refresh() { activate(); savePosition(); model.reload() }
+    func openLocation(_ url: URL) { activate(); navigate(url) }
     func focusPath() { activate(); window?.makeFirstResponder(pathField); pathField.selectText(nil) }
     func updateSort(field: SortField? = nil, ascending: Bool? = nil,
                     placement: SortDirectoryPlacement? = nil, toggleDirection: Bool = false) {

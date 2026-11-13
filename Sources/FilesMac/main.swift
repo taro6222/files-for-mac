@@ -84,6 +84,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     @objc func newWindow(_ sender: Any?) { makeBrowser() }
     @objc func newTab(_ sender: Any?) { makeBrowser(tabbedTo: currentBrowser) }
     func openFolderInNewTab(_ url: URL) { makeBrowser(location: url, tabbedTo: currentBrowser) }
+    func openFolderInNewWindow(_ url: URL) { makeBrowser(location: url) }
     @objc func duplicateTab(_ sender: Any?) {
         guard let current = currentBrowser else { return }
         makeBrowser(workspace: current.workspaceSnapshot(), tabbedTo: current)
@@ -333,7 +334,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     func qaToggleGeneralScrollToPreviousFolderOnUp() { generalSettingsWindow?.qaToggleScrollToPreviousFolderOnUp() }
     var qaGeneralShowFileExtensionWarning: Bool? { generalSettingsWindow?.qaShowFileExtensionWarning }
     func qaToggleGeneralShowFileExtensionWarning() { generalSettingsWindow?.qaToggleShowFileExtensionWarning() }
-    var qaGeneralContextMenuStates: (Bool, Bool, Bool, Bool, Bool, Bool)? { generalSettingsWindow?.qaContextMenuStates }
+    var qaGeneralContextMenuStates: [Bool]? { generalSettingsWindow?.qaContextMenuStates }
     func qaToggleGeneralContextMenuItems() { generalSettingsWindow?.qaToggleContextMenuItems() }
     func qaCreateRemoteProfile() { remoteConnectionsWindow?.qaCreateProfile() }
 #endif
