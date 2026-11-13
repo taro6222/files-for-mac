@@ -43,6 +43,7 @@ final class FileGridView: NSView, NSCollectionViewDataSource, NSCollectionViewDe
     private let collection = CollectionView()
     private let scroll = NSScrollView()
     private(set) var items: [FileItem] = []
+    private var suppressSelectionNotification = false
     var onSelectionChange: ((Set<String>) -> Void)?
     var onOpen: ((FileItem) -> Void)?
 
@@ -66,9 +67,13 @@ final class FileGridView: NSView, NSCollectionViewDataSource, NSCollectionViewDe
     required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
     var selectedItems: [FileItem] { collection.selectionIndexPaths.compactMap { items.indices.contains($0.item) ? items[$0.item] : nil } }
     func update(items: [FileItem], selection: Set<String>, scrollOffset: Double) {
+        suppressSelectionNotification = true
         self.items = items; collection.reloadData()
+        collection.collectionViewLayout?.invalidateLayout()
+        collection.layoutSubtreeIfNeeded()
         collection.selectionIndexPaths = Set(items.indices.filter { selection.contains(items[$0].id) }.map { IndexPath(item: $0, section: 0) })
         scroll.contentView.scroll(to: NSPoint(x: 0, y: max(0, scrollOffset))); scroll.reflectScrolledClipView(scroll.contentView)
+        DispatchQueue.main.async { [weak self] in self?.suppressSelectionNotification = false }
     }
     func focus() { window?.makeFirstResponder(collection) }
     func currentScrollOffset() -> Double { scroll.contentView.bounds.origin.y }
@@ -81,5 +86,8 @@ final class FileGridView: NSView, NSCollectionViewDataSource, NSCollectionViewDe
     }
     func collectionView(_ collectionView: NSCollectionView, didSelectItemsAt indexPaths: Set<IndexPath>) { selectionChanged() }
     func collectionView(_ collectionView: NSCollectionView, didDeselectItemsAt indexPaths: Set<IndexPath>) { selectionChanged() }
-    private func selectionChanged() { onSelectionChange?(Set(selectedItems.map(\.id))) }
+    private func selectionChanged() {
+        guard !suppressSelectionNotification else { return }
+        onSelectionChange?(Set(selectedItems.map(\.id)))
+    }
 }

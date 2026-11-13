@@ -9,6 +9,7 @@ final class SecondaryBrowserPane: NSView, NSTableViewDataSource, NSTableViewDele
     private let pathField = NSTextField()
     private let table = ActivatingTableView()
     private let scroll = NSScrollView()
+    private let gridView = FileGridView()
     private let status = NSTextField(labelWithString: "")
     private let hiddenButton = NSButton()
     private let viewModeButton = NSPopUpButton()
@@ -16,6 +17,7 @@ final class SecondaryBrowserPane: NSView, NSTableViewDataSource, NSTableViewDele
     private var watcherTask: Task<Void, Never>?
     private var watchedURL: URL?
     private var pendingRefresh = false
+    private var rendering = false
 
     init(snapshot: TabSnapshot) {
         model = BrowserModel()
@@ -29,7 +31,8 @@ final class SecondaryBrowserPane: NSView, NSTableViewDataSource, NSTableViewDele
 
     func snapshot() -> TabSnapshot { savePosition(); return model.snapshot }
     var selectedItems: [FileItem] {
-        table.selectedRowIndexes.compactMap { model.items.indices.contains($0) ? model.items[$0] : nil }
+        if model.viewMode == .grid { return gridView.selectedItems }
+        return table.selectedRowIndexes.compactMap { model.items.indices.contains($0) ? model.items[$0] : nil }
     }
     func setActive(_ active: Bool) {
         layer?.borderWidth = active ? 2 : 0; layer?.borderColor = NSColor.controlAccentColor.cgColor
@@ -39,10 +42,13 @@ final class SecondaryBrowserPane: NSView, NSTableViewDataSource, NSTableViewDele
     func goUp() { activate(); if let location = model.location { navigate(location.deletingLastPathComponent()) } }
     func refresh() { activate(); savePosition(); model.reload() }
     func focusPath() { activate(); window?.makeFirstResponder(pathField); pathField.selectText(nil) }
-    func focusFiles() { activate(); window?.makeFirstResponder(table) }
+    func focusFiles() { activate(); if model.viewMode == .grid { gridView.focus() } else { window?.makeFirstResponder(table) } }
     func stopLoading() { model.cancelLoad() }
     func setViewMode(_ mode: BrowserViewMode) { activate(); model.setViewMode(mode) }
-    func openSelected() { openSelection(nil) }
+    func openSelected() {
+        if model.viewMode == .grid, let item = gridView.selectedItems.first { openGridItem(item) }
+        else { openSelection(nil) }
+    }
     func open(_ url: URL?) { activate(); navigate(url) }
     func shutdown() {
         watcherTask?.cancel(); watcherTask = nil
@@ -89,12 +95,27 @@ final class SecondaryBrowserPane: NSView, NSTableViewDataSource, NSTableViewDele
             column.sortDescriptorPrototype = NSSortDescriptor(key: key, ascending: true); table.addTableColumn(column)
         }
         table.sortDescriptors = [NSSortDescriptor(key: model.sortOrder.field.rawValue, ascending: model.sortOrder.ascending)]
-        scroll.documentView = table; scroll.hasVerticalScroller = true; scroll.hasHorizontalScroller = true; stack.addArrangedSubview(scroll)
+        scroll.documentView = table; scroll.hasVerticalScroller = true; scroll.hasHorizontalScroller = true
+        let browserContent = NSView(); browserContent.translatesAutoresizingMaskIntoConstraints = false
+        scroll.translatesAutoresizingMaskIntoConstraints = false; browserContent.addSubview(scroll); browserContent.addSubview(gridView)
+        NSLayoutConstraint.activate([
+            scroll.leadingAnchor.constraint(equalTo: browserContent.leadingAnchor), scroll.trailingAnchor.constraint(equalTo: browserContent.trailingAnchor),
+            scroll.topAnchor.constraint(equalTo: browserContent.topAnchor), scroll.bottomAnchor.constraint(equalTo: browserContent.bottomAnchor),
+            gridView.leadingAnchor.constraint(equalTo: browserContent.leadingAnchor), gridView.trailingAnchor.constraint(equalTo: browserContent.trailingAnchor),
+            gridView.topAnchor.constraint(equalTo: browserContent.topAnchor), gridView.bottomAnchor.constraint(equalTo: browserContent.bottomAnchor)
+        ])
+        gridView.onSelectionChange = { [weak self] selection in
+            guard let self, !self.rendering, self.model.viewMode == .grid else { return }
+            self.model.savePosition(selection: selection, scrollOffset: self.gridView.currentScrollOffset())
+            self.render()
+        }
+        gridView.onOpen = { [weak self] item in self?.openGridItem(item) }
+        stack.addArrangedSubview(browserContent)
         status.font = .systemFont(ofSize: 11); status.textColor = .secondaryLabelColor
         let footer = NSStackView(); footer.edgeInsets = NSEdgeInsets(top: 6, left: 10, bottom: 6, right: 10)
         footer.addArrangedSubview(status); footer.addArrangedSubview(NSView()); stack.addArrangedSubview(footer)
-        for view in [toolbar, scroll, footer] { view.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true }
-        scroll.heightAnchor.constraint(greaterThanOrEqualToConstant: 300).isActive = true
+        for view in [toolbar, browserContent, footer] { view.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true }
+        browserContent.heightAnchor.constraint(greaterThanOrEqualToConstant: 300).isActive = true
     }
     private func button(_ symbol: String, _ action: Selector) -> NSButton {
         let button = NSButton(); button.image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)
@@ -102,8 +123,10 @@ final class SecondaryBrowserPane: NSView, NSTableViewDataSource, NSTableViewDele
     }
     private func activate() { onActivate?() }
     private func savePosition() {
-        let selection = Set(table.selectedRowIndexes.compactMap { model.items.indices.contains($0) ? model.items[$0].id : nil })
-        model.savePosition(selection: selection, scrollOffset: scroll.contentView.bounds.origin.y)
+        guard !rendering else { return }
+        let grid = model.viewMode == .grid
+        let selection = grid ? Set(gridView.selectedItems.map(\.id)) : Set(table.selectedRowIndexes.compactMap { model.items.indices.contains($0) ? model.items[$0].id : nil })
+        model.savePosition(selection: selection, scrollOffset: grid ? gridView.currentScrollOffset() : scroll.contentView.bounds.origin.y)
     }
     private func navigate(_ url: URL?) { savePosition(); model.navigate(url) }
     private func modelChanged() {
@@ -114,7 +137,10 @@ final class SecondaryBrowserPane: NSView, NSTableViewDataSource, NSTableViewDele
         }
     }
     private func render() {
+        rendering = true; defer { rendering = false }
         pathField.stringValue = model.location?.path ?? ""; table.reloadData()
+        let showsGrid = model.viewMode == .grid
+        scroll.isHidden = showsGrid; gridView.isHidden = !showsGrid
         hiddenButton.contentTintColor = model.showHidden ? .systemBlue : .labelColor
         if let item = viewModeButton.itemArray.first(where: {
             ($0.representedObject as? String) == model.viewMode.rawValue
@@ -122,6 +148,8 @@ final class SecondaryBrowserPane: NSView, NSTableViewDataSource, NSTableViewDele
         let expectedSort = NSSortDescriptor(key: model.sortOrder.field.rawValue, ascending: model.sortOrder.ascending)
         if table.sortDescriptors.first != expectedSort { table.sortDescriptors = [expectedSort] }
         table.selectRowIndexes(IndexSet(model.items.indices.filter { model.history.current.selection.contains(model.items[$0].id) }), byExtendingSelection: false)
+        gridView.update(items: model.items, selection: model.history.current.selection,
+                        scrollOffset: model.history.current.scrollOffset)
         if !model.isLoading { scroll.contentView.scroll(to: NSPoint(x: 0, y: model.history.current.scrollOffset)); scroll.reflectScrolledClipView(scroll.contentView) }
         if model.isLoading { status.stringValue = L("읽는 중…", "Loading…") }
         else if let failure = model.failure { status.stringValue = failure.message(korean: Locale.preferredLanguages.first?.hasPrefix("ko") == true) }
@@ -192,6 +220,9 @@ final class SecondaryBrowserPane: NSView, NSTableViewDataSource, NSTableViewDele
     @objc private func openSelection(_ sender: Any?) {
         activate(); guard let row = table.selectedRowIndexes.first, model.items.indices.contains(row) else { return }
         let item = model.items[row]; if item.isBrowsable { navigate(item.url) } else { NSWorkspace.shared.open(item.url) }
+    }
+    private func openGridItem(_ item: FileItem) {
+        activate(); if item.isBrowsable { navigate(item.url) } else { NSWorkspace.shared.open(item.url) }
     }
     private func updateWatcher() {
         guard watchedURL != model.location else { return }

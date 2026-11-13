@@ -1698,6 +1698,7 @@ extension BrowserWindow {
         let defaults = UserDefaults(suiteName: suite)!
         defer { defaults.removePersistentDomain(forName: suite); try? fm.removeItem(at: root) }
         var checks: [String: Bool] = [:]
+        var diagnostics: [String: Any] = [:]
         do {
             try fm.createDirectory(at: source, withIntermediateDirectories: true)
             try fm.createDirectory(at: target, withIntermediateDirectories: true)
@@ -1740,6 +1741,26 @@ extension BrowserWindow {
             checks["mergePreservesConflict"] = (try String(contentsOf: target.appendingPathComponent("conflict.txt"), encoding: .utf8)) == "target"
             checks["mergeAddsNested"] = fm.fileExists(atPath: mergeTarget.appendingPathComponent("nested.txt").path)
             checks["splitWorkspace"] = { controller.splitVertically(nil); return controller.workspaceSnapshot().isSplit }()
+            guard let secondary = controller.secondaryPane else { throw CocoaError(.validationMissingMandatoryProperty) }
+            let secondaryStart = ContinuousClock.now
+            while secondary.model.isLoading && elapsed(secondaryStart) < 10 { try await Task.sleep(for: .milliseconds(10)) }
+            guard let secondaryMerge = secondary.model.items.first(where: { $0.url.standardizedFileURL == mergeTarget.standardizedFileURL }) else {
+                throw CocoaError(.fileNoSuchFile)
+            }
+            secondary.model.savePosition(selection: [secondaryMerge.id], scrollOffset: 0)
+            secondary.model.setViewMode(.grid)
+            content.layoutSubtreeIfNeeded(); content.displayIfNeeded()
+            checks["secondaryGridSelection"] = secondary.selectedItems.map(\.id) == [secondaryMerge.id]
+            diagnostics["secondaryRequestedSelection"] = secondaryMerge.id
+            diagnostics["secondaryHistorySelection"] = Array(secondary.model.history.current.selection).sorted()
+            diagnostics["secondaryRenderedSelection"] = secondary.selectedItems.map(\.id)
+            diagnostics["secondaryItemCount"] = secondary.model.items.count
+            secondary.openSelected()
+            checks["secondaryGridFolderOpen"] = secondary.model.location == mergeTarget.standardizedFileURL
+            secondary.goBack()
+            let secondaryBackStart = ContinuousClock.now
+            while secondary.model.isLoading && elapsed(secondaryBackStart) < 10 { try await Task.sleep(for: .milliseconds(10)) }
+            checks["secondaryGridSession"] = secondary.snapshot().viewMode == .grid
             let undoMenu = NSMenuItem(title: "", action: #selector(undoLastCopy(_:)), keyEquivalent: "")
             checks["undoMenuAction"] = undoMenu.action == #selector(undoLastCopy(_:))
             checks["undoMenuEnabled"] = controller.canUndoCopy(journalDirectory: journals)
@@ -1752,7 +1773,7 @@ extension BrowserWindow {
             checks["undoPreservesExisting"] = fm.fileExists(atPath: mergeTarget.appendingPathComponent("keep.txt").path)
                 && !fm.fileExists(atPath: mergeTarget.appendingPathComponent("nested.txt").path)
             try capture("after-undo")
-            let result: [String: Any] = ["checks": checks,
+            let result: [String: Any] = ["checks": checks, "diagnostics": diagnostics,
                 "language": Locale.preferredLanguages.first ?? "unknown", "theme": dark ? "dark" : "light",
                 "os": ProcessInfo.processInfo.operatingSystemVersionString]
             try fm.createDirectory(at: destination, withIntermediateDirectories: true)
