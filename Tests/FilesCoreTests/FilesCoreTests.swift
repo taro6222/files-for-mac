@@ -322,6 +322,20 @@ private struct DelayedLoader: DirectoryLoading {
     #expect(BrowserPreferences(defaults: defaults).viewSize == .medium)
 }
 
+@Test @MainActor func toolbarPreferencesRepairPersistMoveHideAndReset() {
+    let suite = "toolbar-preferences-tests-\(UUID())", defaults = UserDefaults(suiteName: suite)!
+    defer { defaults.removePersistentDomain(forName: suite) }
+    defaults.set(["favorite", "favorite", "unknown", "path"], forKey: "toolbarOrder")
+    defaults.set(["options", "path", "unknown"], forKey: "hiddenToolbarItems")
+    let preferences = BrowserPreferences(defaults: defaults, initialFavorites: [])
+    #expect(preferences.toolbarOrder.prefix(2) == [.favorite, .path])
+    #expect(preferences.hiddenToolbarItems == [.options])
+    preferences.moveToolbarItem(.favorite, by: 1); preferences.toggleToolbarItem(.hidden)
+    let restored = BrowserPreferences(defaults: defaults, initialFavorites: [])
+    #expect(restored.toolbarOrder.prefix(2) == [.path, .favorite]); #expect(restored.hiddenToolbarItems.contains(.hidden))
+    restored.resetToolbar(); #expect(restored.toolbarOrder == BrowserToolbarItem.allCases); #expect(restored.hiddenToolbarItems.isEmpty)
+}
+
 @Test func shortcutPreferencesPersistValidateCollisionsAndReset() throws {
     let suite = "shortcut-preferences-tests-\(UUID())", defaults = UserDefaults(suiteName: suite)!
     defer { defaults.removePersistentDomain(forName: suite) }

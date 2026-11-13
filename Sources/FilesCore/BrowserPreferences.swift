@@ -3,6 +3,10 @@ import Foundation
 public enum BrowserViewSize: String, CaseIterable, Sendable {
     case small, medium, large
 }
+public enum BrowserToolbarItem: String, CaseIterable, Sendable {
+    case back, forward, up, refresh, path, hidden, viewMode, favorite, options
+    public var isRequired: Bool { self == .path }
+}
 
 /// A single main-actor store shared by all windows. Mutations notify synchronously,
 /// so an older window cannot overwrite a newer window's favorites or history.
@@ -22,6 +26,8 @@ public final class BrowserPreferences {
     public private(set) var showHomeVolumes: Bool
     public private(set) var showHomeRecent: Bool
     public private(set) var viewSize: BrowserViewSize
+    public private(set) var toolbarOrder: [BrowserToolbarItem]
+    public private(set) var hiddenToolbarItems: Set<BrowserToolbarItem>
 
     public init(defaults: UserDefaults = .standard, initialFavorites: [URL]? = nil) {
         self.defaults = defaults
@@ -41,6 +47,12 @@ public final class BrowserPreferences {
         showHomeVolumes = defaults.object(forKey: "showHomeVolumes") as? Bool ?? true
         showHomeRecent = defaults.object(forKey: "showHomeRecent") as? Bool ?? true
         viewSize = defaults.string(forKey: "viewSize").flatMap(BrowserViewSize.init(rawValue:)) ?? .medium
+        var toolbar: [BrowserToolbarItem] = []
+        for raw in defaults.stringArray(forKey: "toolbarOrder") ?? [] {
+            if let item = BrowserToolbarItem(rawValue: raw), !toolbar.contains(item) { toolbar.append(item) }
+        }
+        toolbarOrder = toolbar + BrowserToolbarItem.allCases.filter { !toolbar.contains($0) }
+        hiddenToolbarItems = Set((defaults.stringArray(forKey: "hiddenToolbarItems") ?? []).compactMap(BrowserToolbarItem.init(rawValue:)).filter { !$0.isRequired })
     }
     @discardableResult public func observe(_ callback: @escaping () -> Void) -> UUID {
         let id = UUID(); observers[id] = callback; return id
@@ -86,6 +98,19 @@ public final class BrowserPreferences {
     public func setViewSize(_ value: BrowserViewSize) {
         guard viewSize != value else { return }
         viewSize = value; defaults.set(value.rawValue, forKey: "viewSize"); changed()
+    }
+    public func toggleToolbarItem(_ item: BrowserToolbarItem) {
+        guard !item.isRequired else { return }
+        if hiddenToolbarItems.contains(item) { hiddenToolbarItems.remove(item) } else { hiddenToolbarItems.insert(item) }
+        defaults.set(hiddenToolbarItems.map(\.rawValue).sorted(), forKey: "hiddenToolbarItems"); changed()
+    }
+    public func moveToolbarItem(_ item: BrowserToolbarItem, by offset: Int) {
+        guard let index = toolbarOrder.firstIndex(of: item), toolbarOrder.indices.contains(index + offset) else { return }
+        toolbarOrder.swapAt(index, index + offset); defaults.set(toolbarOrder.map(\.rawValue), forKey: "toolbarOrder"); changed()
+    }
+    public func resetToolbar() {
+        toolbarOrder = BrowserToolbarItem.allCases; hiddenToolbarItems = []
+        defaults.removeObject(forKey: "toolbarOrder"); defaults.removeObject(forKey: "hiddenToolbarItems"); changed()
     }
     public enum HomeSection { case favorites, volumes, recent }
     public func toggleSection(_ section: HomeSection) {

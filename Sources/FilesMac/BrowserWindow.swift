@@ -30,6 +30,13 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
     private let hiddenButton = NSButton()
     private let viewModeButton = NSPopUpButton()
     private let refreshButton = NSButton()
+    private let favoriteButton = NSButton()
+    private let optionsButton = NSButton()
+    private let toolbar = NSStackView()
+    private let toolbarOverflow = NSPopUpButton()
+    private var toolbarViews: [BrowserToolbarItem: NSView] = [:]
+    private var toolbarCompact: Bool?
+    private var toolbarSettingsWindow: ToolbarSettingsWindow?
     private let homeView = NSStackView()
     private let sidebar = NSStackView()
     private let content = NSView()
@@ -153,8 +160,8 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         })
         observerTokens.append(NotificationCenter.default.addObserver(forName: NSWindow.didResizeNotification, object: w, queue: .main) { [weak self] _ in
             Task { @MainActor in
-                guard let self, self.model.viewMode == .adaptive, !self.model.isLoading else { return }
-                self.render()
+                guard let self else { return }; self.rebuildToolbar()
+                if self.model.viewMode == .adaptive && !self.model.isLoading { self.render() }
             }
         })
     }
@@ -209,14 +216,12 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         header.addArrangedSubview(choose)
         main.addArrangedSubview(header)
 
-        let toolbar = NSStackView(); toolbar.orientation = .horizontal; toolbar.spacing = 8
+        toolbar.orientation = .horizontal; toolbar.spacing = 8
         toolbar.edgeInsets = NSEdgeInsets(top: 4, left: 14, bottom: 12, right: 14)
         configure(backButton, "chevron.left", L("뒤로", "Back"), #selector(goBack(_:)))
         configure(forwardButton, "chevron.right", L("앞으로", "Forward"), #selector(goForward(_:)))
         configure(upButton, "arrow.up", L("상위 폴더", "Enclosing Folder"), #selector(goUp(_:)))
-        toolbar.addArrangedSubview(backButton); toolbar.addArrangedSubview(forwardButton); toolbar.addArrangedSubview(upButton)
         configure(refreshButton, "arrow.clockwise", L("새로고침", "Refresh"), #selector(refreshOrStop(_:)))
-        toolbar.addArrangedSubview(refreshButton)
         pathField.numberOfVisibleItems = 8
         pathField.completes = false
         pathField.toolTip = L("경로 입력 후 아래 화살표로 추천 폴더를 선택하거나 Tab으로 완성", "Type a path, then use the dropdown or Tab to complete")
@@ -225,14 +230,18 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         pathField.target = self; pathField.action = #selector(submitPath(_:)); pathField.delegate = self
         pathField.setAccessibilityLabel(L("폴더 경로", "Folder path"))
         pathField.setContentHuggingPriority(.defaultLow, for: .horizontal)
-        toolbar.addArrangedSubview(pathField)
         configure(hiddenButton, "eye.slash", L("숨김 항목 표시", "Show Hidden Files"), #selector(toggleHidden(_:)))
-        toolbar.addArrangedSubview(hiddenButton)
         configureViewModeButton(viewModeButton)
-        toolbar.addArrangedSubview(viewModeButton)
-        toolbar.addArrangedSubview(button("pin", L("즐겨찾기 전환", "Toggle Favorite"), #selector(toggleFavorite(_:))))
+        configure(favoriteButton, "pin", L("즐겨찾기 전환", "Toggle Favorite"), #selector(toggleFavorite(_:)))
         optionsMenu.delegate = self
-        toolbar.addArrangedSubview(button("slider.horizontal.3", L("보기 옵션", "View Options"), #selector(showOptions(_:))))
+        configure(optionsButton, "slider.horizontal.3", L("보기 옵션", "View Options"), #selector(showOptions(_:)))
+        toolbarViews = [.back: backButton, .forward: forwardButton, .up: upButton, .refresh: refreshButton,
+                        .path: pathField, .hidden: hiddenButton, .viewMode: viewModeButton,
+                        .favorite: favoriteButton, .options: optionsButton]
+        for (item, view) in toolbarViews { view.identifier = NSUserInterfaceItemIdentifier("toolbar." + item.rawValue) }
+        toolbarOverflow.addItem(withTitle: ""); toolbarOverflow.lastItem?.image = NSImage(systemSymbolName: "ellipsis.circle", accessibilityDescription: L("추가 툴바 항목", "More Toolbar Items"))
+        toolbarOverflow.setAccessibilityLabel(L("추가 툴바 항목", "More Toolbar Items")); toolbarOverflow.isHidden = true
+        rebuildToolbar(force: true)
         main.addArrangedSubview(toolbar)
         let divider = NSBox(); divider.boxType = .separator; main.addArrangedSubview(divider)
         main.addArrangedSubview(content)
@@ -385,6 +394,43 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         button.target = self; button.action = #selector(changeViewMode(_:))
         button.toolTip = L("보기 모드", "View Mode")
         button.setAccessibilityLabel(L("보기 모드", "View Mode"))
+    }
+    private func rebuildToolbar(force: Bool = false) {
+        let compact = toolbar.bounds.width > 0 && toolbar.bounds.width < 760
+        guard force || toolbarCompact != compact else { return }
+        toolbarCompact = compact
+        for view in toolbar.arrangedSubviews { toolbar.removeArrangedSubview(view); view.removeFromSuperview() }
+        let compactOverflow: Set<BrowserToolbarItem> = [.hidden, .favorite, .options]
+        let visible = preferences.toolbarOrder.filter { !preferences.hiddenToolbarItems.contains($0) }
+        for item in visible where !(compact && compactOverflow.contains(item)) {
+            if let view = toolbarViews[item] { toolbar.addArrangedSubview(view) }
+        }
+        let overflowItems = compact ? visible.filter { compactOverflow.contains($0) } : []
+        configureToolbarOverflow(overflowItems)
+        if !overflowItems.isEmpty { toolbar.addArrangedSubview(toolbarOverflow) }
+    }
+    private func configureToolbarOverflow(_ items: [BrowserToolbarItem]) {
+        toolbarOverflow.removeAllItems(); toolbarOverflow.pullsDown = true
+        toolbarOverflow.addItem(withTitle: ""); toolbarOverflow.lastItem?.image = NSImage(systemSymbolName: "ellipsis.circle", accessibilityDescription: nil)
+        for item in items {
+            let details = toolbarDetails(item)
+            let menuItem = toolbarOverflow.menu?.addItem(withTitle: details.title, action: details.action, keyEquivalent: "")
+            menuItem?.target = self
+        }
+        toolbarOverflow.isHidden = items.isEmpty
+    }
+    private func toolbarDetails(_ item: BrowserToolbarItem) -> (title: String, action: Selector) {
+        switch item {
+        case .back: return (L("뒤로", "Back"), #selector(goBack(_:)))
+        case .forward: return (L("앞으로", "Forward"), #selector(goForward(_:)))
+        case .up: return (L("상위 폴더", "Enclosing Folder"), #selector(goUp(_:)))
+        case .refresh: return (L("새로고침", "Refresh"), #selector(refreshOrStop(_:)))
+        case .path: return (L("경로 입력", "Go to Path"), #selector(focusPath(_:)))
+        case .hidden: return (L("숨김 항목 전환", "Toggle Hidden Files"), #selector(toggleHidden(_:)))
+        case .viewMode: return (L("보기 모드", "View Mode"), #selector(openViewOptions(_:)))
+        case .favorite: return (L("즐겨찾기 전환", "Toggle Favorite"), #selector(toggleFavorite(_:)))
+        case .options: return (L("보기 옵션", "View Options"), #selector(openViewOptions(_:)))
+        }
     }
     private func button(_ symbol: String, _ title: String, _ action: Selector) -> NSButton {
         let b = NSButton(); configure(b, symbol, title, action); return b
@@ -1282,6 +1328,7 @@ extension BrowserWindow {
     }
     private func preferencesChanged() {
         buildSidebar()
+        rebuildToolbar(force: true)
         secondaryPane?.applyPreferences()
         if model.location == nil { buildHome() }
         if model.showHidden != preferences.showHidden {
@@ -1325,11 +1372,18 @@ extension BrowserWindow {
             item.target = self; item.representedObject = size.rawValue
             item.state = preferences.viewSize == size ? .on : .off
         }
+        menu.addItem(.separator())
+        let toolbarItem = menu.addItem(withTitle: L("툴바 사용자 지정…", "Customize Toolbar…"), action: #selector(showToolbarSettings(_:)), keyEquivalent: "")
+        toolbarItem.target = self
     }
     @objc private func toggleExtensions(_ sender: Any?) { preferences.setShowExtensions(!preferences.showExtensions) }
     @objc private func setViewSize(_ sender: NSMenuItem) {
         guard let raw = sender.representedObject as? String, let size = BrowserViewSize(rawValue: raw) else { return }
         preferences.setViewSize(size)
+    }
+    @objc private func showToolbarSettings(_ sender: Any?) {
+        if toolbarSettingsWindow == nil { toolbarSettingsWindow = ToolbarSettingsWindow(preferences: preferences) }
+        toolbarSettingsWindow?.present()
     }
     @objc private func toggleHomeFavorites(_ sender: Any?) { preferences.toggleSection(.favorites) }
     @objc private func toggleHomeVolumes(_ sender: Any?) { preferences.toggleSection(.volumes) }
@@ -1562,6 +1616,24 @@ extension BrowserWindow {
                 try capture("keyboard-shortcuts", view: delegate.qaShortcutContentView)
                 delegate.qaShortcutContentView?.window?.close(); window.makeKeyAndOrderFront(nil)
             } else { checks["shortcutSettingsWindow"] = false }
+            controller.showToolbarSettings(nil); try await Task.sleep(for: .milliseconds(50))
+            checks["toolbarSettingsWindow"] = controller.toolbarSettingsWindow?.window?.isVisible == true
+                && controller.toolbarSettingsWindow?.qaRowCount == BrowserToolbarItem.allCases.count
+            try capture("toolbar-settings", view: controller.toolbarSettingsWindow?.window?.contentView)
+            controller.toolbarSettingsWindow?.close(); window.makeKeyAndOrderFront(nil)
+            controller.rebuildToolbar(force: true)
+            let overflowTitles = controller.toolbarOverflow.itemArray.map(\.title)
+            checks["toolbarCompactOverflow"] = controller.toolbarCompact == true
+                && overflowTitles.contains(L("숨김 항목 전환", "Toggle Hidden Files"))
+                && overflowTitles.contains(L("즐겨찾기 전환", "Toggle Favorite"))
+            preferences.toggleToolbarItem(.favorite)
+            checks["toolbarVisibilityPreference"] = preferences.hiddenToolbarItems.contains(.favorite)
+                && !controller.toolbarOverflow.itemArray.map(\.title).contains(L("즐겨찾기 전환", "Toggle Favorite"))
+            preferences.toggleToolbarItem(.favorite)
+            let optionsIndex = preferences.toolbarOrder.firstIndex(of: .options)!
+            preferences.moveToolbarItem(.options, by: -1)
+            checks["toolbarOrderPreference"] = preferences.toolbarOrder.firstIndex(of: .options) == optionsIndex - 1
+            preferences.moveToolbarItem(.options, by: 1)
             checks["pathFieldUsableWidth"] = controller.pathField.frame.width >= 160
             controller.focusPath(nil)
             checks["pathFocus"] = controller.pathField.currentEditor() != nil
