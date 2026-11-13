@@ -242,6 +242,11 @@ private func fixture() throws -> URL {
         FileItem(url: URL(fileURLWithPath: "/z"), name: "z", isDirectory: true)]
     #expect(SortOrder().sorted(items).map(\.name) == ["z", "file2", "file10"])
     #expect(SortOrder(ascending: false).sorted(items).map(\.name) == ["z", "file10", "file2"])
+    #expect(SortOrder(directoryPlacement: .filesFirst).sorted(items).map(\.name) == ["file2", "file10", "z"])
+    #expect(SortOrder(foldersFirst: false).sorted(items).map(\.name) == ["file2", "file10", "z"])
+    let legacy = Data(#"{"field":"name","ascending":true,"foldersFirst":false}"#.utf8)
+    let decoded = try? JSONDecoder().decode(FilesCore.SortOrder.self, from: legacy)
+    #expect(decoded?.directoryPlacement == SortDirectoryPlacement.mixed)
 }
 
 private struct DelayedLoader: DirectoryLoading {

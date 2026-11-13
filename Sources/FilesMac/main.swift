@@ -231,6 +231,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         let palette = go.addItem(withTitle: L("명령 팔레트…", "Command Palette…"), action: #selector(BrowserWindow.showCommandPalette(_:)), keyEquivalent: "p")
         palette.keyEquivalentModifierMask = [.command, .shift]
         go.addItem(withTitle: L("보기 옵션…", "View Options…"), action: #selector(BrowserWindow.openViewOptions(_:)), keyEquivalent: "")
+        let sortItem = go.addItem(withTitle: L("정렬", "Sort"), action: nil, keyEquivalent: "")
+        let sort = NSMenu(title: sortItem.title); sortItem.submenu = sort
+        for (title, action) in [
+            (L("이름", "Name"), #selector(BrowserWindow.sortByName(_:))),
+            (L("수정일", "Date Modified"), #selector(BrowserWindow.sortByModified(_:))),
+            (L("크기", "Size"), #selector(BrowserWindow.sortBySize(_:))),
+            (L("종류", "Kind"), #selector(BrowserWindow.sortByKind(_:)))
+        ] { sort.addItem(withTitle: title, action: action, keyEquivalent: "") }
+        sort.addItem(.separator())
+        for (title, action) in [
+            (L("오름차순", "Ascending"), #selector(BrowserWindow.sortAscending(_:))),
+            (L("내림차순", "Descending"), #selector(BrowserWindow.sortDescending(_:))),
+            (L("정렬 방향 전환", "Toggle Sort Direction"), #selector(BrowserWindow.toggleSortDirection(_:)))
+        ] { sort.addItem(withTitle: title, action: action, keyEquivalent: "") }
+        sort.addItem(.separator())
+        for (title, action) in [
+            (L("폴더 우선", "Folders First"), #selector(BrowserWindow.sortFoldersFirst(_:))),
+            (L("파일 우선", "Files First"), #selector(BrowserWindow.sortFilesFirst(_:))),
+            (L("파일과 폴더 함께", "Files and Folders Together"), #selector(BrowserWindow.sortMixed(_:)))
+        ] { sort.addItem(withTitle: title, action: action, keyEquivalent: "") }
         go.addItem(.separator())
         let splitVertical = go.addItem(withTitle: L("좌우 분할", "Split Vertically"), action: #selector(BrowserWindow.splitVertically(_:)), keyEquivalent: "d")
         splitVertical.keyEquivalentModifierMask = [.command, .option]

@@ -30,16 +30,41 @@ public struct FileItem: Identifiable, Sendable, Equatable {
 }
 
 public enum SortField: String, CaseIterable, Codable, Sendable { case name, modified, kind, size }
+public enum SortDirectoryPlacement: String, CaseIterable, Codable, Sendable { case foldersFirst, filesFirst, mixed }
 public struct SortOrder: Codable, Equatable, Sendable {
     public var field: SortField
     public var ascending: Bool
-    public var foldersFirst: Bool
-    public init(field: SortField = .name, ascending: Bool = true, foldersFirst: Bool = true) {
-        self.field = field; self.ascending = ascending; self.foldersFirst = foldersFirst
+    public var directoryPlacement: SortDirectoryPlacement
+    public var foldersFirst: Bool {
+        get { directoryPlacement == .foldersFirst }
+        set { directoryPlacement = newValue ? .foldersFirst : .mixed }
+    }
+    public init(field: SortField = .name, ascending: Bool = true, foldersFirst: Bool = true,
+                directoryPlacement: SortDirectoryPlacement? = nil) {
+        self.field = field; self.ascending = ascending
+        self.directoryPlacement = directoryPlacement ?? (foldersFirst ? .foldersFirst : .mixed)
+    }
+    private enum CodingKeys: String, CodingKey { case field, ascending, directoryPlacement, foldersFirst }
+    public init(from decoder: any Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        field = try values.decodeIfPresent(SortField.self, forKey: .field) ?? .name
+        ascending = try values.decodeIfPresent(Bool.self, forKey: .ascending) ?? true
+        if let placement = try values.decodeIfPresent(SortDirectoryPlacement.self, forKey: .directoryPlacement) {
+            directoryPlacement = placement
+        } else {
+            directoryPlacement = (try values.decodeIfPresent(Bool.self, forKey: .foldersFirst) ?? true) ? .foldersFirst : .mixed
+        }
+    }
+    public func encode(to encoder: any Encoder) throws {
+        var values = encoder.container(keyedBy: CodingKeys.self)
+        try values.encode(field, forKey: .field); try values.encode(ascending, forKey: .ascending)
+        try values.encode(directoryPlacement, forKey: .directoryPlacement)
     }
     public func sorted(_ items: [FileItem]) -> [FileItem] {
         items.sorted { a, b in
-            if foldersFirst && a.isBrowsable != b.isBrowsable { return a.isBrowsable }
+            if directoryPlacement != .mixed && a.isBrowsable != b.isBrowsable {
+                return directoryPlacement == .foldersFirst ? a.isBrowsable : !a.isBrowsable
+            }
             let comparison: ComparisonResult
             switch field {
             case .name: comparison = a.name.localizedStandardCompare(b.name)

@@ -61,6 +61,16 @@ final class SecondaryBrowserPane: NSView, NSTableViewDataSource, NSTableViewDele
     func goUp() { activate(); if let location = model.location { navigate(location.deletingLastPathComponent()) } }
     func refresh() { activate(); savePosition(); model.reload() }
     func focusPath() { activate(); window?.makeFirstResponder(pathField); pathField.selectText(nil) }
+    func updateSort(field: SortField? = nil, ascending: Bool? = nil,
+                    placement: SortDirectoryPlacement? = nil, toggleDirection: Bool = false) {
+        activate(); savePosition()
+        var order = model.sortOrder
+        if let field { order.field = field }
+        if let ascending { order.ascending = ascending }
+        if let placement { order.directoryPlacement = placement }
+        if toggleDirection { order.ascending.toggle() }
+        model.sort(order)
+    }
     func clearSelection() {
         activate()
         switch renderedViewMode {
@@ -299,7 +309,7 @@ final class SecondaryBrowserPane: NSView, NSTableViewDataSource, NSTableViewDele
     func tableView(_ tableView: NSTableView, sortDescriptorsDidChange oldDescriptors: [NSSortDescriptor]) {
         guard let descriptor = tableView.sortDescriptors.first,
               let field = SortField(rawValue: descriptor.key ?? "") else { return }
-        savePosition(); model.sort(SortOrder(field: field, ascending: descriptor.ascending))
+        savePosition(); var order = model.sortOrder; order.field = field; order.ascending = descriptor.ascending; model.sort(order)
     }
     private func makeCell(_ id: NSUserInterfaceItemIdentifier) -> NSTableCellView {
         let cell = NSTableCellView(); cell.identifier = id

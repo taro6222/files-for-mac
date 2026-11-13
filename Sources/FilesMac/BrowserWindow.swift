@@ -823,7 +823,7 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
     }
     func tableView(_ tableView: NSTableView, sortDescriptorsDidChange oldDescriptors: [NSSortDescriptor]) {
         guard let descriptor = tableView.sortDescriptors.first, let field = SortField(rawValue: descriptor.key ?? "") else { return }
-        savePosition(); model.sort(SortOrder(field: field, ascending: descriptor.ascending))
+        savePosition(); var order = model.sortOrder; order.field = field; order.ascending = descriptor.ascending; model.sort(order)
     }
     @objc func openLocation(_ sender: LocationButton) { navigate(sender.url) }
     @objc func goBack(_ sender: Any?) { if secondaryActive { secondaryPane?.goBack() } else { window?.makeFirstResponder(nil); savePosition(); model.back(); applyFolderViewPreference() } }
@@ -859,6 +859,29 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
             table.selectRowIndexes(inverted, byExtendingSelection: false)
         }
     }
+    private func updateSort(field: SortField? = nil, ascending: Bool? = nil,
+                            placement: SortDirectoryPlacement? = nil, toggleDirection: Bool = false) {
+        if secondaryActive {
+            secondaryPane?.updateSort(field: field, ascending: ascending, placement: placement, toggleDirection: toggleDirection)
+            return
+        }
+        savePosition(); var order = model.sortOrder
+        if let field { order.field = field }
+        if let ascending { order.ascending = ascending }
+        if let placement { order.directoryPlacement = placement }
+        if toggleDirection { order.ascending.toggle() }
+        model.sort(order)
+    }
+    @objc func sortByName(_ sender: Any?) { updateSort(field: .name) }
+    @objc func sortByModified(_ sender: Any?) { updateSort(field: .modified) }
+    @objc func sortBySize(_ sender: Any?) { updateSort(field: .size) }
+    @objc func sortByKind(_ sender: Any?) { updateSort(field: .kind) }
+    @objc func sortAscending(_ sender: Any?) { updateSort(ascending: true) }
+    @objc func sortDescending(_ sender: Any?) { updateSort(ascending: false) }
+    @objc func toggleSortDirection(_ sender: Any?) { updateSort(toggleDirection: true) }
+    @objc func sortFoldersFirst(_ sender: Any?) { updateSort(placement: .foldersFirst) }
+    @objc func sortFilesFirst(_ sender: Any?) { updateSort(placement: .filesFirst) }
+    @objc func sortMixed(_ sender: Any?) { updateSort(placement: .mixed) }
     @objc func showSearch(_ sender: Any?) {
         guard let root = activeModel.location else { return }
         if searchWindow == nil {
@@ -2131,6 +2154,22 @@ extension BrowserWindow {
             checks["selectionCommandsCatalog"] = [#selector(clearSelection(_:)), #selector(invertSelection(_:))].allSatisfy { action in
                 paletteEntries.contains { $0.item.action == action }
             }
+            controller.sortFilesFirst(nil)
+            let filesFirst = controller.model.sortOrder.directoryPlacement == .filesFirst
+                && controller.model.items.first?.isBrowsable == false
+            controller.sortFoldersFirst(nil)
+            let foldersFirst = controller.model.sortOrder.directoryPlacement == .foldersFirst
+                && controller.model.items.first?.isBrowsable == true
+            controller.sortMixed(nil); controller.sortBySize(nil); controller.sortDescending(nil)
+            let descendingSize = controller.model.sortOrder.directoryPlacement == .mixed
+                && controller.model.sortOrder.field == .size && !controller.model.sortOrder.ascending
+            controller.toggleSortDirection(nil)
+            checks["sortCommands"] = filesFirst && foldersFirst && descendingSize && controller.model.sortOrder.ascending
+            checks["sortCommandsCatalog"] = [#selector(sortByName(_:)), #selector(sortByModified(_:)), #selector(sortBySize(_:)),
+                #selector(sortByKind(_:)), #selector(sortAscending(_:)), #selector(sortDescending(_:)),
+                #selector(toggleSortDirection(_:)), #selector(sortFoldersFirst(_:)), #selector(sortFilesFirst(_:)),
+                #selector(sortMixed(_:))].allSatisfy { action in paletteEntries.contains { $0.item.action == action } }
+            controller.sortByName(nil); controller.sortFoldersFirst(nil)
             try capture("files-top")
             controller.table.selectRowIndexes(IndexSet(integer: 9_999), byExtendingSelection: false)
             let scrollStart = ContinuousClock.now
