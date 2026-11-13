@@ -14,7 +14,7 @@ public enum RemoteProtocol: String, Codable, CaseIterable, Sendable {
 }
 
 public enum RemoteConnectionValidationError: Error, Equatable, Sendable {
-    case emptyName, invalidHost, invalidPort, invalidRootPath, embeddedCredential, unsupportedProtocol, missingShare
+    case emptyName, invalidHost, invalidPort, invalidRootPath, embeddedCredential, unsupportedProtocol, missingShare, missingCredential
 }
 
 public struct RemoteConnectionProfile: Codable, Equatable, Identifiable, Sendable {

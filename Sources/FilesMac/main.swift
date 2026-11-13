@@ -236,6 +236,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     var qaSFTPIdentityEnabled: Bool { remoteConnectionsWindow?.qaSFTPIdentityEnabled() == true }
     var qaSFTPConnectDisabled: Bool { remoteConnectionsWindow?.qaSFTPConnectDisabledWithoutTrustAndIdentity == true }
     var qaSFTPDownloadDisabled: Bool { remoteConnectionsWindow?.qaSFTPDownloadDisabledWithoutTrustAndIdentity == true }
+    var qaFTPConnectDisabled: Bool { remoteConnectionsWindow?.qaFTPConnectDisabledWithoutCredential == true }
     func qaCreateRemoteProfile() { remoteConnectionsWindow?.qaCreateProfile() }
 #endif
 }

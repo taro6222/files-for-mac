@@ -10,11 +10,11 @@ final class RemoteConnectionsWindow: NSWindowController, NSTableViewDataSource, 
     private let hostKeyScanner = SFTPHostKeyScanner()
     private var profiles: [RemoteConnectionProfile] = []
     private var pendingIdentityBookmark: Data?
-    private var sftpTransferTask: Task<Void, Never>?
+    private var remoteTransferTask: Task<Void, Never>?
     private var remoteBrowserWindow: RemoteBrowserWindow?
     private let table = NSTableView(), name = NSTextField(), host = NSTextField(), port = NSTextField()
     private let rootPath = NSTextField(), username = NSTextField(), password = NSSecureTextField()
-    private let protocolPopup = NSPopUpButton(), saveButton = NSButton(), deleteButton = NSButton(), connectButton = NSButton(), trustButton = NSButton(), identityButton = NSButton(), sftpConnectButton = NSButton(), sftpDownloadButton = NSButton()
+    private let protocolPopup = NSPopUpButton(), saveButton = NSButton(), deleteButton = NSButton(), connectButton = NSButton(), trustButton = NSButton(), identityButton = NSButton(), sftpConnectButton = NSButton(), sftpDownloadButton = NSButton(), ftpConnectButton = NSButton()
 
     init(profileStore: RemoteProfileStore, credentialStore: KeychainRemoteCredentialStore = .init()) {
         self.profileStore = profileStore; self.credentialStore = credentialStore
@@ -58,6 +58,9 @@ final class RemoteConnectionsWindow: NSWindowController, NSTableViewDataSource, 
         sftpConnectButton.title = L("SFTP 목록 연결", "Connect SFTP Listing"); sftpConnectButton.target = self; sftpConnectButton.action = #selector(connectSFTP(_:)); sftpControls.addArrangedSubview(sftpConnectButton)
         sftpDownloadButton.title = L("SFTP 다운로드…", "SFTP Download…"); sftpDownloadButton.target = self; sftpDownloadButton.action = #selector(downloadSFTP(_:)); sftpControls.addArrangedSubview(sftpDownloadButton)
         form.addArrangedSubview(sftpControls)
+        let ftpControls = NSStackView(); ftpControls.orientation = .horizontal; ftpControls.addArrangedSubview(NSView())
+        ftpConnectButton.title = L("FTP/FTPS 탐색", "Browse FTP/FTPS"); ftpConnectButton.target = self; ftpConnectButton.action = #selector(connectFTP(_:)); ftpControls.addArrangedSubview(ftpConnectButton)
+        form.addArrangedSubview(ftpControls)
         let controls = NSStackView(); controls.orientation = .horizontal; controls.addArrangedSubview(NSView())
         connectButton.title = L("Finder에서 연결", "Connect in Finder"); connectButton.target = self; connectButton.action = #selector(connectSMB(_:)); controls.addArrangedSubview(connectButton)
         saveButton.title = L("저장", "Save"); saveButton.keyEquivalent = "\r"; saveButton.target = self; saveButton.action = #selector(saveProfile(_:)); controls.addArrangedSubview(saveButton)
@@ -86,11 +89,12 @@ final class RemoteConnectionsWindow: NSWindowController, NSTableViewDataSource, 
     }
     private func clearForm() { name.stringValue = ""; protocolPopup.selectItem(at: 0); host.stringValue = ""; port.stringValue = String(RemoteProtocol.ftp.defaultPort); rootPath.stringValue = "/"; username.stringValue = ""; password.stringValue = ""; pendingIdentityBookmark = nil; updateIdentityTitle() }
     private func updateControls() {
-        let transferRunning = sftpTransferTask != nil
+        let transferRunning = remoteTransferTask != nil
         deleteButton.isEnabled = selected != nil; connectButton.isEnabled = selected?.remoteProtocol == .smb
         trustButton.isEnabled = selected?.remoteProtocol == .sftp && !transferRunning; identityButton.isEnabled = selectedProtocol == .sftp && !transferRunning
         let sftpReady = selected.flatMap { try? SFTPConnectionPreparation().prepare(profile: $0, knownHostsFile: hostTrustStore.fileURL) } != nil
         sftpConnectButton.isEnabled = sftpReady && !transferRunning; sftpDownloadButton.isEnabled = sftpReady && !transferRunning
+        ftpConnectButton.isEnabled = selected.map { ($0.remoteProtocol == .ftp || $0.remoteProtocol == .ftps) && $0.credentialID != nil } == true && !transferRunning
     }
     @objc private func addProfile(_ sender: Any?) { table.deselectAll(nil); clearForm(); updateControls(); window?.makeFirstResponder(name) }
     @objc private func protocolChanged(_ sender: Any?) { port.stringValue = String(selectedProtocol.defaultPort); updateControls() }
@@ -171,6 +175,27 @@ final class RemoteConnectionsWindow: NSWindowController, NSTableViewDataSource, 
             remoteBrowserWindow = browser; browser.present()
         } catch { showError(error); updateControls() }
     }
+    @objc private func connectFTP(_ sender: Any?) {
+        guard let profile = selected, profile.remoteProtocol == .ftp || profile.remoteProtocol == .ftps else { return }
+        do {
+            _ = try credential(for: profile)
+            let restoredPath = (try? browserSessionStore.path(for: profile.id)) ?? profile.rootPath
+            let model = try RemoteBrowserModel(path: restoredPath) { [credentialStore] path in
+                guard let id = profile.credentialID, let credential = try credentialStore.load(id: id) else { throw RemoteConnectionValidationError.missingCredential }
+                return try await FTPRemoteProvider().list(profile: profile, credential: credential, remotePath: path)
+            }
+            let browser = RemoteBrowserWindow(title: "\(profile.name) — \(profile.remoteProtocol.rawValue.uppercased())", model: model,
+                frameAutosaveName: "FilesMac.RemoteBrowser.\(profile.id.uuidString)",
+                onPathChange: { [browserSessionStore] path in try? browserSessionStore.save(path: path, for: profile.id) }) { [weak self] entry, parent in
+                guard let self else { return }; self.chooseFTPDownloadDestination(profile: profile, remotePath: entry.remotePath, parent: parent)
+            }
+            remoteBrowserWindow = browser; browser.present()
+        } catch { showError(error); updateControls() }
+    }
+    private func credential(for profile: RemoteConnectionProfile) throws -> RemoteCredential {
+        guard let id = profile.credentialID, let credential = try credentialStore.load(id: id) else { throw RemoteConnectionValidationError.missingCredential }
+        return credential
+    }
     @objc private func downloadSFTP(_ sender: Any?) {
         guard let profile = selected, let window else { return }
         let pathField = NSTextField(string: profile.rootPath == "/" ? "/" : profile.rootPath + "/")
@@ -197,11 +222,11 @@ final class RemoteConnectionsWindow: NSWindowController, NSTableViewDataSource, 
         }
     }
     private func startSFTPDownload(profile: RemoteConnectionProfile, remotePath: String, destination: URL, parent: NSWindow) {
-        guard sftpTransferTask == nil else { return }; let window = parent
+        guard remoteTransferTask == nil else { return }; let window = parent
         let progress = NSAlert(); progress.messageText = L("SFTP 다운로드 중", "Downloading from SFTP")
         progress.informativeText = (remotePath as NSString).lastPathComponent
-        progress.addButton(withTitle: L("취소", "Cancel")); progress.beginSheetModal(for: window) { [weak self] _ in self?.sftpTransferTask?.cancel() }
-        sftpTransferTask = Task { [weak self] in
+        progress.addButton(withTitle: L("취소", "Cancel")); progress.beginSheetModal(for: window) { [weak self] _ in self?.remoteTransferTask?.cancel() }
+        remoteTransferTask = Task { [weak self] in
             guard let self else { return }
             do {
                 let prepared = try SFTPConnectionPreparation().prepare(profile: profile, knownHostsFile: hostTrustStore.fileURL)
@@ -209,17 +234,44 @@ final class RemoteConnectionsWindow: NSWindowController, NSTableViewDataSource, 
                 defer { if access { prepared.key.identityFile.stopAccessingSecurityScopedResource() } }
                 guard access else { throw SFTPBackendError.invalidIdentity }
                 _ = try await SFTPRemoteProvider().download(profile: profile, key: prepared.key, remotePath: remotePath, destination: destination)
-                try Task.checkCancellation(); sftpTransferTask = nil; dismiss(progress, from: window); updateControls()
+                try Task.checkCancellation(); remoteTransferTask = nil; dismiss(progress, from: window); updateControls()
                 let done = NSAlert(); done.messageText = L("SFTP 다운로드 완료", "SFTP Download Complete"); done.informativeText = destination.path
                 done.beginSheetModal(for: window) { _ in }
             } catch is CancellationError {
-                sftpTransferTask = nil; dismiss(progress, from: window); updateControls()
+                remoteTransferTask = nil; dismiss(progress, from: window); updateControls()
                 let cancelled = NSAlert(); cancelled.messageText = L("SFTP 다운로드 취소됨", "SFTP Download Cancelled")
                 cancelled.informativeText = L("완료되지 않은 staging 파일은 정리되었습니다.", "The incomplete staging file was removed.")
                 cancelled.beginSheetModal(for: window) { _ in }
             } catch {
-                sftpTransferTask = nil; dismiss(progress, from: window); updateControls(); showError(error)
+                remoteTransferTask = nil; dismiss(progress, from: window); updateControls(); showError(error)
             }
+        }
+        updateControls()
+    }
+    private func chooseFTPDownloadDestination(profile: RemoteConnectionProfile, remotePath: String, parent: NSWindow?) {
+        guard let parent else { return }
+        let save = NSSavePanel(); save.nameFieldStringValue = (remotePath as NSString).lastPathComponent
+        save.message = L("FTP 다운로드를 저장할 위치를 선택하세요.", "Choose where to save the FTP download.")
+        save.beginSheetModal(for: parent) { [weak self] response in
+            guard response == .OK, let self, let destination = save.url else { return }
+            self.startFTPDownload(profile: profile, remotePath: remotePath, destination: destination, parent: parent)
+        }
+    }
+    private func startFTPDownload(profile: RemoteConnectionProfile, remotePath: String, destination: URL, parent: NSWindow) {
+        guard remoteTransferTask == nil else { return }
+        let progress = NSAlert(); progress.messageText = L("FTP 다운로드 중", "Downloading from FTP"); progress.informativeText = (remotePath as NSString).lastPathComponent
+        progress.addButton(withTitle: L("취소", "Cancel")); progress.beginSheetModal(for: parent) { [weak self] _ in self?.remoteTransferTask?.cancel() }
+        remoteTransferTask = Task { [weak self] in
+            guard let self else { return }
+            do {
+                let credential = try credential(for: profile)
+                _ = try await FTPRemoteProvider().download(profile: profile, credential: credential, remotePath: remotePath, destination: destination)
+                try Task.checkCancellation(); remoteTransferTask = nil; dismiss(progress, from: parent); updateControls()
+                let done = NSAlert(); done.messageText = L("FTP 다운로드 완료", "FTP Download Complete"); done.informativeText = destination.path; done.beginSheetModal(for: parent) { _ in }
+            } catch is CancellationError {
+                remoteTransferTask = nil; dismiss(progress, from: parent); updateControls()
+                let cancelled = NSAlert(); cancelled.messageText = L("FTP 다운로드 취소됨", "FTP Download Cancelled"); cancelled.informativeText = L("완료되지 않은 staging 파일은 정리되었습니다.", "The incomplete staging file was removed."); cancelled.beginSheetModal(for: parent) { _ in }
+            } catch { remoteTransferTask = nil; dismiss(progress, from: parent); updateControls(); showError(error) }
         }
         updateControls()
     }
@@ -262,6 +314,15 @@ final class RemoteConnectionsWindow: NSWindowController, NSTableViewDataSource, 
     var qaSFTPDownloadDisabledWithoutTrustAndIdentity: Bool {
         guard let sftp = profiles.firstIndex(where: { $0.remoteProtocol == .sftp }) else { return false }
         table.selectRowIndexes([sftp], byExtendingSelection: false); populate(profiles[sftp]); updateControls(); let disabled = !sftpDownloadButton.isEnabled
+        if let smb = profiles.firstIndex(where: { $0.remoteProtocol == .smb }) { table.selectRowIndexes([smb], byExtendingSelection: false); populate(profiles[smb]); updateControls() }
+        return disabled
+    }
+    var qaFTPConnectDisabledWithoutCredential: Bool {
+        let ftp = try? RemoteConnectionProfile(name: "QA FTP Missing Credential", remoteProtocol: .ftp, host: "qa.example.com")
+        guard let ftp else { return false }; profiles.append(ftp); table.reloadData()
+        guard let index = profiles.firstIndex(where: { $0.id == ftp.id }) else { return false }
+        table.selectRowIndexes([index], byExtendingSelection: false); populate(ftp); updateControls(); let disabled = !ftpConnectButton.isEnabled
+        profiles.removeAll { $0.id == ftp.id }; table.reloadData()
         if let smb = profiles.firstIndex(where: { $0.remoteProtocol == .smb }) { table.selectRowIndexes([smb], byExtendingSelection: false); populate(profiles[smb]); updateControls() }
         return disabled
     }

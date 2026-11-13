@@ -1829,6 +1829,7 @@ extension BrowserWindow {
                 checks["sftpIdentityCommand"] = delegate.qaSFTPIdentityEnabled
                 checks["sftpConnectionGate"] = delegate.qaSFTPConnectDisabled
                 checks["sftpDownloadGate"] = delegate.qaSFTPDownloadDisabled
+                checks["ftpCredentialGate"] = delegate.qaFTPConnectDisabled
                 try capture("remote-connections", view: delegate.qaRemoteConnectionsContentView)
                 delegate.qaRemoteConnectionsContentView?.window?.close(); window.makeKeyAndOrderFront(nil)
                 let remoteModel = try RemoteBrowserModel(path: "/team") { path in
