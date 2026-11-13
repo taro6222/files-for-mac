@@ -12,5 +12,6 @@
 | 휴지통 전체 복원 | 미확정 | 공개 API 실험 대기 |
 | 클라우드 상태·명령 | CloudStorage/iCloud 위치를 로컬 탐색; ubiquitous resource value가 있는 항목만 상태 표시하고 공개 FileManager API로 지금 다운로드·공간 비우기 제공. 일반 File Provider 상태는 unknown, 영구 오프라인 유지 명령은 미노출 | fixture 위치·unknown·비지원 명령 무변경·UI 4조합 통과; 실제 공급자별 수용 검증 대기 |
 | 원격 연결 | FTP/FTPS는 curl, SFTP는 approved trust+security-scoped identity+username gate 후 OpenSSH 연결, SMB는 Finder | 원격 경로 전용 탐색 모델과 OpenSSH long-listing 디렉터리 metadata 구현; rename overwrite 서버는 업로드 차단 유지 |
+| Git | 시스템 `/usr/bin/git`에 상태·clone·fetch·FF-only pull·비강제 push만 위임한다. 자격 증명은 URL에 저장하지 않고 시스템 Git 설정/credential helper/SSH agent에 위임한다. stage·commit·submodule·LFS·hook 실행은 앱 지원 범위 밖이며 UI에 명시한다. | local bare remote·divergence 보존·취소·staging 정리·상태 열·UI 4조합 통과; 인증 HTTPS/SSH 실환경 대기 |
 | 압축 backend | macOS 시스템 libarchive 직접 연결; ZIP/7z 생성·탐색·안전 추출, RAR 탐색·안전 추출; 암호·분할·수정은 미지원 | ZIP/7z Unicode 생성·재열기·추출, 공식 7z/RAR fixture, 앱 UI 4조합 통과 |
 | Intel/최소 OS | 배포 타깃만 설정 | 실기기 실행 대기 |

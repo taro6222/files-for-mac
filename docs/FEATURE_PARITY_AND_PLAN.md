@@ -52,7 +52,7 @@
 | F24 | 클라우드 | 노출된 위치·상태·다운로드 | A/V | M0/M5 | 공급자별 지원표·오프라인 | S2 |
 | F25 | 드라이브 | 공간·장착·해제·디스크 도구 | A | M4/M6 | 쓰기 중 해제·재연결 | S3, 일부 추가 설계 |
 | F26 | 원격 연결 | FTP/FTPS, 추가 SFTP, SMB 위치 | A/V | M5 | 인증·전송·끊김·취소 | S8; 지원 세부 M0 대조 |
-| F27 | Git | 상태·열·브랜치·원격·clone | E | M5 | local bare remote 통합 시험 | S7 |
+| F27 | Git | 상태·열·브랜치·원격·clone; stage/commit·submodule·LFS·hook 제외를 UI에 명시 | E | M5 | local bare remote 통합 통과, 인증 HTTPS/SSH 대기 | S7 |
 | F28 | 명령 팔레트 | 모든 command 검색·문맥·실행 | E | M3/M6 | 메뉴와 같은 동작·활성 조건 | S3 |
 | F29 | 단축키 | 재지정·충돌·복원 | A | M3 | IME·시스템 예약 키 충돌 검사 | S2 |
 | F30 | 툴바 | 버튼 표시·순서·overflow | E | M3 | 작은 창과 저장·복원 | S2 |

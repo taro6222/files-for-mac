@@ -12,6 +12,7 @@ final class GitWindow: NSWindowController, NSTableViewDataSource, NSTableViewDel
     private let repositoryLabel = NSTextField(labelWithString: "")
     private let branchLabel = NSTextField(labelWithString: "")
     private let stateLabel = NSTextField(labelWithString: "")
+    private let supportLabel = NSTextField(wrappingLabelWithString: "")
     private let table = NSTableView()
     private let refreshButton = NSButton(), fetchButton = NSButton(), pullButton = NSButton(), pushButton = NSButton(), stopButton = NSButton()
 
@@ -30,6 +31,12 @@ final class GitWindow: NSWindowController, NSTableViewDataSource, NSTableViewDel
         repositoryLabel.lineBreakMode = .byTruncatingMiddle; repositoryLabel.setAccessibilityLabel(L("Git 저장소 경로", "Git repository path")); root.addArrangedSubview(repositoryLabel)
         branchLabel.setAccessibilityLabel(L("Git 브랜치 상태", "Git branch status")); root.addArrangedSubview(branchLabel)
         stateLabel.textColor = .secondaryLabelColor; stateLabel.setAccessibilityLabel(L("Git 작업 상태", "Git operation status")); root.addArrangedSubview(stateLabel)
+        supportLabel.stringValue = L(
+            "지원 범위: 상태·Fetch·FF 전용 Pull·비강제 Push. 인증은 시스템 Git 설정을 사용하며 stage/commit, submodule, LFS, hook 실행은 지원하지 않습니다.",
+            "Supported: status, fetch, fast-forward-only pull, and non-force push. Authentication uses system Git configuration; stage/commit, submodules, LFS, and hook execution are not supported."
+        )
+        supportLabel.textColor = .secondaryLabelColor; supportLabel.font = .systemFont(ofSize: 11)
+        supportLabel.setAccessibilityLabel(L("Git 지원 범위", "Git support boundary")); root.addArrangedSubview(supportLabel)
         let statusColumn = NSTableColumn(identifier: .init("status")); statusColumn.title = L("상태", "Status"); statusColumn.width = 90
         let pathColumn = NSTableColumn(identifier: .init("path")); pathColumn.title = L("경로", "Path"); pathColumn.width = 560
         table.addTableColumn(statusColumn); table.addTableColumn(pathColumn); table.dataSource = self; table.delegate = self; table.usesAlternatingRowBackgroundColors = true
@@ -119,6 +126,7 @@ final class GitWindow: NSWindowController, NSTableViewDataSource, NSTableViewDel
     var qaLoaded: Bool { task == nil && snapshot != nil }
     var qaRowCount: Int { snapshot?.entries.count ?? 0 }
     var qaBranch: String? { snapshot?.branch }
-    var qaAccessibilityReady: Bool { table.accessibilityLabel() != nil && repositoryLabel.accessibilityLabel() != nil }
+    var qaSupportBoundaryVisible: Bool { !supportLabel.stringValue.isEmpty && supportLabel.superview != nil }
+    var qaAccessibilityReady: Bool { table.accessibilityLabel() != nil && repositoryLabel.accessibilityLabel() != nil && supportLabel.accessibilityLabel() != nil }
 #endif
 }

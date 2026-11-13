@@ -1914,6 +1914,7 @@ extension BrowserWindow {
                 while !gitPanel.qaLoaded && gitLoad.duration(to: .now) < .seconds(10) { try await Task.sleep(for: .milliseconds(10)) }
                 checks["gitWindow"] = gitPanel.window?.isVisible == true && gitPanel.qaLoaded && gitPanel.qaBranch != nil
                 checks["gitAccessibility"] = gitPanel.qaAccessibilityReady
+                checks["gitSupportBoundary"] = gitPanel.qaSupportBoundaryVisible
                 checks["gitMenuCommand"] = paletteEntries.contains { $0.item.action == #selector(AppDelegate.showGitStatus(_:)) }
                 try capture("git-status", view: gitPanel.window?.contentView); gitPanel.close(); window.makeKeyAndOrderFront(nil)
                 var clonedLocation: URL?
