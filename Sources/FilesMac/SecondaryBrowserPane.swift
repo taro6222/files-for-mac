@@ -12,6 +12,12 @@ final class SecondaryBrowserPane: NSView, NSTableViewDataSource, NSTableViewDele
     private let gridView = FileGridView()
     private let listView = FileListView()
     private let columnView = FileColumnView()
+    private let adaptivePolicy = AdaptiveViewPolicy()
+    private var adaptiveResolvedMode: BrowserViewMode = .details
+    private var adaptiveWidth: CGFloat = 0
+    private var renderedViewMode: BrowserViewMode {
+        model.viewMode == .adaptive ? adaptiveResolvedMode : model.viewMode
+    }
     private let status = NSTextField(labelWithString: "")
     private let hiddenButton = NSButton()
     private let viewModeButton = NSPopUpButton()
@@ -31,11 +37,18 @@ final class SecondaryBrowserPane: NSView, NSTableViewDataSource, NSTableViewDele
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
 
+    override func layout() {
+        super.layout()
+        guard model.viewMode == .adaptive, !model.isLoading, !rendering,
+              abs(bounds.width - adaptiveWidth) >= 1 else { return }
+        adaptiveWidth = bounds.width; render()
+    }
+
     func snapshot() -> TabSnapshot { savePosition(); return model.snapshot }
     var selectedItems: [FileItem] {
-        if model.viewMode == .grid { return gridView.selectedItems }
-        if model.viewMode == .list { return listView.selectedItems }
-        if model.viewMode == .columns { return columnView.selectedItems }
+        if renderedViewMode == .grid { return gridView.selectedItems }
+        if renderedViewMode == .list { return listView.selectedItems }
+        if renderedViewMode == .columns { return columnView.selectedItems }
         return table.selectedRowIndexes.compactMap { model.items.indices.contains($0) ? model.items[$0] : nil }
     }
     func setActive(_ active: Bool) {
@@ -48,18 +61,18 @@ final class SecondaryBrowserPane: NSView, NSTableViewDataSource, NSTableViewDele
     func focusPath() { activate(); window?.makeFirstResponder(pathField); pathField.selectText(nil) }
     func focusFiles() {
         activate()
-        if model.viewMode == .grid { gridView.focus() }
-        else if model.viewMode == .list { listView.focus() }
-        else if model.viewMode == .columns { columnView.focus() }
+        if renderedViewMode == .grid { gridView.focus() }
+        else if renderedViewMode == .list { listView.focus() }
+        else if renderedViewMode == .columns { columnView.focus() }
         else { window?.makeFirstResponder(table) }
     }
     func stopLoading() { model.cancelLoad() }
     func setViewMode(_ mode: BrowserViewMode) { activate(); model.setViewMode(mode) }
     func setContextMenu(_ menu: NSMenu?) { gridView.contextMenu = menu; listView.contextMenu = menu }
     func openSelected() {
-        if model.viewMode == .grid, let item = gridView.selectedItems.first { openGridItem(item) }
-        else if model.viewMode == .list, let item = listView.selectedItems.first { openGridItem(item) }
-        else if model.viewMode == .columns, let item = columnView.selectedItems.first { openGridItem(item) }
+        if renderedViewMode == .grid, let item = gridView.selectedItems.first { openGridItem(item) }
+        else if renderedViewMode == .list, let item = listView.selectedItems.first { openGridItem(item) }
+        else if renderedViewMode == .columns, let item = columnView.selectedItems.first { openGridItem(item) }
         else { openSelection(nil) }
     }
     func open(_ url: URL?) { activate(); navigate(url) }
@@ -122,7 +135,7 @@ final class SecondaryBrowserPane: NSView, NSTableViewDataSource, NSTableViewDele
             columnView.topAnchor.constraint(equalTo: browserContent.topAnchor), columnView.bottomAnchor.constraint(equalTo: browserContent.bottomAnchor)
         ])
         gridView.onSelectionChange = { [weak self] selection in
-            guard let self, !self.rendering, self.model.viewMode == .grid else { return }
+            guard let self, !self.rendering, self.renderedViewMode == .grid else { return }
             self.model.savePosition(selection: selection, scrollOffset: self.gridView.currentScrollOffset())
             self.render()
         }
@@ -134,7 +147,7 @@ final class SecondaryBrowserPane: NSView, NSTableViewDataSource, NSTableViewDele
             return self.onFileDrop?(sources, destination, intent) ?? false
         }
         listView.onSelectionChange = { [weak self] selection in
-            guard let self, !self.rendering, self.model.viewMode == .list else { return }
+            guard let self, !self.rendering, self.renderedViewMode == .list else { return }
             self.model.savePosition(selection: selection, scrollOffset: self.listView.currentScrollOffset()); self.render()
         }
         listView.onActivate = { [weak self] in self?.activate() }
@@ -144,7 +157,7 @@ final class SecondaryBrowserPane: NSView, NSTableViewDataSource, NSTableViewDele
             self.activate(); return self.onFileDrop?(sources, destination, intent) ?? false
         }
         columnView.onSelectionChange = { [weak self] selection in
-            guard let self, !self.rendering, self.model.viewMode == .columns else { return }
+            guard let self, !self.rendering, self.renderedViewMode == .columns else { return }
             self.model.savePosition(selection: selection, scrollOffset: 0); self.render()
         }
         columnView.onActivate = { [weak self] in self?.activate() }
@@ -164,7 +177,7 @@ final class SecondaryBrowserPane: NSView, NSTableViewDataSource, NSTableViewDele
     private func savePosition() {
         guard !rendering else { return }
         let selection: Set<String>; let offset: Double
-        switch model.viewMode {
+        switch renderedViewMode {
         case .grid: selection = Set(gridView.selectedItems.map(\.id)); offset = gridView.currentScrollOffset()
         case .list: selection = Set(listView.selectedItems.map(\.id)); offset = listView.currentScrollOffset()
         case .columns: selection = Set(columnView.selectedItems.map(\.id)); offset = 0
@@ -183,9 +196,13 @@ final class SecondaryBrowserPane: NSView, NSTableViewDataSource, NSTableViewDele
     private func render() {
         rendering = true; defer { rendering = false }
         pathField.stringValue = model.location?.path ?? ""; table.reloadData()
-        let showsGrid = model.viewMode == .grid
-        let showsList = model.viewMode == .list
-        let showsColumns = model.viewMode == .columns
+        if model.viewMode == .adaptive && !model.isLoading {
+            adaptiveResolvedMode = adaptivePolicy.resolve(items: model.items, availableWidth: bounds.width)
+            adaptiveWidth = bounds.width
+        }
+        let showsGrid = renderedViewMode == .grid
+        let showsList = renderedViewMode == .list
+        let showsColumns = renderedViewMode == .columns
         scroll.isHidden = showsGrid || showsList || showsColumns; gridView.isHidden = !showsGrid; listView.isHidden = !showsList; columnView.isHidden = !showsColumns
         hiddenButton.contentTintColor = model.showHidden ? .systemBlue : .labelColor
         if let item = viewModeButton.itemArray.first(where: {
@@ -315,6 +332,7 @@ final class SecondaryBrowserPane: NSView, NSTableViewDataSource, NSTableViewDele
     }
     var qaColumnCount: Int { columnView.qaColumnCount }
     func qaSelectColumn(id: String, column: Int = 0) { columnView.qaSelect(id: id, column: column) }
+    var qaRenderedViewMode: BrowserViewMode { renderedViewMode }
     #endif
 }
 

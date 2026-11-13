@@ -113,6 +113,33 @@ private func fixture() throws -> URL {
     #expect(model.snapshot.viewMode == .columns)
 }
 
+@Test func adaptiveViewPolicyUsesMediaRatioAndCompactWidth() {
+    let policy = AdaptiveViewPolicy(sampleLimit: 4, mediaRatioThreshold: 0.6, compactWidth: 560)
+    let root = URL(fileURLWithPath: "/adaptive")
+    let media = ["a.jpg", "b.png", "c.mov"].map {
+        FileItem(url: root.appendingPathComponent($0), name: $0, isDirectory: false)
+    }
+    let document = FileItem(url: root.appendingPathComponent("notes.txt"), name: "notes.txt", isDirectory: false)
+    let folder = FileItem(url: root.appendingPathComponent("folder"), name: "folder", isDirectory: true)
+
+    #expect(policy.resolve(items: media + [document, folder], availableWidth: 900) == .grid)
+    #expect(policy.resolve(items: [document, folder], availableWidth: 500) == .list)
+    #expect(policy.resolve(items: [document, folder], availableWidth: 900) == .details)
+}
+
+@Test func adaptiveViewPolicyUsesBoundedStableSample() {
+    let policy = AdaptiveViewPolicy(sampleLimit: 3, mediaRatioThreshold: 0.6)
+    let root = URL(fileURLWithPath: "/sample")
+    let first = ["1.jpg", "2.png", "3.mov"].map {
+        FileItem(url: root.appendingPathComponent($0), name: $0, isDirectory: false)
+    }
+    let laterDocuments = (0..<20).map {
+        FileItem(url: root.appendingPathComponent("\($0).txt"), name: "\($0).txt", isDirectory: false)
+    }
+
+    #expect(policy.resolve(items: first + laterDocuments, availableWidth: 900) == .grid)
+}
+
 @Test func tabSessionStoreRejectsCorruptStateSafely() throws {
     let suite = "tab-session-corrupt-tests-\(UUID())"
     let defaults = try #require(UserDefaults(suiteName: suite))
