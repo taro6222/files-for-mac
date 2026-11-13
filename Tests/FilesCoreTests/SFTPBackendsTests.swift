@@ -146,6 +146,7 @@ import Testing
           let username = environment["FILES_TEST_SFTP_USERNAME"],
           let identityPath = environment["FILES_TEST_SFTP_IDENTITY"],
           let knownHostsPath = environment["FILES_TEST_SFTP_KNOWN_HOSTS"],
+          let wrongKnownHostsPath = environment["FILES_TEST_SFTP_WRONG_KNOWN_HOSTS"],
           let remoteRoot = environment["FILES_TEST_SFTP_REMOTE_ROOT"] else { return }
     let profile = try RemoteConnectionProfile(name: "Fixture", remoteProtocol: .sftp, host: "127.0.0.1", port: port, rootPath: remoteRoot, username: username)
     let key = SFTPKeyConfiguration(username: username, identityFile: URL(fileURLWithPath: identityPath), knownHostsFile: URL(fileURLWithPath: knownHostsPath))
@@ -161,4 +162,11 @@ import Testing
     #expect(capabilities.renameRefusesExistingDestination == false)
     let afterProbe = try await provider.list(profile: profile, key: key, remotePath: remoteRoot)
     #expect(afterProbe.allSatisfy { !$0.name.hasPrefix(".files-sftp-probe-") })
+    let wrongKey = SFTPKeyConfiguration(username: username, identityFile: URL(fileURLWithPath: identityPath), knownHostsFile: URL(fileURLWithPath: wrongKnownHostsPath))
+    do {
+        _ = try await provider.list(profile: profile, key: wrongKey, remotePath: remoteRoot)
+        Issue.record("A mismatched pinned host key must reject the connection")
+    } catch let error as RemoteExecutionError {
+        guard case .nonzeroExit = error else { Issue.record("Unexpected remote error: \(error)"); return }
+    }
 }

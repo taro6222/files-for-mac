@@ -9,11 +9,14 @@ mkdir -p "$remote_root"
 printf 'live-fixture' >"$remote_root/fixture-한글.txt"
 ssh-keygen -q -t ed25519 -N '' -f "$fixture_root/client_key"
 ssh-keygen -q -t ed25519 -N '' -f "$fixture_root/host_key"
+ssh-keygen -q -t ed25519 -N '' -f "$fixture_root/wrong_host_key"
 cp "$fixture_root/client_key.pub" "$fixture_root/authorized_keys"
 chmod 600 "$fixture_root/client_key" "$fixture_root/authorized_keys"
 host_public="$(cut -d' ' -f1-2 "$fixture_root/host_key.pub")"
 printf '[127.0.0.1]:%s %s\n' "$port" "$host_public" >"$fixture_root/known_hosts"
-chmod 600 "$fixture_root/known_hosts"
+wrong_host_public="$(cut -d' ' -f1-2 "$fixture_root/wrong_host_key.pub")"
+printf '[127.0.0.1]:%s %s\n' "$port" "$wrong_host_public" >"$fixture_root/wrong_known_hosts"
+chmod 600 "$fixture_root/known_hosts" "$fixture_root/wrong_known_hosts"
 printf '%s\n' \
   "Port $port" \
   'ListenAddress 127.0.0.1' \
@@ -39,6 +42,7 @@ printf 'ls -1 "%s"\n' "$remote_root" | /usr/bin/sftp -q -b - -P "$port" -i "$fix
   -o "UserKnownHostsFile=$fixture_root/known_hosts" -o StrictHostKeyChecking=yes -o IdentitiesOnly=yes "$username@127.0.0.1"
 /usr/bin/env FILES_TEST_SFTP_PORT="$port" FILES_TEST_SFTP_USERNAME="$username" \
   FILES_TEST_SFTP_IDENTITY="$fixture_root/client_key" FILES_TEST_SFTP_KNOWN_HOSTS="$fixture_root/known_hosts" \
+  FILES_TEST_SFTP_WRONG_KNOWN_HOSTS="$fixture_root/wrong_known_hosts" \
   FILES_TEST_SFTP_REMOTE_ROOT="$remote_root" DEVELOPER_DIR="${DEVELOPER_DIR:-/Library/Developer/CommandLineTools}" \
   CLANG_MODULE_CACHE_PATH="$PWD/.build/ModuleCache" SWIFT_TMPDIR=/tmp \
   swift test --filter sftpLocalFixtureListsDownloadsAndProbesRenameThroughOpenSSH \
