@@ -71,3 +71,34 @@ import Testing
         if secondFD >= 0 { close(secondFD) }
     }
 }
+
+@Test func systemTrashMoveAndRestoreRoundTrip() async throws {
+    guard ProcessInfo.processInfo.environment["FILES_TEST_SYSTEM_TRASH"] == "1" else { return }
+    let fm = FileManager.default
+    let root = fm.urls(for: .cachesDirectory, in: .userDomainMask)[0]
+        .appendingPathComponent("FilesMac-TrashTest-\(UUID().uuidString)", isDirectory: true)
+    let restore = root.appendingPathComponent("restored", isDirectory: true)
+    let journal = root.appendingPathComponent("journal", isDirectory: true)
+    let source = root.appendingPathComponent("휴지통-é-📁.txt")
+    var trashed: URL?
+    defer {
+        if let trashed { try? fm.removeItem(at: trashed) }
+        try? fm.removeItem(at: root)
+    }
+    try fm.createDirectory(at: restore, withIntermediateDirectories: true)
+    try Data("trash-round-trip".utf8).write(to: source)
+
+    let trash = try await EntryOperations.moveToTrash([source], journalDirectory: journal)
+    trashed = trash.items.first?.trashed
+    #expect(trash.state == "completed")
+    let trashedURL = try #require(trashed)
+    #expect(!fm.fileExists(atPath: source.path))
+    #expect(fm.fileExists(atPath: trashedURL.path))
+
+    let restored = try await EntryOperations.restoreFromTrash([trashedURL], to: restore,
+                                                               journalDirectory: journal)
+    #expect(restored.state == "completed")
+    let restoredURL = restore.appendingPathComponent(trashedURL.lastPathComponent)
+    #expect(try String(contentsOf: restoredURL, encoding: .utf8) == "trash-round-trip")
+    trashed = nil
+}
