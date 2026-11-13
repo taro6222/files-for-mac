@@ -4,7 +4,7 @@
 
 ## 이번 구현 단위
 
-M6 쉰다섯 번째 개발 단위로 Windows Recycle Bin 전용 그룹 명령 5개의 macOS 공개 API 경계를 확정했다. 화면은 모두 판정됐지만, 설정 73개와 명령 86개는 계속 검토 대기이므로 M6 완료로 표시하지 않는다.
+M6 쉰여섯 번째 개발 단위로 일반 폴더 그룹 UI에 사용할 결정론적 코어 분할 모델을 구현했다. 아직 UI 섹션과 명령을 연결하지 않았으므로 그룹 명령은 검토 대기로 유지하며, 설정 73개와 명령 86개가 계속 대기 중이다.
 
 | 영역 | 상태 | 내용 |
 |---|---|---|
@@ -89,3 +89,4 @@ M6 추가 검증: [시스템 설치·미디어 열기 명령](verification/m6/IN
 M6 추가 검증: [선택 토글·Finder 태그 명령](verification/m6/INCREMENT_53.md).
 M6 추가 검증: [상세 열 너비 자동 맞춤](verification/m6/INCREMENT_54.md).
 M6 추가 검증: [휴지통 전용 그룹화 경계](verification/m6/INCREMENT_55.md).
+M6 추가 검증: [일반 파일 그룹 코어](verification/m6/INCREMENT_56.md).

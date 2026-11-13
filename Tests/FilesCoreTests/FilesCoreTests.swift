@@ -650,6 +650,26 @@ private struct FixedSearch: FileSearching {
     }
 }
 
+@Test func fileGroupingPartitionsDeterministicallyAndPreservesItemOrder() {
+    let calendar = Calendar(identifier: .gregorian)
+    let date = { (year: Int, month: Int, day: Int) in calendar.date(from: DateComponents(year: year, month: month, day: day))! }
+    let root = URL(fileURLWithPath: "/tmp/grouping", isDirectory: true)
+    let items = [
+        FileItem(url: root.appendingPathComponent("Beta.txt"), name: "Beta.txt", isDirectory: false, size: 2_000_000, modified: date(2025, 2, 3), kind: "Text"),
+        FileItem(url: root.appendingPathComponent("alpha.txt"), name: "alpha.txt", isDirectory: false, size: 0, modified: date(2024, 1, 2), kind: "Text"),
+        FileItem(url: root.appendingPathComponent("Archive"), name: "Archive", isDirectory: true, kind: "Folder"),
+        FileItem(url: root.appendingPathComponent("!note"), name: "!note", isDirectory: false, size: 2_000_000_000, kind: "")
+    ]
+    let names = FileGrouping.groups(items, options: .init(field: .name))
+    #expect(names.map(\.key) == ["1:A", "1:B", "2:#"])
+    #expect(names[0].items.map(\.name) == ["alpha.txt", "Archive"])
+    #expect(FileGrouping.groups(items, options: .init(field: .name, ascending: false)).map(\.key) == ["2:#", "1:B", "1:A"])
+    #expect(FileGrouping.groups(items, options: .init(field: .modified, dateUnit: .month), calendar: calendar).map(\.key) == ["0:unknown", "1:2024-01-00", "1:2025-02-00"])
+    #expect(FileGrouping.groups(items, options: .init(field: .size)).map(\.key) == ["0:folder", "2:empty", "4:medium", "5:large"])
+    #expect(FileGrouping.groups(items, options: .init(field: .kind)).map(\.key) == ["0:unknown", "1:folder", "1:text"])
+    #expect(FileGrouping.groups([], options: .init()).isEmpty)
+}
+
 @Test func searchRouterSeparatesEnumerationAndSpotlightAdapters() async throws {
     let root = URL(fileURLWithPath: "/tmp"), router = SearchRouter(local: FixedSearch(name: "local"), spotlight: FixedSearch(name: "spotlight"))
     func names(_ method: SearchMethod) async throws -> [String] {
