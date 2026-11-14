@@ -150,6 +150,8 @@ final class MoveWindow: NSWindowController, NSWindowDelegate {
         let completed = report.items.filter { $0.state == "completed" }.count
         let conflicts = report.items.filter { $0.state == "conflict" }.count
         let failed = report.items.filter { $0.state == "failed" || $0.state == "notFound" }.count
+        let pending = report.items.filter { $0.state == "queued" }.count
+        let cancelled = report.items.filter { $0.state == "cancelled" }.count
         label.stringValue = (report.state == "cancelled" ? L("취소됨", "Cancelled") : L("작업 완료", "Finished")) + " · " +
             L("이동 완료 ", "Moved ") + "\(completed)/\(report.items.count)" +
             L("개 항목", " items")
@@ -159,6 +161,8 @@ final class MoveWindow: NSWindowController, NSWindowDelegate {
         if conflicts > 0 {
             label.stringValue += L(" · 충돌 \(conflicts)", " · Conflicts \(conflicts)")
         }
+        if pending > 0 { label.stringValue += L(" · 실행 안 됨 \(pending)", " · Not attempted \(pending)") }
+        if cancelled > 0 { label.stringValue += L(" · 취소 \(cancelled)", " · Cancelled \(cancelled)") }
         progress.isHidden = true
         details.string = report.items.map { item in
             let status: String
@@ -183,7 +187,7 @@ final class MoveWindow: NSWindowController, NSWindowDelegate {
                 } ?? "")
         }.joined(separator: "\n\n")
         if let error = report.journalError { details.string += "\n\n" + L("저널 저장 오류: ", "Journal error: ") + error }
-        showResult()
+        showResult(announcementDetail: report.journalError.map { L("저널 저장 오류: ", "Journal error: ") + $0 })
     }
 
     private func fail(_ error: Error) {
@@ -191,7 +195,7 @@ final class MoveWindow: NSWindowController, NSWindowDelegate {
         progress.isHidden = true
         label.stringValue = L("이동 실패", "Move failed")
         details.string = error.localizedDescription
-        showResult()
+        showResult(announcementDetail: error.localizedDescription)
     }
 
     @objc private func cancelMove(_ sender: Any?) {
@@ -203,11 +207,11 @@ final class MoveWindow: NSWindowController, NSWindowDelegate {
         announceStatus()
     }
 
-    private func showResult() {
+    private func showResult(announcementDetail: String? = nil) {
         close.title = L("닫기", "Close")
         close.isEnabled = true
         window?.defaultButtonCell = close.cell as? NSButtonCell
-        announceStatus()
+        announceStatus(detail: announcementDetail)
     }
 
     @objc private func retryFailedItems(_ sender: Any?) {
@@ -218,21 +222,26 @@ final class MoveWindow: NSWindowController, NSWindowDelegate {
         retryAction()
     }
 
-    private func announceStatus() {
+    private func announceStatus(detail: String? = nil) {
         guard let window else { return }
+        let announcement = [label.stringValue, detail].compactMap { $0 }.joined(separator: ". ")
+#if DEBUG
+        qaLastAnnouncement = announcement
+#endif
         NSAccessibility.post(element: window, notification: .announcementRequested, userInfo: [
-            .announcement: label.stringValue,
+            .announcement: announcement,
             .priority: NSAccessibilityPriorityLevel.medium.rawValue,
         ])
     }
 
 #if DEBUG
+    private var qaLastAnnouncement = ""
     var qaCanRetry: Bool { !retry.isHidden }
     func qaRetry() { retry.performClick(nil) }
     var qaAccessibleConflict: Bool {
         !running && progress.accessibilityLabel() == L("이동 진행률", "Move progress")
             && details.accessibilityLabel() == L("이동 상세 결과", "Move details")
-            && label.stringValue.contains(L("충돌 1", "Conflicts 1"))
+            && qaLastAnnouncement.contains(L("충돌 1", "Conflicts 1"))
             && window?.defaultButtonCell === close.cell
     }
 #endif

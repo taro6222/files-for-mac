@@ -122,10 +122,12 @@ final class CopyWindow: NSWindowController, NSWindowDelegate {
         let conflicts = report.items.filter { $0.state == "conflict" }.count
         let failed = report.items.filter { $0.state == "failed" }.count
         let pending = report.items.filter { $0.state == "queued" }.count
+        let cancelled = report.items.filter { $0.state == "cancelled" }.count
         label.stringValue = (report.state == "cancelled" ? L("취소됨", "Cancelled") : L("작업 종료", "Finished")) +
             L(" · 완료 \(count)/\(report.items.count) · 충돌 \(conflicts)", " · Copied \(count)/\(report.items.count) · Conflicts \(conflicts)")
         if failed > 0 { label.stringValue += L(" · 실패 \(failed)", " · Failed \(failed)") }
         if pending > 0 { label.stringValue += L(" · 실행 안 됨 \(pending)", " · Not attempted \(pending)") }
+        if cancelled > 0 { label.stringValue += L(" · 취소 \(cancelled)", " · Cancelled \(cancelled)") }
         progress.isHidden = true
         details.string = report.items.map { item in
             let state: String
@@ -143,16 +145,22 @@ final class CopyWindow: NSWindowController, NSWindowDelegate {
         if let error = report.journalError { details.string += "\n\n" + L("저널 저장 오류: ", "Journal error: ") + error }
         cancel.title = L("닫기", "Close"); cancel.isEnabled = true
         window?.defaultButtonCell = cancel.cell as? NSButtonCell
-        announceStatus()
+        announceStatus(journalError: report.journalError)
     }
-    private func announceStatus() {
+    private func announceStatus(journalError: String? = nil) {
         guard let window else { return }
+        let warning = journalError.map { L("저널 저장 오류: ", "Journal error: ") + $0 }
+        let announcement = [label.stringValue, warning].compactMap { $0 }.joined(separator: ". ")
+#if DEBUG
+        qaLastAnnouncement = announcement
+#endif
         NSAccessibility.post(element: window, notification: .announcementRequested, userInfo: [
-            .announcement: label.stringValue,
+            .announcement: announcement,
             .priority: NSAccessibilityPriorityLevel.medium.rawValue,
         ])
     }
 #if DEBUG
+    private var qaLastAnnouncement = ""
     @MainActor
     private final class CancellationSample {
         var clickTime: ContinuousClock.Instant?
@@ -196,6 +204,7 @@ final class CopyWindow: NSWindowController, NSWindowDelegate {
             let finished = clock.now
             controller.finish(report)
             guard let clickTime = sample.clickTime, let feedbackTime = sample.feedbackTime, report.state == "cancelled",
+                  controller.qaLastAnnouncement.contains(L("취소 1", "Cancelled 1")),
                   report.items.map(\.state) == ["cancelled"], report.journalError == nil,
                   !fm.fileExists(atPath: output.path), try Data(contentsOf: source) == original,
                   try Set(fm.contentsOfDirectory(atPath: destination.path)) == initialNames else {
