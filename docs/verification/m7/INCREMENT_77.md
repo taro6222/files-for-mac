@@ -6,4 +6,4 @@
 
 Swift Testing 213개와 한국어·영어 × 밝게·어둡게 AppKit 검사 각 226개를 통과했다. AppKit 검사는 검색 필드에 실제 아래 화살표 이벤트를 보내 첫 행과 초점을 확인하고, Return 이벤트로 같은 파일이 열기 동작에 전달되는지 확인한다. 초기 검증에서 시험 경로 비교와 방향키 이벤트를 보완했다.
 
-고정 원본 XAML과 macOS 검색 화면의 구조를 비교했다. 전체 검색 가능 위치 선택, Windows 실행 화면 대조, VoiceOver 음성 검증이 남아 있다. [화면 구조 대조](../../reference/UI_BASELINE.md)
+고정 원본 XAML과 macOS 검색 화면의 구조를 비교했다. 전체 검색 가능 위치 선택은 [후속 검색 범위 검증](INCREMENT_78.md)에 기록했다. Windows 실행 화면 대조와 VoiceOver 음성 검증이 남아 있다. [화면 구조 대조](../../reference/UI_BASELINE.md)

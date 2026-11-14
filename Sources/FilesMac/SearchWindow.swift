@@ -81,6 +81,12 @@ final class SearchWindow: NSWindowController, NSTableViewDataSource, NSTableView
     }
     @objc private func methodChanged(_ sender: Any?) {
         let content = method.indexOfSelectedItem == 1
+        if content && scope.numberOfItems == 2 {
+            scope.addItem(withTitle: L("모든 인덱싱된 위치", "All Indexed Locations"))
+        } else if !content && scope.numberOfItems == 3 {
+            if scope.indexOfSelectedItem == 2 { scope.selectItem(at: 0) }
+            scope.removeItem(at: 2)
+        }
         search.placeholderString = content ? L("파일 콘텐츠 검색", "Search file contents") : L("파일 이름 검색", "Search file names")
         search.setAccessibilityLabel(search.placeholderString ?? "")
     }
@@ -89,7 +95,11 @@ final class SearchWindow: NSWindowController, NSTableViewDataSource, NSTableView
         let unit = SearchSizeUnit.allCases[sizeUnit.indexOfSelectedItem]
         guard let minimum = parseSize(minimumSize.stringValue, unit: unit), let maximum = parseSize(maximumSize.stringValue, unit: unit) else { status.stringValue = L("파일 크기는 선택한 단위의 0 이상 숫자로 입력하세요.", "File sizes must be non-negative numbers in the selected unit."); return }
         if let minimum, let maximum, minimum > maximum { status.stringValue = L("최소 크기는 최대 크기보다 클 수 없습니다.", "Minimum size cannot exceed maximum size."); return }
-        let selectedScope: SearchScope = scope.indexOfSelectedItem == 1 ? .currentFolder : .descendants
+        let selectedScope: SearchScope = switch scope.indexOfSelectedItem {
+        case 1: .currentFolder
+        case 2: .indexedLocations
+        default: .descendants
+        }
         let selectedKind = SearchItemKind.allCases[kind.indexOfSelectedItem]
         model.search(in: root, query: FileSearchQuery(text: search.stringValue, scope: selectedScope, kind: selectedKind, showHidden: hidden.state == .on,
             tagText: tag.stringValue, minimumSize: minimum, maximumSize: maximum,
@@ -156,7 +166,23 @@ final class SearchWindow: NSWindowController, NSTableViewDataSource, NSTableView
 #if DEBUG
     func qaSearch(_ text: String, scope value: SearchScope) { search.stringValue = text; scope.selectItem(at: value == .currentFolder ? 1 : 0); start(nil) }
     func qaSearchAdvanced(_ text: String, tag tagValue: String, minimum: String, maximum: String, unit: SearchSizeUnit = .bytes) { search.stringValue = text; tag.stringValue = tagValue; minimumSize.stringValue = minimum; maximumSize.stringValue = maximum; sizeUnit.selectItem(at: SearchSizeUnit.allCases.firstIndex(of: unit)!); scope.selectItem(at: 1); start(nil) }
-    func qaSearchSpotlight(_ text: String, scope value: SearchScope = .currentFolder) { method.selectItem(at: 1); methodChanged(nil); search.stringValue = text; tag.stringValue = ""; minimumSize.stringValue = ""; maximumSize.stringValue = ""; scope.selectItem(at: value == .currentFolder ? 1 : 0); start(nil) }
+    func qaSearchSpotlight(_ text: String, scope value: SearchScope = .currentFolder) {
+        method.selectItem(at: 1); methodChanged(nil); search.stringValue = text
+        tag.stringValue = ""; minimumSize.stringValue = ""; maximumSize.stringValue = ""
+        switch value {
+        case .descendants: scope.selectItem(at: 0)
+        case .currentFolder: scope.selectItem(at: 1)
+        case .indexedLocations: scope.selectItem(at: 2)
+        }
+        start(nil)
+    }
+    func qaReturnToFileNameSearch() -> Bool {
+        method.selectItem(at: 0); methodChanged(nil)
+        return scope.numberOfItems == 2 && scope.indexOfSelectedItem == 0
+    }
+    func qaContainsResult(at url: URL) -> Bool {
+        model.results.contains { $0.url.standardizedFileURL.path == url.standardizedFileURL.path }
+    }
     func qaInvalidSize() { minimumSize.stringValue = "invalid"; start(nil) }
     var qaValidationError: Bool { status.stringValue.contains(L("파일 크기", "File sizes")) }
     var qaIsSearching: Bool { model.isSearching }

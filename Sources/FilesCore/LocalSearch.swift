@@ -1,6 +1,6 @@
 import Foundation
 
-public enum SearchScope: String, CaseIterable, Sendable { case currentFolder, descendants }
+public enum SearchScope: String, CaseIterable, Sendable { case currentFolder, descendants, indexedLocations }
 public enum SearchItemKind: String, CaseIterable, Sendable { case any, files, folders }
 public enum SearchMethod: String, CaseIterable, Sendable { case fileName, spotlightContent }
 public enum SearchSizeUnit: String, CaseIterable, Sendable {
@@ -65,6 +65,7 @@ public struct LocalFileSearch: FileSearching {
         AsyncThrowingStream { continuation in
             let worker = Task.detached(priority: .userInitiated) {
                 do {
+                    guard query.scope != .indexedLocations else { throw CocoaError(.featureUnsupported) }
                     guard try root.resourceValues(forKeys: [.isDirectoryKey]).isDirectory == true else { throw POSIXError(.ENOTDIR) }
                     let terms = query.text.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
                         .split(whereSeparator: \.isWhitespace).map(String.init)

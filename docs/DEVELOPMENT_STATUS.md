@@ -4,6 +4,8 @@
 
 ## 이번 구현 단위
 
+Spotlight 콘텐츠 검색에 모든 인덱싱된 위치 범위를 추가했다. [M7 인덱스 범위 검색](verification/m7/INCREMENT_78.md)
+
 검색 필드에서 방향키로 결과 목록에 이동하고 Return으로 기존 열기 동작을 실행할 수 있다. [M7 검색 키보드 검증](verification/m7/INCREMENT_77.md)
 
 홈이나 다른 보기에서 상세 목록을 창에서 분리하고, 상세 보기로 돌아오면 같은 테이블을 다시 붙인다. 125사이클 탐색 대조에서 셀 보유가 누적되지 않았다. [M7 상세 목록 메모리 검증](verification/m7/INCREMENT_76.md)

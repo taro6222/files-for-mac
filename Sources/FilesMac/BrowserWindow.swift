@@ -3990,6 +3990,18 @@ extension BrowserWindow {
             let spotlightHit = ContinuousClock.now
             while controller.searchWindow?.qaIsSearching == true && spotlightHit.duration(to: .now) < .seconds(15) { try await Task.sleep(for: .milliseconds(20)) }
             checks["spotlightContentHit"] = controller.searchWindow?.qaContainsResult(named: "LocalSearch.swift") == true
+            let indexedFile = projectRoot.appendingPathComponent("Sources/FilesCore/LocalSearch.swift")
+            if let panel = controller.searchWindow {
+                panel.present(root: columnFolder, showHidden: false, onReveal: controller.searchResultRevealer())
+                panel.qaSearchSpotlight("SearchRouter", scope: .indexedLocations)
+                let indexedSearch = ContinuousClock.now
+                while panel.qaIsSearching && elapsed(indexedSearch) < 15 {
+                    try await Task.sleep(for: .milliseconds(20))
+                }
+                checks["spotlightFindsResultOutsideCurrentFolder"] = !panel.qaIsSearching
+                    && panel.qaContainsResult(at: indexedFile)
+                checks["directSearchRestoresFolderScope"] = panel.qaReturnToFileNameSearch()
+            }
             controller.searchWindow?.close(); window.makeKeyAndOrderFront(nil)
             controller.showQuickLook(nil); try await Task.sleep(for: .milliseconds(500))
             checks["quickLookWindow"] = controller.quickLook.qaVisible

@@ -32,6 +32,9 @@ private final class SpotlightSearchSession: NSObject {
 
     func start() {
         metadataQuery.searchScopes = [NSMetadataQueryUserHomeScope, NSMetadataQueryLocalComputerScope]
+        if request.scope == .indexedLocations {
+            metadataQuery.searchScopes.append(NSMetadataQueryIndexedNetworkScope)
+        }
         metadataQuery.predicate = NSPredicate(format: "%K LIKE[cd] %@", NSMetadataItemTextContentKey, "*\(request.text)*")
         observer = NotificationCenter.default.addObserver(forName: .NSMetadataQueryDidFinishGathering, object: metadataQuery, queue: .main) { [weak self] _ in
             MainActor.assumeIsolated { self?.finishGathering() }
@@ -53,10 +56,16 @@ private final class SpotlightSearchSession: NSObject {
         for case let result as NSMetadataItem in metadataQuery.results {
             let url = (result.value(forAttribute: NSMetadataItemURLKey) as? URL)
                 ?? (result.value(forAttribute: NSMetadataItemPathKey) as? String).map { URL(fileURLWithPath: $0) }
-            guard let url else { skipped += 1; continue }
+            guard let url, url.isFileURL else { skipped += 1; continue }
             let normalized = url.standardizedFileURL
-            guard normalized.path != root.path, normalized.path.hasPrefix(root.path + "/") else { continue }
-            if request.scope == .currentFolder && normalized.deletingLastPathComponent() != root { continue }
+            switch request.scope {
+            case .indexedLocations: break
+            case .currentFolder:
+                guard normalized.deletingLastPathComponent().path == root.path, normalized.path != root.path else { continue }
+            case .descendants:
+                let prefix = root.path.hasSuffix("/") ? root.path : root.path + "/"
+                guard normalized.path != root.path, normalized.path.hasPrefix(prefix) else { continue }
+            }
             guard seen.insert(normalized.path).inserted else { continue }
             do {
                 let values = try normalized.resourceValues(forKeys: keys), isDirectory = values.isDirectory ?? false
