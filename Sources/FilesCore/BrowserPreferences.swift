@@ -29,6 +29,19 @@ public struct FolderViewPreference: Codable, Equatable, Sendable {
     public var size: BrowserViewSize
     public init(mode: BrowserViewMode, size: BrowserViewSize) { self.mode = mode; self.size = size }
 }
+public struct SharedFolderLayout: Codable, Equatable, Sendable {
+    public var mode: BrowserViewMode
+    public var size: BrowserViewSize
+    public var sort: SortOrder
+    public var grouping: FileGroupOptions
+
+    public init(mode: BrowserViewMode, size: BrowserViewSize, sort: SortOrder, grouping: FileGroupOptions) {
+        self.mode = mode
+        self.size = size
+        self.sort = sort
+        self.grouping = grouping
+    }
+}
 public struct BrowserPreferencesArchive: Codable, Equatable, Sendable {
     public let version: Int
     public let sidebarOrder: [String]
@@ -69,6 +82,8 @@ public struct BrowserPreferencesArchive: Codable, Equatable, Sendable {
     public let homeVolumesExpanded: Bool?
     public let homeRecentExpanded: Bool?
     public let viewSize: String
+    public let syncFolderLayouts: Bool?
+    public let sharedFolderLayout: SharedFolderLayout?
     public let appearance: String
     public let continueLastSession: Bool
     public let sizeUnit: String?
@@ -151,6 +166,8 @@ public final class BrowserPreferences {
     public private(set) var homeVolumesExpanded: Bool
     public private(set) var homeRecentExpanded: Bool
     public private(set) var viewSize: BrowserViewSize
+    public private(set) var syncFolderLayouts: Bool
+    public private(set) var sharedFolderLayout: SharedFolderLayout?
     public private(set) var appearance: BrowserAppearance
     public private(set) var continueLastSession: Bool
     public private(set) var sizeUnit: BrowserSizeUnit
@@ -228,6 +245,10 @@ public final class BrowserPreferences {
         homeVolumesExpanded = defaults.object(forKey: "homeVolumesExpanded") as? Bool ?? true
         homeRecentExpanded = defaults.object(forKey: "homeRecentExpanded") as? Bool ?? true
         viewSize = defaults.string(forKey: "viewSize").flatMap(BrowserViewSize.init(rawValue:)) ?? .medium
+        sharedFolderLayout = defaults.data(forKey: "sharedFolderLayout").flatMap {
+            try? JSONDecoder().decode(SharedFolderLayout.self, from: $0)
+        }
+        syncFolderLayouts = defaults.bool(forKey: "syncFolderLayouts") && sharedFolderLayout != nil
         appearance = defaults.string(forKey: "appearance").flatMap(BrowserAppearance.init(rawValue:)) ?? .system
         continueLastSession = defaults.object(forKey: "continueLastSession") as? Bool ?? true
         sizeUnit = defaults.string(forKey: "sizeUnit").flatMap(BrowserSizeUnit.init(rawValue:)) ?? .binary
@@ -360,6 +381,28 @@ public final class BrowserPreferences {
     public func setViewSize(_ value: BrowserViewSize) {
         guard viewSize != value else { return }
         viewSize = value; defaults.set(value.rawValue, forKey: "viewSize"); changed()
+    }
+    public var synchronizedFolderLayout: SharedFolderLayout? {
+        syncFolderLayouts ? sharedFolderLayout : nil
+    }
+    public func setFolderLayoutSynchronization(_ enabled: Bool, initial: SharedFolderLayout) {
+        guard syncFolderLayouts != enabled else { return }
+        syncFolderLayouts = enabled
+        if enabled { sharedFolderLayout = initial }
+        persistSharedFolderLayout()
+        changed()
+    }
+    public func updateSharedFolderLayout(_ update: (inout SharedFolderLayout) -> Void) {
+        guard var layout = synchronizedFolderLayout else { return }
+        update(&layout)
+        guard layout != sharedFolderLayout else { return }
+        sharedFolderLayout = layout
+        persistSharedFolderLayout()
+        changed()
+    }
+    private func persistSharedFolderLayout() {
+        defaults.set(syncFolderLayouts, forKey: "syncFolderLayouts")
+        defaults.set(sharedFolderLayout.flatMap { try? JSONEncoder().encode($0) }, forKey: "sharedFolderLayout")
     }
     public func setAppearance(_ value: BrowserAppearance) {
         guard appearance != value else { return }
@@ -517,7 +560,8 @@ public final class BrowserPreferences {
             showCreateShortcut: showCreateShortcut,
             showHomeFavorites: showHomeFavorites, showHomeVolumes: showHomeVolumes, showHomeRecent: showHomeRecent,
             homeFavoritesExpanded: homeFavoritesExpanded, homeVolumesExpanded: homeVolumesExpanded, homeRecentExpanded: homeRecentExpanded,
-            viewSize: viewSize.rawValue, appearance: appearance.rawValue, continueLastSession: continueLastSession, sizeUnit: sizeUnit.rawValue,
+            viewSize: viewSize.rawValue, syncFolderLayouts: syncFolderLayouts, sharedFolderLayout: sharedFolderLayout,
+            appearance: appearance.rawValue, continueLastSession: continueLastSession, sizeUnit: sizeUnit.rawValue,
             openFoldersInNewTab: openFoldersInNewTab, scrollToPreviousFolderOnUp: scrollToPreviousFolderOnUp,
             showFileExtensionWarning: showFileExtensionWarning,
             defaultSortDirectoryPlacement: defaultSortDirectoryPlacement.rawValue,
@@ -601,6 +645,9 @@ public final class BrowserPreferences {
         showHomeFavorites = archive.showHomeFavorites; showHomeVolumes = archive.showHomeVolumes; showHomeRecent = archive.showHomeRecent
         homeFavoritesExpanded = archive.homeFavoritesExpanded ?? true; homeVolumesExpanded = archive.homeVolumesExpanded ?? true; homeRecentExpanded = archive.homeRecentExpanded ?? true
         viewSize = size; appearance = importedAppearance; continueLastSession = archive.continueLastSession; sizeUnit = importedSizeUnit
+        sharedFolderLayout = archive.sharedFolderLayout
+        syncFolderLayouts = archive.syncFolderLayouts == true && sharedFolderLayout != nil
+        persistSharedFolderLayout()
         openFoldersInNewTab = archive.openFoldersInNewTab ?? false; scrollToPreviousFolderOnUp = archive.scrollToPreviousFolderOnUp ?? true
         showFileExtensionWarning = archive.showFileExtensionWarning ?? true; startupLocationPath = archive.startupLocationPath
         defaultSortDirectoryPlacement = importedDefaultSortDirectoryPlacement

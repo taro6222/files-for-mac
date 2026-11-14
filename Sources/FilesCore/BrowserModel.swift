@@ -158,6 +158,16 @@ public final class BrowserModel {
     public func sort(_ order: SortOrder) {
         sortOrder = order; folderItems = order.sorted(folderItems); onChange?()
     }
+    public func applySharedFolderLayout(_ layout: SharedFolderLayout) {
+        guard viewMode != layout.mode || grouping != layout.grouping || sortOrder != layout.sort else { return }
+        viewMode = layout.mode
+        grouping = layout.grouping
+        if sortOrder != layout.sort {
+            sortOrder = layout.sort
+            folderItems = layout.sort.sorted(folderItems)
+        }
+        onChange?()
+    }
     public func applyDirectorySizes(_ sizes: [URL: Int64], at expectedLocation: URL) {
         guard location?.standardizedFileURL == expectedLocation.standardizedFileURL, !isLoading else { return }
         var changed = false

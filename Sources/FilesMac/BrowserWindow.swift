@@ -36,6 +36,7 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
     private let optionsButton = NSButton()
     private let shelfToggle = NSButton()
     private let shelf = ShelfPane()
+    private var appliedSharedFolderLayout = false
     private let toolbar = NSStackView()
     private let bottom = NSStackView()
     private let toolbarOverflow = NSPopUpButton()
@@ -185,6 +186,7 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
             primaryPaneID = initialWorkspace.panes[0].id
             restoreWorkspace(initialWorkspace)
         }
+        if preferences.syncFolderLayouts { applyFolderViewPreference() }
         refreshVolumes()
         refreshCloudLocations()
         for name in [NSWorkspace.didMountNotification, NSWorkspace.didUnmountNotification] {
@@ -735,12 +737,19 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         savePosition(); model.navigate(url); applyFolderViewPreference()
     }
     private var effectiveViewSize: BrowserViewSize {
-        model.location.flatMap { preferences.folderViewPreference(for: $0)?.size } ?? preferences.viewSize
+        preferences.synchronizedFolderLayout?.size
+            ?? model.location.flatMap { preferences.folderViewPreference(for: $0)?.size } ?? preferences.viewSize
     }
     private var activeEffectiveViewSize: BrowserViewSize {
-        activeModel.location.flatMap { preferences.folderViewPreference(for: $0)?.size } ?? preferences.viewSize
+        preferences.synchronizedFolderLayout?.size
+            ?? activeModel.location.flatMap { preferences.folderViewPreference(for: $0)?.size } ?? preferences.viewSize
     }
     private func applyFolderViewPreference() {
+        if let layout = preferences.synchronizedFolderLayout {
+            appliedSharedFolderLayout = true
+            model.applySharedFolderLayout(layout)
+            return
+        }
         guard let url = model.location, let folder = preferences.folderViewPreference(for: url) else { return }
         model.setViewMode(folder.mode)
     }
@@ -801,6 +810,8 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
                 model.savePosition(selection: [target.path], scrollOffset: model.history.current.scrollOffset)
             }
         }
+        let sortDescriptor = NSSortDescriptor(key: model.sortOrder.field.rawValue, ascending: model.sortOrder.ascending)
+        if table.sortDescriptors.first != sortDescriptor { table.sortDescriptors = [sortDescriptor] }
         detailRows = detailDisplayRows(items: model.items, grouping: model.grouping)
         table.reloadData()
         if autoFitLoadCompleted { startFolderSizeCalculationIfNeeded() }
@@ -1040,8 +1051,13 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         return true
     }
     func tableView(_ tableView: NSTableView, sortDescriptorsDidChange oldDescriptors: [NSSortDescriptor]) {
-        guard let descriptor = tableView.sortDescriptors.first, let field = SortField(rawValue: descriptor.key ?? "") else { return }
-        savePosition(); var order = model.sortOrder; order.field = field; order.ascending = descriptor.ascending; model.sort(order)
+        guard !rendering, let descriptor = tableView.sortDescriptors.first,
+              let field = SortField(rawValue: descriptor.key ?? "") else { return }
+        savePosition()
+        var order = model.sortOrder
+        order.field = field
+        order.ascending = descriptor.ascending
+        setPrimarySort(order)
     }
     @objc func openLocation(_ sender: LocationButton) { navigate(sender.url) }
     @objc func goBack(_ sender: Any?) { if secondaryActive { secondaryPane?.goBack() } else { window?.makeFirstResponder(nil); savePosition(); model.back(); applyFolderViewPreference() } }
@@ -1099,7 +1115,11 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         if let ascending { order.ascending = ascending }
         if let placement { order.directoryPlacement = placement }
         if toggleDirection { order.ascending.toggle() }
-        model.sort(order)
+        setPrimarySort(order)
+    }
+    private func setPrimarySort(_ order: FilesCore.SortOrder) {
+        if preferences.syncFolderLayouts { preferences.updateSharedFolderLayout { $0.sort = order } }
+        else { model.sort(order) }
     }
     @objc func sortByName(_ sender: Any?) { updateSort(field: .name) }
     @objc func sortByCreated(_ sender: Any?) { updateSort(field: .created) }
@@ -1234,6 +1254,13 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         guard let button = sender as? NSPopUpButton,
               let raw = button.selectedItem?.representedObject as? String,
               let mode = BrowserViewMode(rawValue: raw) else { return }
+        setPrimaryViewMode(mode)
+    }
+    private func setPrimaryViewMode(_ mode: BrowserViewMode) {
+        if preferences.syncFolderLayouts {
+            preferences.updateSharedFolderLayout { $0.mode = mode }
+            return
+        }
         model.setViewMode(mode)
         if let location = model.location, let saved = preferences.folderViewPreference(for: location) {
             preferences.setFolderViewPreference(FolderViewPreference(mode: mode, size: saved.size), for: location)
@@ -1452,7 +1479,8 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         if cycleDateUnit {
             options.dateUnit = switch options.dateUnit { case .year: .month; case .month: .day; case .day: .year }
         }
-        activeModel.setGrouping(options)
+        if preferences.syncFolderLayouts { preferences.updateSharedFolderLayout { $0.grouping = options } }
+        else { activeModel.setGrouping(options) }
     }
     @objc func groupByNone(_ sender: Any?) { updateGrouping(field: FileGroupField.none) }
     @objc func groupByName(_ sender: Any?) { updateGrouping(field: .name) }
@@ -2279,6 +2307,10 @@ extension BrowserWindow {
         content.layer?.borderColor = NSColor.controlAccentColor.cgColor
     }
     private func preferencesChanged() {
+        if preferences.syncFolderLayouts || appliedSharedFolderLayout {
+            appliedSharedFolderLayout = preferences.syncFolderLayouts
+            applyFolderViewPreference()
+        }
         window?.appearance = Self.appearance(preferences.appearance)
         applyAppBackground()
         toolbar.isHidden = !preferences.showToolbar
@@ -2353,6 +2385,8 @@ extension BrowserWindow {
         guard menu === optionsMenu else { return }
         menu.removeAllItems()
         let entries: [(String, Selector, Bool)] = [
+            (L("모든 폴더에서 같은 보기 사용", "Use the Same View in All Folders"),
+             #selector(toggleFolderLayoutSynchronization(_:)), preferences.syncFolderLayouts),
             (L("임시 파일 모음", "Shelf"), #selector(toggleShelfPane(_:)), preferences.showShelfPane),
             (L("현재 폴더 필터", "Filter Current Folder"), #selector(toggleFilterHeader(_:)), preferences.showFilterHeader),
             (L("사이드바 표시", "Show Sidebar"), #selector(toggleSidebarVisibility(_:)), preferences.showSidebar),
@@ -2387,7 +2421,7 @@ extension BrowserWindow {
             item.target = self; item.representedObject = size.rawValue
             item.state = activeEffectiveViewSize == size ? .on : .off
         }
-        if let location = model.location {
+        if let location = model.location, !preferences.syncFolderLayouts {
             menu.addItem(.separator())
             let saved = preferences.folderViewPreference(for: location) != nil
             let save = menu.addItem(withTitle: L("이 폴더의 보기 저장", "Save View for This Folder"), action: #selector(saveFolderView(_:)), keyEquivalent: "")
@@ -2453,12 +2487,22 @@ extension BrowserWindow {
         setEffectiveViewSize(size)
     }
     private func setEffectiveViewSize(_ size: BrowserViewSize) {
+        if preferences.syncFolderLayouts {
+            preferences.updateSharedFolderLayout { $0.size = size }
+            return
+        }
         if let location = activeModel.location, preferences.folderViewPreference(for: location) != nil {
             preferences.setFolderViewPreference(FolderViewPreference(mode: activeModel.viewMode, size: size), for: location)
         } else { preferences.setViewSize(size) }
     }
     @objc func useCardsLayout(_ sender: Any?) {
-        if secondaryActive { secondaryPane?.setViewMode(.grid) } else { model.setViewMode(.grid) }
+        if secondaryActive { secondaryPane?.setViewMode(.grid) } else { setPrimaryViewMode(.grid) }
+    }
+    @objc func toggleFolderLayoutSynchronization(_ sender: Any?) {
+        guard activeModel.location != nil else { return }
+        preferences.setFolderLayoutSynchronization(!preferences.syncFolderLayouts,
+            initial: SharedFolderLayout(mode: activeModel.viewMode, size: activeEffectiveViewSize,
+                                        sort: activeModel.sortOrder, grouping: activeModel.grouping))
     }
     @objc func decreaseViewSize(_ sender: Any?) {
         guard let index = BrowserViewSize.allCases.firstIndex(of: activeEffectiveViewSize), index > 0 else { return }
@@ -2629,6 +2673,9 @@ extension BrowserWindow {
         case #selector(toggleShelfPane(_:)):
             menuItem.state = preferences.showShelfPane ? .on : .off
             return true
+        case #selector(toggleFolderLayoutSynchronization(_:)):
+            menuItem.state = preferences.syncFolderLayouts ? .on : .off
+            return activeModel.location != nil
         case #selector(addSelectionToShelf(_:)): return !activeSelectedItems.isEmpty
         case #selector(toggleFilterHeader(_:)):
             menuItem.state = preferences.showFilterHeader ? .on : .off
@@ -3642,6 +3689,25 @@ extension BrowserWindow {
             preferences.setFolderViewPreference(FolderViewPreference(mode: .grid, size: .large), for: columnFolder)
             controller.navigate(fixture); controller.navigate(columnFolder); controller.render()
             checks["folderViewApplied"] = controller.model.viewMode == .grid && controller.effectiveViewSize == .large
+            controller.toggleFolderLayoutSynchronization(nil)
+            controller.navigate(gridFolder)
+            controller.splitVertically(nil)
+            controller.secondaryPane?.setViewMode(.list)
+            controller.sortBySize(nil)
+            controller.groupByName(nil)
+            controller.decreaseViewSize(nil)
+            checks["sharedFolderLayoutAcrossPanes"] = preferences.syncFolderLayouts
+                && controller.model.viewMode == .list && controller.secondaryPane?.model.viewMode == .list
+                && controller.model.sortOrder.field == .size && controller.secondaryPane?.model.sortOrder.field == .size
+                && controller.model.grouping.field == .name && controller.secondaryPane?.model.grouping.field == .name
+                && controller.effectiveViewSize == .medium
+            controller.closeSecondaryPane(nil)
+            controller.navigate(columnFolder)
+            controller.toggleFolderLayoutSynchronization(nil)
+            checks["sharedFolderLayoutRestoresSavedView"] = !preferences.syncFolderLayouts
+                && controller.model.viewMode == .grid && controller.effectiveViewSize == .large
+            controller.model.sort(SortOrder())
+            controller.model.setGrouping(FileGroupOptions())
             preferences.removeFolderViewPreference(for: columnFolder); controller.render()
             checks["folderViewReset"] = preferences.folderViewPreference(for: columnFolder) == nil
                 && controller.effectiveViewSize == preferences.viewSize

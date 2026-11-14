@@ -31,6 +31,7 @@ final class SecondaryBrowserPane: NSView, NSTableViewDataSource, NSTableViewDele
     private var watchedURL: URL?
     private var pendingRefresh = false
     private var rendering = false
+    private var appliedSharedFolderLayout = false
     private var autoFitObservedLoading = false
     private var folderSizeTask: Task<Void, Never>?
     private var pendingEntrySelection: URL?
@@ -45,6 +46,7 @@ final class SecondaryBrowserPane: NSView, NSTableViewDataSource, NSTableViewDele
         buildUI()
         model.onChange = { [weak self] in self?.modelChanged() }
         model.restore(snapshot)
+        if preferences.syncFolderLayouts { applyFolderViewPreference() }
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
 
@@ -92,7 +94,11 @@ final class SecondaryBrowserPane: NSView, NSTableViewDataSource, NSTableViewDele
         if let ascending { order.ascending = ascending }
         if let placement { order.directoryPlacement = placement }
         if toggleDirection { order.ascending.toggle() }
-        model.sort(order)
+        setSort(order)
+    }
+    private func setSort(_ order: FilesCore.SortOrder) {
+        if preferences.syncFolderLayouts { preferences.updateSharedFolderLayout { $0.sort = order } }
+        else { model.sort(order) }
     }
     func clearSelection() {
         activate()
@@ -151,6 +157,10 @@ final class SecondaryBrowserPane: NSView, NSTableViewDataSource, NSTableViewDele
     func setViewMode(_ mode: BrowserViewMode) { activate(); setViewModeAndPersist(mode) }
     func focusFilter() { window?.makeFirstResponder(folderFilter) }
     func applyPreferences() {
+        if preferences.syncFolderLayouts || appliedSharedFolderLayout {
+            appliedSharedFolderLayout = preferences.syncFolderLayouts
+            applyFolderViewPreference()
+        }
         if !preferences.showFilterHeader { model.setNameFilter("") }
         applyBackground(); render()
         if preferences.calculateFolderSizes { startFolderSizeCalculationIfNeeded() } else { folderSizeTask?.cancel(); folderSizeTask = nil }
@@ -312,13 +322,23 @@ final class SecondaryBrowserPane: NSView, NSTableViewDataSource, NSTableViewDele
         savePosition(); model.navigate(url); applyFolderViewPreference()
     }
     private var effectiveViewSize: BrowserViewSize {
-        model.location.flatMap { preferences.folderViewPreference(for: $0)?.size } ?? preferences.viewSize
+        preferences.synchronizedFolderLayout?.size
+            ?? model.location.flatMap { preferences.folderViewPreference(for: $0)?.size } ?? preferences.viewSize
     }
     private func applyFolderViewPreference() {
+        if let layout = preferences.synchronizedFolderLayout {
+            appliedSharedFolderLayout = true
+            model.applySharedFolderLayout(layout)
+            return
+        }
         guard let url = model.location, let folder = preferences.folderViewPreference(for: url) else { return }
         model.setViewMode(folder.mode)
     }
     private func setViewModeAndPersist(_ mode: BrowserViewMode) {
+        if preferences.syncFolderLayouts {
+            preferences.updateSharedFolderLayout { $0.mode = mode }
+            return
+        }
         model.setViewMode(mode)
         if let location = model.location, let saved = preferences.folderViewPreference(for: location) {
             preferences.setFolderViewPreference(FolderViewPreference(mode: mode, size: saved.size), for: location)
@@ -435,9 +455,13 @@ final class SecondaryBrowserPane: NSView, NSTableViewDataSource, NSTableViewDele
         return onFileDrop?(urls, destination, dropIntent(info)) ?? false
     }
     func tableView(_ tableView: NSTableView, sortDescriptorsDidChange oldDescriptors: [NSSortDescriptor]) {
-        guard let descriptor = tableView.sortDescriptors.first,
+        guard !rendering, let descriptor = tableView.sortDescriptors.first,
               let field = SortField(rawValue: descriptor.key ?? "") else { return }
-        savePosition(); var order = model.sortOrder; order.field = field; order.ascending = descriptor.ascending; model.sort(order)
+        savePosition()
+        var order = model.sortOrder
+        order.field = field
+        order.ascending = descriptor.ascending
+        setSort(order)
     }
     private func makeCell(_ id: NSUserInterfaceItemIdentifier) -> NSTableCellView {
         let cell = NSTableCellView(); cell.identifier = id

@@ -507,6 +507,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         go.addItem(withTitle: L("현재 폴더를 다른 pane에서 열기", "Open Current Folder in Other Pane"), action: #selector(BrowserWindow.openCurrentFolderInOtherPane(_:)), keyEquivalent: "")
         go.addItem(withTitle: L("dual pane 전환", "Toggle Dual Pane"), action: #selector(BrowserWindow.toggleDualPane(_:)), keyEquivalent: "")
         go.addItem(withTitle: L("임시 파일 모음", "Shelf"), action: #selector(BrowserWindow.toggleShelfPane(_:)), keyEquivalent: "")
+        go.addItem(withTitle: L("모든 폴더에서 같은 보기 사용", "Use the Same View in All Folders"),
+                   action: #selector(BrowserWindow.toggleFolderLayoutSynchronization(_:)), keyEquivalent: "")
         go.addItem(.separator())
         let fullScreen = go.addItem(withTitle: L("전체 화면 전환", "Toggle Full Screen"), action: #selector(BrowserWindow.toggleFullScreen(_:)), keyEquivalent: "f")
         fullScreen.keyEquivalentModifierMask = [.command, .control]
