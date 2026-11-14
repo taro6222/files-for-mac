@@ -1,0 +1,97 @@
+{
+  "sourceBaseSHA": "e40f23adcc772741ae99d05ef65987cc4ce1ad71",
+  "binarySHA256": "777c3d047b823c236996d66a649ec89287d4636a62ac738f5fb4d4e65bec27e2",
+  "macOS": "27.2",
+  "macOSBuild": "26B123",
+  "architecture": "arm64",
+  "memoryBytes": 25769803776,
+  "fixtureFilesystem": "apfs",
+  "fixtureVersion": "numbered-empty-text-v1",
+  "measurement": "Optimized QA build; fresh processes, OS caches warm; no thumbnails; AppKit display, not compositor presentation; sampled RSS",
+  "idleComparison": [
+    {
+      "immediate": {
+        "firstModelRowsSeconds": 0.033443875,
+        "firstDisplaySeconds": 0.051796375,
+        "idleRSSBytes": 94011392,
+        "browserRenderCount": 6,
+        "browserRenderSeconds": 0.016474583,
+        "listingSeconds": 1.353971417,
+        "startupSeconds": 0.421363209,
+        "modelLoadFinishedSeconds": 1.341771042,
+        "peakSampledRSSBytes": 127074304
+      },
+      "idle300Seconds": {
+        "browserRenderCount": 6,
+        "peakSampledRSSBytes": 126828544,
+        "idleRSSBytes": 92389376,
+        "activeBeforeIdle": 0,
+        "browserRenderSeconds": 0.021841958,
+        "firstDisplaySeconds": 0.10544725,
+        "modelLoadFinishedSeconds": 1.177141708,
+        "productNavigationActivity": 1,
+        "firstModelRowsSeconds": 0.084458666,
+        "userInitiatedLoad": 0,
+        "activeAfterIdle": 0,
+        "listingSeconds": 1.189228375,
+        "startupSeconds": 0.156372167
+      }
+    },
+    {
+      "immediate": {
+        "listingSeconds": 1.046999708,
+        "firstDisplaySeconds": 0.049989083,
+        "idleRSSBytes": 94273536,
+        "browserRenderCount": 6,
+        "browserRenderSeconds": 0.015445293,
+        "startupSeconds": 0.150815291,
+        "firstModelRowsSeconds": 0.027115583,
+        "peakSampledRSSBytes": 127418368,
+        "modelLoadFinishedSeconds": 1.03570675
+      },
+      "idle300Seconds": {
+        "activeAfterIdle": 0,
+        "browserRenderCount": 6,
+        "productNavigationActivity": 1,
+        "startupSeconds": 0.143337125,
+        "activeBeforeIdle": 0,
+        "browserRenderSeconds": 0.026232043,
+        "listingSeconds": 1.354287875,
+        "idleRSSBytes": 95649792,
+        "modelLoadFinishedSeconds": 1.342261958,
+        "userInitiatedLoad": 0,
+        "peakSampledRSSBytes": 126648320,
+        "firstModelRowsSeconds": 0.072036958,
+        "firstDisplaySeconds": 0.08622825
+      }
+    },
+    {
+      "immediate": {
+        "listingSeconds": 1.296038125,
+        "browserRenderSeconds": 0.015799499,
+        "firstModelRowsSeconds": 0.03528425,
+        "firstDisplaySeconds": 0.049600666,
+        "peakSampledRSSBytes": 127107072,
+        "idleRSSBytes": 93995008,
+        "modelLoadFinishedSeconds": 1.284446333,
+        "browserRenderCount": 6,
+        "startupSeconds": 0.145587833
+      },
+      "idle300Seconds": {
+        "activeBeforeIdle": 0,
+        "browserRenderCount": 6,
+        "listingSeconds": 1.380393166,
+        "startupSeconds": 0.152869,
+        "peakSampledRSSBytes": 116719616,
+        "userInitiatedLoad": 0,
+        "activeAfterIdle": 0,
+        "firstDisplaySeconds": 0.103814958,
+        "firstModelRowsSeconds": 0.087327333,
+        "modelLoadFinishedSeconds": 1.368640125,
+        "idleRSSBytes": 66945024,
+        "productNavigationActivity": 1,
+        "browserRenderSeconds": 0.022198125
+      }
+    }
+  ]
+}
