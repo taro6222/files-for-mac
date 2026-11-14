@@ -58,12 +58,13 @@ if [[ "$mode" == --release ]]; then
     exit 1
   fi
   xcrun stapler staple "$image"
-  xcrun stapler validate "$image"
-  codesign --verify --verbose=2 "$image"
-  spctl --assess --type open --context context:primary-signature --verbose=2 "$image"
 fi
-/usr/bin/hdiutil verify "$image"
 (cd "$stage" && shasum -a 256 "$file_name" > "$file_name.sha256")
+if [[ "$mode" == --release ]]; then
+  bash scripts/verify-release-dmg.sh "$image"
+else
+  /usr/bin/hdiutil verify "$image"
+fi
 
 mv -f -- "$image" "build/$file_name"
 mv -f -- "$stage/$file_name.sha256" "build/$file_name.sha256"
