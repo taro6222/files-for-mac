@@ -600,6 +600,41 @@ func entryCrossVolumeUndoResumesAfterCopyPublication(edited: Bool) async throws 
     }
 }
 
+@Test(arguments: [false, true])
+func crossVolumeUndoPreservesPathOccupiedBeforePublication(symbolicLink: Bool) async throws {
+    let root = try entryFixture()
+    let fm = FileManager.default
+    defer { try? fm.removeItem(at: root) }
+    let source = root.appendingPathComponent("move.txt")
+    let destination = root.appendingPathComponent("destination", isDirectory: true)
+    let target = destination.appendingPathComponent(source.lastPathComponent)
+    let journal = root.appendingPathComponent("journal")
+    try fm.createDirectory(at: destination, withIntermediateDirectories: false)
+    try Data("moved".utf8).write(to: source)
+    let move = try await EntryOperations.moveAcrossVolumeForTesting([source], to: destination, journalDirectory: journal)
+    try #require(move.state == "completed")
+    let undo = try #require(EntryOperations.latestUndoMove(journalDirectory: journal))
+    let blocked = await EntryOperations.undoMove(undo, journalDirectory: journal, beforeCopyPublication: {
+        if symbolicLink {
+            try FileManager.default.createSymbolicLink(atPath: source.path, withDestinationPath: "missing")
+        } else {
+            try Data("external".utf8).write(to: source, options: .withoutOverwriting)
+        }
+    }, beforeBackupRestore: { _ in })
+    #expect(blocked.items.map(\.state) == ["conflict"])
+    #expect(try Data(contentsOf: target) == Data("moved".utf8))
+    if symbolicLink {
+        #expect(try fm.destinationOfSymbolicLink(atPath: source.path) == "missing")
+    } else {
+        #expect(try Data(contentsOf: source) == Data("external".utf8))
+    }
+    try fm.removeItem(at: source)
+    let retry = try #require(EntryOperations.latestUndoMove(journalDirectory: journal))
+    #expect(await EntryOperations.undoMove(retry, journalDirectory: journal).state == "completed")
+    #expect(try Data(contentsOf: source) == Data("moved".utf8))
+    #expect(!fm.fileExists(atPath: target.path))
+}
+
 @Test func entryCrossVolumeUndoResumesFromVerifiedCopyCheckpoint() async throws {
     let root = try entryFixture()
     let fm = FileManager.default

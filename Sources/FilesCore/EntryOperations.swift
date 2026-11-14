@@ -240,6 +240,7 @@ public enum EntryOperations {
 
     private static func transferForUndo(_ item: MoveUndoItem,
                                         checkpointCopy: (String, CopyEngine.VerificationSnapshot) throws -> Void,
+                                        beforeCopyPublication: () throws -> Void,
                                         afterCopyPublication: () throws -> Void) throws
         -> (identity: String, snapshot: CopyEngine.VerificationSnapshot) {
         let fm = FileManager.default
@@ -261,9 +262,21 @@ public enum EntryOperations {
             try fm.moveItem(at: source, to: target)
             return (sourceIdentity, before)
         }
-        let stage = target.deletingLastPathComponent().appendingPathComponent(".files-undo-\(UUID().uuidString)")
-        try fm.createDirectory(at: stage, withIntermediateDirectories: false)
-        defer { if entryExists(stage) { try? fm.removeItem(at: stage) } }
+        let parent = target.deletingLastPathComponent()
+        let parentFD = open(parent.path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
+        guard parentFD >= 0 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
+        defer { close(parentFD) }
+        let stage = parent.appendingPathComponent(".files-undo-\(UUID().uuidString)")
+        guard mkdirat(parentFD, stage.lastPathComponent, 0o700) == 0 else {
+            throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
+        }
+        let stageFD = openat(parentFD, stage.lastPathComponent, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
+        guard stageFD >= 0 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
+        defer { close(stageFD) }
+        defer {
+            if CopyEngine.matches(stage, descriptor: stageFD) { try? fm.removeItem(at: stage) }
+        }
+        guard CopyEngine.matches(stage, descriptor: stageFD) else { throw EntryOperationError.sourceChanged }
         let payload = stage.appendingPathComponent("payload")
         try fm.copyItem(at: source, to: payload)
         try before.restoreCreationTimes(in: payload, cancellation: CopyCancellation())
@@ -274,7 +287,19 @@ public enum EntryOperations {
         try verifiedPayload.verifyTransferredContents(of: before)
         let payloadIdentity = try snapshotIdentity(payload, fileManager: fm)
         try checkpointCopy(payloadIdentity, verifiedPayload)
-        try fm.moveItem(at: payload, to: target)
+        try beforeCopyPublication()
+        guard CopyEngine.matches(parent, descriptor: parentFD), CopyEngine.matches(stage, descriptor: stageFD),
+              try snapshotIdentity(payload, fileManager: fm) == payloadIdentity else {
+            throw EntryOperationError.sourceChanged
+        }
+        do {
+            try CopyEngine.publishNoReplace(payload: payload, target: target,
+                sourceDirectoryFD: stageFD, sourceName: "payload",
+                destinationDirectoryFD: parentFD, destinationName: target.lastPathComponent,
+                allowPathFallback: false)
+        } catch CopyPublicationError.conflict {
+            throw MoveUndoDestinationError.occupied
+        }
         try afterCopyPublication()
         do {
             guard try CopyEngine.makeSnapshot(source, cancellation: CopyCancellation()).matchesOriginal(before),
@@ -1102,6 +1127,7 @@ public enum EntryOperations {
     }
 
     static func undoMove(_ record: MoveUndoRecord, journalDirectory: URL,
+                         beforeCopyPublication: @escaping @Sendable () throws -> Void = {},
                          afterCopyPublication: @escaping @Sendable () throws -> Void = {},
                          beforeBackupRestore: @escaping @Sendable (URL) -> Void) async -> MoveUndoResult {
         await Task.detached(priority: .userInitiated) {
@@ -1200,7 +1226,7 @@ public enum EntryOperations {
                         undoItems[index].restoredCopySnapshot = snapshot.withPermissions
                         undoItems[index].restoredCopyMetadata = snapshot.metadata
                         try checkpoint(index)
-                    }, afterCopyPublication: afterCopyPublication)
+                    }, beforeCopyPublication: beforeCopyPublication, afterCopyPublication: afterCopyPublication)
                     if item.backup == nil, let destinationFolder {
                         replay.append(.init(source: item.source, target: item.target, identity: restored.identity,
                                             snapshot: restored.snapshot, destinationFolder: destinationFolder))

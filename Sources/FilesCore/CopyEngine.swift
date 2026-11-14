@@ -405,7 +405,7 @@ public enum CopyEngine {
         }
     }
 
-    private static func matches(_ url: URL, descriptor: Int32) -> Bool {
+    static func matches(_ url: URL, descriptor: Int32) -> Bool {
         var pathInfo = stat(); var descriptorInfo = stat()
         return descriptor >= 0 && lstat(url.path, &pathInfo) == 0 && fstat(descriptor, &descriptorInfo) == 0 &&
             pathInfo.st_dev == descriptorInfo.st_dev && pathInfo.st_ino == descriptorInfo.st_ino
