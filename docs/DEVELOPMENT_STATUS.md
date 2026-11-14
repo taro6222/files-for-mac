@@ -8,6 +8,8 @@ M7 출시 검증이 진행 중이다. [유니버설 개발 프리뷰](verificati
 
 ## 이번 구현 단위
 
+APFS·exFAT 간 파일과 폴더의 접근 시간을 보존한다. [exFAT 접근 시간 검증](verification/m7/INCREMENT_135.md)
+
 APFS 간 파일 전송 결과의 접근 시간을 검증 읽기 이후 복원한다. [접근 시간 검증](verification/m7/INCREMENT_134.md)
 
 FAT32·HFS+ 전송의 생성 시간을 보존하고 실제 마운트 검사에 두 형식을 추가했다. [FAT32·HFS+ 생성 시간 검증](verification/m7/INCREMENT_133.md)

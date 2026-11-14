@@ -138,6 +138,29 @@ func mountedVolumePreservesNestedCreationTimes(volumeKey: String, tolerance: Tim
     try fm.setAttributes([.creationDate: rootDate], ofItemAtPath: source.path)
     try fm.setAttributes([.creationDate: nestedDate], ofItemAtPath: source.appendingPathComponent("nested").path)
     try fm.setAttributes([.creationDate: fileDate], ofItemAtPath: file.path)
+    let accessSeconds = 1_650_000_001
+    let checkAccessTime = volumeKey == "FILES_TEST_APFSX_VOLUME" || volumeKey == "FILES_TEST_EXFAT_VOLUME"
+    func setAccessTime(_ entry: URL) throws {
+        var times = [timespec(tv_sec: accessSeconds, tv_nsec: 987_000_000),
+                     timespec(tv_sec: 0, tv_nsec: Int(UTIME_OMIT))]
+        try #require(utimensat(AT_FDCWD, entry.path, &times, AT_SYMLINK_NOFOLLOW) == 0)
+    }
+    func verifyAccessTime(_ folder: URL) throws {
+        guard checkAccessTime else { return }
+        let isExFAT = volumeKey == "FILES_TEST_EXFAT_VOLUME"
+        for entry in [folder, folder.appendingPathComponent("nested"), folder.appendingPathComponent("nested/file.txt")] {
+            var info = stat()
+            try #require(lstat(entry.path, &info) == 0)
+            #expect(info.st_atimespec.tv_sec == (isExFAT ? accessSeconds - 1 : accessSeconds))
+            #expect(info.st_atimespec.tv_nsec == (isExFAT ? 0 : 987_000_000))
+        }
+    }
+    func prepareAccessTimes() throws {
+        guard checkAccessTime else { return }
+        try setAccessTime(source)
+        try setAccessTime(source.appendingPathComponent("nested"))
+        try setAccessTime(file)
+    }
     func dates(in folder: URL) throws -> [Date] {
         try [folder, folder.appendingPathComponent("nested"), folder.appendingPathComponent("nested/file.txt")].map {
             try #require(try fm.attributesOfItem(atPath: $0.path)[.creationDate] as? Date)
@@ -150,17 +173,28 @@ func mountedVolumePreservesNestedCreationTimes(volumeKey: String, tolerance: Tim
         }
         return actual
     }
+    try prepareAccessTimes()
     let copy = await CopyEngine.run(sources: [source], destination: destination,
                                     journalDirectory: journal, cancellation: CopyCancellation())
     try #require(copy.state == "completed", Comment(rawValue: copy.items.first?.message ?? ""))
+    try verifyAccessTime(target)
     _ = try verify(target)
     let copyUndo = try #require(CopyEngine.latestUndoCopy(journalDirectory: journal))
     try #require(await CopyEngine.undoCopy(copyUndo, journalDirectory: journal).state == "completed")
+    try prepareAccessTimes()
     let move = try await EntryOperations.move([source], to: destination, journalDirectory: journal)
     try #require(move.state == "completed", Comment(rawValue: move.items.first?.message ?? ""))
+    try verifyAccessTime(target)
     let movedDates = try verify(target)
     let undo = try #require(EntryOperations.latestUndoMove(journalDirectory: journal))
     try #require(await EntryOperations.undoMove(undo, journalDirectory: journal).state == "completed")
+    if checkAccessTime {
+        let isExFAT = volumeKey == "FILES_TEST_EXFAT_VOLUME"
+        var info = stat()
+        try #require(lstat(file.path, &info) == 0)
+        #expect(info.st_atimespec.tv_sec == (isExFAT ? accessSeconds - 1 : accessSeconds))
+        #expect(info.st_atimespec.tv_nsec == (isExFAT ? 0 : 987_000_000))
+    }
     let restoredDates = try dates(in: source)
     for (restored, moved) in zip(restoredDates, movedDates) {
         #expect(abs(restored.timeIntervalSince(moved)) < 0.000001)

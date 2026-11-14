@@ -451,6 +451,10 @@ public enum CopyEngine {
             }
         }
 
+        fileprivate static func supportsAccessTimeRestoration(_ filesystem: String) -> Bool {
+            filesystem == "apfs" || filesystem == "exfat"
+        }
+
         private func transferMismatch(_ source: Self) -> TransferMismatch? {
             if content != source.content { return .contents }
             if metadata.extendedAttributes != source.metadata.extendedAttributes { return .extendedAttributes }
@@ -526,7 +530,7 @@ public enum CopyEngine {
         }
 
         func restoreAccessTimes(in payload: URL, verifiedCopy: Self, cancellation: CopyCancellation) throws {
-            guard filesystemType == "apfs", !accessTimes.isEmpty else { return }
+            guard !accessTimes.isEmpty else { return }
             let parent = open(payload.deletingLastPathComponent().path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
             guard parent >= 0 else { throw TransferMismatch.accessTime }
             defer { close(parent) }
@@ -535,9 +539,13 @@ public enum CopyEngine {
             let filesystem = withUnsafeBytes(of: volume.f_fstypename) {
                 String(decoding: $0.prefix { $0 != 0 }, as: UTF8.self)
             }
-            guard filesystem == "apfs" else { return }
+            guard Self.supportsAccessTimeRestoration(filesystem) else { return }
             for (path, time) in accessTimes {
                 try cancellation.check()
+                // The macOS exFAT driver stores access times in even seconds.
+                let expected = filesystem == "exfat"
+                    ? timespec(tv_sec: time.tv_sec & ~1, tv_nsec: 0)
+                    : time
                 let isDirectory = content[path] == "directory"
                 let descriptor = try openTransferEntry(parent: parent, name: payload.lastPathComponent,
                     path: path, isDirectory: isDirectory, mismatch: .accessTime)
@@ -549,14 +557,14 @@ public enum CopyEngine {
                       info.st_mode & S_IFMT == (isDirectory ? S_IFDIR : S_IFREG) else {
                     throw TransferMismatch.accessTime
                 }
-                if info.st_atimespec.tv_sec != time.tv_sec || info.st_atimespec.tv_nsec != time.tv_nsec {
+                if info.st_atimespec.tv_sec != expected.tv_sec || info.st_atimespec.tv_nsec != expected.tv_nsec {
                     var attributes = attrlist()
                     attributes.bitmapcount = UInt16(ATTR_BIT_MAP_COUNT)
                     attributes.commonattr = attrgroup_t(ATTR_CMN_ACCTIME)
-                    var accessTime = time
+                    var accessTime = expected
                     guard fsetattrlist(descriptor, &attributes, &accessTime, MemoryLayout<timespec>.size, 0) == 0,
                           fstat(descriptor, &info) == 0,
-                          info.st_atimespec.tv_sec == time.tv_sec, info.st_atimespec.tv_nsec == time.tv_nsec else {
+                          info.st_atimespec.tv_sec == expected.tv_sec, info.st_atimespec.tv_nsec == expected.tv_nsec else {
                         throw TransferMismatch.accessTime
                     }
                 }
@@ -641,7 +649,8 @@ public enum CopyEngine {
                 default: break
                 }
             }
-            if includeTransferMetadata, snapshot.filesystemType == "apfs", type != .typeSymbolicLink {
+            if includeTransferMetadata, VerificationSnapshot.supportsAccessTimeRestoration(snapshot.filesystemType),
+               type != .typeSymbolicLink {
                 var info = stat()
                 guard lstat(url.path, &info) == 0 else { throw TransferMismatch.accessTime }
                 snapshot.accessTimes[relative] = info.st_atimespec
