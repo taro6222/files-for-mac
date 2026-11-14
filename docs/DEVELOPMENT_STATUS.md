@@ -8,6 +8,8 @@ M7 출시 검증이 진행 중이다. [유니버설 개발 프리뷰](verificati
 
 ## 이번 구현 단위
 
+Git 동기화에서 설정된 upstream 브랜치에만 푸시하도록 수정했다. [M7 Git 동기화 검증](verification/m7/INCREMENT_113.md)
+
 Git 병합 충돌 표시와 보조 패널 읽기 중단·재시도를 담은 유니버설 개발 프리뷰를 갱신했다. 설치·교체·복원을 확인했고 arm64 기동 20회의 정보 창 표시 p95는 575 ms였다. [프리뷰 설치·기동](verification/m7/PREVIEW_0.1.0.md)
 
 분할 보기에서 보조 패널 폴더 읽기 중단과 재시도를 검증했다. [M7 보조 패널 읽기 복구](verification/m7/INCREMENT_111.md)

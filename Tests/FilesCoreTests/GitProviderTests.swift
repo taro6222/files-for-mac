@@ -113,6 +113,34 @@ import Testing
     try Data("local".utf8).write(to: local.appendingPathComponent("local.txt")); try runGit(["add", "local.txt"], at: local); try runGit(["commit", "-m", "local"], at: local)
     let pushed = try await provider.synchronize(at: local); #expect(pushed.ahead == 0 && pushed.behind == 0)
     try runGit(["pull", "--ff-only"], at: peer); #expect(fm.fileExists(atPath: peer.appendingPathComponent("local.txt").path))
+
+    try runGit(["branch", "-m", "topic/local"], at: local)
+    try runGit(["branch", "--set-upstream-to=origin/main"], at: local)
+    try runGit(["config", "remote.origin.push", "+refs/heads/*:refs/heads/*"], at: local)
+    try runGit(["config", "remote.origin.mirror", "true"], at: local)
+    try runGit(["config", "push.followTags", "true"], at: local)
+    try runGit(["config", "pull.rebase", "true"], at: local)
+    try Data("topic".utf8).write(to: local.appendingPathComponent("topic.txt"))
+    try runGit(["add", "topic.txt"], at: local)
+    try runGit(["commit", "-m", "Topic"], at: local)
+    try runGit(["tag", "-a", "local-only", "-m", "Local tag"], at: local)
+    let matching = try await provider.synchronize(at: local)
+    #expect(matching.upstream == "origin/main")
+    #expect(matching.ahead == 0 && matching.behind == 0)
+    #expect(try gitOutput(["--git-dir", bare.path, "for-each-ref", "--format=%(refname)"], at: root) == "refs/heads/main")
+    #expect(try gitOutput(["--git-dir", bare.path, "rev-parse", "main"], at: root) == gitOutput(["rev-parse", "HEAD"], at: local))
+    await #expect(throws: GitBackendError.invalidLocation) {
+        try await provider.push(at: local, branch: "topic/local:refs/heads/unexpected")
+    }
+    try runGit(["pull", "--ff-only"], at: peer)
+    try Data("peer".utf8).write(to: peer.appendingPathComponent("peer.txt"))
+    try runGit(["add", "peer.txt"], at: peer)
+    try runGit(["commit", "-m", "Peer update"], at: peer)
+    try runGit(["push"], at: peer)
+    try runGit(["branch", "main"], at: local)
+    await #expect(throws: GitBackendError.commandFailed(1)) { try await provider.push(at: local, branch: "main") }
+    #expect(try gitOutput(["--git-dir", bare.path, "rev-parse", "main"], at: root) == gitOutput(["rev-parse", "HEAD"], at: peer))
+    #expect(try gitOutput(["--git-dir", bare.path, "for-each-ref", "--format=%(refname)"], at: root) == "refs/heads/main")
 }
 
 @Test func gitProviderUsesBareRemoteWithoutForceOrReset() async throws {

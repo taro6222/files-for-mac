@@ -225,7 +225,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     @objc func synchronizeGitRepository(_ sender: Any?) {
         guard let browser = currentBrowser, let location = browser.activeLocation, gitCommandTask == nil, let window = browser.window else { return }
         let alert = NSAlert(); alert.messageText = L("Git 저장소 동기화", "Synchronize Git Repository")
-        alert.informativeText = L("Fetch 후 fast-forward 전용 Pull과 비강제 Push를 순서대로 실행합니다. 분기된 이력은 변경하지 않습니다.", "Runs fetch, fast-forward-only pull, then non-force push. Diverged history is left unchanged.")
+        alert.informativeText = L("가져온 upstream으로 fast-forward한 뒤 같은 원격 브랜치에 푸시합니다. 분기된 이력은 변경하지 않습니다.", "Fetches and fast-forwards from the configured upstream, then pushes to the same remote branch. Diverged history is left unchanged.")
         alert.addButton(withTitle: L("동기화", "Synchronize")); alert.addButton(withTitle: L("취소", "Cancel"))
         alert.beginSheetModal(for: window) { [weak self, weak browser] response in
             guard response == .alertFirstButtonReturn, let self else { return }

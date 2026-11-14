@@ -193,34 +193,62 @@ public struct GitProvider: Sendable {
         try validateRemoteName(remote); _ = try await run(["-C", repository.path, "fetch", "--prune", "--", remote], at: repository)
     }
     public func pullFastForwardOnly(at repository: URL) async throws {
-        _ = try await run(["-C", repository.path, "pull", "--ff-only"], at: repository)
+        _ = try await run(["-C", repository.path, "pull", "--no-rebase", "--ff-only"], at: repository)
     }
     public func push(at repository: URL, remote: String = "origin", branch: String? = nil) async throws {
-        try validateRemoteName(remote); var arguments = ["-C", repository.path, "push", "--porcelain", "--", remote]
-        if let branch { try validateRefName(branch); arguments.append(branch) }
-        _ = try await run(arguments, at: repository)
+        let source = try await localBranchRef(branch, at: repository)
+        try await pushBranch(at: repository, remote: remote, source: source, destination: source)
     }
     public func synchronize(at repository: URL) async throws -> GitRepositorySnapshot {
         let initial = try await snapshot(at: repository)
-        guard let branch = initial.branch, let upstream = initial.upstream,
-              let separator = upstream.firstIndex(of: "/"), separator != upstream.startIndex else {
+        let source = try await localBranchRef(nil, at: initial.root)
+        let output = try await run(["-C", initial.root.path, "for-each-ref",
+            "--format=%(refname)%09%(upstream:remotename)%09%(upstream:remoteref)%09%(upstream)", source], at: initial.root)
+        guard let text = String(data: output, encoding: .utf8) else { throw GitBackendError.invalidOutput }
+        let fields = text.split(separator: "\n").first { $0.hasPrefix(source + "\t") }?
+            .split(separator: "\t", omittingEmptySubsequences: false)
+        guard let fields, fields.count == 4, fields[2].hasPrefix("refs/heads/"), fields[3].hasPrefix("refs/") else {
             throw GitBackendError.invalidLocation
         }
-        let remote = String(upstream[..<separator])
-        try validateRemoteName(remote); try validateRefName(branch)
-        guard try await remotes(at: initial.root).contains(where: { $0.name == remote }) else {
-            throw GitBackendError.invalidLocation
-        }
+        let remote = String(fields[1]), destination = String(fields[2])
+        try validateRemoteName(remote)
         try await fetch(at: initial.root, remote: remote)
-        try await pullFastForwardOnly(at: initial.root)
-        try await push(at: initial.root, remote: remote, branch: branch)
+        guard try await localBranchRef(nil, at: initial.root) == source else { throw GitBackendError.invalidLocation }
+        _ = try await run(["-C", initial.root.path, "merge", "--ff-only", "--no-autostash", "--", String(fields[3])],
+            at: initial.root)
+        guard try await localBranchRef(nil, at: initial.root) == source else { throw GitBackendError.invalidLocation }
+        try await pushBranch(at: initial.root, remote: remote, source: source, destination: destination)
         return try await snapshot(at: initial.root)
+    }
+    private func localBranchRef(_ branch: String?, at repository: URL) async throws -> String {
+        let ref: String
+        if let branch {
+            guard !branch.hasPrefix("-") else { throw GitBackendError.invalidLocation }
+            ref = "refs/heads/" + branch
+        } else {
+            let output: Data
+            do {
+                output = try await run(["-C", repository.path, "symbolic-ref", "--quiet", "HEAD"], at: repository)
+            } catch GitBackendError.commandFailed(1) {
+                throw GitBackendError.invalidLocation
+            }
+            ref = String(decoding: output, as: UTF8.self).trimmingCharacters(in: .newlines)
+        }
+        guard ref.hasPrefix("refs/heads/") else { throw GitBackendError.invalidLocation }
+        do {
+            _ = try await run(["check-ref-format", ref], at: repository)
+        } catch GitBackendError.commandFailed {
+            throw GitBackendError.invalidLocation
+        }
+        return ref
+    }
+    private func pushBranch(at repository: URL, remote: String, source: String, destination: String) async throws {
+        try validateRemoteName(remote)
+        _ = try await run(["-C", repository.path, "-c", "remote.\(remote).mirror=false",
+            "push", "--porcelain", "--no-follow-tags", "--", remote, "\(source):\(destination)"], at: repository)
     }
     private func validateRemoteName(_ name: String) throws {
         guard !name.isEmpty, !name.hasPrefix("-"), name.allSatisfy({ $0.isLetter || $0.isNumber || "-_.".contains($0) }) else { throw GitBackendError.invalidLocation }
-    }
-    private func validateRefName(_ name: String) throws {
-        guard !name.isEmpty, !name.hasPrefix("-"), !name.unicodeScalars.contains(where: CharacterSet.controlCharacters.contains) else { throw GitBackendError.invalidLocation }
     }
     private func run(_ arguments: [String], at directory: URL, outputLimit: Int = 4 * 1_024 * 1_024) async throws -> Data {
         let box = GitProcessBox()
