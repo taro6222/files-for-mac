@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
-"""Exercise a local preview install, replacement and rollback in a temporary home."""
+"""Verify local preview startup or installation in a temporary home."""
 
 import argparse
 from contextlib import contextmanager
 import hashlib
 import json
+import math
 import os
 from pathlib import Path
 import plistlib
@@ -103,6 +104,51 @@ def launch(app, probe, fixture, home, log):
                     process.wait()
 
 
+def build_window_probe(root):
+    probe = root / "window-probe"
+    source = probe.with_suffix(".swift")
+    source.write_text(WINDOW_PROBE)
+    run("swiftc", source, "-o", probe)
+    return probe
+
+
+def launch_environment():
+    return {
+        "macOS": run("sw_vers", "-productVersion", capture_output=True).stdout.strip(),
+        "macOSBuild": run("sw_vers", "-buildVersion", capture_output=True).stdout.strip(),
+        "architecture": os.uname().machine,
+    }
+
+
+def measure_startup(image, root, bundle_id):
+    digest = image_hash(image)
+    mountpoint, home, fixture = (root / name for name in ("mount", "home", "Startup Fixture"))
+    for folder in (mountpoint, home, fixture):
+        folder.mkdir()
+    probe = build_window_probe(root)
+    app = home / "Files macOS.app"
+    with mounted(image, mountpoint) as mounted_app:
+        verify_signature(mounted_app)
+        run("ditto", mounted_app, app)
+    verify_signature(app)
+    app_version = version(app)
+    isolate(app, bundle_id)
+    run("defaults", "write", bundle_id, "startupLocationPath", "-string", fixture)
+    run("defaults", "write", bundle_id, "continueLastSession", "-bool", "NO")
+    samples = [launch(app, probe, fixture, home, root / "app.log") for _ in range(20)]
+    p95 = sorted(samples)[math.ceil(len(samples) * 0.95) - 1]
+    return {
+        **launch_environment(),
+        "imageSHA256": digest,
+        "appVersion": app_version,
+        "metric": "Process creation to the first matching AppKit window in the WindowServer list",
+        "cacheCondition": "Fresh processes; shared OS caches, no cache purge",
+        "seconds": samples,
+        "p95Seconds": p95,
+        "maximumSeconds": max(samples),
+    }
+
+
 def exercise(previous, candidate, root, bundle_id):
     previous_hash, candidate_hash = map(image_hash, (previous, candidate))
     if previous_hash == candidate_hash:
@@ -118,10 +164,7 @@ def exercise(previous, candidate, root, bundle_id):
     backup = applications / "Previous.app"
     staged = applications / "Staged.app"
     launch_log = root / "app.log"
-    probe = root / "window-probe"
-    source = probe.with_suffix(".swift")
-    source.write_text(WINDOW_PROBE)
-    run("swiftc", source, "-o", probe)
+    probe = build_window_probe(root)
 
     with mounted(previous, mountpoint) as mounted_app:
         verify_signature(mounted_app)
@@ -174,9 +217,7 @@ def exercise(previous, candidate, root, bundle_id):
         "candidateVersion": next_version,
         "previousTestExecutableSHA256": prior_binary,
         "candidateTestExecutableSHA256": next_binary,
-        "macOS": run("sw_vers", "-productVersion", capture_output=True).stdout.strip(),
-        "macOSBuild": run("sw_vers", "-buildVersion", capture_output=True).stdout.strip(),
-        "architecture": os.uname().machine,
+        **launch_environment(),
         "windowVisibleSeconds": {
             "firstInstall": initial_time,
             "afterStagedSignatureFailure": failure_time,
@@ -189,17 +230,26 @@ def exercise(previous, candidate, root, bundle_id):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("previous", type=Path)
-    parser.add_argument("candidate", type=Path)
+    parser.add_argument("candidate", type=Path, nargs="?")
+    parser.add_argument("--startup", action="store_true", help="Measure 20 launches from one preview image")
     args = parser.parse_args()
-    if any(image.name != "Files-macOS-preview.dmg" for image in (args.previous, args.candidate)):
-        parser.error("Both images must be local Files-macOS-preview.dmg files")
+    if args.startup and args.candidate is not None:
+        parser.error("--startup accepts one preview image")
+    if not args.startup and args.candidate is None:
+        parser.error("Installation verification requires a previous and candidate preview image")
+    images = [image.resolve() for image in (args.previous, args.candidate) if image is not None]
+    if any(image.name != "Files-macOS-preview.dmg" for image in images):
+        parser.error("Use local Files-macOS-preview.dmg files")
     build = Path(__file__).resolve().parents[1] / "build"
     build.mkdir(exist_ok=True)
     root = Path(tempfile.mkdtemp(prefix="preview-install.", dir=build))
     bundle_id = f"org.taro6222.files-for-mac.qa.{uuid.uuid4()}"
     print(root, flush=True)
     try:
-        result = exercise(args.previous.resolve(), args.candidate.resolve(), root, bundle_id)
+        if args.startup:
+            result = measure_startup(images[0], root, bundle_id)
+        else:
+            result = exercise(*images, root, bundle_id)
         (root / "report.json").write_text(json.dumps(result, indent=2) + "\n")
         print(json.dumps(result, indent=2))
     finally:

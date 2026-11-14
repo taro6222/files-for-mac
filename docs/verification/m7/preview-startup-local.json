@@ -1,0 +1,36 @@
+{
+  "macOS": "27.2",
+  "macOSBuild": "26B123",
+  "architecture": "arm64",
+  "imageSHA256": "f8e10956c8c776f110f58c353179fe1d224f1b070c4c858535c1b7bce4be85d7",
+  "appVersion": [
+    "0.1.0",
+    "1"
+  ],
+  "metric": "Process creation to the first matching AppKit window in the WindowServer list",
+  "cacheCondition": "Fresh processes; shared OS caches, no cache purge",
+  "seconds": [
+    0.596,
+    0.234,
+    0.235,
+    0.248,
+    0.242,
+    0.24,
+    0.239,
+    0.234,
+    0.235,
+    0.236,
+    0.144,
+    0.243,
+    0.231,
+    0.245,
+    0.24,
+    0.236,
+    0.244,
+    0.228,
+    0.236,
+    0.238
+  ],
+  "p95Seconds": 0.248,
+  "maximumSeconds": 0.596
+}
