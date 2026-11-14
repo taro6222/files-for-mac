@@ -1,0 +1,97 @@
+{
+  "macOS": "27.2",
+  "macOSBuild": "26B123",
+  "architecture": "arm64",
+  "imageSHA256": "c73a40969434e8e61f0584c27c74dd09da90bc5b5f118dba9cb85cddf027162d",
+  "appVersion": [
+    "0.1.0",
+    "1"
+  ],
+  "isolatedExecutableSHA256": "a42568dd05d199d4bfd52a4e7bd548b54faca0957a983faf2e778a677f36fe03",
+  "metric": "Launch Services to observing the About window after pressing its menu item through Accessibility",
+  "cacheCondition": "Fresh processes; shared OS caches, no cache purge",
+  "samples": [
+    {
+      "windowSeconds": 0.614,
+      "interactiveSeconds": 0.844
+    },
+    {
+      "windowSeconds": 0.259,
+      "interactiveSeconds": 0.487
+    },
+    {
+      "windowSeconds": 0.221,
+      "interactiveSeconds": 0.454
+    },
+    {
+      "windowSeconds": 0.259,
+      "interactiveSeconds": 0.504
+    },
+    {
+      "windowSeconds": 0.25,
+      "interactiveSeconds": 0.48
+    },
+    {
+      "windowSeconds": 0.274,
+      "interactiveSeconds": 0.509
+    },
+    {
+      "windowSeconds": 0.238,
+      "interactiveSeconds": 0.473
+    },
+    {
+      "windowSeconds": 0.24,
+      "interactiveSeconds": 0.486
+    },
+    {
+      "windowSeconds": 0.247,
+      "interactiveSeconds": 0.531
+    },
+    {
+      "windowSeconds": 0.25,
+      "interactiveSeconds": 0.492
+    },
+    {
+      "windowSeconds": 0.265,
+      "interactiveSeconds": 0.505
+    },
+    {
+      "windowSeconds": 0.248,
+      "interactiveSeconds": 0.487
+    },
+    {
+      "windowSeconds": 0.248,
+      "interactiveSeconds": 0.484
+    },
+    {
+      "windowSeconds": 0.26,
+      "interactiveSeconds": 0.54
+    },
+    {
+      "windowSeconds": 0.22,
+      "interactiveSeconds": 0.465
+    },
+    {
+      "windowSeconds": 0.243,
+      "interactiveSeconds": 0.485
+    },
+    {
+      "windowSeconds": 0.254,
+      "interactiveSeconds": 0.492
+    },
+    {
+      "windowSeconds": 0.241,
+      "interactiveSeconds": 0.515
+    },
+    {
+      "windowSeconds": 0.258,
+      "interactiveSeconds": 0.502
+    },
+    {
+      "windowSeconds": 0.259,
+      "interactiveSeconds": 0.5
+    }
+  ],
+  "p95Seconds": 0.54,
+  "maximumSeconds": 0.844
+}

@@ -16,9 +16,47 @@ import uuid
 
 
 WINDOW_PROBE = """\
+import AppKit
 import ApplicationServices
 import CoreGraphics
 import Darwin
+
+if CommandLine.arguments[1] == "--launch" {
+    let configuration = NSWorkspace.OpenConfiguration()
+    configuration.createsNewApplicationInstance = true
+    configuration.environment = ["CFFIXED_USER_HOME": CommandLine.arguments[3]]
+    configuration.arguments = ["-AppleLanguages", "(en)", "-AppleLocale", "en"]
+    let url = URL(fileURLWithPath: CommandLine.arguments[2])
+    NSWorkspace.shared.openApplication(at: url, configuration: configuration) { application, error in
+        guard let application else {
+            if let error { fputs("\\(error)\\n", stderr) }
+            exit(2)
+        }
+        print(application.processIdentifier)
+        exit(0)
+    }
+    RunLoop.main.run()
+    exit(2)
+}
+if CommandLine.arguments[1] == "--close" {
+    guard let pid = pid_t(CommandLine.arguments[2]),
+          let application = NSRunningApplication(processIdentifier: pid),
+          application.bundleURL?.standardizedFileURL == URL(fileURLWithPath: CommandLine.arguments[3], isDirectory: true).standardizedFileURL
+    else { exit(2) }
+    _ = application.terminate()
+    let deadline = ProcessInfo.processInfo.systemUptime + 4
+    while !application.isTerminated && ProcessInfo.processInfo.systemUptime < deadline {
+        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.05))
+    }
+    if !application.isTerminated {
+        _ = application.forceTerminate()
+        let forcedDeadline = ProcessInfo.processInfo.systemUptime + 2
+        while !application.isTerminated && ProcessInfo.processInfo.systemUptime < forcedDeadline {
+            RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.05))
+        }
+    }
+    exit(application.isTerminated ? 0 : 2)
+}
 
 if CommandLine.arguments[1] == "--check-interaction-access" {
     exit(AXIsProcessTrusted() ? 0 : 2)
@@ -111,7 +149,7 @@ def isolate(app, bundle_id):
     verify_signature(app)
 
 
-def launch(app, probe, fixture, home, log, *, interactive=False):
+def launch(app, probe, fixture, home, log, *, interactive=False, launch_services=False):
     env = dict(os.environ, CFFIXED_USER_HOME=str(home))
     title = f"{fixture.name} — Files macOS"
     with log.open("ab") as output:
@@ -119,24 +157,29 @@ def launch(app, probe, fixture, home, log, *, interactive=False):
         arguments = [app / "Contents/MacOS/FilesMac"]
         if interactive:
             arguments += ["-AppleLanguages", "(en)", "-AppleLocale", "en"]
-        process = subprocess.Popen(arguments, env=env, stdout=output, stderr=subprocess.STDOUT)
+        if launch_services:
+            pid = int(run(probe, "--launch", app, home, capture_output=True, timeout=15).stdout)
+            process = None
+        else:
+            process = subprocess.Popen(arguments, env=env, stdout=output, stderr=subprocess.STDOUT)
+            pid = process.pid
         try:
             window_time = None
             next_press = 0.0
             while time.monotonic() - start < 15:
-                if process.poll() is not None:
+                if process is not None and process.poll() is not None:
                     raise RuntimeError(f"App exited with {process.returncode}; see {log}")
                 if window_time is not None:
-                    if subprocess.run([probe, str(process.pid), "About Files macOS"], timeout=5).returncode == 0:
+                    if subprocess.run([probe, str(pid), "About Files macOS"], timeout=5).returncode == 0:
                         return {"windowSeconds": window_time, "interactiveSeconds": round(time.monotonic() - start, 3)}
                     if time.monotonic() >= next_press:
-                        status = subprocess.run([probe, str(process.pid), title, "--press-about"], timeout=5).returncode
+                        status = subprocess.run([probe, str(pid), title, "--press-about"], timeout=5).returncode
                         if status > 1:
                             raise RuntimeError(f"Window probe exited with {status}")
                         next_press = time.monotonic() + 0.1
                     time.sleep(0.02)
                     continue
-                status = subprocess.run([probe, str(process.pid), title], timeout=5).returncode
+                status = subprocess.run([probe, str(pid), title], timeout=5).returncode
                 if status == 0:
                     elapsed = round(time.monotonic() - start, 3)
                     if not interactive:
@@ -148,7 +191,9 @@ def launch(app, probe, fixture, home, log, *, interactive=False):
             missing = "the About window after pressing the menu item" if window_time is not None else "the startup location"
             raise RuntimeError(f"No window for {missing}; see {log}")
         finally:
-            if process.poll() is None:
+            if launch_services:
+                run(probe, "--close", str(pid), app, timeout=8)
+            elif process.poll() is None:
                 process.terminate()
                 try:
                     process.wait(timeout=5)
@@ -173,7 +218,7 @@ def launch_environment():
     }
 
 
-def measure_startup(image, root, bundle_id, *, interactive=False):
+def measure_startup(image, root, bundle_id, *, interactive=False, launch_services=False):
     digest = image_hash(image)
     mountpoint, home, fixture = (root / name for name in ("mount", "home", "Startup Fixture"))
     for folder in (mountpoint, home, fixture):
@@ -190,7 +235,8 @@ def measure_startup(image, root, bundle_id, *, interactive=False):
     isolate(app, bundle_id)
     run("defaults", "write", bundle_id, "startupLocationPath", "-string", fixture)
     run("defaults", "write", bundle_id, "continueLastSession", "-bool", "NO")
-    samples = [launch(app, probe, fixture, home, root / "app.log", interactive=interactive) for _ in range(20)]
+    samples = [launch(app, probe, fixture, home, root / "app.log",
+                      interactive=interactive, launch_services=launch_services) for _ in range(20)]
     if interactive:
         times = sorted(sample["interactiveSeconds"] for sample in samples)
         return {
@@ -198,7 +244,8 @@ def measure_startup(image, root, bundle_id, *, interactive=False):
             "imageSHA256": digest,
             "appVersion": app_version,
             "isolatedExecutableSHA256": sha256(app / "Contents/MacOS/FilesMac"),
-            "metric": "Direct process launch to observing the About window after pressing its menu item through Accessibility",
+            "metric": ("Launch Services" if launch_services else "Direct process launch")
+                      + " to observing the About window after pressing its menu item through Accessibility",
             "cacheCondition": "Fresh processes; shared OS caches, no cache purge",
             "samples": samples,
             "p95Seconds": times[math.ceil(len(times) * 0.95) - 1],
@@ -301,8 +348,11 @@ def main():
     parser.add_argument("candidate", type=Path, nargs="?")
     modes = parser.add_mutually_exclusive_group()
     modes.add_argument("--startup", action="store_true", help="Measure 20 launches from one preview image")
-    modes.add_argument("--interactive-startup", action="store_true", help="Measure 20 launches through a About menu action through Accessibility")
+    modes.add_argument("--interactive-startup", action="store_true", help="Measure 20 launches through an About menu accessibility action")
+    parser.add_argument("--launch-services", action="store_true", help="Use Launch Services for interactive startup measurement")
     args = parser.parse_args()
+    if args.launch_services and not args.interactive_startup:
+        parser.error("--launch-services requires --interactive-startup")
     startup = args.startup or args.interactive_startup
     if startup and args.candidate is not None:
         parser.error("Startup measurement accepts one preview image")
@@ -318,7 +368,8 @@ def main():
     print(root, flush=True)
     try:
         if startup:
-            result = measure_startup(images[0], root, bundle_id, interactive=args.interactive_startup)
+            result = measure_startup(images[0], root, bundle_id, interactive=args.interactive_startup,
+                                     launch_services=args.launch_services)
         else:
             result = exercise(*images, root, bundle_id)
         (root / "report.json").write_text(json.dumps(result, indent=2) + "\n")
