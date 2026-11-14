@@ -3746,6 +3746,25 @@ extension BrowserWindow {
                         && actual.panes.map { $0.tab.viewMode } == [.grid, .list]
                         && actual.panes.first?.tab.history.back.map { $0.url?.path } == [fixture.path]
                         && actual.panes.last?.tab.history.forward.map { $0.url?.path } == [columnFolder.path]
+                    if axis == .vertical, let restoredWindow = restored.window {
+                        let split = restored.workspaceSplit
+                        split.setPosition(split.bounds.width * 0.60, ofDividerAt: 0)
+                        let adjustedRatio = restored.workspaceSnapshot().ratio
+                        var narrowFrame = restoredWindow.frame
+                        narrowFrame.size.width = restoredWindow.minSize.width
+                        restoredWindow.setFrame(narrowFrame, display: true)
+                        restoredWindow.contentView?.layoutSubtreeIfNeeded()
+                        let narrowRatio = restored.workspaceSnapshot().ratio
+                        metrics["adjustedSplitRatio"] = adjustedRatio
+                        metrics["minimumWidthSplitRatio"] = narrowRatio
+                        checks["sideBySideKeepsAdjustedRatioAtMinimumWidth"] = abs(adjustedRatio - 0.60) < 0.01
+                            && abs(narrowRatio - adjustedRatio) < 0.01
+                            && abs(restoredWindow.frame.width - restoredWindow.minSize.width) < 1
+                        restored.focusOtherPane(nil)
+                        restored.focusPath(nil)
+                        checks["sideBySideCanFocusPrimaryPathAtMinimumWidth"] = !restored.secondaryActive
+                            && restored.pathField.frame.width > 0 && restored.pathField.currentEditor() != nil
+                    }
                     restored.close()
                 }
                 window.makeKeyAndOrderFront(nil)

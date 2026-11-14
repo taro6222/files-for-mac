@@ -4,6 +4,8 @@
 
 ## 이번 구현 단위
 
+최소 창 너비에서 좌우 분할 비율 유지와 기본 패널의 경로 입력 초점을 검증한다. [M7 최소 너비 검증](verification/m7/INCREMENT_84.md)
+
 좌우 분할 시작 및 창 크기 변경 중 패널 비율을 유지한다. [M7 좌우 분할 검증](verification/m7/INCREMENT_83.md)
 
 상하 분할의 콘텐츠 최소 높이 제약을 조정해 저장 비율을 복원한다. [M7 상하 분할 비율 검증](verification/m7/INCREMENT_82.md)
