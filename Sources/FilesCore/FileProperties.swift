@@ -30,6 +30,8 @@ public enum FileHashError: Error, Equatable {
 
 public struct FilePermissionSnapshot: Sendable {
     public let mode: Int
+    public let ownerID: uid_t
+    public let groupID: gid_t
     public let accessControlList: String?
     fileprivate let aclHeader: String
     fileprivate let device: dev_t
@@ -46,6 +48,7 @@ public enum FilePermissionError: Error, Equatable {
     case modeNotApplied
     case invalidAccessControlList
     case unknownACLAccount
+    case groupNotApplied
 }
 
 public enum FileACLAccountKind: String, Sendable {
@@ -53,7 +56,7 @@ public enum FileACLAccountKind: String, Sendable {
 
     private static let accountEnumerationLock = NSLock()
 
-    public func accountNames() async -> [String] {
+    public func accountNames(memberGroupsOnly: Bool = false) async -> [String] {
         await Task.detached(priority: .utility) {
             Self.accountEnumerationLock.withLock {
                 var names = Set<String>()
@@ -65,10 +68,23 @@ public enum FileACLAccountKind: String, Sendable {
                         if let name = entry.pointee.pw_name { names.insert(String(cString: name)) }
                     }
                 case .group:
+                    var memberships = Set<gid_t>()
+                    if memberGroupsOnly && geteuid() != 0 {
+                        memberships.insert(getegid())
+                        let count = getgroups(0, nil)
+                        if count > 0 {
+                            var groups = [gid_t](repeating: 0, count: Int(count))
+                            let loaded = getgroups(count, &groups)
+                            if loaded > 0 { memberships.formUnion(groups.prefix(Int(loaded))) }
+                        }
+                    }
                     setgrent()
                     defer { endgrent() }
                     while let entry = getgrent() {
-                        if let name = entry.pointee.gr_name { names.insert(String(cString: name)) }
+                        if memberships.isEmpty || memberships.contains(entry.pointee.gr_gid),
+                           let name = entry.pointee.gr_name {
+                            names.insert(String(cString: name))
+                        }
                     }
                 }
                 return names.filter { !$0.isEmpty }.sorted { $0.localizedStandardCompare($1) == .orderedAscending }
@@ -175,6 +191,28 @@ public struct FilePropertiesInspector: Sendable {
         }.value
     }
 
+    public func setGroup(_ name: String, at url: URL, expected: FilePermissionSnapshot) async throws -> FilePermissionSnapshot {
+        guard !name.isEmpty, !name.utf8.contains(0) else { throw FilePermissionError.unknownACLAccount }
+        return try await Task.detached(priority: .utility) {
+            var record = group()
+            var found: UnsafeMutablePointer<group>?
+            var buffer = [CChar](repeating: 0, count: 64 * 1024)
+            let code = getgrnam_r(name, &record, &buffer, buffer.count, &found)
+            guard code == 0, found != nil else { throw FilePermissionError.unknownACLAccount }
+            let groupID = record.gr_gid
+            return try Self.withPermissionDescriptor(url) { descriptor in
+                let current = try Self.permissionSnapshot(descriptor)
+                try Self.checkPermissionSnapshot(current, expected: expected)
+                if groupID != current.groupID {
+                    guard fchown(descriptor, uid_t.max, groupID) == 0 else { throw Self.permissionPOSIXError() }
+                }
+                let updated = try Self.permissionSnapshot(descriptor)
+                guard updated.groupID == groupID else { throw FilePermissionError.groupNotApplied }
+                return updated
+            }
+        }.value
+    }
+
     public func setAccessControlList(_ entries: String, at url: URL, expected: FilePermissionSnapshot) async throws -> FilePermissionSnapshot {
         guard !entries.utf8.contains(0) else { throw FilePermissionError.invalidAccessControlList }
         let text = entries.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -199,7 +237,8 @@ public struct FilePropertiesInspector: Sendable {
               current.birthNanoseconds == expected.birthNanoseconds else {
             throw FilePermissionError.changedItem
         }
-        guard current.mode == expected.mode, current.aclHeader == expected.aclHeader,
+        guard current.ownerID == expected.ownerID, current.groupID == expected.groupID,
+              current.mode == expected.mode, current.aclHeader == expected.aclHeader,
               current.accessControlList == expected.accessControlList else {
             throw FilePermissionError.changedPermissions
         }
@@ -219,7 +258,8 @@ public struct FilePropertiesInspector: Sendable {
         guard type == S_IFREG || type == S_IFDIR else { throw FilePermissionError.unsupportedFileType }
         let acl = try permissionACL(descriptor)
         return FilePermissionSnapshot(
-            mode: Int(metadata.st_mode & 0o7777), accessControlList: acl.entries, aclHeader: acl.header,
+            mode: Int(metadata.st_mode & 0o7777), ownerID: metadata.st_uid, groupID: metadata.st_gid,
+            accessControlList: acl.entries, aclHeader: acl.header,
             device: metadata.st_dev, inode: metadata.st_ino,
             birthSeconds: metadata.st_birthtimespec.tv_sec, birthNanoseconds: metadata.st_birthtimespec.tv_nsec
         )

@@ -4587,12 +4587,22 @@ extension BrowserWindow {
                 checks["fileInfoACLAccountRule"] = addedACLRule && accountACL.mode == 0o640
                     && accountACL.accessControlList?.hasPrefix((savedACL.accessControlList ?? "") + "\n") == true
                     && accountACL.accessControlList?.hasSuffix(":allow:write") == true
+                let currentGroup = try await FilePropertiesInspector().inspect(inputFile).group
+                let groups = await FileACLAccountKind.group.accountNames(memberGroupsOnly: true)
+                if let group = groups.first(where: { $0 != currentGroup }) ?? groups.first {
+                    let edited = try await info.qaChangePermissions(to: 0o640, group: group)
+                    let saved = try await FilePropertiesInspector().permissions(inputFile)
+                    let properties = try await FilePropertiesInspector().inspect(inputFile)
+                    checks["fileInfoGroupOwnership"] = edited && properties.group == group
+                        && saved.ownerID == accountACL.ownerID && saved.accessControlList == accountACL.accessControlList
+                } else { checks["fileInfoGroupOwnership"] = false }
             } else {
                 checks["fileInfoHashComparison"] = false
                 checks["fileInfoHashFileComparison"] = false
                 checks["fileInfoPermissionEditing"] = false
                 checks["fileInfoACLEditing"] = false
                 checks["fileInfoACLAccountRule"] = false
+                checks["fileInfoGroupOwnership"] = false
             }
             controller.infoWindow?.close(); window.makeKeyAndOrderFront(nil)
             let taggedURL = controller.activeSelectedItems.first?.url

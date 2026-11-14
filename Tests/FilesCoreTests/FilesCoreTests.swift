@@ -1555,3 +1555,26 @@ private struct ManyBatchLoader: DirectoryStreaming {
     #expect(Set(userNames).count == userNames.count)
     #expect(Set(groupNames).count == groupNames.count)
 }
+
+@Test func groupOwnershipPreservesOwnerAndRejectsStaleSnapshots() async throws {
+    let root = try fixture()
+    defer { try? FileManager.default.removeItem(at: root) }
+    let file = root.appendingPathComponent("group.txt")
+    try Data("fixture".utf8).write(to: file)
+    let inspector = FilePropertiesInspector()
+    let group = try await inspector.inspect(file).group
+    let names = await FileACLAccountKind.group.accountNames(memberGroupsOnly: true)
+    guard let target = names.first(where: { $0 != group }) else { return }
+    let initial = try await inspector.permissions(file)
+    let updated = try await inspector.setGroup(target, at: file, expected: initial)
+    #expect(updated.ownerID == initial.ownerID)
+    #expect(updated.groupID != initial.groupID)
+    #expect(updated.accessControlList == initial.accessControlList)
+    #expect(try await inspector.inspect(file).group == target)
+    await #expect(throws: FilePermissionError.changedPermissions) {
+        try await inspector.setPermissions(0o600, at: file, expected: initial)
+    }
+    await #expect(throws: FilePermissionError.unknownACLAccount) {
+        try await inspector.setGroup(UUID().uuidString, at: file, expected: updated)
+    }
+}
