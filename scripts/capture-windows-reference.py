@@ -50,28 +50,38 @@ def capture(output, app_id):
     result = request("POST", "/session", {"desiredCapabilities": {"app": app_id, "deviceName": "WindowsPC"}})
     session_id = result.get("sessionId") or result["value"]["sessionId"]
     session = f"/session/{session_id}"
+    output.mkdir(parents=True, exist_ok=True)
+    last_source = None
+
+    def screenshot(filename):
+        png = base64.b64decode(request("GET", session + "/screenshot")["value"], validate=True)
+        if not png.startswith(b"\x89PNG\r\n\x1a\n"):
+            raise ValueError("WinAppDriver did not return a PNG")
+        (output / filename).write_bytes(png)
+        return hashlib.sha256(png).hexdigest()
+
     try:
         def home_source():
+            nonlocal last_source
             for handle in request("GET", session + "/window_handles")["value"]:
                 request("POST", session + "/window", {"name": handle})
                 xml = request("GET", session + "/source")["value"]
+                last_source = xml
                 elements = list(ET.fromstring(xml).iter())
-                if any(element.get("AutomationId") == "ExpanderToggleButton" for element in elements):
-                    return xml
                 if any(element.get("Name") == "Disclaimer" for element in elements):
                     button = request("POST", session + "/element", {"using": "name", "value": "Accept"})["value"]
                     identifier = button.get("ELEMENT") or button["element-6066-11e4-a52e-4f735466cecf"]
                     request("POST", f"{session}/element/{identifier}/click", {})
+                    continue
+                names = {element.get("Name", "").casefold() for element in elements}
+                if {"drives", "network locations"} <= names:
+                    return xml
             return None
 
         wait_for("Files Home accessibility elements", home_source)
-        request("POST", session + "/window/current/maximize", {})
+        request("POST", session + "/window/maximize", {})
         xml = wait_for("maximized Files Home", home_source)
-        png = base64.b64decode(request("GET", session + "/screenshot")["value"], validate=True)
-        if not png.startswith(b"\x89PNG\r\n\x1a\n"):
-            raise ValueError("WinAppDriver did not return a PNG")
-        output.mkdir(parents=True, exist_ok=True)
-        (output / "UI-01_home.png").write_bytes(png)
+        screenshot_sha = screenshot("UI-01_home.png")
         (output / "UI-01_home.xml").write_text(xml, encoding="utf-8")
         record = {
             "upstreamSHA": os.environ["UPSTREAM_SHA"],
@@ -80,9 +90,18 @@ def capture(output, app_id):
             "windows": platform.version(),
             "architecture": platform.machine(),
             "screen": "UI-01 Home, initial runner defaults",
-            "screenshotSHA256": hashlib.sha256(png).hexdigest(),
+            "screenshotSHA256": screenshot_sha,
         }
         (output / "capture.json").write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8")
+    except Exception as error:
+        (output / "capture-error.txt").write_text(str(error) + "\n", encoding="utf-8")
+        if last_source is not None:
+            (output / "last-window.xml").write_text(last_source, encoding="utf-8")
+        try:
+            screenshot("last-window.png")
+        except (URLError, TimeoutError, RuntimeError, ValueError) as diagnostic_error:
+            print(f"WinAppDriver error screenshot unavailable: {diagnostic_error}")
+        raise
     finally:
         try:
             request("DELETE", session)
