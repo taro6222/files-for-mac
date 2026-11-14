@@ -518,6 +518,20 @@ private struct DelayedLoader: DirectoryLoading {
     preferences.removeObserver(token)
 }
 
+@Test @MainActor func defaultSortDirectoryPlacementPersistsAndAvoidsDuplicateNotifications() {
+    let suite = "default-sort-placement-tests-\(UUID())", defaults = UserDefaults(suiteName: suite)!
+    defer { defaults.removePersistentDomain(forName: suite) }
+    let preferences = BrowserPreferences(defaults: defaults, initialFavorites: [])
+    #expect(preferences.defaultSortDirectoryPlacement == .foldersFirst)
+    var notifications = 0; let token = preferences.observe { notifications += 1 }
+    preferences.setDefaultSortDirectoryPlacement(.mixed)
+    preferences.setDefaultSortDirectoryPlacement(.filesFirst)
+    preferences.setDefaultSortDirectoryPlacement(.filesFirst)
+    #expect(BrowserPreferences(defaults: defaults, initialFavorites: []).defaultSortDirectoryPlacement == .filesFirst)
+    #expect(notifications == 2)
+    preferences.removeObserver(token)
+}
+
 @Test @MainActor func contextMenuVisibilityDefaultsPersistAndAvoidsDuplicateNotifications() {
     let suite = "context-menu-visibility-tests-\(UUID())", defaults = UserDefaults(suiteName: suite)!
     defer { defaults.removePersistentDomain(forName: suite) }
@@ -585,6 +599,7 @@ private struct DelayedLoader: DirectoryLoading {
     source.setOpenFoldersInNewTab(true)
     source.setScrollToPreviousFolderOnUp(false)
     source.setShowFileExtensionWarning(false)
+    source.setDefaultSortDirectoryPlacement(.filesFirst)
     source.setShowCreatedColumn(true); source.setShowDateColumn(false); source.setShowTypeColumn(false); source.setShowSizeColumn(false); source.setShowGitStatusColumn(true)
     source.setShowFileTagColumn(true); source.setShowPathColumn(true)
     source.setShowCompressionOptions(false); source.setShowOpenTerminal(false); source.setShowCreateFolderWithSelection(false)
@@ -604,6 +619,7 @@ private struct DelayedLoader: DirectoryLoading {
     #expect(destination.openFoldersInNewTab)
     #expect(!destination.scrollToPreviousFolderOnUp)
     #expect(!destination.showFileExtensionWarning)
+    #expect(destination.defaultSortDirectoryPlacement == .filesFirst)
     #expect(destination.showCreatedColumn && !destination.showDateColumn && !destination.showTypeColumn && !destination.showSizeColumn && destination.showGitStatusColumn)
     #expect(destination.showFileTagColumn && destination.showPathColumn)
     #expect(!destination.showCompressionOptions && !destination.showOpenTerminal && !destination.showCreateFolderWithSelection)

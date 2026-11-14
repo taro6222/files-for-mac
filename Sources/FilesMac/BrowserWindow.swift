@@ -167,7 +167,10 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         preferencesToken = preferences.observe { [weak self] in self?.preferencesChanged() }
         let primarySnapshot = initialWorkspace?.panes.first?.tab ?? initialSnapshot
         if let primarySnapshot { model.restore(primarySnapshot) }
-        else { model.navigate(initialLocation) }
+        else {
+            model.sort(SortOrder(directoryPlacement: preferences.defaultSortDirectoryPlacement))
+            model.navigate(initialLocation)
+        }
         if let initialWorkspace {
             primaryPaneID = initialWorkspace.panes[0].id
             restoreWorkspace(initialWorkspace)
@@ -1089,7 +1092,7 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
     @objc func openInNewPane(_ sender: Any?) {
         guard let url = commandFolderURL(sender) else { return }
         if let secondaryPane { secondaryPane.openLocation(url); setSecondaryActive(true) }
-        else { installSecondaryPane(axis: .vertical, snapshot: TabSnapshot(location: url, showHidden: preferences.showHidden, viewMode: model.viewMode)) }
+        else { installSecondaryPane(axis: .vertical, snapshot: TabSnapshot(location: url, sortOrder: SortOrder(directoryPlacement: preferences.defaultSortDirectoryPlacement), showHidden: preferences.showHidden, viewMode: model.viewMode)) }
     }
     @objc func openLocationInNewTab(_ sender: Any?) {
         guard let url = commandFolderURL(sender) else { return }
@@ -2016,7 +2019,7 @@ extension BrowserWindow {
         guard let location = activeModel.location else { return }
         if secondaryActive { setSecondaryActive(false); navigate(location) }
         else if let secondaryPane { secondaryPane.openLocation(location); setSecondaryActive(true); secondaryPane.focusFiles() }
-        else { installSecondaryPane(axis: .vertical, snapshot: TabSnapshot(location: location, showHidden: preferences.showHidden, viewMode: model.viewMode)) }
+        else { installSecondaryPane(axis: .vertical, snapshot: TabSnapshot(location: location, sortOrder: SortOrder(directoryPlacement: preferences.defaultSortDirectoryPlacement), showHidden: preferences.showHidden, viewMode: model.viewMode)) }
     }
     @objc func closeSecondaryPane(_ sender: Any?) {
         guard let secondaryPane else { return }
@@ -2035,7 +2038,11 @@ extension BrowserWindow {
                                       ratio: Double = 0.5, activate: Bool = true) {
         workspaceSplit.isVertical = axis == .vertical
         if secondaryPane == nil {
-            let pane = SecondaryBrowserPane(snapshot: snapshot ?? tabSnapshot(), preferences: preferences)
+            let paneSnapshot = snapshot ?? TabSnapshot(location: activeModel.location,
+                                                        sortOrder: SortOrder(directoryPlacement: preferences.defaultSortDirectoryPlacement),
+                                                        showHidden: preferences.showHidden,
+                                                        viewMode: activeModel.viewMode)
+            let pane = SecondaryBrowserPane(snapshot: paneSnapshot, preferences: preferences)
             pane.onActivate = { [weak self] in self?.setSecondaryActive(true) }
             pane.onOpenFolderInNewTab = { (NSApp.delegate as? AppDelegate)?.openFolderInNewTab($0) }
             pane.onFileDrop = { [weak self] sources, destination, intent in
@@ -2709,16 +2716,18 @@ extension BrowserWindow {
                 delegate.qaAdvancedSettingsContentView?.window?.close(); window.makeKeyAndOrderFront(nil)
                 delegate.showGeneralSettings(nil); try await Task.sleep(for: .milliseconds(50)); let widgetsBefore = delegate.qaGeneralWidgetStates
                 let sizeUnitBefore = delegate.qaGeneralSizeUnit; let newTabBefore = delegate.qaGeneralOpenFoldersInNewTab
+                let defaultSortBefore = delegate.qaGeneralDefaultSortDirectoryPlacement
                 let revealBefore = delegate.qaGeneralScrollToPreviousFolderOnUp
                 let extensionWarningBefore = delegate.qaGeneralShowFileExtensionWarning
                 let contextMenuBefore = delegate.qaGeneralContextMenuStates
-                delegate.qaToggleGeneralWidgets(); delegate.qaToggleGeneralSizeUnit(); delegate.qaToggleGeneralOpenFoldersInNewTab(); delegate.qaToggleGeneralScrollToPreviousFolderOnUp(); delegate.qaToggleGeneralShowFileExtensionWarning(); delegate.qaToggleGeneralContextMenuItems(); let widgetsAfter = delegate.qaGeneralWidgetStates
+                delegate.qaToggleGeneralWidgets(); delegate.qaToggleGeneralSizeUnit(); delegate.qaCycleGeneralDefaultSortDirectoryPlacement(); delegate.qaToggleGeneralOpenFoldersInNewTab(); delegate.qaToggleGeneralScrollToPreviousFolderOnUp(); delegate.qaToggleGeneralShowFileExtensionWarning(); delegate.qaToggleGeneralContextMenuItems(); let widgetsAfter = delegate.qaGeneralWidgetStates
                 let contextMenuAfter = delegate.qaGeneralContextMenuStates
                 let contextMenusToggled = contextMenuBefore?.count == contextMenuAfter?.count
                     && zip(contextMenuBefore ?? [], contextMenuAfter ?? []).allSatisfy { $0 != $1 }
                 checks["generalSettingsWindow"] = delegate.qaGeneralSettingsVisible && widgetsBefore != nil && widgetsAfter != nil
                     && widgetsAfter!.0 != widgetsBefore!.0 && widgetsAfter!.1 != widgetsBefore!.1 && widgetsAfter!.2 != widgetsBefore!.2
                     && delegate.qaGeneralSizeUnit != sizeUnitBefore
+                    && delegate.qaGeneralDefaultSortDirectoryPlacement != defaultSortBefore
                     && delegate.qaGeneralOpenFoldersInNewTab != newTabBefore
                     && delegate.qaGeneralScrollToPreviousFolderOnUp != revealBefore
                     && delegate.qaGeneralShowFileExtensionWarning != extensionWarningBefore
@@ -2758,7 +2767,7 @@ extension BrowserWindow {
                 controller.toggleDualPane(nil); checks["toggleDualPaneOpens"] = controller.workspaceSnapshot().isSplit
                 controller.closeSecondaryPane(nil)
                 try capture("general-settings", view: delegate.qaGeneralSettingsContentView)
-                delegate.qaToggleGeneralWidgets(); delegate.qaToggleGeneralSizeUnit(); delegate.qaToggleGeneralOpenFoldersInNewTab(); delegate.qaToggleGeneralScrollToPreviousFolderOnUp(); delegate.qaToggleGeneralShowFileExtensionWarning(); delegate.qaToggleGeneralContextMenuItems(); delegate.qaGeneralSettingsContentView?.window?.close(); window.makeKeyAndOrderFront(nil)
+                delegate.qaToggleGeneralWidgets(); delegate.qaToggleGeneralSizeUnit(); delegate.qaCycleGeneralDefaultSortDirectoryPlacement(); delegate.qaToggleGeneralOpenFoldersInNewTab(); delegate.qaToggleGeneralScrollToPreviousFolderOnUp(); delegate.qaToggleGeneralShowFileExtensionWarning(); delegate.qaToggleGeneralContextMenuItems(); delegate.qaGeneralSettingsContentView?.window?.close(); window.makeKeyAndOrderFront(nil)
                 delegate.showArchiveCapabilities(nil); try await Task.sleep(for: .milliseconds(50))
                 checks["archiveCapabilitiesWindow"] = delegate.qaArchiveCapabilitiesVisible
                 try capture("archive-capabilities", view: delegate.qaArchiveCapabilitiesContentView)

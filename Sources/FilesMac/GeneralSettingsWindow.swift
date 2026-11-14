@@ -10,6 +10,7 @@ final class GeneralSettingsWindow: NSWindowController {
     private let recent = NSButton(checkboxWithTitle: L("홈에 최근 위치 표시", "Show Recent Locations on Home"), target: nil, action: nil)
     private let startupLocation = NSTextField(wrappingLabelWithString: "")
     private let sizeUnit = NSPopUpButton()
+    private let defaultSortDirectoryPlacement = NSPopUpButton()
     private let openFoldersInNewTab = NSButton(checkboxWithTitle: L("폴더를 새 탭에서 열기", "Open Folders in New Tabs"), target: nil, action: nil)
     private let scrollToPreviousFolderOnUp = NSButton(checkboxWithTitle: L("상위 이동 시 이전 폴더 표시", "Reveal Previous Folder When Going Up"), target: nil, action: nil)
     private let showFileExtensionWarning = NSButton(checkboxWithTitle: L("파일 확장자 변경 경고", "Warn When Changing File Extensions"), target: nil, action: nil)
@@ -42,6 +43,9 @@ final class GeneralSettingsWindow: NSWindowController {
         stack.addArrangedSubview(startupLocation); stack.addArrangedSubview(startupControls)
         let sizeTitle = NSTextField(labelWithString: L("파일 크기 단위", "File Size Units")); sizeTitle.font = .systemFont(ofSize: 14, weight: .semibold); stack.addArrangedSubview(sizeTitle)
         sizeUnit.addItems(withTitles: [L("이진 단위 (1024)", "Binary units (1024)"), L("십진 단위 (1000)", "Decimal units (1000)")]); sizeUnit.target = self; sizeUnit.action = #selector(changeSizeUnit(_:)); stack.addArrangedSubview(sizeUnit)
+        let sortingTitle = NSTextField(labelWithString: L("기본 파일·폴더 배치", "Default File and Folder Placement")); sortingTitle.font = .systemFont(ofSize: 14, weight: .semibold); stack.addArrangedSubview(sortingTitle)
+        defaultSortDirectoryPlacement.addItems(withTitles: [L("폴더 우선", "Folders First"), L("파일·폴더 혼합", "Mix Files and Folders"), L("파일 우선", "Files First")])
+        defaultSortDirectoryPlacement.target = self; defaultSortDirectoryPlacement.action = #selector(changeDefaultSortDirectoryPlacement(_:)); stack.addArrangedSubview(defaultSortDirectoryPlacement)
         configure(openFoldersInNewTab, action: #selector(changeOpenFoldersInNewTab(_:))); stack.addArrangedSubview(openFoldersInNewTab)
         configure(scrollToPreviousFolderOnUp, action: #selector(changeScrollToPreviousFolderOnUp(_:))); stack.addArrangedSubview(scrollToPreviousFolderOnUp)
         configure(showFileExtensionWarning, action: #selector(changeShowFileExtensionWarning(_:))); stack.addArrangedSubview(showFileExtensionWarning)
@@ -69,6 +73,7 @@ final class GeneralSettingsWindow: NSWindowController {
         continueSession.state = preferences.continueLastSession ? .on : .off
         startupLocation.stringValue = preferences.startupLocationPath ?? L("시작 위치: 홈", "Startup location: Home")
         sizeUnit.selectItem(at: preferences.sizeUnit == .binary ? 0 : 1)
+        defaultSortDirectoryPlacement.selectItem(at: SortDirectoryPlacement.allCases.firstIndex(of: preferences.defaultSortDirectoryPlacement) ?? 0)
         openFoldersInNewTab.state = preferences.openFoldersInNewTab ? .on : .off
         scrollToPreviousFolderOnUp.state = preferences.scrollToPreviousFolderOnUp ? .on : .off
         showFileExtensionWarning.state = preferences.showFileExtensionWarning ? .on : .off
@@ -93,6 +98,10 @@ final class GeneralSettingsWindow: NSWindowController {
     }
     @objc private func clearStartupLocation(_ sender: Any?) { preferences.setStartupLocation(nil); sync() }
     @objc private func changeSizeUnit(_ sender: Any?) { preferences.setSizeUnit(sizeUnit.indexOfSelectedItem == 0 ? .binary : .decimal) }
+    @objc private func changeDefaultSortDirectoryPlacement(_ sender: Any?) {
+        let index = max(0, defaultSortDirectoryPlacement.indexOfSelectedItem)
+        preferences.setDefaultSortDirectoryPlacement(SortDirectoryPlacement.allCases[index])
+    }
     @objc private func changeOpenFoldersInNewTab(_ sender: Any?) { preferences.setOpenFoldersInNewTab(openFoldersInNewTab.state == .on) }
     @objc private func changeScrollToPreviousFolderOnUp(_ sender: Any?) { preferences.setScrollToPreviousFolderOnUp(scrollToPreviousFolderOnUp.state == .on) }
     @objc private func changeShowFileExtensionWarning(_ sender: Any?) { preferences.setShowFileExtensionWarning(showFileExtensionWarning.state == .on) }
@@ -114,12 +123,17 @@ final class GeneralSettingsWindow: NSWindowController {
     var qaVisible: Bool { window?.isVisible == true }
     var qaWidgetStates: (Bool, Bool, Bool) { (preferences.showHomeFavorites, preferences.showHomeVolumes, preferences.showHomeRecent) }
     var qaSizeUnit: BrowserSizeUnit { preferences.sizeUnit }
+    var qaDefaultSortDirectoryPlacement: SortDirectoryPlacement { preferences.defaultSortDirectoryPlacement }
     var qaOpenFoldersInNewTab: Bool { preferences.openFoldersInNewTab }
     var qaScrollToPreviousFolderOnUp: Bool { preferences.scrollToPreviousFolderOnUp }
     var qaShowFileExtensionWarning: Bool { preferences.showFileExtensionWarning }
     var qaContextMenuStates: [Bool] { [preferences.showCompressionOptions, preferences.showOpenTerminal, preferences.showCreateFolderWithSelection, preferences.showPinToSidebar, preferences.showSendToMenu, preferences.showCopyPath, preferences.showOpenInNewTab, preferences.showOpenInNewWindow, preferences.showOpenInNewPane, preferences.showEditTagsMenu, preferences.showCreateShortcut] }
     func qaToggleWidgets() { favorites.performClick(nil); volumes.performClick(nil); recent.performClick(nil) }
     func qaToggleSizeUnit() { sizeUnit.selectItem(at: sizeUnit.indexOfSelectedItem == 0 ? 1 : 0); changeSizeUnit(nil) }
+    func qaCycleDefaultSortDirectoryPlacement() {
+        defaultSortDirectoryPlacement.selectItem(at: (defaultSortDirectoryPlacement.indexOfSelectedItem + 1) % defaultSortDirectoryPlacement.numberOfItems)
+        changeDefaultSortDirectoryPlacement(nil)
+    }
     func qaToggleOpenFoldersInNewTab() { openFoldersInNewTab.performClick(nil) }
     func qaToggleScrollToPreviousFolderOnUp() { scrollToPreviousFolderOnUp.performClick(nil) }
     func qaToggleShowFileExtensionWarning() { showFileExtensionWarning.performClick(nil) }

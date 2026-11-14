@@ -523,6 +523,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     func qaToggleGeneralWidgets() { generalSettingsWindow?.qaToggleWidgets() }
     var qaGeneralSizeUnit: BrowserSizeUnit? { generalSettingsWindow?.qaSizeUnit }
     func qaToggleGeneralSizeUnit() { generalSettingsWindow?.qaToggleSizeUnit() }
+    var qaGeneralDefaultSortDirectoryPlacement: SortDirectoryPlacement? { generalSettingsWindow?.qaDefaultSortDirectoryPlacement }
+    func qaCycleGeneralDefaultSortDirectoryPlacement() { generalSettingsWindow?.qaCycleDefaultSortDirectoryPlacement() }
     var qaGeneralOpenFoldersInNewTab: Bool? { generalSettingsWindow?.qaOpenFoldersInNewTab }
     func qaToggleGeneralOpenFoldersInNewTab() { generalSettingsWindow?.qaToggleOpenFoldersInNewTab() }
     var qaGeneralScrollToPreviousFolderOnUp: Bool? { generalSettingsWindow?.qaScrollToPreviousFolderOnUp }
