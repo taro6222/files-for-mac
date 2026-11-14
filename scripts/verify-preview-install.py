@@ -61,6 +61,16 @@ if ["--close", "--quit"].contains(CommandLine.arguments[1]) {
 if CommandLine.arguments[1] == "--check-interaction-access" {
     exit(AXIsProcessTrusted() ? 0 : 2)
 }
+if CommandLine.arguments[1] == "--architecture" {
+    guard let pid = pid_t(CommandLine.arguments[2]),
+          let application = NSRunningApplication(processIdentifier: pid) else { exit(2) }
+    switch application.executableArchitecture {
+    case Int(NSBundleExecutableArchitectureARM64): print("arm64")
+    case Int(NSBundleExecutableArchitectureX86_64): print("x86_64")
+    default: exit(2)
+    }
+    exit(0)
+}
 let owner = Int(CommandLine.arguments[1])
 let title = CommandLine.arguments[2]
 let windows = CGWindowListCopyWindowInfo([.optionAll, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]] ?? []
@@ -149,7 +159,8 @@ def isolate(app, bundle_id):
     verify_signature(app)
 
 
-def launch(app, probe, fixture, home, log, *, interactive=False, launch_services=False, save_session=False):
+def launch(app, probe, fixture, home, log, *, interactive=False, launch_services=False,
+           save_session=False, expected_architecture=None):
     env = dict(os.environ, CFFIXED_USER_HOME=str(home))
     title = f"{fixture.name} — Files macOS"
     with log.open("ab") as output:
@@ -182,6 +193,10 @@ def launch(app, probe, fixture, home, log, *, interactive=False, launch_services
                 status = subprocess.run([probe, str(pid), title], timeout=5).returncode
                 if status == 0:
                     elapsed = round(time.monotonic() - start, 3)
+                    if expected_architecture is not None:
+                        actual = run(probe, "--architecture", str(pid), capture_output=True, timeout=5).stdout.strip()
+                        if actual != expected_architecture:
+                            raise RuntimeError(f"Expected app architecture {expected_architecture}, got {actual}")
                     if not interactive:
                         if save_session:
                             run(probe, "--quit", str(pid), app, timeout=8)
@@ -222,7 +237,8 @@ def launch_environment():
     }
 
 
-def measure_startup(image, root, bundle_id, *, interactive=False, launch_services=False):
+def measure_startup(image, root, bundle_id, *, interactive=False, launch_services=False,
+                    expected_architecture=None):
     digest = image_hash(image)
     mountpoint, home, fixture = (root / name for name in ("mount", "home", "Startup Fixture"))
     for folder in (mountpoint, home, fixture):
@@ -240,7 +256,8 @@ def measure_startup(image, root, bundle_id, *, interactive=False, launch_service
     run("defaults", "write", bundle_id, "startupLocationPath", "-string", fixture)
     run("defaults", "write", bundle_id, "continueLastSession", "-bool", "NO")
     samples = [launch(app, probe, fixture, home, root / "app.log",
-                      interactive=interactive, launch_services=launch_services) for _ in range(20)]
+                      interactive=interactive, launch_services=launch_services,
+                      expected_architecture=expected_architecture) for _ in range(20)]
     if interactive:
         times = sorted(sample["interactiveSeconds"] for sample in samples)
         return {
@@ -406,6 +423,9 @@ def main():
     modes.add_argument("--interactive-startup", action="store_true", help="Measure 20 launches through an About menu accessibility action")
     parser.add_argument("--launch-services", action="store_true", help="Use Launch Services for interactive startup measurement")
     parser.add_argument("--run-parent", type=Path, help="Existing directory for the isolated installation and mount")
+    parser.add_argument("--expect-architecture", choices=("arm64", "x86_64"),
+                        help="Require this architecture in each launched app process during startup measurement")
+    parser.add_argument("--expect-macos", help="Require this exact macOS product version before startup measurement")
     args = parser.parse_args()
     if args.launch_services and not args.interactive_startup:
         parser.error("--launch-services requires --interactive-startup")
@@ -414,6 +434,12 @@ def main():
         parser.error("Startup measurement accepts one preview image")
     if not startup and args.candidate is None:
         parser.error("Installation verification requires a previous and candidate preview image")
+    if not startup and (args.expect_architecture is not None or args.expect_macos is not None):
+        parser.error("Environment expectations require a startup measurement")
+    if args.expect_macos is not None:
+        actual = launch_environment()["macOS"]
+        if actual != args.expect_macos:
+            parser.error(f"Expected macOS {args.expect_macos}, got {actual}")
     images = [image.resolve() for image in (args.previous, args.candidate) if image is not None]
     if any(image.name != "Files-macOS-preview.dmg" for image in images):
         parser.error("Use local Files-macOS-preview.dmg files")
@@ -430,7 +456,10 @@ def main():
     try:
         if startup:
             result = measure_startup(images[0], root, bundle_id, interactive=args.interactive_startup,
-                                     launch_services=args.launch_services)
+                                     launch_services=args.launch_services,
+                                     expected_architecture=args.expect_architecture)
+            if args.expect_architecture is not None:
+                result["verifiedAppArchitecture"] = args.expect_architecture
         else:
             result = exercise(*images, root, bundle_id)
         (root / "report.json").write_text(json.dumps(result, indent=2) + "\n")

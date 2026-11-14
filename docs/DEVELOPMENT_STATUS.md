@@ -4,6 +4,8 @@
 
 ## 이번 구현 단위
 
+프리뷰 시작 검증에 실제 프로세스 아키텍처 및 macOS 버전 대조를 추가했다. [M7 실행 환경 검증](verification/m7/INCREMENT_73.md)
+
 로딩 버튼의 시스템 이미지 두 개를 재사용하고, 로딩 취소 뒤 이미지와 접근성 레이블 복원을 검증했다. [M7 로딩 버튼 검증](verification/m7/INCREMENT_72.md)
 
 세션 복원 뒤 종료 시 마지막 브라우저 탭을 저장한다. [M7 선택 탭 저장](verification/m7/INCREMENT_71.md)
