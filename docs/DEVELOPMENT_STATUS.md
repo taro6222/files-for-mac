@@ -4,6 +4,8 @@
 
 ## 이번 구현 단위
 
+전체 AppKit 회귀 시험도 표준화된 임시 경로에서 실행해 한국어·영어와 밝은·어두운 테마 각 조합의 219개 검사를 통과했다. [M7 전체 AppKit 회귀](verification/m7/INCREMENT_62.md)
+
 임시 경로에서 AppKit 회귀를 다시 실행해 그리드 선택 복원과 템플릿 파일 생성을 포함한 53개 검사가 네 언어·테마 조합에서 모두 통과했다. [M7 AppKit 재검증](verification/m7/INCREMENT_61.md)
 
 최근 위치·환경설정·볼륨 목록이 바뀌지 않으면 홈 화면의 기존 뷰를 재사용한다. [M7 홈 화면 회귀](verification/m7/INCREMENT_60.md)

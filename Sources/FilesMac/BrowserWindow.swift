@@ -3268,14 +3268,15 @@ extension BrowserWindow {
 #endif
     static func runUIVerification(output: String) async {
         let fm = FileManager.default
-        let destination = URL(fileURLWithPath: output, isDirectory: true)
+        let requestedDestination = URL(fileURLWithPath: output, isDirectory: true)
         let suite = "FilesMac.UIVerification.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suite)!
         defer { defaults.removePersistentDomain(forName: suite) }
         var checks: [String: Bool] = [:]
         var metrics: [String: Double] = [:]
         do {
-            try fm.createDirectory(at: destination, withIntermediateDirectories: true)
+            try fm.createDirectory(at: requestedDestination, withIntermediateDirectories: true)
+            let destination = requestedDestination.standardizedFileURL
             let fixture = destination.appendingPathComponent("fixture", isDirectory: true)
             try fm.createDirectory(at: fixture, withIntermediateDirectories: true)
             let gridFolder = fixture.appendingPathComponent("000-grid-folder", isDirectory: true)
