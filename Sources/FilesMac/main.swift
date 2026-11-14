@@ -436,6 +436,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         go.addItem(withTitle: L("컴팩트 오버레이 시작", "Enter Compact Overlay"), action: #selector(BrowserWindow.enterCompactOverlay(_:)), keyEquivalent: "")
         go.addItem(withTitle: L("컴팩트 오버레이 종료", "Exit Compact Overlay"), action: #selector(BrowserWindow.exitCompactOverlay(_:)), keyEquivalent: "")
         go.addItem(withTitle: L("컴팩트 오버레이 전환", "Toggle Compact Overlay"), action: #selector(BrowserWindow.toggleCompactOverlay(_:)), keyEquivalent: "")
+        go.addItem(withTitle: L("활성 pane 닫기", "Close Active Pane"), action: #selector(BrowserWindow.closeActivePane(_:)), keyEquivalent: "")
         NSApp.mainMenu = menu
     }
 #if DEBUG

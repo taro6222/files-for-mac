@@ -562,7 +562,16 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
                 eject.target = self; eject.representedObject = volume.url
             }
         }
-        if !menu.items.isEmpty { b.menu = menu }
+        if !menu.items.isEmpty { menu.addItem(.separator()) }
+        for (label, action) in [
+            (L("새 탭에서 열기", "Open in New Tab"), #selector(openLocationInNewTab(_:))),
+            (L("새 창에서 열기", "Open in New Window"), #selector(openLocationInNewWindow(_:))),
+            (L("다른 pane에서 열기", "Open in Other Pane"), #selector(openLocationInOtherPane(_:)))
+        ] {
+            let item = menu.addItem(withTitle: label, action: action, keyEquivalent: "")
+            item.target = self; item.representedObject = url; item.isEnabled = url != nil
+        }
+        b.menu = menu
         stack.addArrangedSubview(b)
         b.heightAnchor.constraint(equalToConstant: 32).isActive = true
         b.widthAnchor.constraint(equalTo: stack.widthAnchor, constant: -(stack.edgeInsets.left + stack.edgeInsets.right)).isActive = true
@@ -1035,6 +1044,11 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         if activeSelectedItems.count == 1, let item = activeSelectedItems.first, item.isBrowsable { return item.url }
         return activeSelectedItems.isEmpty ? activeModel.location : nil
     }
+    private func commandFolderURL(_ sender: Any?) -> URL? {
+        if let item = sender as? NSMenuItem, let url = item.representedObject as? URL { return url }
+        if let button = sender as? LocationButton { return button.url }
+        return contextFolderURL
+    }
     @objc func openInNewTab(_ sender: Any?) {
         guard let url = contextFolderURL else { return }
         (NSApp.delegate as? AppDelegate)?.openFolderInNewTab(url)
@@ -1044,10 +1058,19 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         (NSApp.delegate as? AppDelegate)?.openFolderInNewWindow(url)
     }
     @objc func openInNewPane(_ sender: Any?) {
-        guard let url = contextFolderURL else { return }
+        guard let url = commandFolderURL(sender) else { return }
         if let secondaryPane { secondaryPane.openLocation(url); setSecondaryActive(true) }
         else { installSecondaryPane(axis: .vertical, snapshot: TabSnapshot(location: url, showHidden: preferences.showHidden, viewMode: model.viewMode)) }
     }
+    @objc func openLocationInNewTab(_ sender: Any?) {
+        guard let url = commandFolderURL(sender) else { return }
+        (NSApp.delegate as? AppDelegate)?.openFolderInNewTab(url)
+    }
+    @objc func openLocationInNewWindow(_ sender: Any?) {
+        guard let url = commandFolderURL(sender) else { return }
+        (NSApp.delegate as? AppDelegate)?.openFolderInNewWindow(url)
+    }
+    @objc func openLocationInOtherPane(_ sender: Any?) { openInNewPane(sender) }
     @objc func openSelection(_ sender: Any?) {
         if secondaryActive { secondaryPane?.openSelected(); return }
         if primaryRenderedViewMode == .grid, let item = gridView.selectedItems.first { openGridItem(item); return }
@@ -1918,6 +1941,12 @@ extension BrowserWindow {
         content.wantsLayer = true; content.layer?.borderWidth = 0
         window?.makeFirstResponder(table)
     }
+    @objc func closeActivePane(_ sender: Any?) {
+        guard let secondaryPane else { return }
+        if secondaryActive { closeSecondaryPane(sender); return }
+        let replacement = secondaryPane.snapshot()
+        closeSecondaryPane(sender); model.restore(replacement)
+    }
     private func installSecondaryPane(axis: SplitAxis, snapshot: TabSnapshot? = nil, id: UUID? = nil,
                                       ratio: Double = 0.5, activate: Bool = true) {
         workspaceSplit.isVertical = axis == .vertical
@@ -2233,7 +2262,7 @@ extension BrowserWindow {
         case #selector(exitCompactOverlay(_:)): return compactOverlayState != nil
         case #selector(toggleCompactOverlay(_:)):
             menuItem.state = compactOverlayState != nil ? .on : .off; return true
-        case #selector(closeSecondaryPane(_:)): return secondaryPane != nil
+        case #selector(closeSecondaryPane(_:)), #selector(closeActivePane(_:)): return secondaryPane != nil
         case #selector(undoLastMove(_:)):
             return !Self.entryOperationRunning && !MoveWindow.isRunning &&
                 EntryOperations.latestUndoMove(journalDirectory: Self.operationJournalDirectory) != nil
@@ -2373,6 +2402,10 @@ extension BrowserWindow {
     var qaVisibleDetailColumns: Set<String> { Set(table.tableColumns.filter { !$0.isHidden }.map { $0.identifier.rawValue }) }
     var qaCreatedColumnWidth: CGFloat? { table.tableColumn(withIdentifier: .init("created"))?.width }
     var qaIsCompactOverlay: Bool { compactOverlayState != nil }
+    var qaLocationMenuActions: Set<String> {
+        Set(sidebar.arrangedSubviews.compactMap { $0 as? LocationButton }.flatMap { $0.menu?.items ?? [] }
+            .compactMap { $0.action.map(NSStringFromSelector) })
+    }
     var qaDetailGroupTitles: [String] { detailRows.compactMap { if case let .header(title) = $0 { return title }; return nil } }
     var qaVisibleContextActions: Set<String> { Set((table.menu?.items ?? []).filter { !$0.isHidden }.compactMap { $0.action.map(NSStringFromSelector) }) }
 #endif
@@ -2477,6 +2510,9 @@ extension BrowserWindow {
                 && window.frame == preCompactFrame && window.minSize == preCompactMinimum
             checks["compactOverlayCommands"] = [#selector(enterCompactOverlay(_:)), #selector(exitCompactOverlay(_:)),
                 #selector(toggleCompactOverlay(_:))].allSatisfy { action in paletteEntries.contains { $0.item.action == action } }
+            checks["closeActivePaneCommand"] = paletteEntries.contains { $0.item.action == #selector(closeActivePane(_:)) }
+            checks["locationOpenCommands"] = [#selector(openLocationInNewTab(_:)), #selector(openLocationInNewWindow(_:)),
+                #selector(openLocationInOtherPane(_:))].allSatisfy { controller.qaLocationMenuActions.contains(NSStringFromSelector($0)) }
             checks["themeCommands"] = [#selector(AppDelegate.setDarkTheme(_:)), #selector(AppDelegate.setLightTheme(_:)), #selector(AppDelegate.setDefaultTheme(_:)), #selector(AppDelegate.toggleAppTheme(_:))].allSatisfy { action in
                 paletteEntries.contains { $0.item.action == action }
             }
