@@ -129,7 +129,7 @@ final class CopyWindow: NSWindowController, NSWindowDelegate {
         if pending > 0 { label.stringValue += L(" · 실행 안 됨 \(pending)", " · Not attempted \(pending)") }
         if cancelled > 0 { label.stringValue += L(" · 취소 \(cancelled)", " · Cancelled \(cancelled)") }
         progress.isHidden = true
-        details.string = report.items.map { item in
+        let itemDetails: [String] = report.items.map { item in
             let state: String
             switch item.state {
             case "completed": state = L("완료", "Copied")
@@ -138,10 +138,14 @@ final class CopyWindow: NSWindowController, NSWindowDelegate {
             case "queued": state = L("실행 안 됨", "Not attempted")
             default: state = L("실패", "Failed")
             }
-            return "[\(state)] \(item.source.path) → \(item.target.path)" +
-                (item.message.map { "\n  " + $0 } ?? "") +
-                (item.temporary.map { "\n  " + L("남은 임시 경로: ", "Remaining temporary path: ") + $0.path } ?? "")
-        }.joined(separator: "\n\n")
+            var text = "[\(state)] \(item.source.path) → \(item.target.path)"
+            if let message = item.message { text += "\n  " + message }
+            if let temporary = item.temporary {
+                text += "\n  " + L("남은 임시 경로: ", "Remaining temporary path: ") + temporary.path
+            }
+            return text
+        }
+        details.string = itemDetails.joined(separator: "\n\n")
         if let error = report.journalError { details.string += "\n\n" + L("저널 저장 오류: ", "Journal error: ") + error }
         cancel.title = L("닫기", "Close"); cancel.isEnabled = true
         window?.defaultButtonCell = cancel.cell as? NSButtonCell

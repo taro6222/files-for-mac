@@ -88,7 +88,7 @@ final class RestoreWindow: NSWindowController, NSWindowDelegate {
         if failed > 0 {
             label.stringValue += L(" · 실패 ", " · Failed ") + "\(failed)/\(report.items.count)"
         }
-        details.string = report.items.map { item in
+        let itemDetails: [String] = report.items.map { item in
             let status: String
             switch item.state {
             case "completed":
@@ -100,9 +100,11 @@ final class RestoreWindow: NSWindowController, NSWindowDelegate {
             default:
                 status = L("미처리", "Not attempted")
             }
-            return "[\(status)] " + item.source.path + " → " + item.target.path +
-                (item.message.map { "\n  " + $0 } ?? "")
-        }.joined(separator: "\n\n")
+            var text = "[\(status)] \(item.source.path) → \(item.target.path)"
+            if let message = item.message { text += "\n  " + message }
+            return text
+        }
+        details.string = itemDetails.joined(separator: "\n\n")
         if let error = report.journalError { details.string += "\n\n" + L("저널 저장 오류: ", "Journal error: ") + error }
         close.title = L("닫기", "Close")
         close.isEnabled = true

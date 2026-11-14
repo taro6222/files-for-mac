@@ -164,7 +164,7 @@ final class MoveWindow: NSWindowController, NSWindowDelegate {
         if pending > 0 { label.stringValue += L(" · 실행 안 됨 \(pending)", " · Not attempted \(pending)") }
         if cancelled > 0 { label.stringValue += L(" · 취소 \(cancelled)", " · Cancelled \(cancelled)") }
         progress.isHidden = true
-        details.string = report.items.map { item in
+        let itemDetails: [String] = report.items.map { item in
             let status: String
             switch item.state {
             case "completed":
@@ -180,12 +180,14 @@ final class MoveWindow: NSWindowController, NSWindowDelegate {
             default:
                 status = L("미처리", "Not attempted")
             }
-            return "[\(status)] " + item.source.path + " → " + item.target.path +
-                (item.message.map { "\n  " + $0 } ?? "")
-                + (item.recoveryBackup.map {
-                    "\n  " + L("자동 복원 실패 · 백업 경로: ", "Automatic restore failed · Backup path: ") + $0.path
-                } ?? "")
-        }.joined(separator: "\n\n")
+            var text = "[\(status)] \(item.source.path) → \(item.target.path)"
+            if let message = item.message { text += "\n  " + message }
+            if let backup = item.recoveryBackup {
+                text += "\n  " + L("자동 복원 실패 · 백업 경로: ", "Automatic restore failed · Backup path: ") + backup.path
+            }
+            return text
+        }
+        details.string = itemDetails.joined(separator: "\n\n")
         if let error = report.journalError { details.string += "\n\n" + L("저널 저장 오류: ", "Journal error: ") + error }
         showResult(announcementDetail: report.journalError.map { L("저널 저장 오류: ", "Journal error: ") + $0 })
     }

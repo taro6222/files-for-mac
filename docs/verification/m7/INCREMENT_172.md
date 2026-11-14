@@ -5,3 +5,5 @@ GitHub Actions에서 main 푸시와 main 대상 PR, 수동 실행에 macOS 15의
 볼륨 스크립트는 선택한 Xcode의 Swift Testing을 사용한다. 별도 Command Line Tools 환경에서 해당 매크로 라이브러리가 설치된 경우 그 경로를 전달한다.
 
 이 워크플로의 범위는 빌드·Swift 동작·로컬 임시 볼륨이다. macOS 14 실행, 서명·공증된 DMG, AppKit 수동 검증과 VoiceOver, SMB·외부 서비스는 출시 검증 현황에서 추적한다.
+
+[첫 CI 실행](https://github.com/taro6222/files-for-mac/actions/runs/43632028805)에서는 두 아키텍처 모두 Swift 6.2.4가 복사·이동·복원 결과 상세 문구의 타입을 제한 시간 안에 검사하지 못했다. 결과 문구를 항목별로 조합하도록 바꾸고 로컬 FilesMac 빌드를 확인했다.
