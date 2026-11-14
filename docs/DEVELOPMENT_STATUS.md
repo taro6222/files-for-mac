@@ -8,6 +8,8 @@ M7 출시 검증이 진행 중이다. [유니버설 개발 프리뷰](verificati
 
 ## 이번 구현 단위
 
+느린 시작 위치를 열 때 창 표시가 지연되는 경로를 수정했다. 새 유니버설 프리뷰의 Launch Services 기동 20회에서 정보 창 표시 p95는 520 ms였다. [M7 시작 폴더 복구](verification/m7/INCREMENT_107.md)
+
 폴더 탐색 성능을 AppKit 목록이 갱신되는 시점에 기록한다. 최적화 QA 빌드에서 즉시 및 5분 유휴 후 탐색을 확인했다. [M7 목록 표시 계측](verification/m7/INCREMENT_105.md)
 
 UI-01~20의 Windows 소스와 macOS 구현 구조를 대조했다. AppKit 캡처의 실제 테마를 검사하며 한국어·영어와 두 테마의 전체 회귀가 각각 254개씩 통과했다. [M7 화면 대조 및 테마 검증](verification/m7/INCREMENT_104.md)

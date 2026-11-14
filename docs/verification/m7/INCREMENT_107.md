@@ -12,4 +12,4 @@
 
 [실측 표본](preview-startup-location-recovery.json) · [수정 전 시작 경로 대조](INCREMENT_106.md)
 
-Swift 테스트 216개를 통과했다. 유니버설 DMG 설치·복원과 네 언어·테마 조합의 AppKit 재확인은 진행 중이다.
+Swift 테스트 216개를 통과했다. 유니버설 DMG에서 이전 프리뷰 설치, 손상된 교체본 거부, 정상 교체와 이전 앱 복원이 통과했다. 공유 OS 캐시의 Launch Services 기동 20회에서 정보 창 표시 p95는 520 ms였다. 한국어·영어 × 밝게·어둡게의 AppKit 회귀 254개가 각 조합에서 통과했다. [프리뷰 검증](PREVIEW_0.1.0.md)
