@@ -3,8 +3,8 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 name=${1:-release-performance}
 mode=${2:-full}
-if [[ $# -gt 2 || ( "$mode" != full && "$mode" != idle-comparison && "$mode" != idle-activity ) ]]; then
-  echo "Usage: $0 [report-name [full|idle-comparison|idle-activity]]" >&2
+if [[ $# -gt 2 || ( "$mode" != full && "$mode" != idle-comparison && "$mode" != idle-activity && "$mode" != idle-product ) ]]; then
+  echo "Usage: $0 [report-name [full|idle-comparison|idle-activity|idle-product]]" >&2
   exit 2
 fi
 case "$name" in
@@ -44,14 +44,14 @@ storage = subprocess.check_output(["df", "-P", str(output_dir)], text=True).spli
 filesystem = plistlib.loads(subprocess.check_output(["diskutil", "info", "-plist", storage]))
 
 
-def measure(folder, count, name, idle=0, user_initiated_load=False):
+def measure(folder, count, name, idle=0, user_initiated_load=False, product_navigation=True):
     sample = output_dir / f"{name}.json"
     sample.unlink(missing_ok=True)
     env = dict(os.environ, FILES_PERFORMANCE_FIXTURE=str(folder),
                FILES_PERFORMANCE_REPORT=str(sample), FILES_PERFORMANCE_COUNT=str(count),
                FILES_PERFORMANCE_IDLE_SECONDS=str(idle),
                FILES_PERFORMANCE_USER_INITIATED_LOAD="1" if user_initiated_load else "0",
-               FILES_PERFORMANCE_PRODUCT_NAVIGATION="0" if mode == "idle-activity" else "1")
+               FILES_PERFORMANCE_PRODUCT_NAVIGATION="1" if product_navigation else "0")
     with (output_dir / f"{name}.log").open("w") as log:
         env["FILES_PERFORMANCE_START_NS"] = str(time.monotonic_ns())
         subprocess.run([binary, "-AppleLanguages", "(en)", "-AppleLocale", "en"],
@@ -106,12 +106,20 @@ with tempfile.TemporaryDirectory(prefix="fixture-", dir=output_dir) as temporary
             pairs.append({"immediate": immediate, "idle300Seconds": idle})
             print(f"Idle comparison {trial}/3 complete", flush=True)
         report["idleComparison"] = pairs
-    else:
-        baseline = measure(folder, 10000, "idle-baseline", idle=300)
-        activity = measure(folder, 10000, "idle-activity", idle=300, user_initiated_load=True)
+    elif mode == "idle-activity":
+        baseline = measure(folder, 10000, "idle-baseline", idle=300, product_navigation=False)
+        activity = measure(folder, 10000, "idle-activity", idle=300,
+                           user_initiated_load=True, product_navigation=False)
         if baseline.get("userInitiatedLoad") != 0 or activity.get("userInitiatedLoad") != 1:
             raise RuntimeError("Idle measurements did not report the configured activity")
         report["idleActivityComparison"] = {"baseline": baseline, "userInitiated": activity}
+    else:
+        baseline = measure(folder, 10000, "idle-product-off", idle=300, product_navigation=False)
+        product = measure(folder, 10000, "idle-product-on", idle=300)
+        for sample, enabled in ((baseline, 0), (product, 1)):
+            if sample.get("productNavigationActivity") != enabled or sample.get("userInitiatedLoad") != 0:
+                raise RuntimeError("Idle measurements did not report the configured product navigation")
+        report["idleProductComparison"] = {"baseline": baseline, "productNavigation": product}
     report_path.write_text(json.dumps(report, indent=2) + "\n")
     print(report_path)
 PY

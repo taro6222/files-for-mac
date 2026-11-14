@@ -1,0 +1,44 @@
+{
+  "sourceBaseSHA": "da7225e11f010a160d85b13960760b3964d1949e",
+  "navigationSourceSHA": "bc35fd0e58fd4fabf96d7b9fc362ef9a95068ecf",
+  "binarySHA256": "0dcf48113655f0911e64d6370caf6a0b2dc75c6312ddf92dc24f069f2a6f4969",
+  "macOS": "27.2",
+  "macOSBuild": "26B123",
+  "architecture": "arm64",
+  "fixtureFilesystem": "APFS",
+  "items": 10000,
+  "idleSeconds": 300,
+  "measurement": "One fresh process per condition, same optimized QA binary overlaid with the three navigation sources, warm shared OS caches, AppKit display timing",
+  "idleProductComparison": {
+    "baseline": {
+      "startupSeconds": 0.448528416,
+      "firstModelRowsSeconds": 0.538425583,
+      "firstDisplaySeconds": 0.662570041,
+      "activeBeforeIdle": 0,
+      "listingSeconds": 8.915842708,
+      "peakSampledRSSBytes": 124682240,
+      "activeAfterIdle": 0,
+      "browserRenderCount": 6,
+      "idleRSSBytes": 81526784,
+      "browserRenderSeconds": 0.085143875,
+      "productNavigationActivity": 0,
+      "modelLoadFinishedSeconds": 5.132647583,
+      "userInitiatedLoad": 0
+    },
+    "productNavigation": {
+      "activeAfterIdle": 0,
+      "firstModelRowsSeconds": 0.074089959,
+      "idleRSSBytes": 68304896,
+      "startupSeconds": 0.1625465,
+      "peakSampledRSSBytes": 125091840,
+      "firstDisplaySeconds": 0.094902125,
+      "browserRenderSeconds": 0.024345667,
+      "userInitiatedLoad": 0,
+      "productNavigationActivity": 1,
+      "activeBeforeIdle": 0,
+      "browserRenderCount": 6,
+      "listingSeconds": 3.261057209,
+      "modelLoadFinishedSeconds": 0.979437167
+    }
+  }
+}
