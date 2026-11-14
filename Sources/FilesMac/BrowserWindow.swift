@@ -4597,6 +4597,15 @@ extension BrowserWindow {
                         && saved.ownerID == accountACL.ownerID && saved.accessControlList == accountACL.accessControlList
                 } else { checks["fileInfoGroupOwnership"] = false }
                 checks["fileInfoOwnerPrivileges"] = try await info.qaOwnerControlMatchesPrivileges()
+                let folder = destination.appendingPathComponent("permission-tree", isDirectory: true)
+                let enclosed = folder.appendingPathComponent("enclosed.txt")
+                try fm.createDirectory(at: folder, withIntermediateDirectories: true)
+                try Data().write(to: enclosed)
+                try fm.setAttributes([.posixPermissions: 0o750], ofItemAtPath: folder.path)
+                info.present(items: [FileItem(url: folder, name: folder.lastPathComponent, isDirectory: true)])
+                let applied = try await info.qaApplyFolderMode()
+                let enclosedMode = try await FilePropertiesInspector().permissions(enclosed).mode
+                checks["fileInfoFolderPermissions"] = applied && enclosedMode == 0o750
             } else {
                 checks["fileInfoHashComparison"] = false
                 checks["fileInfoHashFileComparison"] = false
@@ -4605,6 +4614,7 @@ extension BrowserWindow {
                 checks["fileInfoACLAccountRule"] = false
                 checks["fileInfoGroupOwnership"] = false
                 checks["fileInfoOwnerPrivileges"] = false
+                checks["fileInfoFolderPermissions"] = false
             }
             controller.infoWindow?.close(); window.makeKeyAndOrderFront(nil)
             let taggedURL = controller.activeSelectedItems.first?.url

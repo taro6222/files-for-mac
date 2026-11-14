@@ -29,6 +29,7 @@ public enum FileHashError: Error, Equatable {
 }
 
 public struct FilePermissionSnapshot: Sendable {
+    public let isDirectory: Bool
     public let mode: Int
     public let ownerID: uid_t
     public let groupID: gid_t
@@ -50,6 +51,12 @@ public enum FilePermissionError: Error, Equatable {
     case unknownACLAccount
     case groupNotApplied
     case ownerNotApplied
+}
+
+public struct FolderPermissionResult: Sendable {
+    public fileprivate(set) var applied = 0
+    public fileprivate(set) var skipped = 0
+    public fileprivate(set) var failed = 0
 }
 
 public enum FileACLAccountKind: String, Sendable {
@@ -193,6 +200,70 @@ public struct FilePropertiesInspector: Sendable {
         }.value
     }
 
+    public func setFolderPermissions(_ mode: Int, at url: URL, expected: FilePermissionSnapshot) async throws -> FolderPermissionResult {
+        guard (0...0o777).contains(mode) else { throw FilePermissionError.invalidMode }
+        return try await Task.detached(priority: .utility) {
+            try Self.withPermissionDescriptor(url) { descriptor in
+                try Self.checkPermissionSnapshot(Self.permissionSnapshot(descriptor), expected: expected)
+                var metadata = stat()
+                guard fstat(descriptor, &metadata) == 0 else { throw Self.permissionPOSIXError() }
+                guard metadata.st_mode & S_IFMT == S_IFDIR else { throw FilePermissionError.unsupportedFileType }
+                var result = FolderPermissionResult()
+                Self.applyFolderMode(mode, descriptor: descriptor, metadata: metadata, result: &result)
+                return result
+            }
+        }.value
+    }
+
+    private static func applyFolderMode(_ mode: Int, descriptor: Int32, metadata: stat, result: inout FolderPermissionResult) {
+        let type = metadata.st_mode & S_IFMT
+        if type == S_IFDIR {
+            let directory = openat(descriptor, ".", O_RDONLY | O_DIRECTORY | O_CLOEXEC)
+            guard directory >= 0 else { result.failed += 1; return }
+            guard let stream = fdopendir(directory) else {
+                close(directory)
+                result.failed += 1
+                return
+            }
+            defer { closedir(stream) }
+            while true {
+                errno = 0
+                guard let entry = readdir(stream) else {
+                    if errno != 0 { result.failed += 1; return }
+                    break
+                }
+                let inode = entry.pointee.d_ino
+                withUnsafePointer(to: &entry.pointee.d_name) { name in
+                    name.withMemoryRebound(to: CChar.self, capacity: Int(entry.pointee.d_namlen) + 1) { name in
+                        if strcmp(name, ".") == 0 || strcmp(name, "..") == 0 { return }
+                        let child = openat(directory, name, O_EVTONLY | O_NOFOLLOW | O_CLOEXEC)
+                        guard child >= 0 else {
+                            if errno == ELOOP { result.skipped += 1 } else { result.failed += 1 }
+                            return
+                        }
+                        defer { close(child) }
+                        var childMetadata = stat()
+                        guard fstat(child, &childMetadata) == 0 else { result.failed += 1; return }
+                        guard childMetadata.st_dev == metadata.st_dev, childMetadata.st_ino == inode else {
+                            result.skipped += 1
+                            return
+                        }
+                        applyFolderMode(mode, descriptor: child, metadata: childMetadata, result: &result)
+                    }
+                }
+            }
+        } else if type != S_IFREG || metadata.st_nlink > 1 {
+            // A hard link can refer to the same file outside the selected tree.
+            result.skipped += 1
+            return
+        }
+        let requested = (metadata.st_mode & 0o7000) | mode_t(mode)
+        var updated = stat()
+        guard fchmod(descriptor, requested) == 0, fstat(descriptor, &updated) == 0,
+              updated.st_mode & 0o7777 == requested else { result.failed += 1; return }
+        result.applied += 1
+    }
+
     public func setGroup(_ name: String, at url: URL, expected: FilePermissionSnapshot) async throws -> FilePermissionSnapshot {
         guard !name.isEmpty, !name.utf8.contains(0) else { throw FilePermissionError.unknownACLAccount }
         return try await Task.detached(priority: .utility) {
@@ -282,7 +353,7 @@ public struct FilePropertiesInspector: Sendable {
         guard type == S_IFREG || type == S_IFDIR else { throw FilePermissionError.unsupportedFileType }
         let acl = try permissionACL(descriptor)
         return FilePermissionSnapshot(
-            mode: Int(metadata.st_mode & 0o7777), ownerID: metadata.st_uid, groupID: metadata.st_gid,
+            isDirectory: type == S_IFDIR, mode: Int(metadata.st_mode & 0o7777), ownerID: metadata.st_uid, groupID: metadata.st_gid,
             accessControlList: acl.entries, aclHeader: acl.header,
             device: metadata.st_dev, inode: metadata.st_ino,
             birthSeconds: metadata.st_birthtimespec.tv_sec, birthNanoseconds: metadata.st_birthtimespec.tv_nsec

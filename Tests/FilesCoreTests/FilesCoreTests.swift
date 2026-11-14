@@ -1606,3 +1606,31 @@ private struct ManyBatchLoader: DirectoryStreaming {
         try await inspector.setOwner(UUID().uuidString, at: file, expected: initial)
     }
 }
+
+@Test func folderPermissionsSkipLinksAndApplyDirectoriesLast() async throws {
+    let root = try fixture()
+    defer { try? FileManager.default.removeItem(at: root) }
+    let folder = root.appendingPathComponent("tree")
+    let nested = folder.appendingPathComponent("child")
+    try FileManager.default.createDirectory(at: nested, withIntermediateDirectories: true)
+    let leaf = nested.appendingPathComponent("leaf")
+    let outside = root.appendingPathComponent("outside")
+    try Data().write(to: leaf)
+    try Data().write(to: outside)
+    try #require(chmod(outside.path, 0o644) == 0)
+    try FileManager.default.createSymbolicLink(at: folder.appendingPathComponent("symlink"), withDestinationURL: outside)
+    try FileManager.default.linkItem(at: outside, to: folder.appendingPathComponent("hardlink"))
+    let inspector = FilePropertiesInspector()
+    let initial = try await inspector.permissions(folder)
+    let result = try await inspector.setFolderPermissions(0o600, at: folder, expected: initial)
+    defer { _ = chmod(folder.path, 0o700); _ = chmod(nested.path, 0o700) }
+    #expect(result.applied == 3)
+    #expect(result.skipped == 2)
+    #expect(result.failed == 0)
+    #expect(try await inspector.permissions(folder).mode == 0o600)
+    try #require(chmod(folder.path, 0o700) == 0)
+    #expect(try await inspector.permissions(nested).mode == 0o600)
+    try #require(chmod(nested.path, 0o700) == 0)
+    #expect(try await inspector.permissions(leaf).mode == 0o600)
+    #expect(try await inspector.permissions(outside).mode == 0o644)
+}
