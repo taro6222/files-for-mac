@@ -1700,3 +1700,25 @@ private struct ManyBatchLoader: DirectoryStreaming {
         #expect(try await inspector.permissions(child).ownerID == updatedChild.ownerID)
     }
 }
+
+@Test func cancelledFolderPermissionOperationsLeaveTheTreeUntouched() async throws {
+    let tree = try fixture()
+    defer { try? FileManager.default.removeItem(at: tree) }
+    let child = tree.appendingPathComponent("file")
+    try Data().write(to: child)
+    let inspector = FilePropertiesInspector()
+    let initial = try await inspector.permissions(tree)
+    let originalChild = try await inspector.permissions(child)
+    let cancellation = CopyCancellation()
+    cancellation.cancel()
+    let results = try await [
+        inspector.setFolderPermissions(0o700, at: tree, expected: initial, cancellation: cancellation),
+        inspector.setFolderAccessControlList("group::everyone::allow:read", at: tree, expected: initial, cancellation: cancellation),
+        inspector.setFolderOwnership("everyone", kind: .group, at: tree, expected: initial, cancellation: cancellation)
+    ]
+    #expect(results.allSatisfy { $0.cancelled && $0.applied == 0 && $0.failed == 0 && $0.skipped == 0 })
+    let currentChild = try await inspector.permissions(child)
+    #expect(currentChild.mode == originalChild.mode)
+    #expect(currentChild.groupID == originalChild.groupID)
+    #expect(currentChild.accessControlList == originalChild.accessControlList)
+}

@@ -4603,6 +4603,10 @@ extension BrowserWindow {
                 try Data().write(to: enclosed)
                 try fm.setAttributes([.posixPermissions: 0o750], ofItemAtPath: folder.path)
                 info.present(items: [FileItem(url: folder, name: folder.lastPathComponent, isDirectory: true)])
+                let beforeStop = try await FilePropertiesInspector().permissions(enclosed).mode
+                let stopped = try await info.qaApplyFolderMode(stopImmediately: true)
+                let afterStop = try await FilePropertiesInspector().permissions(enclosed).mode
+                checks["fileInfoStopsFolderPermissions"] = stopped && beforeStop == afterStop
                 let applied = try await info.qaApplyFolderMode()
                 let enclosedMode = try await FilePropertiesInspector().permissions(enclosed).mode
                 checks["fileInfoFolderPermissions"] = applied && enclosedMode == 0o750
@@ -4634,6 +4638,7 @@ extension BrowserWindow {
                 checks["fileInfoGroupOwnership"] = false
                 checks["fileInfoOwnerPrivileges"] = false
                 checks["fileInfoFolderPermissions"] = false
+                checks["fileInfoStopsFolderPermissions"] = false
                 checks["fileInfoFolderACL"] = false
                 checks["fileInfoFolderOwnership"] = false
             }

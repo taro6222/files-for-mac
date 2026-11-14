@@ -57,6 +57,7 @@ public struct FolderPermissionResult: Sendable {
     public fileprivate(set) var applied = 0
     public fileprivate(set) var skipped = 0
     public fileprivate(set) var failed = 0
+    public fileprivate(set) var cancelled = false
 }
 
 public enum FileACLAccountKind: String, Sendable {
@@ -200,11 +201,12 @@ public struct FilePropertiesInspector: Sendable {
         }.value
     }
 
-    public func setFolderPermissions(_ mode: Int, at url: URL, expected: FilePermissionSnapshot) async throws -> FolderPermissionResult {
+    public func setFolderPermissions(_ mode: Int, at url: URL, expected: FilePermissionSnapshot,
+                                     cancellation: CopyCancellation? = nil) async throws -> FolderPermissionResult {
         guard (0...0o777).contains(mode) else { throw FilePermissionError.invalidMode }
         return try await Task.detached(priority: .utility) {
             try Self.withPermissionDescriptor(url) { descriptor in
-                try Self.updateFolder(descriptor, expected: expected) { entry, metadata in
+                try Self.updateFolder(descriptor, expected: expected, cancellation: cancellation) { entry, metadata in
                     let requested = (metadata.st_mode & 0o7000) | mode_t(mode)
                     var updated = stat()
                     return fchmod(entry, requested) == 0 && fstat(entry, &updated) == 0
@@ -214,13 +216,14 @@ public struct FilePropertiesInspector: Sendable {
         }.value
     }
 
-    public func setFolderAccessControlList(_ entries: String, at url: URL, expected: FilePermissionSnapshot) async throws -> FolderPermissionResult {
+    public func setFolderAccessControlList(_ entries: String, at url: URL, expected: FilePermissionSnapshot,
+                                     cancellation: CopyCancellation? = nil) async throws -> FolderPermissionResult {
         try await Task.detached(priority: .utility) {
             let acl = try Self.parsePermissionACL(entries, header: expected.aclHeader)
             defer { acl_free(UnsafeMutableRawPointer(acl)) }
             let requested = try Self.permissionACLText(acl)
             return try Self.withPermissionDescriptor(url) { descriptor in
-                try Self.updateFolder(descriptor, expected: expected) { entry, _ in
+                try Self.updateFolder(descriptor, expected: expected, cancellation: cancellation) { entry, _ in
                     guard acl_set_fd_np(entry, acl, ACL_TYPE_EXTENDED) == 0,
                           let updated = try? Self.permissionACL(entry) else { return false }
                     return updated.entries == requested.entries
@@ -231,18 +234,26 @@ public struct FilePropertiesInspector: Sendable {
     }
 
     private static func updateFolder(_ descriptor: Int32, expected: FilePermissionSnapshot,
+                                     cancellation: CopyCancellation?,
                                      apply: (Int32, stat) -> Bool) throws -> FolderPermissionResult {
         try checkPermissionSnapshot(permissionSnapshot(descriptor), expected: expected)
         var metadata = stat()
         guard fstat(descriptor, &metadata) == 0 else { throw permissionPOSIXError() }
         guard metadata.st_mode & S_IFMT == S_IFDIR else { throw FilePermissionError.unsupportedFileType }
         var result = FolderPermissionResult()
-        visitPermissionTree(descriptor, metadata: metadata, result: &result, apply: apply)
+        visitPermissionTree(descriptor, metadata: metadata, cancellation: cancellation, result: &result, apply: apply)
         return result
     }
 
-    private static func visitPermissionTree(_ descriptor: Int32, metadata: stat, result: inout FolderPermissionResult,
+    private static func stopPermissionWalk(_ cancellation: CopyCancellation?, result: inout FolderPermissionResult) -> Bool {
+        if cancellation?.isCancelled == true { result.cancelled = true }
+        return result.cancelled
+    }
+
+    private static func visitPermissionTree(_ descriptor: Int32, metadata: stat, cancellation: CopyCancellation?,
+                                            result: inout FolderPermissionResult,
                                             apply: (Int32, stat) -> Bool) {
+        guard !stopPermissionWalk(cancellation, result: &result) else { return }
         let type = metadata.st_mode & S_IFMT
         if type == S_IFDIR {
             let directory = openat(descriptor, ".", O_RDONLY | O_DIRECTORY | O_CLOEXEC)
@@ -253,7 +264,7 @@ public struct FilePropertiesInspector: Sendable {
                 return
             }
             defer { closedir(stream) }
-            while true {
+            while !stopPermissionWalk(cancellation, result: &result) {
                 errno = 0
                 guard let entry = readdir(stream) else {
                     if errno != 0 { result.failed += 1; return }
@@ -275,7 +286,7 @@ public struct FilePropertiesInspector: Sendable {
                             result.skipped += 1
                             return
                         }
-                        visitPermissionTree(child, metadata: childMetadata, result: &result, apply: apply)
+                        visitPermissionTree(child, metadata: childMetadata, cancellation: cancellation, result: &result, apply: apply)
                     }
                 }
             }
@@ -284,6 +295,7 @@ public struct FilePropertiesInspector: Sendable {
             result.skipped += 1
             return
         }
+        guard !stopPermissionWalk(cancellation, result: &result) else { return }
         if apply(descriptor, metadata) { result.applied += 1 } else { result.failed += 1 }
     }
 
@@ -320,11 +332,11 @@ public struct FilePropertiesInspector: Sendable {
     }
 
     public func setFolderOwnership(_ name: String, kind: FileACLAccountKind, at url: URL,
-                                   expected: FilePermissionSnapshot) async throws -> FolderPermissionResult {
+                                   expected: FilePermissionSnapshot, cancellation: CopyCancellation? = nil) async throws -> FolderPermissionResult {
         try await Task.detached(priority: .utility) {
             let id = try Self.ownershipID(name, kind: kind)
             return try Self.withPermissionDescriptor(url) { descriptor in
-                try Self.updateFolder(descriptor, expected: expected) { entry, metadata in
+                try Self.updateFolder(descriptor, expected: expected, cancellation: cancellation) { entry, metadata in
                     if kind == .user ? metadata.st_uid == id : metadata.st_gid == id { return true }
                     let owner = kind == .user ? id : uid_t.max
                     let group = kind == .group ? id : gid_t.max

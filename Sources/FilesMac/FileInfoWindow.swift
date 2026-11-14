@@ -270,14 +270,14 @@ final class FileInfoWindow: NSWindowController, NSTextFieldDelegate {
     private func cancelTasks() { inspectTask?.cancel(); inspectTask = nil; hashTask?.cancel(); hashTask = nil; signatureTask?.cancel(); signatureTask = nil }
 #if DEBUG
     var qaLoaded: Bool { properties != nil }
-    func qaApplyFolderMode(acl: String? = nil, group: String? = nil) async throws -> Bool {
+    func qaApplyFolderMode(acl: String? = nil, group: String? = nil, stopImmediately: Bool = false) async throws -> Bool {
         guard let sheet = openPermissions() else { return false }
         defer { sheet.dismissQA() }
         let deadline = ContinuousClock.now + .seconds(5)
         while !sheet.qaReady && ContinuousClock.now < deadline {
             try await Task.sleep(for: .milliseconds(20))
         }
-        return try await sheet.qaApplyDescendants(acl: acl, group: group)
+        return try await sheet.qaApplyDescendants(acl: acl, group: group, stopImmediately: stopImmediately)
     }
     func qaOwnerControlMatchesPrivileges() async throws -> Bool {
         guard let sheet = openPermissions() else { return false }
@@ -355,6 +355,8 @@ private final class FilePermissionsSheet: NSObject, NSTextViewDelegate {
     private let alert = NSAlert()
     private var initial: FilePermissionSnapshot?
     private var refreshAfterClose = false
+    private var folderCancellation: CopyCancellation?
+    private let stop = NSButton()
     private var checks: [NSButton] = []
     private let aclText = NSTextView()
     private let editACL = NSButton()
@@ -386,6 +388,7 @@ private final class FilePermissionsSheet: NSObject, NSTextViewDelegate {
     func present(on parent: NSWindow) {
         let sheet = alert.window
         alert.beginSheetModal(for: parent) { [self] _ in
+            folderCancellation?.cancel()
             if refreshAfterClose { onSave() }
         }
         Task {
@@ -473,7 +476,11 @@ private final class FilePermissionsSheet: NSObject, NSTextViewDelegate {
         includeDescendants.title = L("하위 파일과 폴더에도 적용", "Apply to enclosed files and folders")
         includeDescendants.target = self; includeDescendants.action = #selector(permissionChanged(_:))
         includeDescendants.isEnabled = false
-        let stack = NSStackView(views: [grid, includeDescendants, ownerRow, groupRow, ownershipHelp, aclHeader, ruleControls, scroll, status])
+        stop.title = L("중단", "Stop")
+        stop.target = self; stop.action = #selector(stopFolderUpdate(_:))
+        stop.isHidden = true
+        let resultRow = NSStackView(views: [status, stop])
+        let stack = NSStackView(views: [grid, includeDescendants, ownerRow, groupRow, ownershipHelp, aclHeader, ruleControls, scroll, resultRow])
         ownershipHelp.isHidden = FilePropertiesInspector.canChangeOwner
         stack.orientation = .vertical
         stack.alignment = .leading
@@ -656,13 +663,19 @@ private final class FilePermissionsSheet: NSObject, NSTextViewDelegate {
         }
     }
 
+    @objc private func stopFolderUpdate(_ sender: Any?) {
+        folderCancellation?.cancel()
+        stop.isEnabled = false
+        status.stringValue = L("현재 항목을 마치고 중단합니다…", "Stopping after the current item…")
+    }
+
     @objc private func savePermissions(_ sender: Any?) {
         guard let initial, save.isEnabled else { return }
         let requested = selectedMode
         let aclEntries = aclText.isEditable ? aclText.string : nil
         let group = groupList.indexOfSelectedItem > 0 ? groupList.titleOfSelectedItem : nil
         let owner = ownerList.indexOfSelectedItem > 0 ? ownerList.titleOfSelectedItem : nil
-        let recursive = includeDescendants.state == .on
+        let cancellation = includeDescendants.state == .on ? CopyCancellation() : nil
         save.isEnabled = false
         editACL.isEnabled = false
         groupList.isEnabled = false
@@ -672,24 +685,34 @@ private final class FilePermissionsSheet: NSObject, NSTextViewDelegate {
         setRuleControlsEnabled(false)
         alert.buttons[1].isEnabled = false
         checks.forEach { $0.isEnabled = false }
-        if recursive { status.stringValue = L("하위 항목의 권한을 변경하는 중…", "Applying permissions to enclosed items…") }
+        folderCancellation = cancellation
+        if cancellation != nil {
+            stop.isHidden = false
+            stop.isEnabled = true
+            status.stringValue = L("하위 항목의 권한을 변경하는 중…", "Applying permissions to enclosed items…")
+        }
         Task {
-            defer { alert.buttons[1].isEnabled = true }
+            defer {
+                folderCancellation = nil
+                stop.isHidden = true
+                alert.buttons[1].isEnabled = true
+            }
             do {
-                if recursive {
+                if let cancellation {
                     let result: FolderPermissionResult
                     if let owner {
-                        result = try await inspector.setFolderOwnership(owner, kind: .user, at: url, expected: initial)
+                        result = try await inspector.setFolderOwnership(owner, kind: .user, at: url, expected: initial, cancellation: cancellation)
                     } else if let group {
-                        result = try await inspector.setFolderOwnership(group, kind: .group, at: url, expected: initial)
+                        result = try await inspector.setFolderOwnership(group, kind: .group, at: url, expected: initial, cancellation: cancellation)
                     } else if let aclEntries {
-                        result = try await inspector.setFolderAccessControlList(aclEntries, at: url, expected: initial)
+                        result = try await inspector.setFolderAccessControlList(aclEntries, at: url, expected: initial, cancellation: cancellation)
                     } else {
-                        result = try await inspector.setFolderPermissions(requested, at: url, expected: initial)
+                        result = try await inspector.setFolderPermissions(requested, at: url, expected: initial, cancellation: cancellation)
                     }
                     refreshAfterClose = true
-                    status.stringValue = L("적용 \(result.applied)개, 건너뜀 \(result.skipped)개, 실패 \(result.failed)개.",
+                    let counts = L("적용 \(result.applied)개, 건너뜀 \(result.skipped)개, 실패 \(result.failed)개.",
                                            "Applied to \(result.applied), skipped \(result.skipped), failed \(result.failed).")
+                    status.stringValue = result.cancelled ? L("중단됨. 변경한 항목은 유지됩니다. ", "Stopped. Changes already made are kept. ") + counts : counts
                     return
                 } else if let owner {
                     _ = try await inspector.setOwner(owner, at: url, expected: initial)
@@ -720,7 +743,7 @@ private final class FilePermissionsSheet: NSObject, NSTextViewDelegate {
 #if DEBUG
     var qaReady: Bool { initial != nil }
     var qaOwnerEnabled: Bool { ownerList.isEnabled }
-    func qaApplyDescendants(acl: String?, group: String?) async throws -> Bool {
+    func qaApplyDescendants(acl: String?, group: String?, stopImmediately: Bool) async throws -> Bool {
         guard includeDescendants.isEnabled else { return false }
         if let group {
             let deadline = ContinuousClock.now + .seconds(5)
@@ -740,11 +763,12 @@ private final class FilePermissionsSheet: NSObject, NSTextViewDelegate {
         includeDescendants.state = .on
         permissionChanged(nil)
         save.performClick(nil)
+        if stopImmediately { stop.performClick(nil) }
         let deadline = ContinuousClock.now + .seconds(5)
         while !refreshAfterClose && ContinuousClock.now < deadline {
             try await Task.sleep(for: .milliseconds(20))
         }
-        return refreshAfterClose
+        return refreshAfterClose && (!stopImmediately || status.stringValue.hasPrefix(L("중단됨.", "Stopped.")))
     }
     func dismissQA() {
         alert.window.sheetParent?.endSheet(alert.window)
