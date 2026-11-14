@@ -1,0 +1,23 @@
+{
+  "previousImageSHA256": "fda4700d04d4959972ab5e52482f7dc2ebe94e28e2ab853442d9770ee4316c94",
+  "candidateImageSHA256": "4f9190459b982fdff26d753b70ff895656d7b4e083ded8f4e3885040852aef7b",
+  "previousVersion": [
+    "0.1.0",
+    "1"
+  ],
+  "candidateVersion": [
+    "0.1.0",
+    "1"
+  ],
+  "previousTestExecutableSHA256": "b024f90d5cad9be5235ad6f1d04a33dee5f69973288a287fdfa1e4c634459805",
+  "candidateTestExecutableSHA256": "1dc1ab5121321bcc128b171c4dcc3dda0ae5dbe80519d54126be13d679372584",
+  "macOS": "27.2",
+  "macOSBuild": "26B123",
+  "architecture": "arm64",
+  "windowVisibleSeconds": {
+    "firstInstall": 0.543,
+    "afterStagedSignatureFailure": 0.191,
+    "afterReplacement": 0.508,
+    "afterRollback": 0.194
+  }
+}

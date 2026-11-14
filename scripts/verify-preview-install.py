@@ -16,16 +16,49 @@ import uuid
 
 
 WINDOW_PROBE = """\
+import ApplicationServices
 import CoreGraphics
 import Darwin
+
+if CommandLine.arguments[1] == "--check-interaction-access" {
+    exit(AXIsProcessTrusted() ? 0 : 2)
+}
 let owner = Int(CommandLine.arguments[1])
 let title = CommandLine.arguments[2]
 let windows = CGWindowListCopyWindowInfo([.optionAll, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]] ?? []
-exit(windows.contains {
+let found = windows.contains {
     $0[kCGWindowOwnerPID as String] as? Int == owner &&
-    $0[kCGWindowLayer as String] as? Int == 0 &&
+    (title == "About Files macOS" || $0[kCGWindowLayer as String] as? Int == 0) &&
     $0[kCGWindowName as String] as? String == title
-} ? 0 : 1)
+}
+guard found else { exit(1) }
+if CommandLine.arguments.count == 4 {
+    guard let pid = owner.flatMap(pid_t.init(exactly:)) else { exit(2) }
+
+    func attribute(_ element: AXUIElement, _ name: String) -> CFTypeRef? {
+        var value: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(element, name as CFString, &value) == .success else { return nil }
+        return value
+    }
+
+    func children(_ element: AXUIElement) -> [AXUIElement] {
+        attribute(element, kAXChildrenAttribute) as? [AXUIElement] ?? []
+    }
+
+    let app = AXUIElementCreateApplication(pid)
+    AXUIElementSetMessagingTimeout(app, 0.25)
+    guard let menuBar = attribute(app, kAXMenuBarAttribute), CFGetTypeID(menuBar) == AXUIElementGetTypeID(),
+          let appMenu = children(menuBar as! AXUIElement).first(where: {
+              attribute($0, kAXTitleAttribute) as? String == "Files macOS"
+          }),
+          let menu = children(appMenu).first,
+          let about = children(menu).first(where: {
+              attribute($0, kAXTitleAttribute) as? String == "About Files macOS"
+          }) else { exit(1) }
+    let action = AXUIElementPerformAction(about, kAXPressAction as CFString)
+    exit(action == .success || action == .cannotComplete ? 0 : 2)
+}
+exit(0)
 """
 
 
@@ -78,22 +111,42 @@ def isolate(app, bundle_id):
     verify_signature(app)
 
 
-def launch(app, probe, fixture, home, log):
+def launch(app, probe, fixture, home, log, *, interactive=False):
     env = dict(os.environ, CFFIXED_USER_HOME=str(home))
     title = f"{fixture.name} — Files macOS"
     with log.open("ab") as output:
         start = time.monotonic()
-        process = subprocess.Popen(
-            [app / "Contents/MacOS/FilesMac"], env=env, stdout=output, stderr=subprocess.STDOUT
-        )
+        arguments = [app / "Contents/MacOS/FilesMac"]
+        if interactive:
+            arguments += ["-AppleLanguages", "(en)", "-AppleLocale", "en"]
+        process = subprocess.Popen(arguments, env=env, stdout=output, stderr=subprocess.STDOUT)
         try:
+            window_time = None
+            next_press = 0.0
             while time.monotonic() - start < 15:
                 if process.poll() is not None:
                     raise RuntimeError(f"App exited with {process.returncode}; see {log}")
-                if subprocess.run([probe, str(process.pid), title]).returncode == 0:
-                    return round(time.monotonic() - start, 3)
-                time.sleep(0.05)
-            raise RuntimeError(f"No window for the saved startup location; see {log}")
+                if window_time is not None:
+                    if subprocess.run([probe, str(process.pid), "About Files macOS"], timeout=5).returncode == 0:
+                        return {"windowSeconds": window_time, "interactiveSeconds": round(time.monotonic() - start, 3)}
+                    if time.monotonic() >= next_press:
+                        status = subprocess.run([probe, str(process.pid), title, "--press-about"], timeout=5).returncode
+                        if status > 1:
+                            raise RuntimeError(f"Window probe exited with {status}")
+                        next_press = time.monotonic() + 0.1
+                    time.sleep(0.02)
+                    continue
+                status = subprocess.run([probe, str(process.pid), title], timeout=5).returncode
+                if status == 0:
+                    elapsed = round(time.monotonic() - start, 3)
+                    if not interactive:
+                        return elapsed
+                    window_time = elapsed
+                elif status != 1:
+                    raise RuntimeError(f"Window probe exited with {status}")
+                time.sleep(0.02 if interactive else 0.05)
+            missing = "the About window after pressing the menu item" if window_time is not None else "the startup location"
+            raise RuntimeError(f"No window for {missing}; see {log}")
         finally:
             if process.poll() is None:
                 process.terminate()
@@ -120,12 +173,14 @@ def launch_environment():
     }
 
 
-def measure_startup(image, root, bundle_id):
+def measure_startup(image, root, bundle_id, *, interactive=False):
     digest = image_hash(image)
     mountpoint, home, fixture = (root / name for name in ("mount", "home", "Startup Fixture"))
     for folder in (mountpoint, home, fixture):
         folder.mkdir()
     probe = build_window_probe(root)
+    if interactive and subprocess.run([probe, "--check-interaction-access"]).returncode != 0:
+        raise RuntimeError("This session lacks macOS Accessibility access for the preview menu")
     app = home / "Files macOS.app"
     with mounted(image, mountpoint) as mounted_app:
         verify_signature(mounted_app)
@@ -135,7 +190,20 @@ def measure_startup(image, root, bundle_id):
     isolate(app, bundle_id)
     run("defaults", "write", bundle_id, "startupLocationPath", "-string", fixture)
     run("defaults", "write", bundle_id, "continueLastSession", "-bool", "NO")
-    samples = [launch(app, probe, fixture, home, root / "app.log") for _ in range(20)]
+    samples = [launch(app, probe, fixture, home, root / "app.log", interactive=interactive) for _ in range(20)]
+    if interactive:
+        times = sorted(sample["interactiveSeconds"] for sample in samples)
+        return {
+            **launch_environment(),
+            "imageSHA256": digest,
+            "appVersion": app_version,
+            "isolatedExecutableSHA256": sha256(app / "Contents/MacOS/FilesMac"),
+            "metric": "Direct process launch to observing the About window after pressing its menu item through Accessibility",
+            "cacheCondition": "Fresh processes; shared OS caches, no cache purge",
+            "samples": samples,
+            "p95Seconds": times[math.ceil(len(times) * 0.95) - 1],
+            "maximumSeconds": times[-1],
+        }
     p95 = sorted(samples)[math.ceil(len(samples) * 0.95) - 1]
     return {
         **launch_environment(),
@@ -231,11 +299,14 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("previous", type=Path)
     parser.add_argument("candidate", type=Path, nargs="?")
-    parser.add_argument("--startup", action="store_true", help="Measure 20 launches from one preview image")
+    modes = parser.add_mutually_exclusive_group()
+    modes.add_argument("--startup", action="store_true", help="Measure 20 launches from one preview image")
+    modes.add_argument("--interactive-startup", action="store_true", help="Measure 20 launches through a About menu action through Accessibility")
     args = parser.parse_args()
-    if args.startup and args.candidate is not None:
-        parser.error("--startup accepts one preview image")
-    if not args.startup and args.candidate is None:
+    startup = args.startup or args.interactive_startup
+    if startup and args.candidate is not None:
+        parser.error("Startup measurement accepts one preview image")
+    if not startup and args.candidate is None:
         parser.error("Installation verification requires a previous and candidate preview image")
     images = [image.resolve() for image in (args.previous, args.candidate) if image is not None]
     if any(image.name != "Files-macOS-preview.dmg" for image in images):
@@ -246,8 +317,8 @@ def main():
     bundle_id = f"org.taro6222.files-for-mac.qa.{uuid.uuid4()}"
     print(root, flush=True)
     try:
-        if args.startup:
-            result = measure_startup(images[0], root, bundle_id)
+        if startup:
+            result = measure_startup(images[0], root, bundle_id, interactive=args.interactive_startup)
         else:
             result = exercise(*images, root, bundle_id)
         (root / "report.json").write_text(json.dumps(result, indent=2) + "\n")
