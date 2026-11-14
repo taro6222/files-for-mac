@@ -3881,6 +3881,21 @@ extension BrowserWindow {
             checks["searchParentFolderRevealsItem"] = revealedSearchHit && controller.model.location == fixture.standardizedFileURL
                 && controller.primarySelectedItems.map(\.id) == [searchHit.path]
                 && controller.searchWindow?.window?.isVisible == false
+            let searchPanel = SearchWindow()
+            var openedSearchResult: URL?
+            searchPanel.present(root: columnFolder, showHidden: false, onReveal: { _ in },
+                                onOpen: { openedSearchResult = $0.url })
+            searchPanel.qaSearch("leaf.txt", scope: .currentFolder)
+            let searchKeyboardStart = ContinuousClock.now
+            while searchPanel.qaIsSearching && elapsed(searchKeyboardStart) < 5 {
+                try await Task.sleep(for: .milliseconds(20))
+            }
+            let keyboardResult = searchPanel.qaOpenResultWithKeyboard()
+            checks["searchKeyboardFocusesResult"] = keyboardResult.focusedResult
+            checks["searchKeyboardOpensResult"] = keyboardResult.closed
+                && openedSearchResult?.standardizedFileURL.path == columnFolder.appendingPathComponent("leaf.txt").standardizedFileURL.path
+            searchPanel.close()
+            window.makeKeyAndOrderFront(nil)
             controller.addSelectionToShelf(nil)
             controller.addSelectionToShelf(nil)
             checks["shelfAddsSelectedFileOnce"] = !controller.shelf.isHidden

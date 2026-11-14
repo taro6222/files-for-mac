@@ -12,7 +12,7 @@ final class SearchWindow: NSWindowController, NSTableViewDataSource, NSTableView
     private let afterEnabled = NSButton(checkboxWithTitle: L("수정일 이후", "Modified after"), target: nil, action: nil)
     private let beforeEnabled = NSButton(checkboxWithTitle: L("수정일 이전", "Modified before"), target: nil, action: nil)
     private let afterDate = NSDatePicker(), beforeDate = NSDatePicker()
-    private let table = NSTableView(), status = NSTextField(labelWithString: ""), stop = NSButton()
+    private let table = SearchResultsTable(), status = NSTextField(labelWithString: ""), stop = NSButton()
     private var root: URL?
 
     init() {
@@ -41,9 +41,13 @@ final class SearchWindow: NSWindowController, NSTableViewDataSource, NSTableView
         metadata.addArrangedSubview(tagsAndSize)
         let dates = NSStackView(); dates.orientation = .horizontal; dates.spacing = 8
         for picker in [afterDate, beforeDate] { picker.datePickerElements = [.yearMonthDay]; picker.datePickerStyle = .textFieldAndStepper }
+        afterDate.setAccessibilityLabel(L("수정일 시작 날짜", "Earliest modification date"))
+        beforeDate.setAccessibilityLabel(L("수정일 종료 날짜", "Latest modification date"))
         dates.addArrangedSubview(afterEnabled); dates.addArrangedSubview(afterDate); dates.addArrangedSubview(beforeEnabled); dates.addArrangedSubview(beforeDate); dates.addArrangedSubview(NSView()); metadata.addArrangedSubview(dates); stack.addArrangedSubview(metadata)
         for (id, title, width) in [("name", L("이름", "Name"), 240.0), ("path", L("위치", "Location"), 360.0), ("kind", L("종류", "Kind"), 90.0)] { let c = NSTableColumn(identifier: .init(id)); c.title = title; c.width = width; table.addTableColumn(c) }
         table.delegate = self; table.dataSource = self; table.target = self; table.doubleAction = #selector(openSelection(_:)); table.allowsMultipleSelection = false
+        table.setAccessibilityLabel(L("검색 결과", "Search results"))
+        table.openSelected = { [weak self] in self?.openResult(at: self?.table.selectedRow ?? -1) }
         let resultMenu = NSMenu()
         let parent = resultMenu.addItem(withTitle: L("상위 폴더 열기", "Open Parent Folder"), action: #selector(openParentFolder(_:)), keyEquivalent: "")
         parent.target = self
@@ -101,11 +105,23 @@ final class SearchWindow: NSWindowController, NSTableViewDataSource, NSTableView
         return .some(parsed)
     }
     @objc private func cancel(_ sender: Any?) { model.cancel() }
+    func control(_ control: NSControl, textView: NSTextView, doCommandBy selector: Selector) -> Bool {
+        guard control === search, !textView.hasMarkedText(),
+              selector == #selector(NSResponder.moveDown(_:)), !model.results.isEmpty,
+              window?.makeFirstResponder(table) == true else { return false }
+        let row = max(0, table.selectedRow)
+        table.selectRowIndexes([row], byExtendingSelection: false)
+        table.scrollRowToVisible(row)
+        return true
+    }
     private func result(at row: Int) -> FileItem? {
         model.results.indices.contains(row) ? model.results[row] : nil
     }
     @objc private func openSelection(_ sender: Any?) {
-        guard let item = result(at: table.clickedRow) else { return }
+        openResult(at: table.clickedRow)
+    }
+    private func openResult(at row: Int) {
+        guard let item = result(at: row) else { return }
         model.cancel()
         close()
         (onOpen ?? onReveal)?(item)
@@ -149,6 +165,19 @@ final class SearchWindow: NSWindowController, NSTableViewDataSource, NSTableView
     var qaShowsDirectEnumeration: Bool { status.stringValue.contains(L("직접 열거", "direct enumeration")) }
     var qaShowsSpotlight: Bool { status.stringValue.contains("Spotlight") }
     func qaContainsResult(named name: String) -> Bool { model.results.contains { $0.name == name } }
+    func qaOpenResultWithKeyboard() -> (focusedResult: Bool, closed: Bool) {
+        guard let window, window.makeFirstResponder(search) else { return (false, false) }
+        func sendKey(_ code: UInt16, _ characters: String, modifiers: NSEvent.ModifierFlags = []) {
+            guard let event = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: modifiers,
+                timestamp: 0, windowNumber: window.windowNumber, context: nil, characters: characters,
+                charactersIgnoringModifiers: characters, isARepeat: false, keyCode: code) else { return }
+            window.sendEvent(event)
+        }
+        sendKey(125, String(UnicodeScalar(NSDownArrowFunctionKey)!), modifiers: [.function, .numericPad])
+        guard window.firstResponder === table, table.selectedRow == 0 else { return (false, false) }
+        sendKey(36, "\r")
+        return (true, !window.isVisible)
+    }
     func qaRevealResult(named name: String) -> Bool {
         guard let row = model.results.firstIndex(where: { $0.name == name }) else { return false }
         table.selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false)
@@ -157,4 +186,18 @@ final class SearchWindow: NSWindowController, NSTableViewDataSource, NSTableView
         return true
     }
 #endif
+}
+
+@MainActor
+private final class SearchResultsTable: NSTableView {
+    var openSelected: (() -> Void)?
+
+    override func keyDown(with event: NSEvent) {
+        if [36, 76].contains(event.keyCode), selectedRow >= 0,
+           event.modifierFlags.intersection([.command, .control, .option, .shift]).isEmpty {
+            openSelected?()
+            return
+        }
+        super.keyDown(with: event)
+    }
 }
