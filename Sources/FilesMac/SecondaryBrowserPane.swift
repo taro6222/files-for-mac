@@ -3,6 +3,8 @@ import FilesCore
 
 @MainActor
 final class SecondaryBrowserPane: NSView, NSTableViewDataSource, NSTableViewDelegate {
+    private static let refreshImage = NSImage(systemSymbolName: "arrow.clockwise", accessibilityDescription: nil)
+    private static let stopImage = NSImage(systemSymbolName: "xmark", accessibilityDescription: nil)
     let model: BrowserModel
     private let preferences: BrowserPreferences
     var onActivate: (() -> Void)?
@@ -25,8 +27,8 @@ final class SecondaryBrowserPane: NSView, NSTableViewDataSource, NSTableViewDele
         model.viewMode == .adaptive ? adaptiveResolvedMode : model.viewMode
     }
     private let status = NSTextField(labelWithString: "")
-    private let hiddenButton = HiddenFilesButton()
-    private let refreshButton = NSButton()
+    private let hiddenButton = PaneActionButton()
+    private let refreshButton = PaneActionButton()
     private let backButton = NSButton()
     private let forwardButton = NSButton()
     private let upButton = NSButton()
@@ -43,8 +45,8 @@ final class SecondaryBrowserPane: NSView, NSTableViewDataSource, NSTableViewDele
     private var detailRows: [DetailDisplayRow] = []
     private let dateFormatter: DateFormatter = { let value = DateFormatter(); value.dateStyle = .medium; value.timeStyle = .short; return value }()
 
-    init(snapshot: TabSnapshot, preferences: BrowserPreferences = .shared) {
-        model = BrowserModel()
+    init(snapshot: TabSnapshot, preferences: BrowserPreferences = .shared, loader: any DirectoryLoading = LocalFileSystem()) {
+        model = BrowserModel(loader: loader)
         self.preferences = preferences
         super.init(frame: .zero)
         wantsLayer = true; translatesAutoresizingMaskIntoConstraints = false
@@ -164,7 +166,10 @@ final class SecondaryBrowserPane: NSView, NSTableViewDataSource, NSTableViewDele
         else if renderedViewMode == .columns { columnView.focus() }
         else { window?.makeFirstResponder(table) }
     }
-    func stopLoading() { model.cancelLoad() }
+    func stopLoading() {
+        pendingRefresh = false
+        model.cancelLoad()
+    }
     func setViewMode(_ mode: BrowserViewMode) { activate(); setViewModeAndPersist(mode) }
     func focusFilter() { window?.makeFirstResponder(folderFilter) }
     func applyPreferences() {
@@ -204,6 +209,7 @@ final class SecondaryBrowserPane: NSView, NSTableViewDataSource, NSTableViewDele
         pathField.placeholderString = L("폴더 경로", "Folder path"); pathField.target = self; pathField.action = #selector(submitPath(_:))
         pathField.setAccessibilityLabel(L("보조 pane 경로", "Secondary pane path")); toolbar.addArrangedSubview(pathField)
         configure(refreshButton, symbol: "arrow.clockwise", title: L("새로고침", "Refresh"), action: #selector(reload(_:)))
+        refreshButton.image = Self.refreshImage
         toolbar.addArrangedSubview(refreshButton)
         configure(hiddenButton, symbol: "eye.slash", title: L("숨김 항목 전환", "Toggle Hidden Files"), action: #selector(toggleHidden(_:)))
         hiddenButton.setButtonType(.pushOnPushOff)
@@ -372,7 +378,10 @@ final class SecondaryBrowserPane: NSView, NSTableViewDataSource, NSTableViewDele
         updateWatcher()
         if pendingRefresh && !model.isLoading && !model.wasCancelled {
             pendingRefresh = false
-            Task { @MainActor [weak self] in self?.model.reload() }
+            let location = model.location
+            Task { @MainActor [weak self] in
+                if let location { self?.requestWatcherRefresh(for: location) }
+            }
         }
     }
     private func render() {
@@ -441,8 +450,15 @@ final class SecondaryBrowserPane: NSView, NSTableViewDataSource, NSTableViewDele
             scroll.contentView.scroll(to: NSPoint(x: 0, y: model.history.current.scrollOffset)); scroll.reflectScrolledClipView(scroll.contentView)
             if revealEntry, let row = selected.first { table.scrollRowToVisible(row) }
         }
+        let refreshTitle = model.isLoading ? L("읽기 중단", "Stop Loading") : L("새로고침", "Refresh")
+        if refreshButton.toolTip != refreshTitle {
+            refreshButton.image = model.isLoading ? Self.stopImage : Self.refreshImage
+            refreshButton.toolTip = refreshTitle
+            refreshButton.setAccessibilityLabel(refreshTitle)
+        }
         if model.isLoading { status.stringValue = L("읽는 중…", "Loading…") }
         else if let failure = model.failure { status.stringValue = failure.message(korean: Locale.preferredLanguages.first?.hasPrefix("ko") == true) }
+        else if model.wasCancelled { status.stringValue = L("읽기를 중단했습니다. 새로고침하세요.", "Loading stopped. Refresh to retry.") }
         else if !model.nameFilter.isEmpty && model.items.isEmpty { status.stringValue = L("일치하는 이름이 없습니다.", "No matching names.") }
         else { status.stringValue = L("\(model.items.count)개 항목", "\(model.items.count) items") }
     }
@@ -519,7 +535,10 @@ final class SecondaryBrowserPane: NSView, NSTableViewDataSource, NSTableViewDele
     @objc private func back(_ sender: Any?) { goBack() }
     @objc private func forward(_ sender: Any?) { goForward() }
     @objc private func up(_ sender: Any?) { goUp() }
-    @objc private func reload(_ sender: Any?) { refresh() }
+    @objc private func reload(_ sender: Any?) {
+        if model.isLoading { activate(); stopLoading() }
+        else { refresh() }
+    }
     @objc private func toggleHidden(_ sender: Any?) {
         activate(); savePosition(); model.showHidden.toggle(); model.reload()
     }
@@ -561,10 +580,14 @@ final class SecondaryBrowserPane: NSView, NSTableViewDataSource, NSTableViewDele
             guard let watcher else { return }
             for await _ in watcher.events {
                 guard !Task.isCancelled, self.watchedURL == url, self.model.location == url else { return }
-                if self.model.isLoading { self.pendingRefresh = true }
-                else { self.model.reload() }
+                self.requestWatcherRefresh(for: url)
             }
         }
+    }
+    private func requestWatcherRefresh(for url: URL) {
+        guard model.location == url, !model.wasCancelled else { return }
+        if model.isLoading { pendingRefresh = true }
+        else { model.reload() }
     }
     private func draggedURLs(_ info: any NSDraggingInfo) -> [URL] {
         (info.draggingPasteboard.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [NSURL] ?? []).map { $0 as URL }
@@ -581,6 +604,12 @@ final class SecondaryBrowserPane: NSView, NSTableViewDataSource, NSTableViewDele
         return .resolve(modifiers: modifiers, sourceAllowsMove: info.draggingSourceOperationMask.contains(.move))
     }
     #if DEBUG
+    var qaReadControl: (label: String?, status: String) {
+        (refreshButton.accessibilityLabel(), status.stringValue)
+    }
+    func qaPressReadControl() -> Bool { refreshButton.accessibilityPerformPress() }
+    func qaSimulateFolderChange(at url: URL) { requestWatcherRefresh(for: url) }
+
     func qaSubmitFocusedPath(_ url: URL) -> Bool {
         guard pathField.frame.width > 0, let editor = pathField.currentEditor() else { return false }
         editor.string = url.path
@@ -625,7 +654,7 @@ final class SecondaryBrowserPane: NSView, NSTableViewDataSource, NSTableViewDele
     #endif
 }
 
-private final class HiddenFilesButton: NSButton {
+private final class PaneActionButton: NSButton {
     override func accessibilityPerformPress() -> Bool {
         guard isEnabled, !isHiddenOrHasHiddenAncestor else { return false }
         performClick(nil)

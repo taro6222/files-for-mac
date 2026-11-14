@@ -5182,6 +5182,31 @@ extension BrowserWindow {
             checks["cancelledReadRetries"] = !cancellable.model.isLoading && !cancellable.model.wasCancelled
                 && cancellable.model.items.map(\.name) == ["ready.txt"] && cancellable.recoveryActions.isHidden
             cancellable.close()
+            let secondaryRead = SecondaryBrowserPane(snapshot: BrowserModel().snapshot,
+                preferences: preferences, loader: DelayedUIListLoader())
+            let secondaryReadWindow = NSWindow(contentRect: NSRect(x: 80, y: 80, width: 900, height: 600),
+                styleMask: [.titled, .closable], backing: .buffered, defer: false)
+            secondaryReadWindow.isReleasedWhenClosed = false
+            secondaryReadWindow.contentView = secondaryRead
+            secondaryReadWindow.makeKeyAndOrderFront(nil)
+            secondaryRead.open(denied)
+            let exposesStop = secondaryRead.qaReadControl.label == L("읽기 중단", "Stop Loading")
+            let stopped = secondaryRead.qaPressReadControl()
+            secondaryRead.qaSimulateFolderChange(at: denied)
+            try await Task.sleep(for: .milliseconds(350))
+            checks["secondaryReadCancellation"] = exposesStop && stopped && secondaryRead.model.wasCancelled
+                && !secondaryRead.model.isLoading && secondaryRead.model.items.isEmpty
+                && secondaryRead.qaReadControl.status == L("읽기를 중단했습니다. 새로고침하세요.", "Loading stopped. Refresh to retry.")
+            let offeredRetry = secondaryRead.qaReadControl.label == L("새로고침", "Refresh")
+            let retried = secondaryRead.qaPressReadControl()
+            let secondaryRetryStart = ContinuousClock.now
+            while secondaryRead.model.isLoading && elapsed(secondaryRetryStart) < 3 {
+                try await Task.sleep(for: .milliseconds(10))
+            }
+            checks["secondaryReadRetry"] = offeredRetry && retried && !secondaryRead.model.wasCancelled
+                && secondaryRead.model.items.map(\.name) == ["ready.txt"]
+            secondaryRead.shutdown()
+            secondaryReadWindow.close()
             let report: [String: Any] = ["checks": checks, "metrics": metrics,
                 "samples": ["multiwindowCycleSeconds": durations, "scrollStepSeconds": scrollDurations],
                 "cycles": cycleChecks,

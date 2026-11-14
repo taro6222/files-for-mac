@@ -8,6 +8,8 @@ M7 출시 검증이 진행 중이다. [유니버설 개발 프리뷰](verificati
 
 ## 이번 구현 단위
 
+분할 보기에서 보조 패널 폴더 읽기 중단과 재시도를 검증했다. [M7 보조 패널 읽기 복구](verification/m7/INCREMENT_111.md)
+
 Git 병합 충돌을 상태 패널과 상세 목록의 Git 열에 표시한다. 실제 충돌 저장소에서 HEAD, 인덱스와 파일 보존을 검증했다. [M7 Git 충돌 검증](verification/m7/INCREMENT_108.md)
 
 느린 시작 위치를 열 때 창 표시가 지연되는 경로를 수정했다. 새 유니버설 프리뷰의 Launch Services 기동 20회에서 정보 창 표시 p95는 520 ms였다. [M7 시작 폴더 복구](verification/m7/INCREMENT_107.md)
