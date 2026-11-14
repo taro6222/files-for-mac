@@ -22,12 +22,12 @@
 
 ## 인벤토리의 정확한 범위
 
-`scripts/inventory-upstream.py`로 재현할 수 있다. 183개 Actions/Settings 소스에서 GeneratedRichCommand attribute가 있는 명령 후보 202개, 단순 Get 기반 설정 프로퍼티 143개를 추출했다. `SCREENS.csv`는 Views 하위 XAML 파일 33개다.
+`python3 scripts/inventory-upstream.py --check`로 검토된 CSV를 유지하면서 고정 소스와 다시 대조할 수 있다. [재대조 기록](../verification/m7/INCREMENT_177.md) 183개 Actions/Settings 소스에서 GeneratedRichCommand attribute가 있는 명령 후보 202개, 단순 Get 기반 설정 프로퍼티 143개를 추출했다. `SCREENS.csv`는 Views 하위 XAML 파일 33개다.
 
 명령 generator는 attribute가 붙은 class 이름에서 Action 접미사를 제거하여 명령 ID를 만든다. Actions 디렉터리 밖의 등록, 다른 generator가 추가하는 파라미터별 명령, 복합 설정, dialog/control 내부 화면은 추가 조사 대상이다. 파일 수를 개별 기능 전수 조사 완료 수치로 쓰지 않는다.
 
-- COMMANDS.csv: 개별 attribute 명령 후보; 현재 기본 상태 V/awaiting-behavior-review.
-- SETTINGS.csv: 단순 getter의 key/type/default expression; 동작 및 의존 설정 검증 대기.
+- COMMANDS.csv: 개별 attribute 명령 후보와 현재 macOS 대응 결정.
+- SETTINGS.csv: 단순 getter의 key/type/default expression과 현재 macOS 대응 결정.
 - SCREENS.csv: 화면 소스 파일 목록; 실제 상태 캡처 대기.
 - SOURCE_FILES.csv: 추출에 사용한 파일 경로 목록.
 
