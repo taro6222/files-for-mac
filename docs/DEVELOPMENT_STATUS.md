@@ -4,6 +4,8 @@
 
 ## 이번 구현 단위
 
+최신 소스의 유니버설 프리뷰를 갱신했다. Apple Silicon에서 설치, 손상된 교체본 거부, 구형 탭 세션 변환, 교체 및 이전 앱 복원을 확인했다. [M7 프리뷰 설치 검증](verification/m7/PREVIEW_0.1.0.md)
+
 장시간 메모리 분석에 탐색 대조 모드를 추가하고 전체 모드와 같은 바이너리에서 검증했다. [M7 탐색 대조 시험](verification/m7/INCREMENT_74.md)
 
 프리뷰 시작 검증에 실제 프로세스 아키텍처 및 macOS 버전 대조를 추가했다. [M7 실행 환경 검증](verification/m7/INCREMENT_73.md)
