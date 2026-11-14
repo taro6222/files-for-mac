@@ -2,17 +2,17 @@
 
 ## 설치 이미지
 
-- 앱 소스 `59df9d7ca8b0e7ba2d140355a1d549e07fa79db5`, Apple Silicon·Intel 슬라이스, macOS 14.0 배포 대상.
-- 로컬 경로 `build/Files-macOS-preview.dmg`. SHA-256 `ecb9e14b95dd967b2b92597e0b3177646769d0bf12b46dd2d9744618ee5515eb`.
-- DMG 내부 체크섬, SHA-256, 읽기 전용 마운트, 모든 슬라이스의 ad-hoc 서명을 검사했다. 마운트한 앱이 Apple Silicon에서 기동했다.
+- 앱 소스 `11d6dc01086176a2a828543fea746ef3fe826023`, Apple Silicon·Intel 슬라이스, macOS 14.0 배포 대상.
+- 로컬 경로 `build/Files-macOS-preview.dmg`. SHA-256 `d9e91a4f576dee4e3e168f88a9d7cbf45d79055f439d71e0f1474e209a5a4a6e`.
+- DMG 내부 체크섬, SHA-256, 읽기 전용 마운트, 모든 슬라이스의 ad-hoc 서명을 검사했다. Apple Silicon에서 마운트한 이미지를 복사해 격리 경로에서 실행했다. 손상된 교체본은 거부했고, 정상 교체와 복원 후에 저장한 시작 폴더를 다시 열었다. 두 앱의 버전 표기는 0.1.0 (1)로 같아서 실행 파일 해시를 대조했다. [설치 검증 결과](preview-install-11d6dc0.json)
 
 ## 검증
 
-- Swift Testing 201개 통과. 최신 소스에서 한국어·영어 × 밝게·어둡게 AppKit 각 218개를 통과했다. 일반 설정의 맨 아래 옵션도 스크롤로 접근할 수 있었다.
-- 파일 작업 AppKit 회귀는 각 32개를 통과했다. 템플릿 내용과 이름, 이동 실행 취소·재실행, 기존 파일 보존을 확인했다.
+- Swift Testing 203개 통과. 한국어·영어 × 밝게·어둡게의 파일 작업 AppKit 검사 42개씩 통과.
+- 파일 작업은 템플릿, 이동 실행 취소·재실행, 복사 취소, 교체 파일 보호 및 재생성된 APFS 폴더 감시 복구를 포함한다.
 - APFS·대소문자 구분 APFS·exFAT, 시스템 휴지통, 루프백 FTP/FTPS/SFTP 수용 검증을 통과했다.
 
-10,000항목 전체 표시 p95는 최적화 QA에서 1.842초였다. 100,000항목 최대 샘플 RSS는 275 MB였다. [Release 실측](INCREMENT_07.md)
+이전 최적화 QA에서 10,000항목 전체 표시 p95 1.350초, 100,000항목 최대 샘플 RSS 275 MB를 기록했다. [Release 실측](INCREMENT_12.md)
 
 ## 포함 기능
 
