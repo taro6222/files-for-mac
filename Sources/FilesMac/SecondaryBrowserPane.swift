@@ -292,7 +292,9 @@ final class SecondaryBrowserPane: NSView, NSTableViewDataSource, NSTableViewDele
         let footer = NSStackView(); footer.edgeInsets = NSEdgeInsets(top: 6, left: 10, bottom: 6, right: 10)
         footer.addArrangedSubview(status); footer.addArrangedSubview(NSView()); stack.addArrangedSubview(footer)
         for view in [toolbar, folderFilter, browserContent, footer] { view.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true }
-        browserContent.heightAnchor.constraint(greaterThanOrEqualToConstant: 300).isActive = true
+        let preferredContentHeight = browserContent.heightAnchor.constraint(greaterThanOrEqualToConstant: 300)
+        preferredContentHeight.priority = .defaultLow
+        preferredContentHeight.isActive = true
         applyBackground()
     }
     private func applyBackground() {

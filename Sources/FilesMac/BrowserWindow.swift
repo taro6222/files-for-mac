@@ -65,6 +65,8 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
     private let content = AppBackgroundView()
     private let folderFilter = FolderFilterField()
     private let workspaceSplit = NSSplitView()
+    private let primaryPaneHost = NSView()
+    private let secondaryPaneHost = NSView()
     private var secondaryPane: SecondaryBrowserPane?
     private var secondaryActive = false
     private var primaryPaneID = UUID()
@@ -298,7 +300,8 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         split.addArrangedSubview(inspector)
         inspectorWidth = inspector.widthAnchor.constraint(equalToConstant: 240)
         split.setHoldingPriority(.defaultHigh, forSubviewAt: 2)
-        workspaceSplit.addArrangedSubview(main)
+        workspaceSplit.addArrangedSubview(primaryPaneHost)
+        embedPane(main, in: primaryPaneHost)
         split.setHoldingPriority(.defaultHigh, forSubviewAt: 0)
         split.setHoldingPriority(.defaultLow, forSubviewAt: 1)
         split.setPosition(220, ofDividerAt: 0)
@@ -355,7 +358,9 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         main.addArrangedSubview(folderFilter)
         main.addArrangedSubview(content)
         content.translatesAutoresizingMaskIntoConstraints = false
-        content.heightAnchor.constraint(greaterThanOrEqualToConstant: 350).isActive = true
+        let preferredContentHeight = content.heightAnchor.constraint(greaterThanOrEqualToConstant: 350)
+        preferredContentHeight.priority = .defaultLow
+        preferredContentHeight.isActive = true
         setupTable(restoresLayout: restoresLayout)
         homeView.orientation = .vertical; homeView.alignment = .leading; homeView.spacing = 16
         homeView.edgeInsets = NSEdgeInsets(top: 32, left: 32, bottom: 32, right: 32)
@@ -2629,6 +2634,18 @@ private func capacityDescription(_ volume: MountedVolume) -> String {
 }
 
 extension BrowserWindow {
+    private func embedPane(_ pane: NSView, in host: NSView) {
+        // The divider sizes the host independently of its pane's preferred content size.
+        pane.translatesAutoresizingMaskIntoConstraints = false
+        host.addSubview(pane)
+        NSLayoutConstraint.activate([
+            pane.leadingAnchor.constraint(equalTo: host.leadingAnchor),
+            pane.trailingAnchor.constraint(equalTo: host.trailingAnchor),
+            pane.topAnchor.constraint(equalTo: host.topAnchor),
+            pane.bottomAnchor.constraint(equalTo: host.bottomAnchor)
+        ])
+    }
+
     @objc func splitVertically(_ sender: Any?) { installSecondaryPane(axis: .vertical) }
     @objc func splitHorizontally(_ sender: Any?) { installSecondaryPane(axis: .horizontal) }
     @objc func arrangePanesVertically(_ sender: Any?) { arrangePanes(axis: .vertical) }
@@ -2656,6 +2673,7 @@ extension BrowserWindow {
     @objc func closeSecondaryPane(_ sender: Any?) {
         guard let secondaryPane else { return }
         secondaryPane.shutdown(); secondaryPane.removeFromSuperview()
+        secondaryPaneHost.removeFromSuperview()
         self.secondaryPane = nil; secondaryPaneID = nil; secondaryActive = false
         updateShelf()
         updateInfoPane()
@@ -2688,12 +2706,16 @@ extension BrowserWindow {
                 return true
             }
             pane.setContextMenu(table.menu)
-            secondaryPane = pane; secondaryPaneID = id ?? UUID(); workspaceSplit.addArrangedSubview(pane)
+            secondaryPane = pane
+            secondaryPaneID = id ?? UUID()
+            workspaceSplit.addArrangedSubview(secondaryPaneHost)
+            embedPane(pane, in: secondaryPaneHost)
         }
+        setSecondaryActive(activate)
+        window?.contentView?.layoutSubtreeIfNeeded()
         workspaceSplit.adjustSubviews()
         let dimension = workspaceSplit.isVertical ? workspaceSplit.bounds.width : workspaceSplit.bounds.height
         if dimension > 0 { workspaceSplit.setPosition(dimension * CGFloat(min(0.8, max(0.2, ratio))), ofDividerAt: 0) }
-        setSecondaryActive(activate)
         if activate { secondaryPane?.focusFiles() }
     }
     private func restoreWorkspace(_ state: SplitTabState) {
@@ -3682,6 +3704,7 @@ extension BrowserWindow {
                     let actual = restored.workspaceSnapshot()
                     metrics["restoredSplitRatio_\(axis.rawValue)"] = actual.ratio
                     checks["splitWorkspaceRestores_\(axis.rawValue)"] = actual.axis == axis
+                        && (axis == .vertical || abs(actual.ratio - 0.35) < 0.01)
                         && actual.activePaneID == secondary.id
                         && actual.panes.map(\.id) == [primary.id, secondary.id]
                         && actual.panes.map { $0.tab.location?.path } == [columnFolder.path, gridFolder.path]
