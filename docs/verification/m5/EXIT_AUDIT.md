@@ -12,7 +12,7 @@ M5 종료 조건은 압축·클라우드·원격·Git의 capability가 실제 �
 | FTPS | 암시적 TLS, 인증서 chain·hostname 검증, localhost 실제 TLS 연결 | 공개 CA 인증 서버 및 인증 실패/갱신 | 대기 |
 | SFTP | pinned host key, security-scoped 개인키, private config, localhost OpenSSH 목록·다운로드·rename·mismatch·취소 | 실제 원격 host key 변경·재인증·agent/키 조합 | 대기 |
 | SMB | Finder 표준 mount 위임, credential URL 비노출, 장착 볼륨 파일 작업 수용 스크립트 | 실제 SMB 서버 mount·재연결·권한·네트워크 단절 | 대기 |
-| Git | 상태·브랜치·clone·fetch·FF-only pull·비강제 push, bare remote·divergence·취소·staging·UI 4조합 | 인증 HTTPS/SSH remote와 credential helper/agent 조합 | 대기 |
+| Git | 상태·브랜치·clone·fetch·FF-only pull·비강제 push, bare remote·divergence·취소·staging·UI 4조합, [루프백 OpenSSH 에이전트 인증](../m7/INCREMENT_109.md) | 외부 Git 서비스와 인증 HTTPS credential helper | 대기 |
 
 ## 자동 검증 기준선
 
