@@ -4,6 +4,8 @@
 
 ## 이번 구현 단위
 
+파일 선택부터 홈 탐색·붙여넣기·충돌 건너뛰기까지 이어지는 AppKit 회귀를 네 언어·테마 조합에서 통과했다. [M7 복사 동선 검증](verification/m7/INCREMENT_69.md)
+
 다운로드한 정식 DMG와 앱 서명을 배포자가 별도로 제공한 Team ID와 대조할 수 있다. [M7 출시 팀 검증](verification/m7/INCREMENT_21.md)
 
 프리뷰 교체 후 정상 종료 시 구형 탭을 새 형식으로 저장하고, 이전 프리뷰로 복원한 뒤 다시 열리는지 확인했다. [M7 탭 세션 복원](verification/m7/PREVIEW_0.1.0.md)

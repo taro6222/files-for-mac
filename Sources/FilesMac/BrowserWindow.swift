@@ -120,6 +120,7 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
     private let cloudProvider: CloudLocationProvider
     private let openSystemURL: (URL) -> Bool
     private let undoJournalDirectory: URL
+    private let filePasteboard: NSPasteboard
     static private(set) var entryOperationRunning = false
     private static var pendingMoveRedo: MoveRedoRecord?
     private static var operationJournalDirectory: URL {
@@ -165,7 +166,8 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
          cloudProvider: CloudLocationProvider = CloudLocationProvider(),
          makeWatcher: @escaping @Sendable (URL) -> DirectoryWatcher? = { DirectoryWatcher(url: $0) },
          openSystemURL: @escaping (URL) -> Bool = { NSWorkspace.shared.open($0) },
-         undoJournalDirectory: URL? = nil) {
+         undoJournalDirectory: URL? = nil,
+         filePasteboard: NSPasteboard = .general) {
         self.model = BrowserModel(loader: loader)
         self.preferences = preferences
         FileIconCache.shared.configure(enabled: preferences.enableThumbnailCache, limitMiB: preferences.thumbnailCacheLimitMiB)
@@ -173,6 +175,7 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         self.makeWatcher = makeWatcher
         self.openSystemURL = openSystemURL
         self.undoJournalDirectory = undoJournalDirectory ?? Self.operationJournalDirectory
+        self.filePasteboard = filePasteboard
         let w = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1280, height: 820),
             styleMask: [.titled, .closable, .miniaturizable, .resizable], backing: .buffered, defer: false)
         super.init(window: w)
@@ -2293,15 +2296,15 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         guard !activeModel.isLoading else { return }
         let urls = activeSelectedItems.map { $0.url as NSURL }
         guard !urls.isEmpty else { return }
-        NSPasteboard.general.clearContents()
-        NSPasteboard.general.writeObjects(urls)
+        filePasteboard.clearContents()
+        filePasteboard.writeObjects(urls)
     }
     func cutFilesToClipboard() {
         guard canCutFiles else { return }
         let urls = activeSelectedItems.map { $0.url as NSURL }
-        NSPasteboard.general.clearContents()
-        NSPasteboard.general.writeObjects(urls)
-        NSPasteboard.general.setData(Data([1]), forType: Self.cutPasteboardType)
+        filePasteboard.clearContents()
+        filePasteboard.writeObjects(urls)
+        filePasteboard.setData(Data([1]), forType: Self.cutPasteboardType)
     }
     @objc func copyItemPath(_ sender: Any?) { copyPaths(activeSelectedItems.map(\.url), quoted: false) }
     @objc func copyItemPathWithQuotes(_ sender: Any?) { copyPaths(activeSelectedItems.map(\.url), quoted: true) }
@@ -2313,10 +2316,10 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         NSPasteboard.general.setString(formatCopiedPaths(urls, quoted: quoted), forType: .string)
     }
     private var clipboardFiles: [URL] {
-        (NSPasteboard.general.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL]) ?? []
+        (filePasteboard.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL]) ?? []
     }
     private static let cutPasteboardType = NSPasteboard.PasteboardType("org.files-community.filesmac.cut")
-    private var clipboardIsCut: Bool { NSPasteboard.general.data(forType: Self.cutPasteboardType) != nil }
+    private var clipboardIsCut: Bool { filePasteboard.data(forType: Self.cutPasteboardType) != nil }
     var canCopyFiles: Bool { !activeModel.isLoading && !activeSelectedItems.isEmpty }
     var canCutFiles: Bool { canCopyFiles && !MoveWindow.isRunning && !Self.entryOperationRunning }
     var canPasteFiles: Bool {
@@ -2334,8 +2337,8 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
     private func pasteClipboard(to destination: URL) {
         let sources = clipboardFiles
         if clipboardIsCut {
-            prepareMove(sources: sources, destination: destination, onStarted: {
-                NSPasteboard.general.clearContents()
+            prepareMove(sources: sources, destination: destination, onStarted: { [filePasteboard] in
+                filePasteboard.clearContents()
             })
         } else { prepareCopy(sources: sources, destination: destination) }
     }
@@ -4541,7 +4544,10 @@ extension BrowserWindow {
             let preferences = BrowserPreferences(defaults: defaults, initialFavorites: [target])
             let dark = ProcessInfo.processInfo.environment["FILES_UI_QA_THEME"] == "dark"
             NSApp.appearance = NSAppearance(named: dark ? .darkAqua : .aqua)
-            let controller = BrowserWindow(preferences: preferences, restoresFrame: false, undoJournalDirectory: journals)
+            let pasteboard = NSPasteboard.withUniqueName()
+            defer { pasteboard.releaseGlobally() }
+            let controller = BrowserWindow(preferences: preferences, restoresFrame: false,
+                                           undoJournalDirectory: journals, filePasteboard: pasteboard)
             guard let window = controller.window, let content = window.contentView else { throw CocoaError(.coderInvalidValue) }
             window.appearance = NSAppearance(named: dark ? .darkAqua : .aqua)
             window.setFrame(NSRect(x: 80, y: 80, width: 900, height: 600), display: true)
@@ -4731,7 +4737,39 @@ extension BrowserWindow {
                 if let sheet = window.attachedSheet { window.endSheet(sheet, returnCode: .alertSecondButtonReturn) }
             }
             let existing = target.appendingPathComponent("conflict.txt")
-            controller.prepareCopy(sources: [source.appendingPathComponent("conflict.txt")], destination: target)
+            let copySource = source.appendingPathComponent("conflict.txt")
+            func keyboardEvent(_ key: String, code: UInt16, modifiers: NSEvent.ModifierFlags = []) -> NSEvent? {
+                NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: modifiers,
+                    timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: window.windowNumber,
+                    context: nil, characters: key, charactersIgnoringModifiers: key, isARepeat: false, keyCode: code)
+            }
+            controller.navigate(source)
+            try await settle()
+            window.makeKeyAndOrderFront(nil)
+            controller.focusFiles(nil)
+            let conflictRow = controller.detailRows.indices.first { detailItem(at: $0, in: controller.detailRows)?.id == copySource.path }
+            if let conflictRow, let down = keyboardEvent("\u{f701}", code: 125) {
+                for _ in 0...conflictRow { window.sendEvent(down) }
+            }
+            let sourceSelected = controller.activeSelectedItems.map(\.id) == [copySource.path]
+            let copied = NSApp.sendAction(#selector(NSText.copy(_:)), to: window.firstResponder, from: nil)
+                && controller.clipboardFiles.map(\.path) == [copySource.path]
+            let openedHome = NSApp.sendAction(#selector(goHome(_:)), to: controller, from: nil)
+                && controller.model.location == nil
+            if let down = keyboardEvent("\u{f701}", code: 125), let open = keyboardEvent("\r", code: 36) {
+                window.sendEvent(down)
+                window.sendEvent(open)
+            }
+            try await settle()
+            let pasted = NSApp.sendAction(#selector(NSText.paste(_:)), to: window.firstResponder, from: nil)
+                && window.attachedSheet != nil
+            diagnostics["keyboardCopyRoute"] = [
+                "sourceSelected": sourceSelected, "copied": copied,
+                "openedHome": openedHome, "openedDestination": controller.model.location == target,
+                "handledPaste": pasted,
+            ]
+            checks["copyResponderWorkflowThroughHome"] = sourceSelected && copied && openedHome && pasted
+                && controller.model.location == target && controller.clipboardFiles.map(\.path) == [copySource.path]
             if let sheet = window.attachedSheet,
                let skip = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: .command,
                    timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: sheet.windowNumber,
@@ -4744,6 +4782,7 @@ extension BrowserWindow {
                     copy = NSApp.windows.compactMap { $0.windowController as? CopyWindow }.first
                 } while (copy == nil || CopyWindow.isRunning) && elapsed(start) < 5
                 checks["copyConflictAccessibleResult"] = copy?.qaAccessibleResult == true
+                    && (try? Data(contentsOf: copySource)) == Data("source".utf8)
                     && (try? Data(contentsOf: existing)) == Data("target".utf8)
                     && !fm.fileExists(atPath: target.appendingPathComponent("conflict (2).txt").path)
                 if let resultWindow = copy?.window,
