@@ -1096,6 +1096,13 @@ private extension Data {
     let secondUndo = try #require(EntryOperations.latestUndoMove(journalDirectory: journals))
     let restoredAgain = await EntryOperations.undoMove(secondUndo, journalDirectory: journals)
     let secondRedo = try #require(restoredAgain.redo)
+    let attribute = "com.filesmac.redo-test"
+    let value: UInt8 = 42
+    try #require(withUnsafePointer(to: value) { setxattr(source.path, attribute, $0, 1, 0, 0) } == 0)
+    #expect(await EntryOperations.redoMove(secondRedo, journalDirectory: journals).first?.state == "failed")
+    #expect(try Data(contentsOf: source) == payload)
+    #expect(getxattr(source.path, attribute, nil, 0, 0, 0) == 1)
+    #expect(!fm.fileExists(atPath: target.path))
     try Data("changed!".utf8).write(to: source)
     #expect(await EntryOperations.redoMove(secondRedo, journalDirectory: journals).first?.state == "failed")
     #expect(try Data(contentsOf: source) == Data("changed!".utf8))

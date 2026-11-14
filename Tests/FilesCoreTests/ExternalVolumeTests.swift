@@ -139,6 +139,10 @@ import Testing
         #expect(moveUndoResult.state == "completed")
         #expect(try Data(contentsOf: moveSource) == Data(repeating: 0xA5, count: 256 * 1024))
         #expect(try FileManager.default.attributesOfItem(atPath: moveSource.path)[.modificationDate] as? Date == movedDate)
+        let redo = try #require(moveUndoResult.redo)
+        #expect(await EntryOperations.redoMove(redo, journalDirectory: journal).first?.state == "completed")
+        #expect(!FileManager.default.fileExists(atPath: moveSource.path))
+        #expect(try Data(contentsOf: moved) == Data(repeating: 0xA5, count: 256 * 1024))
 
         let replaceSource = local.appendingPathComponent("replace.txt")
         let replaceTarget = destination.appendingPathComponent("replace.txt")

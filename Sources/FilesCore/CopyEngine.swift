@@ -420,7 +420,7 @@ public enum CopyEngine {
         try makeSnapshot(root, cancellation: cancellation, includeTransferMetadata: false).withPermissions
     }
 
-    struct VerificationSnapshot {
+    struct VerificationSnapshot: Sendable {
         var withPermissions: [String: String] = [:]
         var content: [String: String] = [:]
         var metadata = CopyTransferMetadata()

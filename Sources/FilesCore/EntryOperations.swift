@@ -159,7 +159,7 @@ public struct MoveRedoRecord: Sendable {
         public let source: URL
         public let target: URL
         fileprivate let identity: String
-        fileprivate let snapshot: [String: String]
+        fileprivate let snapshot: CopyEngine.VerificationSnapshot
         fileprivate let destinationFolder: ShelfEntry
     }
 
@@ -239,16 +239,23 @@ public enum EntryOperations {
     }
 
     private static func transferForUndo(_ source: URL, to target: URL, crossVolume: Bool,
+                                        expectedIdentity: String,
                                         expectedSnapshot: [String: String]?,
                                         expectedMetadata: CopyTransferMetadata?,
                                         checkpointCopy: (String, CopyEngine.VerificationSnapshot) throws -> Void,
-                                        afterCopyPublication: () throws -> Void) throws {
+                                        afterCopyPublication: () throws -> Void) throws
+        -> (identity: String, snapshot: CopyEngine.VerificationSnapshot) {
         let fm = FileManager.default
-        if !crossVolume { try fm.moveItem(at: source, to: target); return }
         let sourceIdentity = try snapshotIdentity(source, fileManager: fm)
+        guard sourceIdentity == expectedIdentity else { throw EntryOperationError.sourceChanged }
         let before = try CopyEngine.makeSnapshot(source, cancellation: CopyCancellation())
         guard expectedSnapshot == nil || before.withPermissions == expectedSnapshot,
-              expectedMetadata == nil || before.metadata == expectedMetadata else { throw EntryOperationError.sourceChanged }
+              expectedMetadata == nil || before.metadata == expectedMetadata,
+              try snapshotIdentity(source, fileManager: fm) == sourceIdentity else { throw EntryOperationError.sourceChanged }
+        if !crossVolume {
+            try fm.moveItem(at: source, to: target)
+            return (sourceIdentity, before)
+        }
         let stage = target.deletingLastPathComponent().appendingPathComponent(".files-undo-\(UUID().uuidString)")
         try fm.createDirectory(at: stage, withIntermediateDirectories: false)
         defer { if entryExists(stage) { try? fm.removeItem(at: stage) } }
@@ -282,6 +289,7 @@ public enum EntryOperations {
             throw MoveFailure(text: LString.crossVolumeSourceChanged)
         }
         try fm.removeItem(at: source)
+        return (payloadIdentity, verifiedPayload)
     }
 
     public static func latestUndoMove(journalDirectory: URL) -> MoveUndoRecord? {
@@ -871,8 +879,7 @@ public enum EntryOperations {
                             if let redoItem {
                                 guard redoItem.target.standardizedFileURL.path == target.path,
                                       redoItem.destinationFolder.isCurrent,
-                                      try snapshotIdentity(source, fileManager: fm) == redoItem.identity,
-                                      try CopyEngine.verifiedSnapshot(source, cancellation: cancellation) == redoItem.snapshot else {
+                                      try snapshotIdentity(source, fileManager: fm) == redoItem.identity else {
                                     throw EntryOperationError.sourceChanged
                                 }
                             }
@@ -914,7 +921,9 @@ public enum EntryOperations {
                             if crossVolume {
                                 let sourceIdentity = try snapshotIdentity(source, fileManager: fm)
                                 let before = try CopyEngine.makeSnapshot(source, cancellation: cancellation)
-                                if let redoItem, before.withPermissions != redoItem.snapshot { throw EntryOperationError.sourceChanged }
+                                if let redoItem, sourceIdentity != redoItem.identity || !before.matchesOriginal(redoItem.snapshot) {
+                                    throw EntryOperationError.sourceChanged
+                                }
                                 let stage = normalizedDestination.appendingPathComponent(".files-move-\(operationId)-\(index)")
                                 try fm.createDirectory(at: stage, withIntermediateDirectories: false)
                                 defer { if entryExists(stage) { try? fm.removeItem(at: stage) } }
@@ -992,6 +1001,7 @@ public enum EntryOperations {
                                     defer { close(sourceFD) }
                                     if let redoItem {
                                         guard redoItem.destinationFolder.isCurrent,
+                                              snapshot?.matchesOriginal(redoItem.snapshot) == true,
                                               try snapshotIdentity(source, fileManager: fm) == redoItem.identity else {
                                             throw EntryOperationError.sourceChanged
                                         }
@@ -1201,9 +1211,9 @@ public enum EntryOperations {
                     guard fm.fileExists(atPath: item.source.deletingLastPathComponent().path) else {
                         results.append(MoveUndoItemResult(source: item.source, target: item.target, state: "notFound", message: LString.undoSourceParentMissing)); continue
                     }
-                    let replaySnapshot = item.backup == nil ? expectedSnapshot ?? (try? CopyEngine.verifiedSnapshot(item.target)) : nil
                     let destinationFolder = ShelfEntry(item.target.deletingLastPathComponent())
-                    try transferForUndo(item.target, to: item.source, crossVolume: item.crossVolume,
+                    let restored = try transferForUndo(item.target, to: item.source, crossVolume: item.crossVolume,
+                                        expectedIdentity: item.targetIdentity,
                                         expectedSnapshot: expectedSnapshot, expectedMetadata: item.targetMetadata,
                                         checkpointCopy: { identity, snapshot in
                         guard item.backup != nil else { return }
@@ -1212,10 +1222,9 @@ public enum EntryOperations {
                         undoItems[index].restoredCopyMetadata = snapshot.metadata
                         try checkpoint(index)
                     }, afterCopyPublication: afterCopyPublication)
-                    if let replaySnapshot, let destinationFolder,
-                       let identity = try? snapshotIdentity(item.source, fileManager: fm) {
-                        replay.append(.init(source: item.source, target: item.target, identity: identity,
-                                            snapshot: replaySnapshot, destinationFolder: destinationFolder))
+                    if item.backup == nil, let destinationFolder {
+                        replay.append(.init(source: item.source, target: item.target, identity: restored.identity,
+                                            snapshot: restored.snapshot, destinationFolder: destinationFolder))
                     }
                     if let backup = item.backup, let identity = item.backupIdentity {
                         pendingBackupRestorations.insert(index)
