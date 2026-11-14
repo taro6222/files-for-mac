@@ -1,0 +1,72 @@
+{
+  "sourceBaseSHA": "4acf196209c026eecc487c7bbb680bbfb40e4891",
+  "measurementSourceSHA": "595ce7939515a23740530ed1cb7062268a6591b7",
+  "binarySHA256": "0fd98d1a103646f9e08e43c7bee9074c01f575ba06c64b6017ae134ca54e725c",
+  "macOS": "27.2",
+  "macOSBuild": "26B123",
+  "architecture": "arm64",
+  "filesystem": "APFS",
+  "fileCount": 10000,
+  "samples": [
+    {
+      "idleSeconds": 0,
+      "productNavigationEnabled": false,
+      "listingSeconds": 0.877306084,
+      "startupSeconds": 0.432947542,
+      "firstModelRowsSeconds": 0.037027917,
+      "browserRenderSeconds": 0.016595706,
+      "peakSampledRSSBytes": 130547712,
+      "browserRenderCount": 6,
+      "modelLoadFinishedSeconds": 0.865437834,
+      "idleRSSBytes": 96616448,
+      "firstDisplaySeconds": 0.052233042
+    },
+    {
+      "idleSeconds": 0,
+      "productNavigationEnabled": true,
+      "firstDisplaySeconds": 0.056520125,
+      "modelLoadFinishedSeconds": 0.734807167,
+      "idleRSSBytes": 96223232,
+      "startupSeconds": 0.157920333,
+      "browserRenderSeconds": 0.016429,
+      "firstModelRowsSeconds": 0.041608917,
+      "peakSampledRSSBytes": 128909312,
+      "browserRenderCount": 6,
+      "listingSeconds": 0.746259417
+    },
+    {
+      "idleSeconds": 300,
+      "productNavigationEnabled": false,
+      "firstDisplaySeconds": 0.236687792,
+      "browserRenderCount": 6,
+      "firstModelRowsSeconds": 0.152481167,
+      "listingSeconds": 2.649674,
+      "activeAfterIdle": 0,
+      "activeBeforeIdle": 0,
+      "browserRenderSeconds": 0.050416208,
+      "userInitiatedLoad": 0,
+      "startupSeconds": 0.154465375,
+      "peakSampledRSSBytes": 127221760,
+      "modelLoadFinishedSeconds": 2.620497417,
+      "idleRSSBytes": 94584832,
+      "productNavigationActivity": 0
+    },
+    {
+      "idleSeconds": 300,
+      "productNavigationEnabled": true,
+      "listingSeconds": 0.928360875,
+      "modelLoadFinishedSeconds": 0.916101959,
+      "productNavigationActivity": 1,
+      "idleRSSBytes": 94945280,
+      "firstDisplaySeconds": 0.062900334,
+      "activeAfterIdle": 0,
+      "browserRenderCount": 6,
+      "peakSampledRSSBytes": 136101888,
+      "startupSeconds": 0.15508475,
+      "browserRenderSeconds": 0.019223209,
+      "userInitiatedLoad": 0,
+      "firstModelRowsSeconds": 0.0483925,
+      "activeBeforeIdle": 0
+    }
+  ]
+}

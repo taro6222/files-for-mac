@@ -8,7 +8,7 @@ M7 출시 검증이 진행 중이다. [유니버설 개발 프리뷰](verificati
 
 ## 이번 구현 단위
 
-폴더 탐색 성능을 AppKit 목록이 갱신되는 시점에 기록한다. 최적화 QA 빌드의 즉시 탐색을 확인했고 5분 유휴 대조를 실행 중이다. [M7 목록 표시 계측](verification/m7/INCREMENT_105.md)
+폴더 탐색 성능을 AppKit 목록이 갱신되는 시점에 기록한다. 최적화 QA 빌드에서 즉시 및 5분 유휴 후 탐색을 확인했다. [M7 목록 표시 계측](verification/m7/INCREMENT_105.md)
 
 UI-01~20의 Windows 소스와 macOS 구현 구조를 대조했다. AppKit 캡처의 실제 테마를 검사하며 한국어·영어와 두 테마의 전체 회귀가 각각 254개씩 통과했다. [M7 화면 대조 및 테마 검증](verification/m7/INCREMENT_104.md)
 

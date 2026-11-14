@@ -46,3 +46,5 @@ macOS에서 `fdcdb88` 스냅샷의 파일 541개를 Git 아카이브와 바이�
 모델 읽기 시간은 줄었고 전체 표시는 2초 목표를 초과했다. 전체 표시에는 모델 완료 뒤 AppKit 표시를 확인할 때까지의 시간도 포함한다. `bash scripts/verify-release-performance.sh m7-idle-product idle-product`로 두 조건을 다시 실행할 수 있다. 반복 표본과 화면 합성 확인이 남아 있다.
 
 Swift 테스트 216개와 한국어·영어 × 밝게·어둡게 AppKit 파일 작업 검사 각 68개를 통과했다.
+
+고정 커밋 `4acf196`에서 재현 스크립트를 실행했다. 이전 측정 방식으로 5분 유휴 후 전체 표시는 활동 끔 3.815초, 활동 켬 1.199초였다. [고정 소스 대조](performance-idle-product-4acf196.json) · [표시 콜백 기반 후속 계측](INCREMENT_105.md)
