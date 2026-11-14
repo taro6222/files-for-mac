@@ -1,0 +1,98 @@
+{
+  "macOS": "27.2",
+  "macOSBuild": "26B123",
+  "architecture": "arm64",
+  "imageSHA256": "3b07264d51ff5ea487aa8c5976a153171bdd8bfa9a05ccf104584e5795a0d387",
+  "appVersion": [
+    "0.1.0",
+    "1"
+  ],
+  "isolatedExecutableSHA256": "57d76bb68a60fcbbbccef6f68fb9e529619248d69d828b5aa3c7bd1c8c6f677c",
+  "metric": "Launch Services to observing the About window after pressing its menu item through Accessibility",
+  "cacheCondition": "Fresh processes; shared OS caches, no cache purge",
+  "samples": [
+    {
+      "windowSeconds": 11.121,
+      "interactiveSeconds": 11.369
+    },
+    {
+      "windowSeconds": 10.648,
+      "interactiveSeconds": 10.898
+    },
+    {
+      "windowSeconds": 10.605,
+      "interactiveSeconds": 10.845
+    },
+    {
+      "windowSeconds": 10.707,
+      "interactiveSeconds": 10.945
+    },
+    {
+      "windowSeconds": 10.627,
+      "interactiveSeconds": 10.864
+    },
+    {
+      "windowSeconds": 10.656,
+      "interactiveSeconds": 10.893
+    },
+    {
+      "windowSeconds": 10.62,
+      "interactiveSeconds": 10.858
+    },
+    {
+      "windowSeconds": 10.668,
+      "interactiveSeconds": 10.955
+    },
+    {
+      "windowSeconds": 10.654,
+      "interactiveSeconds": 10.9
+    },
+    {
+      "windowSeconds": 10.602,
+      "interactiveSeconds": 10.882
+    },
+    {
+      "windowSeconds": 10.603,
+      "interactiveSeconds": 10.841
+    },
+    {
+      "windowSeconds": 10.621,
+      "interactiveSeconds": 10.856
+    },
+    {
+      "windowSeconds": 10.602,
+      "interactiveSeconds": 10.877
+    },
+    {
+      "windowSeconds": 10.657,
+      "interactiveSeconds": 10.908
+    },
+    {
+      "windowSeconds": 10.638,
+      "interactiveSeconds": 10.878
+    },
+    {
+      "windowSeconds": 10.639,
+      "interactiveSeconds": 10.89
+    },
+    {
+      "windowSeconds": 10.612,
+      "interactiveSeconds": 10.871
+    },
+    {
+      "windowSeconds": 10.634,
+      "interactiveSeconds": 10.921
+    },
+    {
+      "windowSeconds": 10.595,
+      "interactiveSeconds": 10.879
+    },
+    {
+      "windowSeconds": 10.592,
+      "interactiveSeconds": 10.87
+    }
+  ],
+  "p95Seconds": 10.955,
+  "maximumSeconds": 11.369,
+  "verifiedAppArchitecture": "arm64"
+}

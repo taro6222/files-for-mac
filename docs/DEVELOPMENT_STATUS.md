@@ -2,7 +2,17 @@
 
 갱신: 2026-11-14
 
+## 현재 단계
+
+M7 출시 검증이 진행 중이다. [유니버설 개발 프리뷰](verification/m7/PREVIEW_0.1.0.md)의 Apple Silicon 설치·교체·복원은 통과했다. 정식 서명·공증, Intel과 최소 macOS, 실제 서버, Windows 실행 화면, VoiceOver와 장시간 검증은 [출시 검증 현황](verification/m7/RELEASE_GATES.md)에서 추적한다.
+
 ## 이번 구현 단위
+
+폴더 탐색 성능을 AppKit 목록이 갱신되는 시점에 기록한다. 최적화 QA 빌드의 즉시 탐색을 확인했고 5분 유휴 대조를 실행 중이다. [M7 목록 표시 계측](verification/m7/INCREMENT_105.md)
+
+UI-01~20의 Windows 소스와 macOS 구현 구조를 대조했다. AppKit 캡처의 실제 테마를 검사하며 한국어·영어와 두 테마의 전체 회귀가 각각 254개씩 통과했다. [M7 화면 대조 및 테마 검증](verification/m7/INCREMENT_104.md)
+
+복사와 같은 볼륨 이동의 실패 항목을 개별 재시도하고 일괄 이름 변경 미리보기에서 중복·누락·잘못된 이름을 검증한다. [복사 재시도](verification/m7/INCREMENT_101.md) · [이동 재시도](verification/m7/INCREMENT_102.md) · [이름 변경 사전 검사](verification/m7/INCREMENT_103.md)
 
 닫은 창의 작업 공간을 저장한 뒤 AppKit 콘텐츠를 해제한다. [M7 창 종료 시 콘텐츠 해제](verification/m7/INCREMENT_95.md)
 
