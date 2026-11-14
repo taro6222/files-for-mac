@@ -270,11 +270,17 @@ final class FileInfoWindow: NSWindowController, NSTextFieldDelegate {
     private func cancelTasks() { inspectTask?.cancel(); inspectTask = nil; hashTask?.cancel(); hashTask = nil; signatureTask?.cancel(); signatureTask = nil }
 #if DEBUG
     var qaLoaded: Bool { properties != nil }
-    func qaChangePermissions(to mode: Int, acl: String? = nil) async throws -> Bool {
+    func qaChangePermissions(to mode: Int, acl: String? = nil, addEveryoneRule: Bool = false) async throws -> Bool {
         guard let sheet = openPermissions() else { return false }
         let deadline = ContinuousClock.now + .seconds(5)
         while !sheet.qaReady && ContinuousClock.now < deadline { try await Task.sleep(for: .milliseconds(20)) }
-        guard acl.map({ sheet.qaSetACL($0) }) ?? sheet.qaSetMode(mode) else { return false }
+        let changed: Bool
+        if addEveryoneRule {
+            changed = try await sheet.qaAddEveryoneRule()
+        } else {
+            changed = acl.map({ sheet.qaSetACL($0) }) ?? sheet.qaSetMode(mode)
+        }
+        guard changed else { return false }
         while window?.attachedSheet != nil && ContinuousClock.now < deadline { try await Task.sleep(for: .milliseconds(20)) }
         while properties?.posixPermissions != mode && ContinuousClock.now < deadline { try await Task.sleep(for: .milliseconds(20)) }
         return window?.attachedSheet == nil && properties?.posixPermissions == mode
@@ -327,6 +333,10 @@ private final class FilePermissionsSheet: NSObject, NSTextViewDelegate {
     private var checks: [NSButton] = []
     private let aclText = NSTextView()
     private let editACL = NSButton()
+    private let addACLRule = NSButton()
+    private let accountKind = NSPopUpButton(), ruleEffect = NSPopUpButton(), ruleAccess = NSPopUpButton()
+    private let accountName = NSTextField()
+    private let ruleControls = NSStackView()
     private let status = NSTextField(wrappingLabelWithString: "")
     private let save: NSButton
 
@@ -394,7 +404,24 @@ private final class FilePermissionsSheet: NSObject, NSTextViewDelegate {
         aclText.autoresizingMask = [.width]
         scroll.documentView = aclText
 
-        let stack = NSStackView(views: [grid, aclHeader, scroll, status])
+        accountKind.addItems(withTitles: [L("사용자", "User"), L("그룹", "Group")])
+        accountKind.setAccessibilityLabel(L("계정 유형", "Account type"))
+        accountName.placeholderString = L("계정 짧은 이름", "Account short name")
+        accountName.setAccessibilityLabel(L("계정 짧은 이름", "Account short name"))
+        ruleEffect.addItems(withTitles: [L("허용", "Allow"), L("거부", "Deny")])
+        ruleEffect.setAccessibilityLabel(L("규칙 효과", "Rule effect"))
+        ruleAccess.addItems(withTitles: [L("읽기", "Read"), L("쓰기", "Write"), L("실행/탐색", "Execute/Search")])
+        ruleAccess.setAccessibilityLabel(L("규칙 권한", "Rule permission"))
+        addACLRule.title = L("규칙 추가", "Add Rule")
+        addACLRule.target = self; addACLRule.action = #selector(appendACLRule(_:))
+        let accountRow = NSStackView(views: [accountKind, accountName])
+        let ruleRow = NSStackView(views: [ruleEffect, ruleAccess, addACLRule])
+        ruleControls.orientation = .vertical
+        ruleControls.alignment = .leading
+        ruleControls.addArrangedSubview(accountRow)
+        ruleControls.addArrangedSubview(ruleRow)
+        setRuleControlsEnabled(false)
+        let stack = NSStackView(views: [grid, aclHeader, ruleControls, scroll, status])
         stack.orientation = .vertical
         stack.alignment = .leading
         stack.spacing = 8
@@ -402,7 +429,7 @@ private final class FilePermissionsSheet: NSObject, NSTextViewDelegate {
         scroll.heightAnchor.constraint(equalToConstant: 86).isActive = true
         status.preferredMaxLayoutWidth = 350
         status.stringValue = L("권한을 읽는 중…", "Reading permissions…")
-        stack.frame = NSRect(x: 0, y: 0, width: 360, height: 225)
+        stack.frame = NSRect(x: 0, y: 0, width: 360, height: 286)
         alert.accessoryView = stack
     }
 
@@ -437,14 +464,52 @@ private final class FilePermissionsSheet: NSObject, NSTextViewDelegate {
         editACL.isEnabled = false
         aclText.string = initial.accessControlList ?? ""
         aclText.isEditable = true
+        setRuleControlsEnabled(true)
         aclText.isAutomaticQuoteSubstitutionEnabled = false
         aclText.isAutomaticDashSubstitutionEnabled = false
-        status.stringValue = L("한 줄에 ACL 항목 하나를 입력하세요. 예: group::everyone::allow:read",
-                               "Enter one ACL entry per line. Example: group::everyone::allow:read")
+        status.stringValue = L("계정 이름으로 규칙을 추가하거나 ACL 항목을 직접 편집하세요.",
+                               "Add a rule by account name or edit the ACL entries directly.")
         alert.window.makeFirstResponder(aclText)
     }
 
+    private func setRuleControlsEnabled(_ enabled: Bool) {
+        [accountKind, accountName, ruleEffect, ruleAccess, addACLRule].forEach { $0.isEnabled = enabled }
+    }
+
+    @objc private func appendACLRule(_ sender: Any?) {
+        guard aclText.isEditable, addACLRule.isEnabled else { return }
+        let name = accountName.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !name.isEmpty else {
+            status.stringValue = L("계정의 짧은 이름을 입력하세요.", "Enter the account’s short name.")
+            return
+        }
+        let kind: FileACLAccountKind = accountKind.indexOfSelectedItem == 0 ? .user : .group
+        let effect: FileACLEffect = ruleEffect.indexOfSelectedItem == 0 ? .allow : .deny
+        let options: [FileACLAccess] = [.read, .write, .execute]
+        guard options.indices.contains(ruleAccess.indexOfSelectedItem) else { return }
+        let access = options[ruleAccess.indexOfSelectedItem]
+        addACLRule.isEnabled = false
+        Task {
+            defer { addACLRule.isEnabled = aclText.isEditable }
+            do {
+                let rule = try await kind.rule(for: name, effect: effect, access: access)
+                guard alert.window.sheetParent != nil, aclText.isEditable else { return }
+                let entries = aclText.string.trimmingCharacters(in: .newlines)
+                aclText.string = entries.isEmpty ? rule : entries + "\n" + rule
+                updateACLSaveState()
+                status.stringValue = L("규칙을 추가했습니다. 저장을 눌러 적용하세요.", "Rule added. Choose Save to apply it.")
+            } catch {
+                guard alert.window.sheetParent != nil, aclText.isEditable else { return }
+                status.stringValue = L("계정을 찾을 수 없습니다.", "Account not found.")
+            }
+        }
+    }
+
     func textDidChange(_ notification: Notification) {
+        updateACLSaveState()
+    }
+
+    private func updateACLSaveState() {
         guard aclText.isEditable, let initial else { return }
         save.isEnabled = aclText.string.trimmingCharacters(in: .whitespacesAndNewlines) != (initial.accessControlList ?? "")
     }
@@ -456,6 +521,7 @@ private final class FilePermissionsSheet: NSObject, NSTextViewDelegate {
         save.isEnabled = false
         editACL.isEnabled = false
         aclText.isEditable = false
+        setRuleControlsEnabled(false)
         alert.buttons[1].isEnabled = false
         checks.forEach { $0.isEnabled = false }
         Task {
@@ -475,6 +541,7 @@ private final class FilePermissionsSheet: NSObject, NSTextViewDelegate {
             } catch FilePermissionError.invalidAccessControlList {
                 status.stringValue = L("ACL 형식을 확인하세요.", "Check the ACL entry format.")
                 aclText.isEditable = true
+                setRuleControlsEnabled(true)
                 save.isEnabled = true
             } catch {
                 status.stringValue = L("권한을 변경하지 못했습니다. ", "Unable to change permissions. ") + error.localizedDescription
@@ -483,6 +550,22 @@ private final class FilePermissionsSheet: NSObject, NSTextViewDelegate {
     }
 #if DEBUG
     var qaReady: Bool { initial != nil }
+    func qaAddEveryoneRule() async throws -> Bool {
+        editACL.performClick(nil)
+        guard aclText.isEditable else { return false }
+        accountKind.selectItem(at: 1)
+        accountName.stringValue = "everyone"
+        ruleEffect.selectItem(at: 0)
+        ruleAccess.selectItem(at: 1)
+        addACLRule.performClick(nil)
+        let deadline = ContinuousClock.now + .seconds(5)
+        while !addACLRule.isEnabled && ContinuousClock.now < deadline {
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        guard save.isEnabled, aclText.string.hasSuffix(":allow:write") else { return false }
+        save.performClick(nil)
+        return true
+    }
     func qaSetACL(_ entries: String) -> Bool {
         editACL.performClick(nil)
         guard aclText.isEditable else { return false }

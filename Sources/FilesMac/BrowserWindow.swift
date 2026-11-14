@@ -4582,11 +4582,17 @@ extension BrowserWindow {
                 let savedACL = try await FilePropertiesInspector().permissions(inputFile)
                 checks["fileInfoACLEditing"] = editedACL && savedACL.mode == 0o640
                     && savedACL.accessControlList?.hasSuffix(":allow:read") == true
+                let addedACLRule = try await info.qaChangePermissions(to: 0o640, addEveryoneRule: true)
+                let accountACL = try await FilePropertiesInspector().permissions(inputFile)
+                checks["fileInfoACLAccountRule"] = addedACLRule && accountACL.mode == 0o640
+                    && accountACL.accessControlList?.hasPrefix((savedACL.accessControlList ?? "") + "\n") == true
+                    && accountACL.accessControlList?.hasSuffix(":allow:write") == true
             } else {
                 checks["fileInfoHashComparison"] = false
                 checks["fileInfoHashFileComparison"] = false
                 checks["fileInfoPermissionEditing"] = false
                 checks["fileInfoACLEditing"] = false
+                checks["fileInfoACLAccountRule"] = false
             }
             controller.infoWindow?.close(); window.makeKeyAndOrderFront(nil)
             let taggedURL = controller.activeSelectedItems.first?.url

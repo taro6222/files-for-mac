@@ -45,6 +45,43 @@ public enum FilePermissionError: Error, Equatable {
     case invalidMode
     case modeNotApplied
     case invalidAccessControlList
+    case unknownACLAccount
+}
+
+public enum FileACLAccountKind: String, Sendable {
+    case user, group
+
+    public func rule(for name: String, effect: FileACLEffect, access: FileACLAccess) async throws -> String {
+        guard !name.isEmpty, !name.contains(":"),
+              name.unicodeScalars.allSatisfy({ !CharacterSet.controlCharacters.contains($0) }) else {
+            throw FilePermissionError.unknownACLAccount
+        }
+        return try await Task.detached(priority: .utility) {
+            let entry = "\(rawValue)::\(name)::\(effect.rawValue):\(access.rawValue)"
+            guard let acl = acl_from_text("!#acl 1\n" + entry + "\n") else {
+                throw FilePermissionError.unknownACLAccount
+            }
+            defer { acl_free(UnsafeMutableRawPointer(acl)) }
+            var length = 0
+            guard let text = acl_to_text(acl, &length) else { throw FilePermissionError.unknownACLAccount }
+            defer { acl_free(text) }
+            guard let canonical = String(cString: text).split(separator: "\n").dropFirst().first,
+                  let identifier = canonical.split(separator: ":", omittingEmptySubsequences: false).dropFirst().first,
+                  let uuid = UUID(uuidString: String(identifier)), uuid.uuidString != "00000000-0000-0000-0000-000000000000" else {
+                throw FilePermissionError.unknownACLAccount
+            }
+            return String(canonical)
+        }.value
+    }
+
+}
+
+public enum FileACLEffect: String, Sendable {
+    case allow, deny
+}
+
+public enum FileACLAccess: String, Sendable {
+    case read, write, execute
 }
 
 public enum FileHashAlgorithm: String, CaseIterable, Sendable {

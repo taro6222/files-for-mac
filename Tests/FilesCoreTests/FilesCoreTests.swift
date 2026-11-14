@@ -1532,3 +1532,16 @@ private struct ManyBatchLoader: DirectoryStreaming {
     #expect(cleared.accessControlList == nil)
     #expect(cleared.mode == initial.mode)
 }
+
+@Test func aclRuleBuilderResolvesAccountsAndRejectsInvalidNames() async throws {
+    let user = try await FileACLAccountKind.user.rule(for: NSUserName(), effect: .allow, access: .write)
+    let group = try await FileACLAccountKind.group.rule(for: "everyone", effect: .deny, access: .execute)
+    #expect(user.hasPrefix("user:") && user.hasSuffix(":allow:write"))
+    #expect(group.hasPrefix("group:") && group.hasSuffix(":deny:execute"))
+    await #expect(throws: FilePermissionError.unknownACLAccount) {
+        try await FileACLAccountKind.user.rule(for: UUID().uuidString, effect: .allow, access: .read)
+    }
+    await #expect(throws: FilePermissionError.unknownACLAccount) {
+        try await FileACLAccountKind.group.rule(for: "everyone::allow:write\n", effect: .deny, access: .read)
+    }
+}
