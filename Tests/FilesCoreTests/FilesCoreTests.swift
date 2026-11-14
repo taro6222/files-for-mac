@@ -1545,3 +1545,13 @@ private struct ManyBatchLoader: DirectoryStreaming {
         try await FileACLAccountKind.group.rule(for: "everyone::allow:write\n", effect: .deny, access: .read)
     }
 }
+
+@Test func aclAccountListsCanBeLoadedConcurrently() async {
+    async let users = FileACLAccountKind.user.accountNames()
+    async let groups = FileACLAccountKind.group.accountNames()
+    let (userNames, groupNames) = await (users, groups)
+    #expect(userNames.contains(NSUserName()))
+    #expect(groupNames.contains("everyone"))
+    #expect(Set(userNames).count == userNames.count)
+    #expect(Set(groupNames).count == groupNames.count)
+}

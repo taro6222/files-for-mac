@@ -51,6 +51,31 @@ public enum FilePermissionError: Error, Equatable {
 public enum FileACLAccountKind: String, Sendable {
     case user, group
 
+    private static let accountEnumerationLock = NSLock()
+
+    public func accountNames() async -> [String] {
+        await Task.detached(priority: .utility) {
+            Self.accountEnumerationLock.withLock {
+                var names = Set<String>()
+                switch self {
+                case .user:
+                    setpwent()
+                    defer { endpwent() }
+                    while let entry = getpwent() {
+                        if let name = entry.pointee.pw_name { names.insert(String(cString: name)) }
+                    }
+                case .group:
+                    setgrent()
+                    defer { endgrent() }
+                    while let entry = getgrent() {
+                        if let name = entry.pointee.gr_name { names.insert(String(cString: name)) }
+                    }
+                }
+                return names.filter { !$0.isEmpty }.sorted { $0.localizedStandardCompare($1) == .orderedAscending }
+            }
+        }.value
+    }
+
     public func rule(for name: String, effect: FileACLEffect, access: FileACLAccess) async throws -> String {
         guard !name.isEmpty, !name.contains(":"),
               name.unicodeScalars.allSatisfy({ !CharacterSet.controlCharacters.contains($0) }) else {

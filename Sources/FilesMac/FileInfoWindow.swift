@@ -280,7 +280,10 @@ final class FileInfoWindow: NSWindowController, NSTextFieldDelegate {
         } else {
             changed = acl.map({ sheet.qaSetACL($0) }) ?? sheet.qaSetMode(mode)
         }
-        guard changed else { return false }
+        guard changed else {
+            sheet.dismissQA()
+            return false
+        }
         while window?.attachedSheet != nil && ContinuousClock.now < deadline { try await Task.sleep(for: .milliseconds(20)) }
         while properties?.posixPermissions != mode && ContinuousClock.now < deadline { try await Task.sleep(for: .milliseconds(20)) }
         return window?.attachedSheet == nil && properties?.posixPermissions == mode
@@ -335,7 +338,8 @@ private final class FilePermissionsSheet: NSObject, NSTextViewDelegate {
     private let editACL = NSButton()
     private let addACLRule = NSButton()
     private let accountKind = NSPopUpButton(), ruleEffect = NSPopUpButton(), ruleAccess = NSPopUpButton()
-    private let accountName = NSTextField()
+    private let accountName = NSTextField(), accountList = NSPopUpButton()
+    private var accountListTask: Task<Void, Never>?
     private let ruleControls = NSStackView()
     private let status = NSTextField(wrappingLabelWithString: "")
     private let save: NSButton
@@ -406,15 +410,19 @@ private final class FilePermissionsSheet: NSObject, NSTextViewDelegate {
 
         accountKind.addItems(withTitles: [L("사용자", "User"), L("그룹", "Group")])
         accountKind.setAccessibilityLabel(L("계정 유형", "Account type"))
+        accountKind.target = self; accountKind.action = #selector(changeAccountKind(_:))
         accountName.placeholderString = L("계정 짧은 이름", "Account short name")
         accountName.setAccessibilityLabel(L("계정 짧은 이름", "Account short name"))
+        accountList.setAccessibilityLabel(L("계정 목록", "Account list"))
+        accountList.target = self; accountList.action = #selector(selectListedAccount(_:))
+        accountList.widthAnchor.constraint(equalToConstant: 106).isActive = true
         ruleEffect.addItems(withTitles: [L("허용", "Allow"), L("거부", "Deny")])
         ruleEffect.setAccessibilityLabel(L("규칙 효과", "Rule effect"))
         ruleAccess.addItems(withTitles: [L("읽기", "Read"), L("쓰기", "Write"), L("실행/탐색", "Execute/Search")])
         ruleAccess.setAccessibilityLabel(L("규칙 권한", "Rule permission"))
         addACLRule.title = L("규칙 추가", "Add Rule")
         addACLRule.target = self; addACLRule.action = #selector(appendACLRule(_:))
-        let accountRow = NSStackView(views: [accountKind, accountName])
+        let accountRow = NSStackView(views: [accountKind, accountName, accountList])
         let ruleRow = NSStackView(views: [ruleEffect, ruleAccess, addACLRule])
         ruleControls.orientation = .vertical
         ruleControls.alignment = .leading
@@ -465,6 +473,7 @@ private final class FilePermissionsSheet: NSObject, NSTextViewDelegate {
         aclText.string = initial.accessControlList ?? ""
         aclText.isEditable = true
         setRuleControlsEnabled(true)
+        changeAccountKind(nil)
         aclText.isAutomaticQuoteSubstitutionEnabled = false
         aclText.isAutomaticDashSubstitutionEnabled = false
         status.stringValue = L("계정 이름으로 규칙을 추가하거나 ACL 항목을 직접 편집하세요.",
@@ -473,7 +482,29 @@ private final class FilePermissionsSheet: NSObject, NSTextViewDelegate {
     }
 
     private func setRuleControlsEnabled(_ enabled: Bool) {
-        [accountKind, accountName, ruleEffect, ruleAccess, addACLRule].forEach { $0.isEnabled = enabled }
+        [accountKind, accountName, accountList, ruleEffect, ruleAccess, addACLRule].forEach { $0.isEnabled = enabled }
+    }
+
+    private var selectedAccountKind: FileACLAccountKind {
+        accountKind.indexOfSelectedItem == 0 ? .user : .group
+    }
+
+    @objc private func changeAccountKind(_ sender: Any?) {
+        accountListTask?.cancel()
+        accountList.removeAllItems()
+        accountList.addItem(withTitle: L("목록", "Accounts"))
+        accountList.item(at: 0)?.isEnabled = false
+        accountList.autoenablesItems = false
+        accountList.isEnabled = false
+        accountName.stringValue = ""
+        let kind = selectedAccountKind
+        accountListTask = Task { [weak self] in
+            let names = await kind.accountNames()
+            guard let self, !Task.isCancelled, self.aclText.isEditable,
+                  self.alert.window.sheetParent != nil else { return }
+            self.accountList.addItems(withTitles: names)
+            self.accountList.isEnabled = !names.isEmpty
+        }
     }
 
     @objc private func appendACLRule(_ sender: Any?) {
@@ -483,7 +514,7 @@ private final class FilePermissionsSheet: NSObject, NSTextViewDelegate {
             status.stringValue = L("계정의 짧은 이름을 입력하세요.", "Enter the account’s short name.")
             return
         }
-        let kind: FileACLAccountKind = accountKind.indexOfSelectedItem == 0 ? .user : .group
+        let kind = selectedAccountKind
         let effect: FileACLEffect = ruleEffect.indexOfSelectedItem == 0 ? .allow : .deny
         let options: [FileACLAccess] = [.read, .write, .execute]
         guard options.indices.contains(ruleAccess.indexOfSelectedItem) else { return }
@@ -503,6 +534,12 @@ private final class FilePermissionsSheet: NSObject, NSTextViewDelegate {
                 status.stringValue = L("계정을 찾을 수 없습니다.", "Account not found.")
             }
         }
+    }
+
+    @objc private func selectListedAccount(_ sender: Any?) {
+        guard accountList.indexOfSelectedItem > 0, let name = accountList.titleOfSelectedItem else { return }
+        accountName.stringValue = name
+        accountList.selectItem(at: 0)
     }
 
     func textDidChange(_ notification: Notification) {
@@ -550,15 +587,25 @@ private final class FilePermissionsSheet: NSObject, NSTextViewDelegate {
     }
 #if DEBUG
     var qaReady: Bool { initial != nil }
+    func dismissQA() {
+        alert.window.sheetParent?.endSheet(alert.window)
+    }
     func qaAddEveryoneRule() async throws -> Bool {
         editACL.performClick(nil)
         guard aclText.isEditable else { return false }
         accountKind.selectItem(at: 1)
-        accountName.stringValue = "everyone"
+        changeAccountKind(nil)
+        let deadline = ContinuousClock.now + .seconds(5)
+        while accountList.indexOfItem(withTitle: "everyone") < 0 && ContinuousClock.now < deadline {
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        let groupIndex = accountList.indexOfItem(withTitle: "everyone")
+        guard groupIndex >= 0 else { return false }
+        accountList.selectItem(at: groupIndex)
+        selectListedAccount(nil)
         ruleEffect.selectItem(at: 0)
         ruleAccess.selectItem(at: 1)
         addACLRule.performClick(nil)
-        let deadline = ContinuousClock.now + .seconds(5)
         while !addACLRule.isEnabled && ContinuousClock.now < deadline {
             try await Task.sleep(for: .milliseconds(20))
         }
