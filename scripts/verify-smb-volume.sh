@@ -1,10 +1,10 @@
 #!/bin/bash
 set -euo pipefail
-if [[ $# -ne 1 ]]; then
-  echo "usage: $0 /Volumes/mounted-smb-share" >&2
+if [[ $# -lt 1 || $# -gt 2 || (${2:-} != "" && ${2:-} != --skip-build) ]]; then
+  echo "usage: $0 /Volumes/mounted-smb-share [--skip-build]" >&2
   exit 64
 fi
-python3 - "$1" "$(dirname "$0")/.." <<'PY'
+python3 - "$1" "$(dirname "$0")/.." "${2:-}" <<'PY'
 import os
 import signal
 import subprocess
@@ -25,6 +25,7 @@ except ValueError:
 command = r'''
 volume=$1
 probe=$2
+build_mode=$3
 echo "SMB verification: inspecting mount" >&2
 if [[ ! -d "$volume" ]]; then
   echo "SMB path is not a directory: $volume" >&2
@@ -89,13 +90,16 @@ echo "SMB verification: running file operation tests" >&2
 export FILES_TEST_SMB_VOLUME="$volume"
 export CLANG_MODULE_CACHE_PATH="$PWD/.build/ModuleCache"
 export SWIFT_TMPDIR=/tmp
+if [[ "$build_mode" == --skip-build ]]; then
+  exec swift test --skip-build --disable-xctest --no-parallel --filter mountedSMBCopyMoveUndoRoundTrip
+fi
 exec swift test --filter mountedSMBCopyMoveUndoRoundTrip \
   -Xswiftc -load-plugin-library \
   -Xswiftc /Library/Developer/CommandLineTools/usr/lib/swift/host/plugins/testing/libTestingMacros.dylib
 '''
 
 process = subprocess.Popen(
-    ["/bin/bash", "-euo", "pipefail", "-c", command, "verify-smb-volume", volume, probe],
+    ["/bin/bash", "-euo", "pipefail", "-c", command, "verify-smb-volume", volume, probe, sys.argv[3]],
     cwd=sys.argv[2],
     start_new_session=True,
 )

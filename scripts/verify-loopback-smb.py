@@ -1,0 +1,84 @@
+#!/usr/bin/env python3
+"""Exercise an isolated Samba share on a disposable macOS runner."""
+
+import argparse
+from pathlib import Path
+import socket
+import subprocess
+import tempfile
+import time
+
+
+PORT = 15445
+
+
+def wait_for_server(server):
+    deadline = time.monotonic() + 15
+    while time.monotonic() < deadline:
+        if server.poll() is not None:
+            raise RuntimeError(f"Samba exited before accepting connections: {server.returncode}")
+        try:
+            with socket.create_connection(("127.0.0.1", PORT), timeout=0.5):
+                return
+        except OSError:
+            time.sleep(0.2)
+    raise RuntimeError("Samba did not open its loopback port")
+
+
+def verify(smbd, root):
+    share, mount, state = (root / name for name in ("share", "mount", "state"))
+    for folder in (share, mount, state):
+        folder.mkdir()
+    root.chmod(0o755)
+    share.chmod(0o777)
+    config = root / "smb.conf"
+    config.write_text(f"""[global]
+    server role = standalone server
+    interfaces = 127.0.0.1
+    bind interfaces only = yes
+    smb ports = {PORT}
+    server min protocol = SMB2_10
+    map to guest = Bad User
+    guest account = nobody
+    state directory = {state}
+    cache directory = {state}
+    lock directory = {state}
+    pid directory = {state}
+    private dir = {state}
+    log file = {root / "smb.log"}
+[files-qa]
+    path = {share}
+    read only = no
+    guest ok = yes
+    guest only = yes
+""", encoding="utf-8")
+    with socket.socket() as port:
+        port.bind(("127.0.0.1", PORT))
+    server = subprocess.Popen(["sudo", "-n", smbd, "--foreground", "--no-process-group", "--configfile", config])
+    try:
+        wait_for_server(server)
+        subprocess.run(["/sbin/mount_smbfs", "-N", "-o", "nobrowse",
+                        f"//guest:@127.0.0.1:{PORT}/files-qa", mount], check=True, timeout=25)
+        subprocess.run(["/usr/bin/smbutil", "statshares", "-m", mount], check=True, timeout=15)
+        subprocess.run(["bash", "scripts/verify-smb-volume.sh", mount, "--skip-build"], check=True, timeout=200)
+    finally:
+        try:
+            mounts = subprocess.check_output(["/sbin/mount"], text=True, timeout=10)
+            if f" on {mount} (" in mounts:
+                subprocess.run(["/sbin/umount", "-f", mount], timeout=15, check=True)
+        finally:
+            if server.poll() is None:
+                server.terminate()
+                server.wait(timeout=15)
+            log = root / "smb.log"
+            if log.exists():
+                print(log.read_text(errors="replace")[-8000:])
+            subprocess.run(["sudo", "-n", "/usr/sbin/chown", "-R", str(root.stat().st_uid), state], check=True, timeout=15)
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("smbd", type=Path)
+    arguments = parser.parse_args()
+    with tempfile.TemporaryDirectory(prefix="files-loopback-smb-") as directory:
+        verify(arguments.smbd.resolve(strict=True), Path(directory).resolve())

@@ -1,0 +1,33 @@
+name: macOS SMB integration
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: macos-15
+    timeout-minutes: 35
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.3.app/Contents/Developer
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - name: Build the Swift integration test
+        timeout-minutes: 12
+        run: swift build --build-tests --disable-sandbox -Xswiftc -gnone
+      - name: Install Samba on the disposable runner
+        timeout-minutes: 12
+        env:
+          HOMEBREW_NO_AUTO_UPDATE: "1"
+        run: brew install samba
+      - name: Verify the SMB mount and file-operation round trip
+        timeout-minutes: 6
+        run: |
+          sw_vers
+          smbd="$(brew --prefix)/sbin/samba-dot-org-smbd"
+          "$smbd" --version
+          python3 scripts/verify-loopback-smb.py "$smbd"
