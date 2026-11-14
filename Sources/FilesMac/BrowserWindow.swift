@@ -5790,6 +5790,20 @@ private final class ReleaseScrollDriver: NSObject {
     private var continuation: CheckedContinuation<Bool, Never>?
     private var step: ((Int) -> Void)?
     private var tick = 0
+    private var stepTimes: [Double] = []
+    private var callbackTimes: [Double] = []
+
+    var measurements: [String: Double] {
+        let intervals = zip(callbackTimes, callbackTimes.dropFirst()).map { ($1 - $0) * 1000 }
+        let steps = stepTimes.sorted()
+        guard !intervals.isEmpty, let maximum = steps.last else { return [:] }
+        return [
+            "scrollCallbackCount": Double(callbackTimes.count),
+            "scrollCallbackIntervalsOver25ms": Double(intervals.filter { $0 > 25 }.count),
+            "appKitStepP95Milliseconds": steps[Int(ceil(Double(steps.count) * 0.95)) - 1],
+            "appKitStepMaximumMilliseconds": maximum
+        ]
+    }
 
     func run(in view: NSView, step: @escaping (Int) -> Void) async -> Bool {
         self.step = step
@@ -5809,8 +5823,15 @@ private final class ReleaseScrollDriver: NSObject {
 
     @objc private func advance(_ link: CADisplayLink) {
         tick += 1
-        if tick <= 360 { step?(tick) }
-        else { finish(true) }
+        guard tick <= 360 else { finish(true); return }
+        measureStep { step?(tick) }
+    }
+
+    func measureStep(_ operation: () -> Void) {
+        let started = DispatchTime.now().uptimeNanoseconds
+        callbackTimes.append(Double(started) / 1e9)
+        operation()
+        stepTimes.append(Double(DispatchTime.now().uptimeNanoseconds - started) / 1e6)
     }
 
     private func finish(_ completed: Bool) {
@@ -5946,14 +5967,26 @@ extension BrowserWindow {
                 clip.scroll(to: NSPoint(x: 0, y: offset))
                 controller.scroll.reflectScrolledClipView(clip)
             }
-            if control || environment["FILES_PERFORMANCE_SCROLL_PACING"] == "display" {
-                guard await ReleaseScrollDriver().run(in: clip, step: scrollStep) else { return }
+            let pacing = environment["FILES_PERFORMANCE_SCROLL_PACING"]
+            let driver = ReleaseScrollDriver()
+            if control || pacing == "display" {
+                guard await driver.run(in: clip, step: scrollStep) else {
+                    fputs("Display link did not complete the scroll workload.\n", stderr)
+                    return
+                }
             } else {
                 for tick in 1...360 {
-                    scrollStep(tick)
+                    driver.measureStep {
+                        scrollStep(tick)
+                        if pacing == "layout" {
+                            content.layoutSubtreeIfNeeded()
+                            content.displayIfNeeded()
+                        }
+                    }
                     try? await Task.sleep(for: .milliseconds(16))
                 }
             }
+            samples.merge(driver.measurements) { _, measured in measured }
             if control {
                 samples["controlSteps"] = 360
             } else {
