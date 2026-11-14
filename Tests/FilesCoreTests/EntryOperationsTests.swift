@@ -600,6 +600,47 @@ func entryCrossVolumeUndoResumesAfterCopyPublication(edited: Bool) async throws 
     }
 }
 
+@Test(arguments: [false, true])
+func crossVolumeUndoWithoutBackupResumesFromPublishedCopy(edited: Bool) async throws {
+    let root = try entryFixture()
+    let fm = FileManager.default
+    defer { try? fm.removeItem(at: root) }
+    let source = root.appendingPathComponent("move.txt")
+    let dest = root.appendingPathComponent("dest")
+    let target = dest.appendingPathComponent(source.lastPathComponent)
+    let journal = root.appendingPathComponent("journal")
+    try fm.createDirectory(at: dest, withIntermediateDirectories: false)
+    let contents = Data("original".utf8)
+    try contents.write(to: source)
+    let move = try await EntryOperations.moveAcrossVolumeForTesting([source], to: dest, journalDirectory: journal)
+    try #require(move.state == "completed")
+    let record = try #require(EntryOperations.latestUndoMove(journalDirectory: journal))
+    let stopped = await EntryOperations.undoMove(record, journalDirectory: journal,
+        afterCopyPublication: { throw CancellationError() }, beforeBackupRestore: { _ in })
+    #expect(stopped.state == "partial")
+    #expect(try Data(contentsOf: source) == contents)
+    #expect(try Data(contentsOf: target) == contents)
+    let checkpoint = try #require(EntryOperations.latestUndoMove(journalDirectory: journal))
+    #expect(checkpoint.items.first?.restoredCopyMetadata != nil)
+
+    let attribute = "com.filesmac.interrupted-undo"
+    if edited {
+        let value: UInt8 = 1
+        try #require(withUnsafePointer(to: value) { setxattr(source.path, attribute, $0, 1, 0, 0) } == 0)
+        let blocked = await EntryOperations.undoMove(checkpoint, journalDirectory: journal)
+        #expect(blocked.items.map(\.state) == ["conflict"])
+        #expect(try Data(contentsOf: target) == contents)
+        #expect(getxattr(source.path, attribute, nil, 0, 0, 0) == 1)
+        try #require(removexattr(source.path, attribute, 0) == 0)
+    }
+
+    let retry = try #require(EntryOperations.latestUndoMove(journalDirectory: journal))
+    #expect(await EntryOperations.undoMove(retry, journalDirectory: journal).state == "completed")
+    #expect(try Data(contentsOf: source) == contents)
+    #expect(!fm.fileExists(atPath: target.path))
+    #expect(EntryOperations.latestUndoMove(journalDirectory: journal) == nil)
+}
+
 @Test(arguments: [false, true], [false, true])
 func moveUndoPreservesPathOccupiedBeforePublication(crossVolume: Bool, symbolicLink: Bool) async throws {
     let root = try entryFixture()

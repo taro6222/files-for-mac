@@ -16,7 +16,7 @@ export FILES_UNDO_INTERRUPTION_ROOT="$root"
 export CLANG_MODULE_CACHE_PATH="$PWD/.build/ModuleCache" SWIFT_TMPDIR=/tmp
 test_args=(--filter moveUndoInterruptionWorker -Xswiftc -load-plugin-library
   -Xswiftc /Library/Developer/CommandLineTools/usr/lib/swift/host/plugins/testing/libTestingMacros.dylib)
-for checkpoint in copy-published backup-pending; do
+for checkpoint in copy-published backup-pending no-backup-copy-published; do
   export FILES_UNDO_INTERRUPTION_CHECKPOINT="$checkpoint"
   echo "Checking interruption at $checkpoint"
   status=0

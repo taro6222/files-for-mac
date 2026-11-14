@@ -8,7 +8,8 @@ import Testing
     guard let path = environment["FILES_UNDO_INTERRUPTION_ROOT"],
           let phase = environment["FILES_UNDO_INTERRUPTION_PHASE"] else { return }
     let checkpoint = environment["FILES_UNDO_INTERRUPTION_CHECKPOINT"] ?? "copy-published"
-    try #require(["copy-published", "backup-pending"].contains(checkpoint))
+    try #require(["copy-published", "backup-pending", "no-backup-copy-published"].contains(checkpoint))
+    let hasBackup = checkpoint != "no-backup-copy-published"
     let parent = URL(fileURLWithPath: path, isDirectory: true)
     let root = parent.appendingPathComponent(checkpoint, isDirectory: true)
     let destination = parent.appendingPathComponent("mount/\(checkpoint)", isDirectory: true)
@@ -23,17 +24,19 @@ import Testing
         try fm.createDirectory(at: root, withIntermediateDirectories: false)
         try fm.createDirectory(at: destination, withIntermediateDirectories: false)
         try Data("new".utf8).write(to: source, options: .withoutOverwriting)
-        try Data("old".utf8).write(to: target, options: .withoutOverwriting)
+        if hasBackup { try Data("old".utf8).write(to: target, options: .withoutOverwriting) }
         try fm.setAttributes([.creationDate: Date(timeIntervalSince1970: 1_600_000_000)], ofItemAtPath: source.path)
-        try fm.setAttributes([.creationDate: Date(timeIntervalSince1970: 1_600_000_060)], ofItemAtPath: target.path)
+        if hasBackup {
+            try fm.setAttributes([.creationDate: Date(timeIntervalSince1970: 1_600_000_060)], ofItemAtPath: target.path)
+        }
         let move = try await EntryOperations.move([source], to: destination,
-            conflictPolicy: .replace, journalDirectory: journal)
+            conflictPolicy: hasBackup ? .replace : .skip, journalDirectory: journal)
         try #require(move.state == "completed")
         let record = try #require(EntryOperations.latestUndoMove(journalDirectory: journal))
         try #require(record.items.first?.crossVolume == true)
         let outcome = await EntryOperations.undoMove(record, journalDirectory: journal,
             afterCopyPublication: {
-                guard checkpoint == "copy-published" else { return }
+                guard checkpoint != "backup-pending" else { return }
                 try Data(String(getpid()).utf8).write(to: marker, options: .atomic)
                 if kill(getpid(), SIGKILL) != 0 { throw POSIXError(.EPERM) }
             }, beforeBackupRestore: { _ in
@@ -50,14 +53,16 @@ import Testing
         #expect(worker != getpid())
         #expect(!fm.fileExists(atPath: journal.appendingPathComponent("undo-result-\(record.operationId).json").path))
         let item = try #require(record.items.first)
-        let backup = try #require(item.backup)
+        let backup = item.backup
+        #expect((backup != nil) == hasBackup)
         #expect(item.restoredCopyIdentity != nil)
         #expect(item.restoredCopyMetadata != nil)
         #expect((item.backupRestorePending == true) == (checkpoint == "backup-pending"))
         #expect(try Data(contentsOf: source) == Data("new".utf8))
-        #expect(try Data(contentsOf: backup) == Data("old".utf8))
+        if let backup { #expect(try Data(contentsOf: backup) == Data("old".utf8)) }
 
         if checkpoint == "backup-pending" {
+            let backup = try #require(backup)
             #expect(!fm.fileExists(atPath: target.path))
             try Data("external".utf8).write(to: target, options: .withoutOverwriting)
             let blocked = await EntryOperations.undoMove(record, journalDirectory: journal)
@@ -75,7 +80,7 @@ import Testing
             #expect(blocked.items.map(\.state) == ["conflict"])
             #expect(try Data(contentsOf: source) == Data("new".utf8))
             #expect(try Data(contentsOf: target) == Data("new".utf8))
-            #expect(try Data(contentsOf: backup) == Data("old".utf8))
+            if let backup { #expect(try Data(contentsOf: backup) == Data("old".utf8)) }
             #expect(getxattr(source.path, attribute, nil, 0, 0, 0) == 1)
             try #require(removexattr(source.path, attribute, 0) == 0)
         }
@@ -85,9 +90,13 @@ import Testing
         #expect(resumed.state == "completed")
         #expect(resumed.journalError == nil)
         #expect(try Data(contentsOf: source) == Data("new".utf8))
-        #expect(try Data(contentsOf: target) == Data("old".utf8))
         #expect(try fm.attributesOfItem(atPath: source.path)[.creationDate] as? Date == Date(timeIntervalSince1970: 1_600_000_000))
-        #expect(try fm.attributesOfItem(atPath: target.path)[.creationDate] as? Date == Date(timeIntervalSince1970: 1_600_000_060))
+        if hasBackup {
+            #expect(try Data(contentsOf: target) == Data("old".utf8))
+            #expect(try fm.attributesOfItem(atPath: target.path)[.creationDate] as? Date == Date(timeIntervalSince1970: 1_600_000_060))
+        } else {
+            #expect(!fm.fileExists(atPath: target.path))
+        }
         #expect(EntryOperations.latestUndoMove(journalDirectory: journal) == nil)
     default:
         Issue.record("Unexpected interruption test phase: \(phase)")

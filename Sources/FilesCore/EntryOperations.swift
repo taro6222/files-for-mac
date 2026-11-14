@@ -1179,7 +1179,7 @@ public enum EntryOperations {
                         && (try? matchesUndoEntry(item.source, identity: item.targetIdentity,
                                                   snapshot: item.targetSnapshot, metadata: item.targetMetadata, fileManager: fm)) == true
                     let sourceAlreadyCopied: Bool
-                    if item.backupRestorePending != true, item.crossVolume, item.backup != nil,
+                    if item.backupRestorePending != true, item.crossVolume,
                        let identity = item.restoredCopyIdentity, let snapshot = item.restoredCopySnapshot,
                        entryExists(item.source) {
                         sourceAlreadyCopied = try matchesUndoEntry(item.source, identity: identity, snapshot: snapshot,
@@ -1205,11 +1205,14 @@ public enum EntryOperations {
                         }
                     }
                     if sourceAlreadyCopied, entryExists(item.target),
-                       let restoredIdentity = item.restoredCopyIdentity {
+                       let restoredIdentity = item.restoredCopyIdentity, let restoredSnapshot = item.restoredCopySnapshot {
                         let original = try CopyEngine.makeSnapshot(item.target, cancellation: CopyCancellation())
+                        let restored = try CopyEngine.makeSnapshot(item.source, cancellation: CopyCancellation())
                         guard item.targetSnapshot == nil || original.withPermissions == item.targetSnapshot,
                               item.targetMetadata.map(original.metadata.matchesRecorded) != false,
-                              try CopyEngine.makeSnapshot(item.source, cancellation: CopyCancellation()).matchesTransferredContents(of: original),
+                              restored.withPermissions == restoredSnapshot,
+                              item.restoredCopyMetadata.map(restored.metadata.matchesRecorded) != false,
+                              restored.matchesTransferredContents(of: original),
                               try snapshotIdentity(item.source, fileManager: fm) == restoredIdentity,
                               try snapshotIdentity(item.target, fileManager: fm) == item.targetIdentity else {
                             results.append(MoveUndoItemResult(source: item.source, target: item.target,
@@ -1217,6 +1220,11 @@ public enum EntryOperations {
                             continue
                         }
                         try fm.removeItem(at: item.target)
+                    }
+                    if sourceAlreadyCopied, item.backup == nil {
+                        results.append(MoveUndoItemResult(source: item.source, target: item.target,
+                            state: "completed", message: nil))
+                        continue
                     }
                     if item.backupRestorePending == true || sourceAlreadyRestored {
                         if sourceAlreadyRestored {
@@ -1241,7 +1249,6 @@ public enum EntryOperations {
                     }
                     let destinationFolder = ShelfEntry(item.target.deletingLastPathComponent())
                     let restored = try transferForUndo(item, checkpointCopy: { identity, snapshot in
-                        guard item.backup != nil else { return }
                         undoItems[index].restoredCopyIdentity = identity
                         undoItems[index].restoredCopySnapshot = snapshot.withPermissions
                         undoItems[index].restoredCopyMetadata = snapshot.metadata
