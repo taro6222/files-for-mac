@@ -4,6 +4,8 @@
 
 ## 이번 구현 단위
 
+삭제 후 같은 경로에 다시 생긴 폴더에서 읽기와 자동 갱신을 복구한다. [M7 폴더 감시 복구](verification/m7/INCREMENT_34.md)
+
 장시간 시험에서 탐색 이력 크기를 일정하게 유지하고 RSS 표본별 경과 시간을 기록한다. [M7 장시간 메모리 계측](verification/m7/INCREMENT_33.md)
 
 8 MiB 복사 검증 단계에 취소를 주입해 상태 반영·정리 시간을 기록했다. [M7 복사 동작 중 취소](verification/m7/INCREMENT_32.md)

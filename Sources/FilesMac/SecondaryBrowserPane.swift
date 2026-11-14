@@ -77,7 +77,12 @@ final class SecondaryBrowserPane: NSView, NSTableViewDataSource, NSTableViewDele
             navigate(location.deletingLastPathComponent())
         }
     }
-    func refresh() { activate(); savePosition(); model.reload() }
+    func refresh() {
+        activate()
+        if model.failure != nil || watcher == nil { updateWatcher(force: true) }
+        savePosition()
+        model.reload()
+    }
     func openLocation(_ url: URL) { activate(); navigate(url) }
     func revealSearchResult(_ url: URL, isHidden: Bool) {
         activate()
@@ -525,8 +530,8 @@ final class SecondaryBrowserPane: NSView, NSTableViewDataSource, NSTableViewDele
         guard preferences.doubleClickToGoUp else { return }
         goUp()
     }
-    private func updateWatcher() {
-        guard watchedURL != model.location else { return }
+    private func updateWatcher(force: Bool = false) {
+        guard force || watchedURL != model.location else { return }
         watcherTask?.cancel()
         if let watcher { Task.detached { watcher.stop() } }
         watcher = nil; watchedURL = model.location; pendingRefresh = false

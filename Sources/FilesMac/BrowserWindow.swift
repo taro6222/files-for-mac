@@ -1117,7 +1117,12 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
     }
     @objc func refresh(_ sender: Any?) {
         FileIconCache.shared.removeAll()
-        if secondaryActive { secondaryPane?.refresh() } else { savePosition(); model.reload() }
+        if secondaryActive { secondaryPane?.refresh() }
+        else {
+            if model.failure != nil || watcherStatus == .unavailable { updateWatcher(force: true) }
+            savePosition()
+            model.reload()
+        }
     }
     @objc func refreshOrStop(_ sender: Any?) {
         if activeModel.isLoading { stopLoading(sender) } else { refresh(sender) }
@@ -2449,7 +2454,11 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
     private func requestWatcherRefresh(for url: URL) {
         guard model.location == url, !model.wasCancelled else { return }
         if model.isLoading { pendingRefresh = true }
-        else { refresh(nil) }
+        else {
+            FileIconCache.shared.removeAll()
+            savePosition()
+            model.reload()
+        }
     }
 
 }
@@ -4647,6 +4656,26 @@ extension BrowserWindow {
             diagnostics["copyCancellationDuringVerification"] = try await CopyWindow.qaCancellationDuringVerification(
                 source: cancellationSource, destination: target, journals: journals)
             checks["copyCancellationDuringVerification"] = true
+            let recoveryFolder = root.appendingPathComponent("recoverable", isDirectory: true)
+            try fm.createDirectory(at: recoveryFolder, withIntermediateDirectories: false)
+            controller.navigate(recoveryFolder)
+            try await controller.waitForFolderQA { !controller.model.isLoading && controller.watcherStatus == .active }
+            let previousWatcher = try { () throws -> DirectoryWatcher in
+                guard let watcher = controller.watcher else { throw CocoaError(.validationMissingMandatoryProperty) }
+                return watcher
+            }()
+            try fm.removeItem(at: recoveryFolder)
+            try await controller.waitForFolderQA { controller.model.failure == .notFound }
+            try fm.createDirectory(at: recoveryFolder, withIntermediateDirectories: false)
+            try Data().write(to: recoveryFolder.appendingPathComponent("recovered.txt"))
+            controller.retryButton.performClick(nil)
+            try await controller.waitForFolderQA {
+                !controller.model.isLoading && controller.watcherStatus == .active
+                    && controller.watcher !== previousWatcher && controller.model.items.map(\.name) == ["recovered.txt"]
+            }
+            try Data().write(to: recoveryFolder.appendingPathComponent("noticed.txt"))
+            try await controller.waitForFolderQA { controller.model.items.contains { $0.name == "noticed.txt" } }
+            checks["folderReplacementRestoresAutomaticRefresh"] = controller.recoveryActions.isHidden
             let result: [String: Any] = ["checks": checks, "diagnostics": diagnostics,
                 "language": Locale.preferredLanguages.first ?? "unknown", "theme": dark ? "dark" : "light",
                 "os": ProcessInfo.processInfo.operatingSystemVersionString]
@@ -4658,6 +4687,13 @@ extension BrowserWindow {
         } catch {
             fputs("M2 UI verification failed: \(error)\n", stderr)
             DispatchQueue.main.async { exit(1) }
+        }
+    }
+    private func waitForFolderQA(_ condition: () -> Bool) async throws {
+        let deadline = ContinuousClock.now + .seconds(8)
+        while !condition() {
+            guard ContinuousClock.now < deadline else { throw CocoaError(.validationMissingMandatoryProperty) }
+            try await Task.sleep(for: .milliseconds(20))
         }
     }
     private static func elapsed(_ start: ContinuousClock.Instant) -> Double {
