@@ -696,7 +696,10 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
                 locationButton(L("사용자 폴더", "User Folder"), symbol: "person.crop.circle", url: FileManager.default.homeDirectoryForCurrentUser, in: sidebar)
                 locationButton(L("응용 프로그램", "Applications"), symbol: "square.grid.2x2", url: URL(fileURLWithPath: "/Applications"), in: sidebar)
                 for location in cloudLocations { locationButton(location.name, symbol: "cloud", url: location.url, in: sidebar) }
-                for volume in volumes { locationButton(volume.name, symbol: "externaldrive", url: volume.url, in: sidebar) }
+                for volume in volumes {
+                    locationButton(volume.name, symbol: volume.isLocal == false ? "network" : "externaldrive",
+                                   url: volume.url, in: sidebar)
+                }
             }
         }
     }
@@ -712,7 +715,7 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         }
         if preferences.showHomeVolumes {
             homeSection(L("드라이브", "Drives"), expanded: preferences.homeVolumesExpanded, action: #selector(toggleHomeVolumesExpanded(_:)))
-            if preferences.homeVolumesExpanded { for volume in volumes {
+            if preferences.homeVolumesExpanded { for volume in volumes where volume.isLocal != false {
                 let card = VolumeCardView(); card.orientation = .vertical; card.alignment = .leading; card.spacing = 6
                 card.edgeInsets = NSEdgeInsets(top: 12, left: 14, bottom: 12, right: 14)
                 homeView.addArrangedSubview(card)
@@ -728,6 +731,13 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
                     card.addArrangedSubview(meter); meter.widthAnchor.constraint(equalTo: card.widthAnchor, constant: -28).isActive = true
                 }
             } }
+            let networkVolumes = volumes.filter { $0.isLocal == false }
+            if preferences.homeVolumesExpanded && !networkVolumes.isEmpty {
+                section(L("네트워크 위치", "Network Locations"), in: homeView)
+                for volume in networkVolumes {
+                    locationButton(volume.name, symbol: "network", url: volume.url, in: homeView)
+                }
+            }
         }
         if preferences.showHomeRecent {
             homeSection(L("최근 위치", "Recent Locations"), expanded: preferences.homeRecentExpanded, action: #selector(toggleHomeRecentExpanded(_:)))
@@ -4673,6 +4683,34 @@ extension BrowserWindow {
             try Data().write(to: recoveryFolder.appendingPathComponent("noticed.txt"))
             try await controller.waitForFolderQA { controller.model.items.contains { $0.name == "noticed.txt" } }
             checks["folderReplacementRestoresAutomaticRefresh"] = controller.recoveryActions.isHidden
+            await controller.volumeTask?.value
+            let shareName = "QA Network Share"
+            let network = MountedVolume(url: recoveryFolder, name: shareName, isLocal: false)
+            let local = MountedVolume(url: target, name: "QA Local Disk", isLocal: true)
+            controller.volumes = [network, local]
+            controller.goHome(nil)
+            let networkButton = controller.homeView.arrangedSubviews.compactMap { $0 as? LocationButton }
+                .first { $0.url == network.url }
+            let homeCards = controller.homeView.arrangedSubviews.compactMap { $0 as? VolumeCardView }
+                .flatMap { $0.arrangedSubviews.compactMap { $0 as? LocationButton } }
+            checks["homeNetworkLocationOpensMountedPath"] = networkButton?.accessibilityLabel() == shareName
+                && homeCards.contains { $0.url == local.url } && !homeCards.contains { $0.url == network.url }
+            networkButton?.performClick(nil)
+            checks["homeNetworkLocationOpensMountedPath"] = checks["homeNetworkLocationOpensMountedPath"] == true
+                && controller.model.location == network.url
+            controller.goHome(nil)
+            func showsHomeVolumeEntries() -> Bool {
+                controller.homeView.arrangedSubviews.contains {
+                    ($0 as? LocationButton)?.title == shareName || $0 is VolumeCardView
+                }
+            }
+            preferences.setHomeSectionExpanded(.volumes, expanded: false)
+            let hidesWhenCollapsed = !showsHomeVolumeEntries()
+            preferences.setHomeSectionExpanded(.volumes, expanded: true)
+            let restoresWhenExpanded = showsHomeVolumeEntries()
+            preferences.setSection(.volumes, visible: false)
+            checks["homeVolumesSettingHidesNetworkLocations"] = hidesWhenCollapsed
+                && restoresWhenExpanded && !showsHomeVolumeEntries()
             let result: [String: Any] = ["checks": checks, "diagnostics": diagnostics,
                 "language": Locale.preferredLanguages.first ?? "unknown", "theme": dark ? "dark" : "light",
                 "os": ProcessInfo.processInfo.operatingSystemVersionString]

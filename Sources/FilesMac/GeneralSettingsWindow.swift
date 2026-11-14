@@ -10,7 +10,7 @@ final class GeneralSettingsWindow: NSWindowController {
     private let alwaysOpenDualPaneInNewTab = NSButton(checkboxWithTitle: L("새 탭을 dual pane으로 열기", "Open New Tabs with Dual Pane"), target: nil, action: nil)
     private let alwaysSwitchToNewlyOpenedTab = NSButton(checkboxWithTitle: L("새 탭으로 즉시 전환", "Switch to Newly Opened Tabs"), target: nil, action: nil)
     private let favorites = NSButton(checkboxWithTitle: L("홈에 빠른 접근 표시", "Show Quick Access on Home"), target: nil, action: nil)
-    private let volumes = NSButton(checkboxWithTitle: L("홈에 드라이브 표시", "Show Drives on Home"), target: nil, action: nil)
+    private let volumes = NSButton(checkboxWithTitle: L("홈에 드라이브 및 네트워크 위치 표시", "Show Drives and Network Locations on Home"), target: nil, action: nil)
     private let recent = NSButton(checkboxWithTitle: L("홈에 최근 위치 표시", "Show Recent Locations on Home"), target: nil, action: nil)
     private let startupLocation = NSTextField(wrappingLabelWithString: "")
     private let sizeUnit = NSPopUpButton()

@@ -4,6 +4,8 @@
 
 ## 이번 구현 단위
 
+마운트된 네트워크 볼륨을 홈의 네트워크 위치에서 열 수 있다. [M7 홈 네트워크 위치](verification/m7/INCREMENT_35.md)
+
 Windows 원본 탐색 화면의 XAML과 macOS 캡처를 대조하고 상태 표시줄의 개발 단계 문구를 제거했다. [탐색 화면 대조](reference/UI_BASELINE.md)
 
 폴더 감시 복구와 최근 파일 작업 변경을 포함한 0.1.0 유니버설 프리뷰를 다시 빌드했다. [개발 프리뷰 확인](verification/m7/PREVIEW_0.1.0.md)
