@@ -5,3 +5,10 @@ macOS 15의 Apple Silicon 및 Intel 푸시·수동 CI가 유니버설 개발 DMG
 Apple Silicon macOS 27.2에서 기존 검증 이미지로 새 실행 경로를 확인했다. 20회 모두 지정 폴더의 창과 arm64 프로세스를 확인했다. YAML 파싱과 설치 모드에서의 잘못된 `--launch-services` 사용 거부도 검사했다.
 
 이 검증은 개발 이미지의 설치·실행 경로다. 정식 서명·공증과 Gatekeeper, 최소 macOS 14, VoiceOver와 전체 수동 동선은 출시 검증 현황에서 추적한다.
+
+[커밋 `a20a323`의 실행](https://github.com/taro6222/files-for-mac/actions/runs/43642325995)에서 두 잡이 모두 통과했다. 각 잡에서 20회 모두 지정 폴더 창과 기대한 프로세스 아키텍처를 확인했다. 아래 시간은 OS 캐시를 공유하는 환경에서 Launch Services 호출부터 창 확인까지다.
+
+| 러너 | 실행 아키텍처 | 20회 p95 | 최대 |
+|---|---|---:|---:|
+| macOS 15.8.2 (24H232) | arm64 | 468 ms | 820 ms |
+| macOS 15.7.9 (24G830) | x86_64 | 1,986 ms | 4,126 ms |
