@@ -16,11 +16,15 @@ export FILES_UNDO_INTERRUPTION_ROOT="$root"
 export CLANG_MODULE_CACHE_PATH="$PWD/.build/ModuleCache" SWIFT_TMPDIR=/tmp
 test_args=(--filter moveUndoInterruptionWorker -Xswiftc -load-plugin-library
   -Xswiftc /Library/Developer/CommandLineTools/usr/lib/swift/host/plugins/testing/libTestingMacros.dylib)
-status=0
-FILES_UNDO_INTERRUPTION_PHASE=interrupt swift test "${test_args[@]}" > "$root/interrupt.log" 2>&1 || status=$?
-if [[ "$status" == 0 || ! -f "$root/copy-published" ]]; then
-  cat "$root/interrupt.log"
-  echo "Expected the test worker to be killed after copy publication." >&2
-  exit 1
-fi
-FILES_UNDO_INTERRUPTION_PHASE=resume swift test "${test_args[@]}"
+for checkpoint in copy-published backup-pending; do
+  export FILES_UNDO_INTERRUPTION_CHECKPOINT="$checkpoint"
+  echo "Checking interruption at $checkpoint"
+  status=0
+  FILES_UNDO_INTERRUPTION_PHASE=interrupt swift test "${test_args[@]}" > "$root/$checkpoint.log" 2>&1 || status=$?
+  if [[ "$status" == 0 || ! -f "$root/$checkpoint/worker-pid" ]]; then
+    cat "$root/$checkpoint.log"
+    echo "Expected the test worker to be killed at $checkpoint." >&2
+    exit 1
+  fi
+  FILES_UNDO_INTERRUPTION_PHASE=resume swift test "${test_args[@]}"
+done
