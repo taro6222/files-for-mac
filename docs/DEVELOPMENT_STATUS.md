@@ -4,6 +4,8 @@
 
 ## 이번 구현 단위
 
+명령 팔레트가 연 브라우저 창에서 명령을 실행하고, Esc로 닫으면 이전 컨트롤에 초점을 돌려준다. [M7 명령 팔레트 키보드 검증](verification/m7/INCREMENT_38.md)
+
 사이드바를 숨겨도 방향키와 Return으로 홈에서 네트워크 위치를 열고 파일 보기에 초점을 옮길 수 있다. [M7 홈 키보드 탐색](verification/m7/INCREMENT_37.md)
 
 SMB 마운트가 응답하지 않을 때 검증 명령이 시간 제한을 적용하고 실패를 반환한다. [M7 SMB 마운트와 검증 제한 시간](verification/m7/INCREMENT_36.md)

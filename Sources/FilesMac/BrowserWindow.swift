@@ -4788,6 +4788,38 @@ extension BrowserWindow {
             preferences.setSection(.volumes, visible: false)
             checks["homeVolumesSettingHidesNetworkLocations"] = hidesWhenCollapsed
                 && restoresWhenExpanded && !showsHomeVolumeEntries()
+            let palette = controller.commandPalette
+            func pathEditorIsFocused() -> Bool {
+                guard let editor = controller.pathField.currentEditor() else { return false }
+                return window.firstResponder === editor
+            }
+            func sendPaletteKey(_ keyCode: UInt16, characters: String) {
+                guard let panel = palette.window, let event = NSEvent.keyEvent(
+                    with: .keyDown, location: .zero, modifierFlags: [], timestamp: 0,
+                    windowNumber: panel.windowNumber, context: nil, characters: characters,
+                    charactersIgnoringModifiers: characters, isARepeat: false, keyCode: keyCode
+                ) else { return }
+                panel.sendEvent(event)
+            }
+            controller.focusPath(nil)
+            controller.showCommandPalette(nil)
+            try await Task.sleep(for: .milliseconds(50))
+            palette.qaSetQuery(L("이름 변경…", "Rename…"))
+            sendPaletteKey(36, characters: "\r")
+            checks["paletteRejectsUnavailableCommand"] = palette.window?.isVisible == true
+                && palette.qaStatus == L("현재 문맥에서 사용할 수 없습니다", "Unavailable in the current context")
+            sendPaletteKey(53, characters: "\u{1b}")
+            try await Task.sleep(for: .milliseconds(100))
+            checks["paletteEscapeRestoresPathEditor"] = palette.window?.isVisible == false && pathEditorIsFocused()
+            controller.navigate(recoveryFolder)
+            try await settle()
+            controller.focusFiles(nil)
+            controller.showCommandPalette(nil)
+            try await Task.sleep(for: .milliseconds(50))
+            palette.qaSetQuery(L("경로 입력", "Go to Path"))
+            sendPaletteKey(36, characters: "\r")
+            try await Task.sleep(for: .milliseconds(100))
+            checks["paletteReturnExecutesInBrowser"] = palette.window?.isVisible == false && pathEditorIsFocused()
             let result: [String: Any] = ["checks": checks, "diagnostics": diagnostics,
                 "language": Locale.preferredLanguages.first ?? "unknown", "theme": dark ? "dark" : "light",
                 "os": ProcessInfo.processInfo.operatingSystemVersionString]

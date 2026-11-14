@@ -9,17 +9,29 @@ struct CommandPaletteEntry {
     let item: NSMenuItem
 
     var searchableText: String { (category + " " + title).folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current) }
-    var isEnabled: Bool {
-        guard let action = item.action else { return false }
-        let target = item.target ?? NSApp.target(forAction: action, to: nil, from: item)
+    var isEnabled: Bool { isEnabled(for: resolvedTarget(in: nil)) }
+
+    func resolvedTarget(in owner: NSWindow?) -> AnyObject? {
+        guard let action = item.action else { return nil }
+        if let target = item.target { return target as AnyObject }
+        if let owner {
+            var responder = owner.firstResponder
+            while let candidate = responder {
+                if candidate.responds(to: action) { return candidate }
+                responder = candidate.nextResponder
+            }
+            if let controller = owner.windowController, controller.responds(to: action) { return controller }
+            if let delegate = NSApp.delegate, delegate.responds(to: action) { return delegate }
+            return NSApp.responds(to: action) ? NSApp : nil
+        }
+        return NSApp.target(forAction: action, to: nil, from: item) as AnyObject?
+    }
+
+    func isEnabled(for target: AnyObject?) -> Bool {
         guard let target else { return false }
         if let validator = target as? NSMenuItemValidation { return validator.validateMenuItem(item) }
         if let validator = target as? NSUserInterfaceValidations { return validator.validateUserInterfaceItem(item) }
         return item.isEnabled
-    }
-    func execute() {
-        guard isEnabled, let action = item.action else { NSSound.beep(); return }
-        NSApp.sendAction(action, to: item.target, from: item)
     }
 }
 
@@ -58,17 +70,20 @@ enum CommandPaletteCatalog {
 }
 
 @MainActor
-final class CommandPaletteWindow: NSWindowController, NSTableViewDataSource, NSTableViewDelegate, NSTextFieldDelegate {
+final class CommandPaletteWindow: NSWindowController, NSWindowDelegate, NSTableViewDataSource, NSTableViewDelegate, NSTextFieldDelegate {
     private let search = NSTextField()
     private let table = NSTableView()
     private let status = NSTextField(labelWithString: "")
     private var all: [CommandPaletteEntry] = []
     private var visible: [CommandPaletteEntry] = []
+    private weak var browserWindow: NSWindow?
+    private weak var previousResponder: NSResponder?
 
     convenience init() {
         let panel = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 620, height: 420),
                             styleMask: [.titled, .closable, .utilityWindow], backing: .buffered, defer: false)
         self.init(window: panel); panel.title = L("명령 팔레트", "Command Palette"); panel.isReleasedWhenClosed = false
+        panel.delegate = self
         buildUI(); reloadCatalog()
     }
     private func buildUI() {
@@ -78,15 +93,31 @@ final class CommandPaletteWindow: NSWindowController, NSTableViewDataSource, NST
         search.placeholderString = L("명령 검색", "Search commands"); search.delegate = self; search.setAccessibilityLabel(L("명령 검색", "Search commands")); stack.addArrangedSubview(search)
         let column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("command")); column.resizingMask = .autoresizingMask; table.addTableColumn(column)
         table.headerView = nil; table.rowHeight = 36; table.delegate = self; table.dataSource = self; table.target = self; table.doubleAction = #selector(runSelected(_:))
+        table.setAccessibilityLabel(L("검색 결과", "Command Results"))
         let scroll = NSScrollView(); scroll.documentView = table; scroll.hasVerticalScroller = true; stack.addArrangedSubview(scroll)
         status.textColor = .secondaryLabelColor; status.font = .systemFont(ofSize: 11); stack.addArrangedSubview(status)
     }
     func present(relativeTo owner: NSWindow?) {
+        if window?.isVisible != true {
+            browserWindow = owner
+            if let editor = owner?.firstResponder as? NSTextView, editor.isFieldEditor {
+                previousResponder = editor.delegate as? NSControl
+            } else {
+                previousResponder = owner?.firstResponder
+            }
+        }
         reloadCatalog(); search.stringValue = ""; applyFilter(); window?.center(); showWindow(nil); window?.makeKeyAndOrderFront(nil); window?.makeFirstResponder(search)
+    }
+    func windowWillClose(_ notification: Notification) {
+        defer { browserWindow = nil; previousResponder = nil }
+        guard let owner = browserWindow, owner.isVisible else { return }
+        owner.makeKeyAndOrderFront(nil)
+        if let previousResponder { owner.makeFirstResponder(previousResponder) }
     }
     private func reloadCatalog() { all = CommandPaletteCatalog.entries(from: NSApp.mainMenu) }
     func controlTextDidChange(_ obj: Notification) { applyFilter() }
     func control(_ control: NSControl, textView: NSTextView, doCommandBy selector: Selector) -> Bool {
+        guard !textView.hasMarkedText() else { return false }
         if selector == #selector(NSResponder.moveDown(_:)) { moveSelection(1); return true }
         if selector == #selector(NSResponder.moveUp(_:)) { moveSelection(-1); return true }
         if selector == #selector(NSResponder.insertNewline(_:)) { runSelected(nil); return true }
@@ -101,12 +132,30 @@ final class CommandPaletteWindow: NSWindowController, NSTableViewDataSource, NST
         guard visible.indices.contains(row) else { return nil }; let entry = visible[row], id = NSUserInterfaceItemIdentifier("CommandCell")
         let cell = tableView.makeView(withIdentifier: id, owner: self) as? NSTableCellView ?? { let c = NSTableCellView(); c.identifier = id; let t = NSTextField(labelWithString: ""); t.translatesAutoresizingMaskIntoConstraints = false; c.addSubview(t); c.textField = t; NSLayoutConstraint.activate([t.leadingAnchor.constraint(equalTo: c.leadingAnchor, constant: 8), t.trailingAnchor.constraint(equalTo: c.trailingAnchor, constant: -8), t.centerYAnchor.constraint(equalTo: c.centerYAnchor)]); return c }()
         cell.textField?.stringValue = "\(entry.category)  ›  \(entry.title)" + (entry.shortcut.isEmpty ? "" : "    \(entry.shortcut)")
-        cell.textField?.textColor = entry.isEnabled ? .labelColor : .tertiaryLabelColor; return cell
+        cell.textField?.textColor = entry.isEnabled(for: entry.resolvedTarget(in: browserWindow)) ? .labelColor : .tertiaryLabelColor
+        return cell
     }
-    @objc private func runSelected(_ sender: Any?) { guard visible.indices.contains(table.selectedRow) else { return }; let entry = visible[table.selectedRow]; guard entry.isEnabled else { status.stringValue = L("현재 문맥에서 사용할 수 없습니다", "Unavailable in the current context"); NSSound.beep(); return }; close(); entry.execute() }
+    @objc private func runSelected(_ sender: Any?) {
+        guard visible.indices.contains(table.selectedRow) else { return }
+        let entry = visible[table.selectedRow]
+        let target = entry.resolvedTarget(in: browserWindow)
+        guard let action = entry.item.action, entry.isEnabled(for: target) else {
+            status.stringValue = L("현재 문맥에서 사용할 수 없습니다", "Unavailable in the current context")
+            NSAccessibility.post(element: status, notification: .valueChanged)
+            NSSound.beep()
+            return
+        }
+        close()
+        NSApp.sendAction(action, to: target, from: entry.item)
+    }
 #if DEBUG
     var qaVisibleCount: Int { visible.count }
     var qaSearchFocused: Bool { search.currentEditor() != nil }
-    func qaSetQuery(_ value: String) { search.stringValue = value; applyFilter() }
+    func qaSetQuery(_ value: String) {
+        search.stringValue = value
+        search.currentEditor()?.string = value
+        applyFilter()
+    }
+    var qaStatus: String { status.stringValue }
 #endif
 }
