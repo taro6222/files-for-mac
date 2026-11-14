@@ -30,6 +30,7 @@ final class SecondaryBrowserPane: NSView, NSTableViewDataSource, NSTableViewDele
     private var pendingRefresh = false
     private var rendering = false
     private var autoFitObservedLoading = false
+    private var folderSizeTask: Task<Void, Never>?
     private var pendingEntrySelection: URL?
     private var detailRows: [DetailDisplayRow] = []
     private let dateFormatter: DateFormatter = { let value = DateFormatter(); value.dateStyle = .medium; value.timeStyle = .short; return value }()
@@ -125,7 +126,7 @@ final class SecondaryBrowserPane: NSView, NSTableViewDataSource, NSTableViewDele
             case "created": return item.created.map(dateFormatter.string) ?? "—"
             case "modified": return item.modified.map(dateFormatter.string) ?? "—"
             case "kind": return item.kind
-            case "size": return item.isDirectory ? "—" : item.size.map { formatByteCount($0, unit: preferences.sizeUnit) } ?? "—"
+            case "size": return item.isDirectory && !preferences.calculateFolderSizes ? "—" : item.size.map { formatByteCount($0, unit: preferences.sizeUnit) } ?? "—"
             default: return ""
             }
         }
@@ -139,7 +140,10 @@ final class SecondaryBrowserPane: NSView, NSTableViewDataSource, NSTableViewDele
     }
     func stopLoading() { model.cancelLoad() }
     func setViewMode(_ mode: BrowserViewMode) { activate(); setViewModeAndPersist(mode) }
-    func applyPreferences() { applyBackground(); render() }
+    func applyPreferences() {
+        applyBackground(); render()
+        if preferences.calculateFolderSizes { startFolderSizeCalculationIfNeeded() } else { folderSizeTask?.cancel(); folderSizeTask = nil }
+    }
     func setContextMenu(_ menu: NSMenu?) { gridView.contextMenu = menu; listView.contextMenu = menu; columnView.contextMenu = menu }
     func openSelected() {
         if renderedViewMode == .grid, let item = gridView.selectedItems.first { openGridItem(item) }
@@ -149,6 +153,7 @@ final class SecondaryBrowserPane: NSView, NSTableViewDataSource, NSTableViewDele
     }
     func open(_ url: URL?) { activate(); navigate(url) }
     func shutdown() {
+        folderSizeTask?.cancel()
         watcherTask?.cancel(); watcherTask = nil
         if let watcher { Task.detached { watcher.stop() } }
         watcher = nil; watchedURL = nil; model.onChange = nil; model.cancelLoad()
@@ -254,6 +259,18 @@ final class SecondaryBrowserPane: NSView, NSTableViewDataSource, NSTableViewDele
         scroll.drawsBackground = !enabled; table.backgroundColor = enabled ? .clear : .controlBackgroundColor
         gridView.applyBackground(enabled: enabled); listView.applyBackground(enabled: enabled); columnView.applyBackground(enabled: enabled)
     }
+    private func startFolderSizeCalculationIfNeeded() {
+        guard folderSizeTask == nil else { return }
+        guard preferences.calculateFolderSizes, !model.isLoading, let location = model.location else { return }
+        let folders = model.items.filter(\.isBrowsable).map(\.url)
+        guard !folders.isEmpty else { return }
+        folderSizeTask = Task { [weak self] in
+            let sizes = await FolderSizeCalculator().sizes(of: folders)
+            guard !Task.isCancelled else { return }
+            self?.model.applyDirectorySizes(sizes, at: location)
+            self?.folderSizeTask = nil
+        }
+    }
     private func button(_ symbol: String, _ action: Selector) -> NSButton {
         let button = NSButton(); button.image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)
         button.title = ""; button.imagePosition = .imageOnly; button.bezelStyle = .texturedRounded; button.target = self; button.action = action; return button
@@ -270,7 +287,10 @@ final class SecondaryBrowserPane: NSView, NSTableViewDataSource, NSTableViewDele
         }
         model.savePosition(selection: selection, scrollOffset: offset)
     }
-    private func navigate(_ url: URL?) { savePosition(); model.navigate(url); applyFolderViewPreference() }
+    private func navigate(_ url: URL?) {
+        folderSizeTask?.cancel(); folderSizeTask = nil
+        savePosition(); model.navigate(url); applyFolderViewPreference()
+    }
     private var effectiveViewSize: BrowserViewSize {
         model.location.flatMap { preferences.folderViewPreference(for: $0)?.size } ?? preferences.viewSize
     }
@@ -288,6 +308,7 @@ final class SecondaryBrowserPane: NSView, NSTableViewDataSource, NSTableViewDele
         let autoFitLoadCompleted = autoFitObservedLoading && !model.isLoading
         autoFitObservedLoading = model.isLoading
         render()
+        if autoFitLoadCompleted { startFolderSizeCalculationIfNeeded() }
         if autoFitLoadCompleted && preferences.autoSizeColumnsInDetailsLayout && renderedViewMode == .details && !model.items.isEmpty { autoFitColumns() }
         updateWatcher()
         if pendingRefresh && !model.isLoading && !model.wasCancelled {
@@ -358,7 +379,7 @@ final class SecondaryBrowserPane: NSView, NSTableViewDataSource, NSTableViewDele
         case "created": cell.textField?.stringValue = item.created.map(dateFormatter.string) ?? "—"
         case "modified": cell.textField?.stringValue = item.modified.map(dateFormatter.string) ?? "—"
         case "kind": cell.textField?.stringValue = item.kind
-        case "size": cell.textField?.stringValue = item.isDirectory ? "—" : item.size.map { formatByteCount($0, unit: preferences.sizeUnit) } ?? "—"
+        case "size": cell.textField?.stringValue = item.isDirectory && !preferences.calculateFolderSizes ? "—" : item.size.map { formatByteCount($0, unit: preferences.sizeUnit) } ?? "—"
         default: break
         }
         return cell

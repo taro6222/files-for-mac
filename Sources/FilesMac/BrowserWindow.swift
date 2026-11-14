@@ -102,6 +102,7 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
     private var gitChangedPaths: [String] = []
     private var gitObservedLoading = false
     private var autoFitObservedLoading = false
+    private var folderSizeTask: Task<Void, Never>?
     private let cloudProvider: CloudLocationProvider
     static private(set) var entryOperationRunning = false
     private static var operationJournalDirectory: URL {
@@ -190,7 +191,7 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
                 if let watcher = self.watcher { Task.detached { watcher.stop() } }
                 self.watcher = nil
                 self.model.onChange = nil; self.model.cancelLoad()
-                self.completionTask?.cancel(); self.volumeTask?.cancel(); self.cloudTask?.cancel(); self.gitTask?.cancel()
+                self.completionTask?.cancel(); self.volumeTask?.cancel(); self.cloudTask?.cancel(); self.gitTask?.cancel(); self.folderSizeTask?.cancel()
                 self.secondaryPane?.shutdown()
                 if let token = self.preferencesToken { self.preferences.removeObserver(token) }
                 for token in self.observerTokens {
@@ -691,6 +692,7 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         model.savePosition(selection: ids, scrollOffset: offset)
     }
     private func navigate(_ url: URL?) {
+        folderSizeTask?.cancel(); folderSizeTask = nil
         completionTask?.cancel(); completionGeneration += 1
         suggestions = []; pathField.removeAllItems()
         pathField.stringValue = url?.path ?? ""
@@ -762,6 +764,7 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         }
         detailRows = detailDisplayRows(items: model.items, grouping: model.grouping)
         table.reloadData()
+        if autoFitLoadCompleted { startFolderSizeCalculationIfNeeded() }
         if autoFitLoadCompleted && preferences.autoSizeColumnsInDetailsLayout && primaryRenderedViewMode == .details && !model.items.isEmpty {
             autoFitColumns(nil)
         }
@@ -849,7 +852,7 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         case "created": cell.textField?.stringValue = item.created.map(dateFormatter.string) ?? "—"
         case "modified": cell.textField?.stringValue = item.modified.map(dateFormatter.string) ?? "—"
         case "kind": cell.textField?.stringValue = item.kind == "Folder" ? L("폴더", "Folder") : (item.kind == "File" ? L("파일", "File") : item.kind)
-        case "size": cell.textField?.stringValue = item.isDirectory ? "—" : item.size.map { formatByteCount($0, unit: preferences.sizeUnit) } ?? "—"
+        case "size": cell.textField?.stringValue = item.isDirectory && !preferences.calculateFolderSizes ? "—" : item.size.map { formatByteCount($0, unit: preferences.sizeUnit) } ?? "—"
         default: break
         }
         cell.textField?.textColor = item.isHidden ? .secondaryLabelColor : .labelColor
@@ -1262,7 +1265,7 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
             case "created": return item.created.map(dateFormatter.string) ?? "—"
             case "modified": return item.modified.map(dateFormatter.string) ?? "—"
             case "kind": return item.kind == "Folder" ? L("폴더", "Folder") : (item.kind == "File" ? L("파일", "File") : item.kind)
-            case "size": return item.isDirectory ? "—" : item.size.map { formatByteCount($0, unit: preferences.sizeUnit) } ?? "—"
+            case "size": return item.isDirectory && !preferences.calculateFolderSizes ? "—" : item.size.map { formatByteCount($0, unit: preferences.sizeUnit) } ?? "—"
             default: return ""
             }
         }
@@ -2094,6 +2097,7 @@ extension BrowserWindow {
         buildSidebar()
         rebuildToolbar(force: true)
         secondaryPane?.applyPreferences()
+        if preferences.calculateFolderSizes { startFolderSizeCalculationIfNeeded() } else { folderSizeTask?.cancel(); folderSizeTask = nil }
         if model.location == nil { buildHome() }
         if model.showHidden != preferences.showHidden {
             savePosition(); model.showHidden = preferences.showHidden; model.reload()
@@ -2110,6 +2114,18 @@ extension BrowserWindow {
         scroll.drawsBackground = !enabled; table.backgroundColor = enabled ? .clear : .controlBackgroundColor
         gridView.applyBackground(enabled: enabled); listView.applyBackground(enabled: enabled); columnView.applyBackground(enabled: enabled)
         secondaryPane?.applyPreferences()
+    }
+    private func startFolderSizeCalculationIfNeeded() {
+        guard folderSizeTask == nil else { return }
+        guard preferences.calculateFolderSizes, !model.isLoading, let location = model.location else { return }
+        let folders = model.items.filter(\.isBrowsable).map(\.url)
+        guard !folders.isEmpty else { return }
+        folderSizeTask = Task { [weak self] in
+            let sizes = await FolderSizeCalculator().sizes(of: folders)
+            guard !Task.isCancelled else { return }
+            self?.model.applyDirectorySizes(sizes, at: location)
+            self?.folderSizeTask = nil
+        }
     }
     @objc private func clearRecent(_ sender: Any?) { preferences.clearRecent() }
     @objc private func moveFavoriteUp(_ sender: NSMenuItem) {
@@ -2726,12 +2742,13 @@ extension BrowserWindow {
                 let sizeUnitBefore = delegate.qaGeneralSizeUnit; let newTabBefore = delegate.qaGeneralOpenFoldersInNewTab
                 let defaultSortBefore = delegate.qaGeneralDefaultSortDirectoryPlacement
                 let autoSizeColumnsBefore = delegate.qaGeneralAutoSizeColumnsInDetailsLayout
+                let calculateFolderSizesBefore = delegate.qaGeneralCalculateFolderSizes
                 let startupTabBefore = delegate.qaGeneralOpenNewTabOnStartup
                 let newTabPoliciesBefore = delegate.qaGeneralNewTabPolicies
                 let revealBefore = delegate.qaGeneralScrollToPreviousFolderOnUp
                 let extensionWarningBefore = delegate.qaGeneralShowFileExtensionWarning
                 let contextMenuBefore = delegate.qaGeneralContextMenuStates
-                delegate.qaToggleGeneralWidgets(); delegate.qaToggleGeneralOpenNewTabOnStartup(); delegate.qaToggleGeneralNewTabPolicies(); delegate.qaToggleGeneralSizeUnit(); delegate.qaCycleGeneralDefaultSortDirectoryPlacement(); delegate.qaToggleGeneralAutoSizeColumnsInDetailsLayout(); delegate.qaToggleGeneralOpenFoldersInNewTab(); delegate.qaToggleGeneralScrollToPreviousFolderOnUp(); delegate.qaToggleGeneralShowFileExtensionWarning(); delegate.qaToggleGeneralContextMenuItems(); let widgetsAfter = delegate.qaGeneralWidgetStates
+                delegate.qaToggleGeneralWidgets(); delegate.qaToggleGeneralOpenNewTabOnStartup(); delegate.qaToggleGeneralNewTabPolicies(); delegate.qaToggleGeneralSizeUnit(); delegate.qaCycleGeneralDefaultSortDirectoryPlacement(); delegate.qaToggleGeneralAutoSizeColumnsInDetailsLayout(); delegate.qaToggleGeneralCalculateFolderSizes(); delegate.qaToggleGeneralOpenFoldersInNewTab(); delegate.qaToggleGeneralScrollToPreviousFolderOnUp(); delegate.qaToggleGeneralShowFileExtensionWarning(); delegate.qaToggleGeneralContextMenuItems(); let widgetsAfter = delegate.qaGeneralWidgetStates
                 let contextMenuAfter = delegate.qaGeneralContextMenuStates
                 let contextMenusToggled = contextMenuBefore?.count == contextMenuAfter?.count
                     && zip(contextMenuBefore ?? [], contextMenuAfter ?? []).allSatisfy { $0 != $1 }
@@ -2740,6 +2757,7 @@ extension BrowserWindow {
                     && delegate.qaGeneralSizeUnit != sizeUnitBefore
                     && delegate.qaGeneralDefaultSortDirectoryPlacement != defaultSortBefore
                     && delegate.qaGeneralAutoSizeColumnsInDetailsLayout != autoSizeColumnsBefore
+                    && delegate.qaGeneralCalculateFolderSizes != calculateFolderSizesBefore
                     && delegate.qaGeneralOpenNewTabOnStartup != startupTabBefore
                     && delegate.qaGeneralNewTabPolicies?.0 != newTabPoliciesBefore?.0
                     && delegate.qaGeneralNewTabPolicies?.1 != newTabPoliciesBefore?.1
@@ -2765,6 +2783,11 @@ extension BrowserWindow {
                 controller.navigate(fixture)
                 let paneSourceWait = ContinuousClock.now
                 while controller.model.isLoading && paneSourceWait.duration(to: .now) < .seconds(5) { try await Task.sleep(for: .milliseconds(20)) }
+                preferences.setCalculateFolderSizes(true)
+                let folderSizeWait = ContinuousClock.now
+                while controller.model.items.first(where: { $0.name == "000-grid-folder" })?.size != 21 && folderSizeWait.duration(to: .now) < .seconds(5) { try await Task.sleep(for: .milliseconds(20)) }
+                checks["folderSizeCalculation"] = controller.model.items.first(where: { $0.name == "000-grid-folder" })?.size == 21
+                preferences.setCalculateFolderSizes(false)
                 controller.clearSelection(nil)
                 let expectedPaneURL = controller.contextFolderURL
                 controller.openInNewPane(nil); try await Task.sleep(for: .milliseconds(50))
@@ -2782,7 +2805,7 @@ extension BrowserWindow {
                 controller.toggleDualPane(nil); checks["toggleDualPaneOpens"] = controller.workspaceSnapshot().isSplit
                 controller.closeSecondaryPane(nil)
                 try capture("general-settings", view: delegate.qaGeneralSettingsContentView)
-                delegate.qaToggleGeneralWidgets(); delegate.qaToggleGeneralOpenNewTabOnStartup(); delegate.qaToggleGeneralNewTabPolicies(); delegate.qaToggleGeneralSizeUnit(); delegate.qaCycleGeneralDefaultSortDirectoryPlacement(); delegate.qaToggleGeneralAutoSizeColumnsInDetailsLayout(); delegate.qaToggleGeneralOpenFoldersInNewTab(); delegate.qaToggleGeneralScrollToPreviousFolderOnUp(); delegate.qaToggleGeneralShowFileExtensionWarning(); delegate.qaToggleGeneralContextMenuItems(); delegate.qaGeneralSettingsContentView?.window?.close(); window.makeKeyAndOrderFront(nil)
+                delegate.qaToggleGeneralWidgets(); delegate.qaToggleGeneralOpenNewTabOnStartup(); delegate.qaToggleGeneralNewTabPolicies(); delegate.qaToggleGeneralSizeUnit(); delegate.qaCycleGeneralDefaultSortDirectoryPlacement(); delegate.qaToggleGeneralAutoSizeColumnsInDetailsLayout(); delegate.qaToggleGeneralCalculateFolderSizes(); delegate.qaToggleGeneralOpenFoldersInNewTab(); delegate.qaToggleGeneralScrollToPreviousFolderOnUp(); delegate.qaToggleGeneralShowFileExtensionWarning(); delegate.qaToggleGeneralContextMenuItems(); delegate.qaGeneralSettingsContentView?.window?.close(); window.makeKeyAndOrderFront(nil)
                 delegate.showArchiveCapabilities(nil); try await Task.sleep(for: .milliseconds(50))
                 checks["archiveCapabilitiesWindow"] = delegate.qaArchiveCapabilitiesVisible
                 try capture("archive-capabilities", view: delegate.qaArchiveCapabilitiesContentView)

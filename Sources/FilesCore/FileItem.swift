@@ -29,6 +29,11 @@ public struct FileItem: Identifiable, Sendable, Equatable {
         return (name as NSString).deletingPathExtension
     }
     public var isBrowsable: Bool { isDirectory && !isPackage }
+    public func replacingSize(_ size: Int64?) -> FileItem {
+        FileItem(url: url, name: name, isDirectory: isDirectory, identity: identity, isPackage: isPackage,
+                 isSymbolicLink: isSymbolicLink, isHidden: isHidden, size: size, created: created,
+                 modified: modified, kind: kind, tags: tags)
+    }
 }
 
 public enum SortField: String, CaseIterable, Codable, Sendable { case name, created, modified, kind, size, tag, path }

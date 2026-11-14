@@ -132,6 +132,16 @@ public final class BrowserModel {
     public func sort(_ order: SortOrder) {
         sortOrder = order; items = order.sorted(items); onChange?()
     }
+    public func applyDirectorySizes(_ sizes: [URL: Int64], at expectedLocation: URL) {
+        guard location?.standardizedFileURL == expectedLocation.standardizedFileURL, !isLoading else { return }
+        var changed = false
+        let updated = items.map { item -> FileItem in
+            guard item.isBrowsable, let size = sizes[item.url.standardizedFileURL], item.size != size else { return item }
+            changed = true; return item.replacingSize(size)
+        }
+        guard changed else { return }
+        items = sortOrder.sorted(updated); onChange?()
+    }
     public func setViewMode(_ mode: BrowserViewMode) {
         guard viewMode != mode else { return }
         viewMode = mode

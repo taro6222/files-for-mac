@@ -589,6 +589,28 @@ private struct DelayedLoader: DirectoryLoading {
     preferences.removeObserver(token)
 }
 
+@Test @MainActor func calculateFolderSizesPreferencePersistsAndAvoidsDuplicateNotifications() {
+    let suite = "folder-size-preference-tests-\(UUID())", defaults = UserDefaults(suiteName: suite)!
+    defer { defaults.removePersistentDomain(forName: suite) }
+    let preferences = BrowserPreferences(defaults: defaults, initialFavorites: [])
+    #expect(!preferences.calculateFolderSizes)
+    var notifications = 0; let token = preferences.observe { notifications += 1 }
+    preferences.setCalculateFolderSizes(true); preferences.setCalculateFolderSizes(true)
+    #expect(BrowserPreferences(defaults: defaults, initialFavorites: []).calculateFolderSizes)
+    #expect(notifications == 1); preferences.removeObserver(token)
+}
+
+@Test func folderSizeCalculatorCountsNestedRegularFilesAndSkipsSymbolicLinks() throws {
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent("folder-size-\(UUID())", isDirectory: true)
+    defer { try? FileManager.default.removeItem(at: root) }
+    let nested = root.appendingPathComponent("nested", isDirectory: true)
+    try FileManager.default.createDirectory(at: nested, withIntermediateDirectories: true)
+    try Data(repeating: 1, count: 7).write(to: root.appendingPathComponent("one.bin"))
+    try Data(repeating: 2, count: 11).write(to: nested.appendingPathComponent("two.bin"))
+    try FileManager.default.createSymbolicLink(at: root.appendingPathComponent("linked.bin"), withDestinationURL: nested.appendingPathComponent("two.bin"))
+    #expect(try FolderSizeCalculator.size(of: root) == 18)
+}
+
 @Test @MainActor func contextMenuVisibilityDefaultsPersistAndAvoidsDuplicateNotifications() {
     let suite = "context-menu-visibility-tests-\(UUID())", defaults = UserDefaults(suiteName: suite)!
     defer { defaults.removePersistentDomain(forName: suite) }
@@ -661,6 +683,7 @@ private struct DelayedLoader: DirectoryLoading {
     source.setOpenNewTabOnStartup(true); source.setLastSessionSelectedTabIndex(2)
     source.setAlwaysOpenDualPaneInNewTab(true); source.setAlwaysSwitchToNewlyOpenedTab(true)
     source.setAppBackgroundPresentation(fit: .fit, opacity: 0.4, horizontal: .trailing, vertical: .top)
+    source.setCalculateFolderSizes(true)
     source.setShowCreatedColumn(true); source.setShowDateColumn(false); source.setShowTypeColumn(false); source.setShowSizeColumn(false); source.setShowGitStatusColumn(true)
     source.setShowFileTagColumn(true); source.setShowPathColumn(true)
     source.setShowCompressionOptions(false); source.setShowOpenTerminal(false); source.setShowCreateFolderWithSelection(false)
@@ -686,6 +709,7 @@ private struct DelayedLoader: DirectoryLoading {
     #expect(destination.alwaysOpenDualPaneInNewTab && destination.alwaysSwitchToNewlyOpenedTab)
     #expect(destination.appBackgroundFit == .fit && destination.appBackgroundOpacity == 0.4)
     #expect(destination.appBackgroundHorizontalAlignment == .trailing && destination.appBackgroundVerticalAlignment == .top)
+    #expect(destination.calculateFolderSizes)
     #expect(destination.showCreatedColumn && !destination.showDateColumn && !destination.showTypeColumn && !destination.showSizeColumn && destination.showGitStatusColumn)
     #expect(destination.showFileTagColumn && destination.showPathColumn)
     #expect(!destination.showCompressionOptions && !destination.showOpenTerminal && !destination.showCreateFolderWithSelection)
