@@ -2788,6 +2788,10 @@ extension BrowserWindow {
                 checks["gitAccessibility"] = gitPanel.qaAccessibilityReady
                 checks["gitSupportBoundary"] = gitPanel.qaSupportBoundaryVisible
                 checks["gitMenuCommand"] = paletteEntries.contains { $0.item.action == #selector(AppDelegate.showGitStatus(_:)) }
+                checks["gitInitAndSyncCommands"] = [#selector(AppDelegate.initializeGitRepository(_:)),
+                    #selector(AppDelegate.synchronizeGitRepository(_:))].allSatisfy { action in
+                        paletteEntries.contains { $0.item.action == action }
+                    }
                 try capture("git-status", view: gitPanel.window?.contentView); gitPanel.close(); window.makeKeyAndOrderFront(nil)
                 var clonedLocation: URL?
                 let clonePanel = GitCloneWindow { clonedLocation = $0 }

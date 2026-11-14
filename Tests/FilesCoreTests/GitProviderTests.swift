@@ -27,6 +27,29 @@ import Testing
     #expect(snapshot.entries.contains { $0.path == "한글 file.txt" && $0.kind == .untracked })
 }
 
+@Test func gitInitializeAndSafeSyncUseTrackedRemoteWithoutForce() async throws {
+    let fm = FileManager.default, root = fm.temporaryDirectory.appendingPathComponent("files-git-sync-\(UUID())", isDirectory: true)
+    defer { try? fm.removeItem(at: root) }; try fm.createDirectory(at: root, withIntermediateDirectories: true)
+    let initialized = root.appendingPathComponent("initialized", isDirectory: true); try fm.createDirectory(at: initialized, withIntermediateDirectories: true)
+    let provider = GitProvider(), initializedSnapshot = try await provider.initialize(at: initialized)
+    #expect(initializedSnapshot.root == initialized.standardizedFileURL)
+    #expect(fm.fileExists(atPath: initialized.appendingPathComponent(".git", isDirectory: true).path))
+
+    let bare = root.appendingPathComponent("remote.git"), seed = root.appendingPathComponent("seed"), local = root.appendingPathComponent("local"), peer = root.appendingPathComponent("peer")
+    try runGit(["init", "--bare", "--initial-branch=main", bare.path], at: root)
+    try fm.createDirectory(at: seed, withIntermediateDirectories: true); try runGit(["init", "-b", "main"], at: seed); try configureIdentity(seed)
+    try Data("one".utf8).write(to: seed.appendingPathComponent("value.txt")); try runGit(["add", "value.txt"], at: seed); try runGit(["commit", "-m", "one"], at: seed)
+    try runGit(["remote", "add", "origin", bare.path], at: seed); try runGit(["push", "-u", "origin", "main"], at: seed)
+    _ = try await provider.clone(from: bare, to: local); _ = try await provider.clone(from: bare, to: peer); try configureIdentity(local); try configureIdentity(peer)
+    try Data("two".utf8).write(to: peer.appendingPathComponent("value.txt")); try runGit(["add", "value.txt"], at: peer); try runGit(["commit", "-m", "two"], at: peer); try runGit(["push"], at: peer)
+    let pulled = try await provider.synchronize(at: local)
+    #expect(pulled.ahead == 0 && pulled.behind == 0)
+    #expect(try String(contentsOf: local.appendingPathComponent("value.txt"), encoding: .utf8) == "two")
+    try Data("local".utf8).write(to: local.appendingPathComponent("local.txt")); try runGit(["add", "local.txt"], at: local); try runGit(["commit", "-m", "local"], at: local)
+    let pushed = try await provider.synchronize(at: local); #expect(pushed.ahead == 0 && pushed.behind == 0)
+    try runGit(["pull", "--ff-only"], at: peer); #expect(fm.fileExists(atPath: peer.appendingPathComponent("local.txt").path))
+}
+
 @Test func gitProviderUsesBareRemoteWithoutForceOrReset() async throws {
     let fm = FileManager.default, root = fm.temporaryDirectory.appendingPathComponent("files-git-remote-\(UUID())", isDirectory: true)
     defer { try? fm.removeItem(at: root) }; try fm.createDirectory(at: root, withIntermediateDirectories: true)

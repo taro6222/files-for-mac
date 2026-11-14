@@ -148,6 +148,14 @@ public struct GitProvider: Sendable {
         catch { if fileManager.fileExists(atPath: destination.path) { throw GitBackendError.invalidLocation }; throw error }
         return destination
     }
+    public func initialize(at location: URL, fileManager: FileManager = .default) async throws -> GitRepositorySnapshot {
+        var isDirectory: ObjCBool = false
+        guard location.isFileURL, fileManager.fileExists(atPath: location.path, isDirectory: &isDirectory), isDirectory.boolValue else {
+            throw GitBackendError.invalidLocation
+        }
+        _ = try await run(["-C", location.path, "init"], at: location)
+        return try await snapshot(at: location, fileManager: fileManager)
+    }
     public func fetch(at repository: URL, remote: String = "origin") async throws {
         try validateRemoteName(remote); _ = try await run(["-C", repository.path, "fetch", "--prune", "--", remote], at: repository)
     }
@@ -158,6 +166,22 @@ public struct GitProvider: Sendable {
         try validateRemoteName(remote); var arguments = ["-C", repository.path, "push", "--porcelain", "--", remote]
         if let branch { try validateRefName(branch); arguments.append(branch) }
         _ = try await run(arguments, at: repository)
+    }
+    public func synchronize(at repository: URL) async throws -> GitRepositorySnapshot {
+        let initial = try await snapshot(at: repository)
+        guard let branch = initial.branch, let upstream = initial.upstream,
+              let separator = upstream.firstIndex(of: "/"), separator != upstream.startIndex else {
+            throw GitBackendError.invalidLocation
+        }
+        let remote = String(upstream[..<separator])
+        try validateRemoteName(remote); try validateRefName(branch)
+        guard try await remotes(at: initial.root).contains(where: { $0.name == remote }) else {
+            throw GitBackendError.invalidLocation
+        }
+        try await fetch(at: initial.root, remote: remote)
+        try await pullFastForwardOnly(at: initial.root)
+        try await push(at: initial.root, remote: remote, branch: branch)
+        return try await snapshot(at: initial.root)
     }
     private func validateRemoteName(_ name: String) throws {
         guard !name.isEmpty, !name.hasPrefix("-"), name.allSatisfy({ $0.isLetter || $0.isNumber || "-_.".contains($0) }) else { throw GitBackendError.invalidLocation }

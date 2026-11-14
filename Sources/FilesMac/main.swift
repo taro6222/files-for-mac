@@ -16,6 +16,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     private var remoteConnectionsWindow: RemoteConnectionsWindow?
     private var gitWindow: GitWindow?
     private var gitCloneWindow: GitCloneWindow?
+    private var gitCommandTask: Task<Void, Never>?
     private var releaseInfoWindow: ReleaseInfoWindow?
     private var developerSettingsWindow: DeveloperSettingsWindow?
     private var advancedSettingsWindow: AdvancedSettingsWindow?
@@ -175,6 +176,45 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         if gitCloneWindow == nil { gitCloneWindow = GitCloneWindow { [weak self] location in self?.makeBrowser(location: location) } }
         gitCloneWindow?.present()
     }
+    @objc func initializeGitRepository(_ sender: Any?) {
+        guard let browser = currentBrowser, let location = browser.activeLocation, gitCommandTask == nil, let window = browser.window else { return }
+        let alert = NSAlert(); alert.messageText = L("현재 폴더에서 Git 저장소 초기화", "Initialize Git Repository Here")
+        alert.informativeText = location.path + "\n\n" + L("기존 파일은 변경하지 않고 .git metadata를 만듭니다.", "Creates .git metadata without changing existing files.")
+        alert.addButton(withTitle: L("초기화", "Initialize")); alert.addButton(withTitle: L("취소", "Cancel"))
+        alert.beginSheetModal(for: window) { [weak self, weak browser] response in
+            guard response == .alertFirstButtonReturn, let self else { return }
+            self.runGitCommand(location: location, browser: browser) { try await GitProvider().initialize(at: $0) }
+        }
+    }
+    @objc func synchronizeGitRepository(_ sender: Any?) {
+        guard let browser = currentBrowser, let location = browser.activeLocation, gitCommandTask == nil, let window = browser.window else { return }
+        let alert = NSAlert(); alert.messageText = L("Git 저장소 동기화", "Synchronize Git Repository")
+        alert.informativeText = L("Fetch 후 fast-forward 전용 Pull과 비강제 Push를 순서대로 실행합니다. 분기된 이력은 변경하지 않습니다.", "Runs fetch, fast-forward-only pull, then non-force push. Diverged history is left unchanged.")
+        alert.addButton(withTitle: L("동기화", "Synchronize")); alert.addButton(withTitle: L("취소", "Cancel"))
+        alert.beginSheetModal(for: window) { [weak self, weak browser] response in
+            guard response == .alertFirstButtonReturn, let self else { return }
+            self.runGitCommand(location: location, browser: browser) { try await GitProvider().synchronize(at: $0) }
+        }
+    }
+    private func runGitCommand(location: URL, browser: BrowserWindow?, operation: @escaping (URL) async throws -> GitRepositorySnapshot) {
+        gitCommandTask = Task { [weak self, weak browser] in
+            guard let self else { return }
+            do {
+                let snapshot = try await operation(location)
+                browser?.refresh(nil)
+                if gitWindow == nil { gitWindow = GitWindow() }
+                gitWindow?.present(location: snapshot.root)
+            } catch {
+                guard let window = browser?.window, window.isVisible else { gitCommandTask = nil; return }
+                let alert = NSAlert(); alert.messageText = L("Git 작업 실패", "Git Operation Failed")
+                alert.informativeText = error is CancellationError
+                    ? L("Git 작업이 중단되었습니다.", "The Git operation was cancelled.")
+                    : L("저장소, upstream, fast-forward 또는 인증 상태를 확인하세요. 강제 push나 reset은 실행하지 않았습니다.", "Check the repository, upstream, fast-forward, or authentication state. No force push or reset was run.")
+                _ = await alert.beginSheetModal(for: window)
+            }
+            gitCommandTask = nil
+        }
+    }
     @objc func openHelp(_ sender: Any?) {
         if let url = URL(string: "https://github.com/taro6222/files-for-mac") { NSWorkspace.shared.open(url) }
     }
@@ -206,6 +246,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         if menuItem.action == #selector(reopenClosedTab(_:)) { return !closedWorkspaces.isEmpty }
         if menuItem.action == #selector(duplicateTab(_:)) { return currentBrowser != nil }
         if menuItem.action == #selector(showGitStatus(_:)) { return currentBrowser?.activeLocation != nil }
+        if menuItem.action == #selector(initializeGitRepository(_:)) || menuItem.action == #selector(synchronizeGitRepository(_:)) {
+            return currentBrowser?.activeLocation != nil && gitCommandTask == nil
+        }
         if menuItem.action == #selector(openRepositoryInIDE(_:)) { return currentBrowser?.activeLocation != nil && BrowserPreferences.shared.developerApplicationPath != nil }
         if menuItem.action == #selector(nextTab(_:)) || menuItem.action == #selector(previousTab(_:)) { return currentTabGroup.count > 1 }
         if menuItem.action == #selector(closeSelectedTab(_:)) || menuItem.action == #selector(closeAllTabs(_:)) { return currentBrowser != nil }
@@ -221,7 +264,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     }
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         guard CopyWindow.isRunning || DeletionWindow.isRunning || RestoreWindow.isRunning || MoveWindow.isRunning ||
-              PermanentDeleteWindow.isRunning || BatchRenameWindow.isRunning || GitCloneWindow.isRunning || BrowserWindow.entryOperationRunning else { return .terminateNow }
+              PermanentDeleteWindow.isRunning || BatchRenameWindow.isRunning || GitCloneWindow.isRunning ||
+              gitCommandTask != nil || BrowserWindow.entryOperationRunning else { return .terminateNow }
         let alert = NSAlert()
         alert.messageText = L("파일 작업이 진행 중입니다", "A file operation is running")
         alert.informativeText = L("작업 완료 후 종료하세요. 복사와 이동은 작업 창에서 취소할 수 있습니다.", "Quit after the operation finishes. Copies and moves can be cancelled in their operation windows.")
@@ -257,6 +301,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         gitStatus.target = self
         let gitClone = appMenu.addItem(withTitle: L("Git 저장소 복제…", "Clone Git Repository…"), action: #selector(showGitClone(_:)), keyEquivalent: "")
         gitClone.target = self
+        let gitInit = appMenu.addItem(withTitle: L("현재 폴더에서 Git 초기화…", "Initialize Git Here…"), action: #selector(initializeGitRepository(_:)), keyEquivalent: "")
+        gitInit.target = self
+        let gitSync = appMenu.addItem(withTitle: L("Git 동기화…", "Synchronize Git…"), action: #selector(synchronizeGitRepository(_:)), keyEquivalent: "")
+        gitSync.target = self
         let openLog = appMenu.addItem(withTitle: L("진단 로그 열기", "Open Diagnostic Log"), action: #selector(openLogFile(_:)), keyEquivalent: ""); openLog.target = self
         let revealLog = appMenu.addItem(withTitle: L("진단 로그 위치 보기", "Reveal Diagnostic Log"), action: #selector(openLogFileLocation(_:)), keyEquivalent: ""); revealLog.target = self
         let openSettings = appMenu.addItem(withTitle: L("설정 스냅샷 열기", "Open Settings Snapshot"), action: #selector(openSettingsFile(_:)), keyEquivalent: ""); openSettings.target = self
