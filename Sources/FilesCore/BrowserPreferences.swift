@@ -69,6 +69,7 @@ public struct BrowserPreferencesArchive: Codable, Equatable, Sendable {
     public let scrollToPreviousFolderOnUp: Bool?
     public let showFileExtensionWarning: Bool?
     public let defaultSortDirectoryPlacement: String?
+    public let autoSizeColumnsInDetailsLayout: Bool?
     public let startupLocationPath: String?
     public let developerApplicationPath: String?
     public let appBackgroundPath: String?
@@ -131,6 +132,7 @@ public final class BrowserPreferences {
     public private(set) var scrollToPreviousFolderOnUp: Bool
     public private(set) var showFileExtensionWarning: Bool
     public private(set) var defaultSortDirectoryPlacement: SortDirectoryPlacement
+    public private(set) var autoSizeColumnsInDetailsLayout: Bool
     public private(set) var startupLocationPath: String?
     public private(set) var developerApplicationPath: String?
     public private(set) var appBackgroundPath: String?
@@ -187,6 +189,7 @@ public final class BrowserPreferences {
         scrollToPreviousFolderOnUp = defaults.object(forKey: "scrollToPreviousFolderOnUp") as? Bool ?? true
         showFileExtensionWarning = defaults.object(forKey: "showFileExtensionWarning") as? Bool ?? true
         defaultSortDirectoryPlacement = defaults.string(forKey: "defaultSortDirectoryPlacement").flatMap(SortDirectoryPlacement.init(rawValue:)) ?? .foldersFirst
+        autoSizeColumnsInDetailsLayout = defaults.object(forKey: "autoSizeColumnsInDetailsLayout") as? Bool ?? false
         startupLocationPath = defaults.string(forKey: "startupLocationPath").flatMap { $0.hasPrefix("/") ? $0 : nil }
         developerApplicationPath = defaults.string(forKey: "developerApplicationPath")
         appBackgroundPath = defaults.string(forKey: "appBackgroundPath").flatMap { $0.hasPrefix("/") ? $0 : nil }
@@ -301,6 +304,10 @@ public final class BrowserPreferences {
         guard defaultSortDirectoryPlacement != value else { return }
         defaultSortDirectoryPlacement = value; defaults.set(value.rawValue, forKey: "defaultSortDirectoryPlacement"); changed()
     }
+    public func setAutoSizeColumnsInDetailsLayout(_ value: Bool) {
+        guard autoSizeColumnsInDetailsLayout != value else { return }
+        autoSizeColumnsInDetailsLayout = value; defaults.set(value, forKey: "autoSizeColumnsInDetailsLayout"); changed()
+    }
     public func setStartupLocation(_ url: URL?) {
         let value = url?.standardizedFileURL.path
         guard startupLocationPath != value else { return }
@@ -343,6 +350,7 @@ public final class BrowserPreferences {
             openFoldersInNewTab: openFoldersInNewTab, scrollToPreviousFolderOnUp: scrollToPreviousFolderOnUp,
             showFileExtensionWarning: showFileExtensionWarning,
             defaultSortDirectoryPlacement: defaultSortDirectoryPlacement.rawValue,
+            autoSizeColumnsInDetailsLayout: autoSizeColumnsInDetailsLayout,
             startupLocationPath: startupLocationPath, developerApplicationPath: developerApplicationPath, appBackgroundPath: appBackgroundPath, toolbarOrder: toolbarOrder.map(\.rawValue),
             hiddenToolbarItems: hiddenToolbarItems.map(\.rawValue).sorted(), folderViewPreferences: folderViewPreferences)
         let encoder = JSONEncoder(); encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
@@ -402,6 +410,7 @@ public final class BrowserPreferences {
         openFoldersInNewTab = archive.openFoldersInNewTab ?? false; scrollToPreviousFolderOnUp = archive.scrollToPreviousFolderOnUp ?? true
         showFileExtensionWarning = archive.showFileExtensionWarning ?? true; startupLocationPath = archive.startupLocationPath
         defaultSortDirectoryPlacement = importedDefaultSortDirectoryPlacement
+        autoSizeColumnsInDetailsLayout = archive.autoSizeColumnsInDetailsLayout ?? false
         developerApplicationPath = archive.developerApplicationPath; appBackgroundPath = archive.appBackgroundPath; toolbarOrder = importedToolbar; hiddenToolbarItems = Set(importedHiddenToolbar)
         folderViewPreferences = archive.folderViewPreferences
         defaults.set(sidebarOrder.map(\.rawValue), forKey: "sidebarOrder"); defaults.set(collapsedSidebar.map(\.rawValue).sorted(), forKey: "collapsedSidebar")
@@ -424,6 +433,7 @@ public final class BrowserPreferences {
         defaults.set(viewSize.rawValue, forKey: "viewSize"); defaults.set(appearance.rawValue, forKey: "appearance"); defaults.set(continueLastSession, forKey: "continueLastSession"); defaults.set(sizeUnit.rawValue, forKey: "sizeUnit")
         defaults.set(openFoldersInNewTab, forKey: "openFoldersInNewTab"); defaults.set(scrollToPreviousFolderOnUp, forKey: "scrollToPreviousFolderOnUp"); defaults.set(showFileExtensionWarning, forKey: "showFileExtensionWarning")
         defaults.set(defaultSortDirectoryPlacement.rawValue, forKey: "defaultSortDirectoryPlacement")
+        defaults.set(autoSizeColumnsInDetailsLayout, forKey: "autoSizeColumnsInDetailsLayout")
         if let startupLocationPath { defaults.set(startupLocationPath, forKey: "startupLocationPath") } else { defaults.removeObject(forKey: "startupLocationPath") }
         if let developerApplicationPath { defaults.set(developerApplicationPath, forKey: "developerApplicationPath") } else { defaults.removeObject(forKey: "developerApplicationPath") }
         if let appBackgroundPath { defaults.set(appBackgroundPath, forKey: "appBackgroundPath") } else { defaults.removeObject(forKey: "appBackgroundPath") }

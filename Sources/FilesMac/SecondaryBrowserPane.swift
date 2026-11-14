@@ -29,6 +29,7 @@ final class SecondaryBrowserPane: NSView, NSTableViewDataSource, NSTableViewDele
     private var watchedURL: URL?
     private var pendingRefresh = false
     private var rendering = false
+    private var autoFitObservedLoading = false
     private var pendingEntrySelection: URL?
     private var detailRows: [DetailDisplayRow] = []
     private let dateFormatter: DateFormatter = { let value = DateFormatter(); value.dateStyle = .medium; value.timeStyle = .short; return value }()
@@ -282,7 +283,11 @@ final class SecondaryBrowserPane: NSView, NSTableViewDataSource, NSTableViewDele
         }
     }
     private func modelChanged() {
-        render(); updateWatcher()
+        let autoFitLoadCompleted = autoFitObservedLoading && !model.isLoading
+        autoFitObservedLoading = model.isLoading
+        render()
+        if autoFitLoadCompleted && preferences.autoSizeColumnsInDetailsLayout && renderedViewMode == .details && !model.items.isEmpty { autoFitColumns() }
+        updateWatcher()
         if pendingRefresh && !model.isLoading && !model.wasCancelled {
             pendingRefresh = false
             Task { @MainActor [weak self] in self?.model.reload() }

@@ -101,6 +101,7 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
     private var gitStatuses: [String: String] = [:]
     private var gitChangedPaths: [String] = []
     private var gitObservedLoading = false
+    private var autoFitObservedLoading = false
     private let cloudProvider: CloudLocationProvider
     static private(set) var entryOperationRunning = false
     private static var operationJournalDirectory: URL {
@@ -707,6 +708,8 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         model.setViewMode(folder.mode)
     }
     private func render() {
+        let autoFitLoadCompleted = autoFitObservedLoading && !model.isLoading
+        autoFitObservedLoading = model.isLoading
         let gitLoadCompleted = gitObservedLoading && !model.isLoading
         gitObservedLoading = model.isLoading
         if model.location == nil {
@@ -759,6 +762,9 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         }
         detailRows = detailDisplayRows(items: model.items, grouping: model.grouping)
         table.reloadData()
+        if autoFitLoadCompleted && preferences.autoSizeColumnsInDetailsLayout && primaryRenderedViewMode == .details && !model.items.isEmpty {
+            autoFitColumns(nil)
+        }
         let selected = detailSelectionRows(ids: model.history.current.selection, in: detailRows)
         table.selectRowIndexes(selected, byExtendingSelection: false)
         gridView.apply(viewSize: effectiveViewSize)
@@ -2717,10 +2723,11 @@ extension BrowserWindow {
                 delegate.showGeneralSettings(nil); try await Task.sleep(for: .milliseconds(50)); let widgetsBefore = delegate.qaGeneralWidgetStates
                 let sizeUnitBefore = delegate.qaGeneralSizeUnit; let newTabBefore = delegate.qaGeneralOpenFoldersInNewTab
                 let defaultSortBefore = delegate.qaGeneralDefaultSortDirectoryPlacement
+                let autoSizeColumnsBefore = delegate.qaGeneralAutoSizeColumnsInDetailsLayout
                 let revealBefore = delegate.qaGeneralScrollToPreviousFolderOnUp
                 let extensionWarningBefore = delegate.qaGeneralShowFileExtensionWarning
                 let contextMenuBefore = delegate.qaGeneralContextMenuStates
-                delegate.qaToggleGeneralWidgets(); delegate.qaToggleGeneralSizeUnit(); delegate.qaCycleGeneralDefaultSortDirectoryPlacement(); delegate.qaToggleGeneralOpenFoldersInNewTab(); delegate.qaToggleGeneralScrollToPreviousFolderOnUp(); delegate.qaToggleGeneralShowFileExtensionWarning(); delegate.qaToggleGeneralContextMenuItems(); let widgetsAfter = delegate.qaGeneralWidgetStates
+                delegate.qaToggleGeneralWidgets(); delegate.qaToggleGeneralSizeUnit(); delegate.qaCycleGeneralDefaultSortDirectoryPlacement(); delegate.qaToggleGeneralAutoSizeColumnsInDetailsLayout(); delegate.qaToggleGeneralOpenFoldersInNewTab(); delegate.qaToggleGeneralScrollToPreviousFolderOnUp(); delegate.qaToggleGeneralShowFileExtensionWarning(); delegate.qaToggleGeneralContextMenuItems(); let widgetsAfter = delegate.qaGeneralWidgetStates
                 let contextMenuAfter = delegate.qaGeneralContextMenuStates
                 let contextMenusToggled = contextMenuBefore?.count == contextMenuAfter?.count
                     && zip(contextMenuBefore ?? [], contextMenuAfter ?? []).allSatisfy { $0 != $1 }
@@ -2728,6 +2735,7 @@ extension BrowserWindow {
                     && widgetsAfter!.0 != widgetsBefore!.0 && widgetsAfter!.1 != widgetsBefore!.1 && widgetsAfter!.2 != widgetsBefore!.2
                     && delegate.qaGeneralSizeUnit != sizeUnitBefore
                     && delegate.qaGeneralDefaultSortDirectoryPlacement != defaultSortBefore
+                    && delegate.qaGeneralAutoSizeColumnsInDetailsLayout != autoSizeColumnsBefore
                     && delegate.qaGeneralOpenFoldersInNewTab != newTabBefore
                     && delegate.qaGeneralScrollToPreviousFolderOnUp != revealBefore
                     && delegate.qaGeneralShowFileExtensionWarning != extensionWarningBefore
@@ -2767,7 +2775,7 @@ extension BrowserWindow {
                 controller.toggleDualPane(nil); checks["toggleDualPaneOpens"] = controller.workspaceSnapshot().isSplit
                 controller.closeSecondaryPane(nil)
                 try capture("general-settings", view: delegate.qaGeneralSettingsContentView)
-                delegate.qaToggleGeneralWidgets(); delegate.qaToggleGeneralSizeUnit(); delegate.qaCycleGeneralDefaultSortDirectoryPlacement(); delegate.qaToggleGeneralOpenFoldersInNewTab(); delegate.qaToggleGeneralScrollToPreviousFolderOnUp(); delegate.qaToggleGeneralShowFileExtensionWarning(); delegate.qaToggleGeneralContextMenuItems(); delegate.qaGeneralSettingsContentView?.window?.close(); window.makeKeyAndOrderFront(nil)
+                delegate.qaToggleGeneralWidgets(); delegate.qaToggleGeneralSizeUnit(); delegate.qaCycleGeneralDefaultSortDirectoryPlacement(); delegate.qaToggleGeneralAutoSizeColumnsInDetailsLayout(); delegate.qaToggleGeneralOpenFoldersInNewTab(); delegate.qaToggleGeneralScrollToPreviousFolderOnUp(); delegate.qaToggleGeneralShowFileExtensionWarning(); delegate.qaToggleGeneralContextMenuItems(); delegate.qaGeneralSettingsContentView?.window?.close(); window.makeKeyAndOrderFront(nil)
                 delegate.showArchiveCapabilities(nil); try await Task.sleep(for: .milliseconds(50))
                 checks["archiveCapabilitiesWindow"] = delegate.qaArchiveCapabilitiesVisible
                 try capture("archive-capabilities", view: delegate.qaArchiveCapabilitiesContentView)

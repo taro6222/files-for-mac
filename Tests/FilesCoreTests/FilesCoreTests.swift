@@ -532,6 +532,19 @@ private struct DelayedLoader: DirectoryLoading {
     preferences.removeObserver(token)
 }
 
+@Test @MainActor func automaticDetailColumnSizingPersistsAndAvoidsDuplicateNotifications() {
+    let suite = "automatic-column-sizing-tests-\(UUID())", defaults = UserDefaults(suiteName: suite)!
+    defer { defaults.removePersistentDomain(forName: suite) }
+    let preferences = BrowserPreferences(defaults: defaults, initialFavorites: [])
+    #expect(!preferences.autoSizeColumnsInDetailsLayout)
+    var notifications = 0; let token = preferences.observe { notifications += 1 }
+    preferences.setAutoSizeColumnsInDetailsLayout(true)
+    preferences.setAutoSizeColumnsInDetailsLayout(true)
+    #expect(BrowserPreferences(defaults: defaults, initialFavorites: []).autoSizeColumnsInDetailsLayout)
+    #expect(notifications == 1)
+    preferences.removeObserver(token)
+}
+
 @Test @MainActor func contextMenuVisibilityDefaultsPersistAndAvoidsDuplicateNotifications() {
     let suite = "context-menu-visibility-tests-\(UUID())", defaults = UserDefaults(suiteName: suite)!
     defer { defaults.removePersistentDomain(forName: suite) }
@@ -600,6 +613,7 @@ private struct DelayedLoader: DirectoryLoading {
     source.setScrollToPreviousFolderOnUp(false)
     source.setShowFileExtensionWarning(false)
     source.setDefaultSortDirectoryPlacement(.filesFirst)
+    source.setAutoSizeColumnsInDetailsLayout(true)
     source.setShowCreatedColumn(true); source.setShowDateColumn(false); source.setShowTypeColumn(false); source.setShowSizeColumn(false); source.setShowGitStatusColumn(true)
     source.setShowFileTagColumn(true); source.setShowPathColumn(true)
     source.setShowCompressionOptions(false); source.setShowOpenTerminal(false); source.setShowCreateFolderWithSelection(false)
@@ -620,6 +634,7 @@ private struct DelayedLoader: DirectoryLoading {
     #expect(!destination.scrollToPreviousFolderOnUp)
     #expect(!destination.showFileExtensionWarning)
     #expect(destination.defaultSortDirectoryPlacement == .filesFirst)
+    #expect(destination.autoSizeColumnsInDetailsLayout)
     #expect(destination.showCreatedColumn && !destination.showDateColumn && !destination.showTypeColumn && !destination.showSizeColumn && destination.showGitStatusColumn)
     #expect(destination.showFileTagColumn && destination.showPathColumn)
     #expect(!destination.showCompressionOptions && !destination.showOpenTerminal && !destination.showCreateFolderWithSelection)

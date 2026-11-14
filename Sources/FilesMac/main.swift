@@ -525,6 +525,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     func qaToggleGeneralSizeUnit() { generalSettingsWindow?.qaToggleSizeUnit() }
     var qaGeneralDefaultSortDirectoryPlacement: SortDirectoryPlacement? { generalSettingsWindow?.qaDefaultSortDirectoryPlacement }
     func qaCycleGeneralDefaultSortDirectoryPlacement() { generalSettingsWindow?.qaCycleDefaultSortDirectoryPlacement() }
+    var qaGeneralAutoSizeColumnsInDetailsLayout: Bool? { generalSettingsWindow?.qaAutoSizeColumnsInDetailsLayout }
+    func qaToggleGeneralAutoSizeColumnsInDetailsLayout() { generalSettingsWindow?.qaToggleAutoSizeColumnsInDetailsLayout() }
     var qaGeneralOpenFoldersInNewTab: Bool? { generalSettingsWindow?.qaOpenFoldersInNewTab }
     func qaToggleGeneralOpenFoldersInNewTab() { generalSettingsWindow?.qaToggleOpenFoldersInNewTab() }
     var qaGeneralScrollToPreviousFolderOnUp: Bool? { generalSettingsWindow?.qaScrollToPreviousFolderOnUp }
