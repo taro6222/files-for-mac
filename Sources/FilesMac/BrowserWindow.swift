@@ -1736,12 +1736,41 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
     }
     func pasteFilesFromClipboard() {
         guard canPasteFiles, let destination = activeModel.location else { return }
+        pasteClipboard(to: destination)
+    }
+    @objc func pasteFilesToSelection(_ sender: Any?) {
+        guard canPasteToSelection, let destination = activeSelectedItems.first?.url else { return }
+        pasteClipboard(to: destination)
+    }
+    private func pasteClipboard(to destination: URL) {
         let sources = clipboardFiles
         if clipboardIsCut {
             prepareMove(sources: sources, destination: destination) {
                 NSPasteboard.general.clearContents()
             }
         } else { prepareCopy(sources: sources, destination: destination) }
+    }
+    private var canPasteToSelection: Bool {
+        canPasteFiles && activeSelectedItems.count == 1 && activeSelectedItems[0].isBrowsable
+    }
+    @objc func pasteFilesAsSymbolicLinks(_ sender: Any?) {
+        guard canPasteFiles, let destination = activeModel.location, let window else { return }
+        let sources = clipboardFiles
+        let targetModel = activeModel
+        Self.entryOperationRunning = true
+        Task {
+            var failures: [String] = []
+            for source in sources {
+                do { _ = try await EntryOperations.createSymbolicLink(to: source, in: destination, name: source.lastPathComponent) }
+                catch { failures.append(source.lastPathComponent + ": " + entryOperationMessage(error)) }
+            }
+            Self.entryOperationRunning = false
+            if targetModel.location?.standardizedFileURL == destination.standardizedFileURL { targetModel.reload() }
+            if !failures.isEmpty, window.isVisible {
+                let alert = NSAlert(); alert.messageText = L("일부 심볼릭 링크를 만들지 못했습니다", "Some Symbolic Links Were Not Created")
+                alert.informativeText = failures.joined(separator: "\n"); _ = await alert.beginSheetModal(for: window)
+            }
+        }
     }
     private func prepareCopy(sources: [URL], destination: URL) {
         guard !Self.entryOperationRunning, !CopyWindow.isRunning, !FolderMergeWindow.isRunning, let window else { return }
@@ -2306,6 +2335,8 @@ extension BrowserWindow {
         case #selector(arrangePanesVertically(_:)), #selector(arrangePanesHorizontally(_:)), #selector(focusOtherPane(_:)), #selector(openCurrentFolderInOtherPane(_:)): return secondaryPane != nil
         case #selector(toggleDualPane(_:)): return true
         case #selector(useCardsLayout(_:)): return activeModel.location != nil
+        case #selector(pasteFilesToSelection(_:)): return canPasteToSelection
+        case #selector(pasteFilesAsSymbolicLinks(_:)): return canPasteFiles
         case #selector(decreaseViewSize(_:)): return BrowserViewSize.allCases.firstIndex(of: activeEffectiveViewSize) != 0
         case #selector(increaseViewSize(_:)): return BrowserViewSize.allCases.firstIndex(of: activeEffectiveViewSize) != BrowserViewSize.allCases.count - 1
         case #selector(enterCompactOverlay(_:)):
@@ -3065,6 +3096,10 @@ extension BrowserWindow {
                 }
             controller.copyFilesToClipboard()
             checks["copyClipboardClearsCutIntent"] = !controller.clipboardIsCut && controller.canPasteFiles
+            checks["pasteVariantCommands"] = controller.canPasteToSelection
+                && [#selector(pasteFilesToSelection(_:)), #selector(pasteFilesAsSymbolicLinks(_:))].allSatisfy { action in
+                    paletteEntries.contains { $0.item.action == action }
+                }
             controller.model.setGrouping(.init(field: .name)); controller.render()
             checks["gridGroupingSections"] = controller.gridView.qaSectionCount > 1
                 && !controller.gridView.qaSectionTitles.contains("")
