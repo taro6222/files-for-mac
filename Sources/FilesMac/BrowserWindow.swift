@@ -4753,13 +4753,32 @@ extension BrowserWindow {
         let finished = DispatchTime.now().uptimeNanoseconds
         guard let firstDisplay, controller.model.failure == nil, idleRSS > 0,
               controller.table.numberOfRows == expected else { return }
-        let samples: [String: Double] = [
+        var samples: [String: Double] = [
             "startupSeconds": Double(ready - processStart) / 1e9,
             "firstDisplaySeconds": Double(firstDisplay - started) / 1e9,
             "listingSeconds": Double(finished - started) / 1e9,
             "idleRSSBytes": Double(idleRSS),
             "peakSampledRSSBytes": Double(peakRSS)
         ]
+        if environment["FILES_PERFORMANCE_SCROLL"] == "1" {
+            // Let Instruments settle before scrolling a populated window.
+            try? await Task.sleep(for: .seconds(2))
+            let clip = controller.scroll.contentView
+            let maxOffset = max(0, controller.table.bounds.height - clip.bounds.height)
+            guard maxOffset > 0 else { return }
+            let scrollStart = DispatchTime.now().uptimeNanoseconds
+            for tick in 1...360 {
+                let offset = min(maxOffset, CGFloat(tick * 12))
+                clip.scroll(to: NSPoint(x: 0, y: offset))
+                controller.scroll.reflectScrolledClipView(clip)
+                try? await Task.sleep(for: .milliseconds(16))
+            }
+            guard clip.bounds.minY > 0 else { return }
+            samples["scrollSteps"] = 360
+            samples["scrollDistancePoints"] = Double(clip.bounds.minY)
+            samples["scrollDurationSeconds"] = Double(DispatchTime.now().uptimeNanoseconds - scrollStart) / 1e9
+            try? await Task.sleep(for: .seconds(1))
+        }
         do {
             try JSONEncoder().encode(samples).write(to: URL(fileURLWithPath: output), options: .atomic)
             status = 0

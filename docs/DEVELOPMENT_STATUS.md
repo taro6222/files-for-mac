@@ -4,6 +4,8 @@
 
 ## 이번 구현 단위
 
+Release AppKit에서 10,000항목 목록 연속 스크롤을 실행했다. 화면 프레임 표본은 추가 확보가 필요하다. [M7 스크롤 계측](verification/m7/INCREMENT_26.md)
+
 512 MiB 단일 파일에서 검증을 포함한 네이티브 복사 기준 처리량의 102.95%를 기록했다. [M7 네이티브 복사 비교](verification/m7/INCREMENT_25.md)
 
 512 MiB 검증 복사 시간 중앙값이 0.964초에서 0.586초로 줄었다. [M7 복사 처리량](verification/m7/INCREMENT_24.md)
