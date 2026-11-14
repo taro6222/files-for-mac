@@ -8,6 +8,8 @@ M7 출시 검증이 진행 중이다. [유니버설 개발 프리뷰](verificati
 
 ## 이번 구현 단위
 
+같은 볼륨 이동과 실행 취소에서 비덮어쓰기 게시 경로를 사용한다. [이동 충돌 보호](verification/m7/INCREMENT_148.md)
+
 교차 볼륨 이동의 실행 취소에서 원래 경로에 생긴 파일이나 링크를 보호한다. [실행 취소 게시 검증](verification/m7/INCREMENT_147.md)
 
 교체 이동의 백업 복원 직전 강제 종료와 재시작 뒤 충돌 보호를 검증했다. [강제 종료 복구](verification/m7/INCREMENT_146.md)

@@ -600,8 +600,8 @@ func entryCrossVolumeUndoResumesAfterCopyPublication(edited: Bool) async throws 
     }
 }
 
-@Test(arguments: [false, true])
-func crossVolumeUndoPreservesPathOccupiedBeforePublication(symbolicLink: Bool) async throws {
+@Test(arguments: [false, true], [false, true])
+func moveUndoPreservesPathOccupiedBeforePublication(crossVolume: Bool, symbolicLink: Bool) async throws {
     let root = try entryFixture()
     let fm = FileManager.default
     defer { try? fm.removeItem(at: root) }
@@ -611,8 +611,23 @@ func crossVolumeUndoPreservesPathOccupiedBeforePublication(symbolicLink: Bool) a
     let journal = root.appendingPathComponent("journal")
     try fm.createDirectory(at: destination, withIntermediateDirectories: false)
     try Data("moved".utf8).write(to: source)
-    let move = try await EntryOperations.moveAcrossVolumeForTesting([source], to: destination, journalDirectory: journal)
-    try #require(move.state == "completed")
+    let move: MoveOperationResult
+    if crossVolume {
+        move = try await EntryOperations.moveAcrossVolumeForTesting([source], to: destination, journalDirectory: journal)
+    } else {
+        move = try await EntryOperations.move([source], to: destination, journalDirectory: journal) { update in
+            if update.phase == "committing" {
+                do { try Data("external".utf8).write(to: target, options: .withoutOverwriting) }
+                catch { Issue.record(error) }
+            }
+        }
+        #expect(move.items.map(\.state) == ["conflict"])
+        #expect(try Data(contentsOf: source) == Data("moved".utf8))
+        #expect(try Data(contentsOf: target) == Data("external".utf8))
+        try fm.removeItem(at: target)
+    }
+    let completed = crossVolume ? move : try await EntryOperations.move([source], to: destination, journalDirectory: journal)
+    try #require(completed.state == "completed")
     let undo = try #require(EntryOperations.latestUndoMove(journalDirectory: journal))
     let blocked = await EntryOperations.undoMove(undo, journalDirectory: journal, beforeCopyPublication: {
         if symbolicLink {

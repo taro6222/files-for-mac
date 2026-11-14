@@ -258,14 +258,30 @@ public enum EntryOperations {
         guard fm.fileExists(atPath: target.deletingLastPathComponent().path) else {
             throw MoveUndoDestinationError.missingParent
         }
-        if !item.crossVolume {
-            try fm.moveItem(at: source, to: target)
-            return (sourceIdentity, before)
-        }
         let parent = target.deletingLastPathComponent()
         let parentFD = open(parent.path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
         guard parentFD >= 0 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
         defer { close(parentFD) }
+        if !item.crossVolume {
+            let sourceParent = source.deletingLastPathComponent()
+            let sourceFD = open(sourceParent.path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
+            guard sourceFD >= 0 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
+            defer { close(sourceFD) }
+            try beforeCopyPublication()
+            guard CopyEngine.matches(parent, descriptor: parentFD),
+                  CopyEngine.matches(sourceParent, descriptor: sourceFD),
+                  try snapshotIdentity(source, fileManager: fm) == sourceIdentity else {
+                throw EntryOperationError.sourceChanged
+            }
+            do {
+                try CopyEngine.publishNoReplace(payload: source, target: target,
+                    sourceDirectoryFD: sourceFD, sourceName: source.lastPathComponent,
+                    destinationDirectoryFD: parentFD, destinationName: target.lastPathComponent)
+            } catch CopyPublicationError.conflict {
+                throw MoveUndoDestinationError.occupied
+            }
+            return (sourceIdentity, before)
+        }
         let stage = parent.appendingPathComponent(".files-undo-\(UUID().uuidString)")
         guard mkdirat(parentFD, stage.lastPathComponent, 0o700) == 0 else {
             throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
@@ -1028,10 +1044,16 @@ public enum EntryOperations {
                                 guard try snapshotIdentity(source, fileManager: fm) == identity else {
                                     throw EntryOperationError.sourceChanged
                                 }
-                                if flattenPlan != nil || redoItem != nil || retrySources != nil {
-                                    let sourceFD = open(source.deletingLastPathComponent().path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
+                                do {
+                                    let sourceParent = source.deletingLastPathComponent()
+                                    let sourceFD = open(sourceParent.path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
                                     guard sourceFD >= 0 else { throw EntryOperationError.sourceChanged }
                                     defer { close(sourceFD) }
+                                    guard CopyEngine.matches(sourceParent, descriptor: sourceFD),
+                                          CopyEngine.matches(normalizedDestination, descriptor: destinationFD),
+                                          try snapshotIdentity(source, fileManager: fm) == identity else {
+                                        throw EntryOperationError.sourceChanged
+                                    }
                                     if let redoItem {
                                         guard redoItem.destinationFolder.isCurrent,
                                               snapshot?.matchesOriginal(redoItem.snapshot) == true,
@@ -1049,8 +1071,6 @@ public enum EntryOperations {
                                             destinationDirectoryFD: destinationFD, destinationName: target.lastPathComponent,
                                             allowPathFallback: retrySources == nil)
                                     } catch CopyPublicationError.conflict { throw EntryOperationError.conflict }
-                                } else {
-                                    try fm.moveItem(at: source, to: target)
                                 }
                                 publishedIdentities[index] = identity
                                 publishedSnapshots[index] = snapshot
