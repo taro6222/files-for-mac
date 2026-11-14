@@ -45,6 +45,8 @@ def verify(smbd, root):
     lock directory = {state}
     pid directory = {state}
     private dir = {state}
+    ncalrpc dir = {state / "rpc"}
+    log level = 3
     log file = {root / "smb.log"}
 [files-qa]
     path = {share}
@@ -54,7 +56,9 @@ def verify(smbd, root):
 """, encoding="utf-8")
     with socket.socket() as port:
         port.bind(("127.0.0.1", PORT))
-    server = subprocess.Popen(["sudo", "-n", smbd, "--foreground", "--no-process-group", "--configfile", config])
+    # A foreground Samba treats EOF on an inherited pipe as a request to exit.
+    server = subprocess.Popen(["sudo", "-n", smbd, "--foreground", "--no-process-group", "--configfile", config],
+                              stdin=subprocess.DEVNULL)
     try:
         wait_for_server(server)
         subprocess.run(["/sbin/mount_smbfs", "-N", "-o", "nobrowse",
@@ -73,12 +77,13 @@ def verify(smbd, root):
             log = root / "smb.log"
             if log.exists():
                 print(log.read_text(errors="replace")[-8000:])
-            subprocess.run(["sudo", "-n", "/usr/sbin/chown", "-R", str(root.stat().st_uid), state], check=True, timeout=15)
+            subprocess.run(["sudo", "-n", "/usr/sbin/chown", "-R", str(root.stat().st_uid), root], check=True, timeout=15)
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("smbd", type=Path)
     arguments = parser.parse_args()
-    with tempfile.TemporaryDirectory(prefix="files-loopback-smb-") as directory:
+    # Keep Samba's Unix-domain socket paths under the macOS length limit.
+    with tempfile.TemporaryDirectory(prefix="files-smb-", dir="/private/tmp") as directory:
         verify(arguments.smbd.resolve(strict=True), Path(directory).resolve())
