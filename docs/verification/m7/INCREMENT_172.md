@@ -19,3 +19,5 @@ GitHub Actions에서 main 푸시와 main 대상 PR, 수동 실행에 macOS 15의
 [순차 CI 실행](https://github.com/taro6222/files-for-mac/actions/runs/43634140080)의 Apple Silicon Swift 테스트가 끝까지 실행됐다. 200ms 고정 대기 뒤 재탐색 완료를 기대하던 시험에서 실패했다. 재탐색이 끝날 때까지 상태를 확인하고 5초 안에 끝나지 않으면 시험을 실패로 판정하도록 바꿨다.
 
 순차 실행의 Intel 결과는 압축 취소 이후 정리가 1.052초 걸려 기존 1초 단언만 실패했다. 가상 러너의 동작 회귀에서는 완료 후 경과 시간 상한을 5초로 잡고, 취소 오류·공개 파일 부재·임시 파일 정리를 계속 확인한다. 재탐색 수정 직후 [Apple Silicon CI](https://github.com/taro6222/files-for-mac/actions/runs/43634694516/job/132568814420)는 Swift 회귀와 실제 볼륨 시험 6개를 통과했다.
+
+소스 `6d864f6562602a19714ea3ee8a897ed35d843f9d`의 [macOS 15 CI](https://github.com/taro6222/files-for-mac/actions/runs/43634694516)가 두 아키텍처에서 완료됐다. 각 러너에서 Swift 기본 회귀는 230개 통과·11개 건너뜀, APFS·대소문자 구분 APFS·exFAT·FAT32·HFS+ 마운트 단계는 6개 통과였다.
