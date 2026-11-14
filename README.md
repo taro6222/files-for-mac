@@ -4,7 +4,7 @@ Files의 탐색 경험을 macOS용 네이티브 앱으로 구현하는 프로젝
 
 - 개발 저장소: https://github.com/taro6222/files-for-mac
 - 비교 원본: files-community/Files `v4.2.9` (`99951c66928c4da714da8b1dd46039421182cbab`)
-- 현재 상태: **M0 조사 및 M1 읽기 전용 탐색 구현 중**. 완전 대응 버전이 아닙니다.
+- 현재 상태: **M7 로컬 배포 검증 진행 중**. 자세한 구현 범위와 검증 현황은 개발 현황 문서에서 확인할 수 있습니다.
 
 ## 실행
 
@@ -14,6 +14,8 @@ Xcode 26.6 / Swift 6.3.3에서 개발·검증했습니다. 최소 배포 대상�
 ./scripts/build-app.sh
 open 'build/Files macOS.app'
 ```
+
+로컬 프리뷰 설치 이미지와 SHA-256 파일은 `./scripts/build-dmg.sh --preview`로 생성합니다.
 
 또는 `FilesMac.xcodeproj`를 Xcode에서 열고 `Files macOS` scheme을 실행합니다. SwiftPM에서는 `Package.swift`로 코어 테스트와 앱을 빌드합니다.
 
@@ -27,7 +29,7 @@ CLANG_MODULE_CACHE_PATH="$PWD/.build/ModuleCache" swift test --disable-sandbox
 
 홈 드라이브 용량 카드, 실제 폴더 상세 목록, 폴더 열기, 경로 입력·추천·Tab 완성, 뒤로/앞으로/상위 이동, 다중 선택, 열 정렬·순서·크기 저장, 숨김 항목·확장자 전환, 여러 창에 공유되는 즐겨찾기 추가/제거/순서, 최근 위치 삭제, 사이드바 섹션 접기·순서 저장, 시스템 앱으로 파일 열기, Finder에서 보기, FSEvents 자동 갱신·외부 이름 변경 후 선택 유지를 제공합니다. 대용량 폴더는 첫 128개부터 배치로 표시합니다.
 
-파일 쓰기 작업·탭·분할·다른 레이아웃·검색·압축·Git은 이후 단계입니다. 아직 없는 기능을 메뉴 버튼으로 흉내 내지 않습니다.
+파일 생성·복사·이동·이름 변경, 탭·분할 pane, 상세·그리드·목록·컬럼, 검색, ZIP/7z 생성 및 RAR 탐색·추출, 원격 연결과 Git 기본 작업도 제공합니다.
 
 ## 문서
 
