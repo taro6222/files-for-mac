@@ -4674,6 +4674,44 @@ private final class VolumeCardView: NSStackView {
 }
 
 #if RELEASE_PERFORMANCE_QA
+@MainActor
+private final class ReleaseScrollDriver: NSObject {
+    private var displayLink: CADisplayLink?
+    private var continuation: CheckedContinuation<Bool, Never>?
+    private var step: ((Int) -> Void)?
+    private var tick = 0
+
+    func run(in view: NSView, step: @escaping (Int) -> Void) async -> Bool {
+        self.step = step
+        let deadline = Task { [weak self] in
+            do { try await Task.sleep(for: .seconds(15)) }
+            catch { return }
+            self?.finish(false)
+        }
+        defer { deadline.cancel() }
+        return await withCheckedContinuation { continuation in
+            self.continuation = continuation
+            let link = view.displayLink(target: self, selector: #selector(advance(_:)))
+            displayLink = link
+            link.add(to: .main, forMode: .common)
+        }
+    }
+
+    @objc private func advance(_ link: CADisplayLink) {
+        tick += 1
+        if tick <= 360 { step?(tick) }
+        else { finish(true) }
+    }
+
+    private func finish(_ completed: Bool) {
+        displayLink?.invalidate()
+        displayLink = nil
+        step = nil
+        continuation?.resume(returning: completed)
+        continuation = nil
+    }
+}
+
 private struct ReleaseSoakFailure: Error, CustomStringConvertible {
     let description: String
     init(_ description: String) { self.description = description }
@@ -4767,11 +4805,18 @@ extension BrowserWindow {
             let maxOffset = max(0, controller.table.bounds.height - clip.bounds.height)
             guard maxOffset > 0 else { return }
             let scrollStart = DispatchTime.now().uptimeNanoseconds
-            for tick in 1...360 {
+            func scrollStep(_ tick: Int) {
                 let offset = min(maxOffset, CGFloat(tick * 12))
                 clip.scroll(to: NSPoint(x: 0, y: offset))
                 controller.scroll.reflectScrolledClipView(clip)
-                try? await Task.sleep(for: .milliseconds(16))
+            }
+            if environment["FILES_PERFORMANCE_SCROLL_PACING"] == "display" {
+                guard await ReleaseScrollDriver().run(in: clip, step: scrollStep) else { return }
+            } else {
+                for tick in 1...360 {
+                    scrollStep(tick)
+                    try? await Task.sleep(for: .milliseconds(16))
+                }
             }
             guard clip.bounds.minY > 0 else { return }
             samples["scrollSteps"] = 360

@@ -1,0 +1,18 @@
+{
+  "timer": {
+    "capturedFrames": 333,
+    "displayRefreshHz": 60,
+    "intervalsOver25ms": 36,
+    "maximumIntervalMilliseconds": 34.61824997793883,
+    "p95IntervalMilliseconds": 33.23487506713718,
+    "scrollDurationSeconds": 6.368455707910471
+  },
+  "display": {
+    "capturedFrames": 314,
+    "displayRefreshHz": 60,
+    "intervalsOver25ms": 36,
+    "maximumIntervalMilliseconds": 35.80333408899605,
+    "p95IntervalMilliseconds": 33.58095791190863,
+    "scrollDurationSeconds": 6.0092138750478625
+  }
+}

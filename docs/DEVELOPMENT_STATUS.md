@@ -4,6 +4,8 @@
 
 ## 이번 구현 단위
 
+60Hz 화면 갱신에 맞춘 스크롤에서도 창 갱신 간격 p95는 약 33ms였다. [M7 스크롤 입력 비교](verification/m7/INCREMENT_28.md)
+
 60Hz 창 캡처에서 10,000항목 스크롤 갱신 간격 p95 33.41ms를 기록했다. [M7 창 프레임 측정](verification/m7/INCREMENT_27.md)
 
 Release AppKit에서 10,000항목 목록 연속 스크롤을 실행했다. 화면 프레임 표본은 추가 확보가 필요하다. [M7 스크롤 계측](verification/m7/INCREMENT_26.md)

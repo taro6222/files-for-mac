@@ -1,9 +1,15 @@
 #!/bin/bash
 set -euo pipefail
 cd "$(dirname "$0")/.."
+pacing=${1:-display}
+case "$pacing" in
+  display|timer) ;;
+  *) echo "Usage: $0 [display|timer]" >&2; exit 64 ;;
+esac
 mkdir -p build
 run_dir=$(mktemp -d "$PWD/build/scroll-window.XXXXXX")
 echo "$run_dir"
+printf '%s\n' "$pacing" > "$run_dir/pacing"
 scratch="$PWD/build/release-performance-swiftpm"
 export CLANG_MODULE_CACHE_PATH="$PWD/.build/ModuleCache"
 swiftc -parse-as-library scripts/measure-scroll-window.swift -o "$run_dir/capture"
@@ -21,6 +27,7 @@ for index in range(10_000):
 PY
 export FILES_PERFORMANCE_FIXTURE="$fixture" FILES_PERFORMANCE_REPORT="$run_dir/app.json"
 export FILES_PERFORMANCE_COUNT=10000 FILES_PERFORMANCE_IDLE_SECONDS=3 FILES_PERFORMANCE_SCROLL=1
+export FILES_PERFORMANCE_SCROLL_PACING="$pacing"
 export FILES_PERFORMANCE_START_NS=$(python3 -c 'import time; print(time.monotonic_ns())')
 "$binary" >"$run_dir/app.log" 2>&1 &
 app_pid=$!
