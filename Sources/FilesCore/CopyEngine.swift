@@ -41,6 +41,7 @@ public struct CopyRecord: Codable, Sendable {
     public var temporary: URL? = nil
     public var targetIdentity: String? = nil
     public var targetSnapshot: [String: String]? = nil
+    var targetMetadata: CopyTransferMetadata? = nil
 }
 
 /// Versioned, inspectable foundation journal. This is not yet an undo/recovery database.
@@ -56,6 +57,13 @@ public struct CopyUndoItem: Codable, Sendable {
     public let target: URL
     public let targetIdentity: String
     public let targetSnapshot: [String: String]
+    var targetMetadata: CopyTransferMetadata? = nil
+}
+
+struct CopyTransferMetadata: Codable, Equatable, Sendable {
+    var extendedAttributes: [String: [Data: Data]] = [:]
+    var accessControlLists: [String: Data] = [:]
+    var modificationDates: [String: Date] = [:]
 }
 
 public struct CopyUndoRecord: Codable, Sendable {
@@ -246,6 +254,7 @@ public enum CopyEngine {
                             report.items[index].state = "completed"
                             report.items[index].targetIdentity = undoIdentity
                             report.items[index].targetSnapshot = verifiedPayload.withPermissions
+                            report.items[index].targetMetadata = verifiedPayload.metadata
                             break
                         } catch CopyPublicationError.conflict {}
                         if conflictPolicy == .skip {
@@ -283,7 +292,8 @@ public enum CopyEngine {
         let undoItems = report.items.compactMap { item -> CopyUndoItem? in
             guard item.state == "completed", let identity = item.targetIdentity,
                   let snapshot = item.targetSnapshot else { return nil }
-            return CopyUndoItem(target: item.target, targetIdentity: identity, targetSnapshot: snapshot)
+            return CopyUndoItem(target: item.target, targetIdentity: identity, targetSnapshot: snapshot,
+                                targetMetadata: item.targetMetadata)
         }
         if recordUndo && !undoItems.isEmpty {
             do {
@@ -320,8 +330,7 @@ public enum CopyEngine {
                     guard entryExists(item.target) else {
                         results.append(CopyUndoItemResult(target: item.target, state: "missing", message: "Copied item no longer exists.")); continue
                     }
-                    guard try entryIdentity(item.target) == item.targetIdentity,
-                          try verifiedSnapshot(item.target) == item.targetSnapshot else {
+                    guard try matchesUndoTarget(item) else {
                         results.append(CopyUndoItemResult(target: item.target, state: "changed", message: "Copied item changed after the copy; preserved.")); continue
                     }
                     try fm.removeItem(at: item.target)
@@ -342,6 +351,15 @@ public enum CopyEngine {
                                   state: completed == results.count ? "completed" : (completed > 0 ? "partiallyCompleted" : "failed"),
                                   items: results, journalError: journalError)
         }.value
+    }
+
+    private static func matchesUndoTarget(_ item: CopyUndoItem) throws -> Bool {
+        guard try entryIdentity(item.target) == item.targetIdentity else { return false }
+        let snapshot = try makeSnapshot(item.target, cancellation: CopyCancellation(),
+                                        includeTransferMetadata: item.targetMetadata != nil)
+        guard snapshot.withPermissions == item.targetSnapshot,
+              item.targetMetadata == nil || snapshot.metadata == item.targetMetadata else { return false }
+        return try entryIdentity(item.target) == item.targetIdentity
     }
 
     private static func copyName(_ source: URL, isDirectory: Bool, suffix: Int) -> String {
@@ -405,23 +423,21 @@ public enum CopyEngine {
     struct VerificationSnapshot {
         var withPermissions: [String: String] = [:]
         var content: [String: String] = [:]
-        var extendedAttributes: [String: [Data: SHA256.Digest]] = [:]
-        var accessControlLists: [String: Data] = [:]
-        var modificationDates: [String: Date] = [:]
+        var metadata = CopyTransferMetadata()
         var modificationTimeResolution: TimeInterval = 0
         var hasNativePermissions = true
 
         private func transferMismatch(_ source: Self) -> TransferMismatch? {
             if content != source.content { return .contents }
-            if extendedAttributes != source.extendedAttributes { return .extendedAttributes }
-            if accessControlLists != source.accessControlLists { return .accessControlList }
+            if metadata.extendedAttributes != source.metadata.extendedAttributes { return .extendedAttributes }
+            if metadata.accessControlLists != source.metadata.accessControlLists { return .accessControlList }
             if hasNativePermissions, source.hasNativePermissions, withPermissions != source.withPermissions {
                 return .permissions
             }
             let resolution = max(modificationTimeResolution, source.modificationTimeResolution)
-            guard modificationDates.count == source.modificationDates.count else { return .modificationTime }
-            let datesMatch = modificationDates.allSatisfy { path, date in
-                guard let sourceDate = source.modificationDates[path] else { return false }
+            guard metadata.modificationDates.count == source.metadata.modificationDates.count else { return .modificationTime }
+            let datesMatch = metadata.modificationDates.allSatisfy { path, date in
+                guard let sourceDate = source.metadata.modificationDates[path] else { return false }
                 return date == sourceDate || abs(date.timeIntervalSince(sourceDate)) < resolution
             }
             return datesMatch ? nil : .modificationTime
@@ -436,8 +452,7 @@ public enum CopyEngine {
         }
 
         func matchesOriginal(_ original: Self) -> Bool {
-            withPermissions == original.withPermissions && modificationDates == original.modificationDates
-                && matchesTransferredContents(of: original)
+            withPermissions == original.withPermissions && content == original.content && metadata == original.metadata
         }
 
         var legacyPermissionsSnapshot: [String: String] {
@@ -524,10 +539,10 @@ public enum CopyEngine {
             }
             if includeTransferMetadata {
                 let attributes = try attributeDigests(url, cancellation: cancellation)
-                if !attributes.isEmpty { snapshot.extendedAttributes[relative] = attributes }
-                snapshot.accessControlLists[relative] = try accessControlList(url)
+                if !attributes.isEmpty { snapshot.metadata.extendedAttributes[relative] = attributes }
+                snapshot.metadata.accessControlLists[relative] = try accessControlList(url)
                 if type != .typeSymbolicLink {
-                    snapshot.modificationDates[relative] = attrs[.modificationDate] as? Date
+                    snapshot.metadata.modificationDates[relative] = attrs[.modificationDate] as? Date
                 }
             }
         }
@@ -546,10 +561,10 @@ public enum CopyEngine {
             throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
         }
         defer { acl_free(text) }
-        return length > 0 ? Data(bytes: text, count: length) : nil
+        return length > 0 ? Data(SHA256.hash(data: Data(bytes: text, count: length))) : nil
     }
 
-    private static func attributeDigests(_ url: URL, cancellation: CopyCancellation) throws -> [Data: SHA256.Digest] {
+    private static func attributeDigests(_ url: URL, cancellation: CopyCancellation) throws -> [Data: Data] {
         let invalidAttributes = CopyFailure(text: "Extended attributes could not be verified: " + url.path)
         let size = listxattr(url.path, nil, 0, XATTR_NOFOLLOW)
         if size == 0 || (size == -1 && errno == ENOTSUP) { return [:] }
@@ -559,7 +574,7 @@ public enum CopyEngine {
             listxattr(url.path, $0.baseAddress?.assumingMemoryBound(to: CChar.self), size, XATTR_NOFOLLOW)
         }
         guard listSize == size, names.last == 0 else { throw invalidAttributes }
-        var digests: [Data: SHA256.Digest] = [:]
+        var digests: [Data: Data] = [:]
         for nameBytes in names.split(separator: 0) {
             try cancellation.check()
             guard let name = String(bytes: nameBytes, encoding: .utf8) else { throw invalidAttributes }
@@ -572,7 +587,7 @@ public enum CopyEngine {
                 getxattr(url.path, name, $0.baseAddress, valueSize, 0, XATTR_NOFOLLOW)
             }
             guard read == valueSize else { throw invalidAttributes }
-            digests[Data(nameBytes)] = SHA256.hash(data: value)
+            digests[Data(nameBytes)] = Data(SHA256.hash(data: value))
         }
         return digests
     }

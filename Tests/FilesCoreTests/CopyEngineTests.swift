@@ -1,4 +1,5 @@
 import Foundation
+import Darwin
 import Testing
 @testable import FilesCore
 
@@ -171,7 +172,8 @@ private struct CopyFixture {
     #expect(try Data(contentsOf: report.items[0].target) == Data(contentsOf: source))
 }
 
-@Test func copyUndoRemovesOnlyUnchangedCopiedResults() async throws {
+@Test(arguments: [false, true])
+func copyUndoRemovesOnlyUnchangedCopiedResults(legacy: Bool) async throws {
     let f = try CopyFixture(); defer { f.clean() }
     let unchanged = try f.file("unchanged", text: "original")
     let changed = try f.file("changed", text: "before")
@@ -181,6 +183,14 @@ private struct CopyFixture {
     let copiedUnchanged = f.destination.appendingPathComponent("unchanged")
     let copiedChanged = f.destination.appendingPathComponent("changed")
     try Data("after".utf8).write(to: copiedChanged)
+    if legacy {
+        let journal = f.journal.appendingPathComponent("undo-copy-\(report.id.uuidString).json")
+        var json = try #require(JSONSerialization.jsonObject(with: Data(contentsOf: journal)) as? [String: Any])
+        var items = try #require(json["items"] as? [[String: Any]])
+        for index in items.indices { items[index].removeValue(forKey: "targetMetadata") }
+        json["items"] = items
+        try JSONSerialization.data(withJSONObject: json).write(to: journal)
+    }
     let record = try #require(CopyEngine.latestUndoCopy(journalDirectory: f.journal))
 
     let undo = await CopyEngine.undoCopy(record, journalDirectory: f.journal)
@@ -190,6 +200,35 @@ private struct CopyFixture {
     #expect(undo.items.first { $0.target == copiedChanged }?.state == "changed")
     #expect(undo.state == "partiallyCompleted")
     #expect(CopyEngine.latestUndoCopy(journalDirectory: f.journal) == nil)
+}
+
+@Test(arguments: [false, true])
+func copyUndoPreservesMetadataChangesInCopyAndMerge(merge: Bool) async throws {
+    let f = try CopyFixture(); defer { f.clean() }
+    let fm = FileManager.default
+    let sourceFolder = f.source.appendingPathComponent("folder", isDirectory: true)
+    let targetFolder = f.destination.appendingPathComponent("folder", isDirectory: true)
+    try fm.createDirectory(at: sourceFolder, withIntermediateDirectories: false)
+    let bytes = Data("original".utf8)
+    try bytes.write(to: sourceFolder.appendingPathComponent("file"))
+    if merge {
+        try fm.createDirectory(at: targetFolder, withIntermediateDirectories: false)
+        let plan = try CopyMergePlanner.plan(source: sourceFolder, target: targetFolder)
+        let report = await CopyMergeExecutor.run(plan: plan, journalDirectory: f.journal,
+                                                 cancellation: CopyCancellation())
+        #expect(report.state == "completed")
+    } else {
+        #expect(await f.run([sourceFolder]).state == "completed")
+    }
+    let record = try #require(CopyEngine.latestUndoCopy(journalDirectory: f.journal))
+    #expect(record.items.first?.targetMetadata != nil)
+    let copied = targetFolder.appendingPathComponent("file")
+    let attribute = "com.filesmac.undo-test"
+    let value: UInt8 = 42
+    try #require(withUnsafePointer(to: value) { setxattr(copied.path, attribute, $0, 1, 0, 0) } == 0)
+    let undo = await CopyEngine.undoCopy(record, journalDirectory: f.journal)
+    #expect(undo.items.first?.state == "changed")
+    #expect(try Data(contentsOf: copied) == bytes)
 }
 
 @Test func folderMergePlanSeparatesMissingNestedAndTypeConflictsWithoutMutation() throws {
@@ -283,6 +322,7 @@ private struct CopyFixture {
     let undo = try #require(CopyEngine.latestUndoCopy(journalDirectory: f.journal))
     #expect(undo.operationId == report.id)
     #expect(undo.items.count == 2)
+    #expect(undo.items.allSatisfy { $0.targetMetadata != nil })
     let undoResult = await CopyEngine.undoCopy(undo, journalDirectory: f.journal)
     #expect(undoResult.state == "completed")
     #expect(!FileManager.default.fileExists(atPath: f.destination.appendingPathComponent("missing.txt").path))

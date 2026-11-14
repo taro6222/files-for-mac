@@ -67,7 +67,8 @@ public enum CopyMergeBatch {
                     report.items[index].addedCount = item.state == "completed" ? 1 : 0
                     report.items[index].message = item.message
                     if item.state == "completed", let identity = item.targetIdentity, let snapshot = item.targetSnapshot {
-                        undoItems.append(CopyUndoItem(target: item.target, targetIdentity: identity, targetSnapshot: snapshot))
+                        undoItems.append(CopyUndoItem(target: item.target, targetIdentity: identity, targetSnapshot: snapshot,
+                                                      targetMetadata: item.targetMetadata))
                     }
                 } else if sourceKind == .directory && targetKind == .directory {
                     let plan = try CopyMergePlanner.plan(source: source, target: target)
@@ -80,7 +81,8 @@ public enum CopyMergeBatch {
                     undoItems += child.items.compactMap { item in
                         guard item.state == "completed", let identity = item.targetIdentity,
                               let snapshot = item.targetSnapshot else { return nil }
-                        return CopyUndoItem(target: item.target, targetIdentity: identity, targetSnapshot: snapshot)
+                        return CopyUndoItem(target: item.target, targetIdentity: identity, targetSnapshot: snapshot,
+                                            targetMetadata: item.targetMetadata)
                     }
                 } else {
                     report.items[index].state = "conflict"

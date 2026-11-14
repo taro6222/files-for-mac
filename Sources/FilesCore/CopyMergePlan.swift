@@ -103,6 +103,7 @@ public struct CopyMergeExecutionItem: Codable, Sendable {
     public var message: String?
     public var targetIdentity: String?
     public var targetSnapshot: [String: String]?
+    var targetMetadata: CopyTransferMetadata? = nil
 }
 
 public struct CopyMergeExecutionReport: Codable, Sendable {
@@ -172,6 +173,7 @@ public enum CopyMergeExecutor {
                         throw MergeFailure(text: "Source changed during copying.")
                     }
                     try copied.verifyTransferredContents(of: before)
+                    let targetIdentity = try identity(temporary)
                     guard try identity(parent) == action.expectedParentIdentity else {
                         throw MergeFailure(text: "Destination parent changed before publication.")
                     }
@@ -183,13 +185,12 @@ public enum CopyMergeExecutor {
                             sourceDirectoryFD: parentFD, sourceName: temporary.lastPathComponent,
                             destinationDirectoryFD: parentFD, destinationName: action.target.lastPathComponent)
                     } catch CopyPublicationError.conflict { throw MergeConflict() }
-                    let targetIdentity = try identity(action.target)
                     report.items[index].state = "completed"
                     report.items[index].targetIdentity = targetIdentity
-                    let targetSnapshot = try CopyEngine.verifiedSnapshot(action.target, cancellation: cancellation)
-                    report.items[index].targetSnapshot = targetSnapshot
+                    report.items[index].targetSnapshot = copied.withPermissions
+                    report.items[index].targetMetadata = copied.metadata
                     undoItems.append(CopyUndoItem(target: action.target, targetIdentity: targetIdentity,
-                                                  targetSnapshot: targetSnapshot))
+                                                  targetSnapshot: copied.withPermissions, targetMetadata: copied.metadata))
                 }
             } catch is MergeConflict {
                 report.items[index].state = "conflict"
