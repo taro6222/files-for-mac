@@ -4553,6 +4553,32 @@ extension BrowserWindow {
             checks["fileInfoSignature"] = controller.infoWindow?.qaSignatureLoaded == true
             checks["fileInfoScrollsAtMinimumSize"] = controller.infoWindow?.qaCanReachSignature() == true
             try capture("file-info", view: controller.infoWindow?.window?.contentView)
+            if let info = controller.infoWindow {
+                let inputFile = destination.appendingPathComponent("hash-input.txt")
+                let sameFile = destination.appendingPathComponent("hash-same.txt")
+                let differentFile = destination.appendingPathComponent("hash-different.txt")
+                try Data("abc".utf8).write(to: inputFile)
+                try Data("abc".utf8).write(to: sameFile)
+                try Data("different".utf8).write(to: differentFile)
+                info.present(items: [FileItem(url: inputFile, name: inputFile.lastPathComponent, isDirectory: false)])
+                info.qaStartHash(.crc32)
+                try await controller.waitForFolderQA { !info.qaHashing }
+                checks["fileInfoHashComparison"] = info.qaDigest == "352441c2"
+                    && info.qaCompareHash(" 352441C2 ") == L("해시값이 일치합니다.", "Hashes match.")
+                    && info.qaCompareHash("00000000") == L("해시값이 다릅니다.", "Hashes differ.")
+                    && info.qaCompareHash("not a hash") == L("CRC32 해시값을 입력하세요.", "Enter a CRC32 hash.")
+                info.qaStartHash(.sha512, comparing: differentFile)
+                try await controller.waitForFolderQA { !info.qaHashing }
+                checks["fileInfoHashFileComparison"] = info.qaDigest?.count == 128
+                    && info.qaHashStatus == L("해시값이 다릅니다.", "Hashes differ.")
+                info.qaStartHash(.sha512, comparing: sameFile)
+                try await controller.waitForFolderQA { !info.qaHashing }
+                checks["fileInfoHashFileComparison"] = checks["fileInfoHashFileComparison"] == true
+                    && info.qaHashStatus == L("해시값이 일치합니다.", "Hashes match.")
+            } else {
+                checks["fileInfoHashComparison"] = false
+                checks["fileInfoHashFileComparison"] = false
+            }
             controller.infoWindow?.close(); window.makeKeyAndOrderFront(nil)
             let taggedURL = controller.activeSelectedItems.first?.url
             controller.openAllTagged(nil)

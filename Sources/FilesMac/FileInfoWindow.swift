@@ -2,11 +2,13 @@ import AppKit
 import FilesCore
 
 @MainActor
-final class FileInfoWindow: NSWindowController {
+final class FileInfoWindow: NSWindowController, NSTextFieldDelegate {
     private let inspector = FilePropertiesInspector()
     private let scroll = NSScrollView()
     private let details = NSStackView(), status = NSTextField(labelWithString: "")
     private let hashButton = NSButton(), hashProgress = NSProgressIndicator(), digest = NSTextField(wrappingLabelWithString: "")
+    private let hashAlgorithm = NSPopUpButton(), expectedHash = NSTextField(), compareHashButton = NSButton()
+    private let hashStatus = NSTextField(wrappingLabelWithString: "")
     private let tagField = NSTextField(), saveTagsButton = NSButton()
     private let signatureButton = NSButton(), signatureDetails = NSTextField(wrappingLabelWithString: "")
     private let chooseIconButton = NSButton(), resetIconButton = NSButton(), iconStatus = NSTextField(labelWithString: "")
@@ -50,11 +52,27 @@ final class FileInfoWindow: NSWindowController {
         resetIconButton.title = L("기본 아이콘 복원", "Restore Default Icon"); resetIconButton.target = self; resetIconButton.action = #selector(resetFolderIcon(_:)); iconControls.addArrangedSubview(resetIconButton)
         iconControls.addArrangedSubview(iconStatus); root.addArrangedSubview(iconControls)
         let separator = NSBox(); separator.boxType = .separator; root.addArrangedSubview(separator)
-        let hashTitle = NSTextField(labelWithString: "SHA-256"); hashTitle.font = .systemFont(ofSize: 14, weight: .semibold); root.addArrangedSubview(hashTitle)
+        let hashTitle = NSTextField(labelWithString: L("해시", "Hashes")); hashTitle.font = .systemFont(ofSize: 14, weight: .semibold); root.addArrangedSubview(hashTitle)
         let hashControls = NSStackView(); hashControls.orientation = .horizontal; hashControls.spacing = 8
+        hashAlgorithm.addItems(withTitles: FileHashAlgorithm.allCases.map(\.rawValue))
+        hashAlgorithm.selectItem(withTitle: FileHashAlgorithm.sha256.rawValue)
+        hashAlgorithm.setAccessibilityLabel(L("해시 알고리즘", "Hash algorithm"))
+        hashAlgorithm.target = self; hashAlgorithm.action = #selector(changeHashAlgorithm(_:))
+        hashControls.addArrangedSubview(hashAlgorithm)
         hashButton.title = L("해시 계산", "Calculate Hash"); hashButton.target = self; hashButton.action = #selector(toggleHash(_:)); hashControls.addArrangedSubview(hashButton)
         hashProgress.isIndeterminate = true; hashProgress.isHidden = true; hashControls.addArrangedSubview(hashProgress); root.addArrangedSubview(hashControls)
         digest.font = .monospacedSystemFont(ofSize: 11, weight: .regular); digest.isSelectable = true; digest.lineBreakMode = .byCharWrapping; root.addArrangedSubview(digest)
+        let hashComparison = NSStackView(); hashComparison.orientation = .horizontal; hashComparison.spacing = 8
+        expectedHash.placeholderString = L("비교할 해시값", "Expected hash")
+        expectedHash.setAccessibilityLabel(L("비교할 해시값", "Expected hash"))
+        expectedHash.target = self; expectedHash.action = #selector(compareEnteredHash(_:))
+        expectedHash.delegate = self
+        hashComparison.addArrangedSubview(expectedHash)
+        compareHashButton.title = L("파일 비교…", "Compare File…")
+        compareHashButton.target = self; compareHashButton.action = #selector(chooseHashComparison(_:))
+        hashComparison.addArrangedSubview(compareHashButton)
+        root.addArrangedSubview(hashComparison)
+        hashStatus.textColor = .secondaryLabelColor; root.addArrangedSubview(hashStatus)
         let signatureSeparator = NSBox(); signatureSeparator.boxType = .separator; root.addArrangedSubview(signatureSeparator)
         let signatureTitle = NSTextField(labelWithString: L("코드 서명", "Code Signature")); signatureTitle.font = .systemFont(ofSize: 14, weight: .semibold); root.addArrangedSubview(signatureTitle)
         signatureButton.title = L("서명 확인", "Inspect Signature"); signatureButton.target = self; signatureButton.action = #selector(inspectSignature(_:)); root.addArrangedSubview(signatureButton)
@@ -64,6 +82,8 @@ final class FileInfoWindow: NSWindowController {
     func present(items: [FileItem]) {
         cancelTasks(); self.items = items; properties = nil; tagIdentity = nil; tagField.stringValue = ""; tagField.isEnabled = false; saveTagsButton.isEnabled = false; digest.stringValue = ""; hashProgress.isHidden = true; signatureDetails.stringValue = ""; signatureButton.isEnabled = items.count == 1; iconStatus.stringValue = ""
         let folderIconEnabled = items.count == 1 && items[0].isDirectory
+        expectedHash.stringValue = ""; hashStatus.stringValue = ""
+        finishHash()
         chooseIconButton.isEnabled = folderIconEnabled; resetIconButton.isEnabled = folderIconEnabled
         rebuildDetails()
         scroll.contentView.scroll(to: .zero)
@@ -126,19 +146,87 @@ final class FileInfoWindow: NSWindowController {
             ? (image == nil ? L("기본 아이콘을 복원했습니다.", "Default icon restored.") : L("사용자 아이콘을 저장했습니다.", "Custom icon saved."))
             : L("아이콘을 변경하지 못했습니다.", "Unable to change the icon.")
     }
-    private func startHash() {
-        guard items.count == 1, !items[0].isDirectory else { return }; let item = items[0]
-        hashButton.title = L("취소", "Cancel"); hashProgress.isHidden = false; hashProgress.startAnimation(nil); digest.stringValue = ""
-        hashTask = Task { [weak self, inspector] in
-            do {
-                let value = try await inspector.sha256(item.url)
-                guard let self, !Task.isCancelled else { return }; self.digest.stringValue = value; self.finishHash()
-            } catch is CancellationError { self?.status.stringValue = L("해시 계산을 취소했습니다.", "Hash calculation cancelled."); self?.finishHash() }
-            catch { self?.status.stringValue = L("해시 계산 실패: ", "Hash failed: ") + error.localizedDescription; self?.finishHash() }
+    @objc private func changeHashAlgorithm(_ sender: Any?) {
+        digest.stringValue = ""
+        updateHashComparison()
+    }
+    @objc private func compareEnteredHash(_ sender: Any?) {
+        guard hashTask == nil else { return }
+        if digest.stringValue.isEmpty { startHash() } else { updateHashComparison() }
+    }
+    func controlTextDidChange(_ notification: Notification) {
+        updateHashComparison()
+    }
+    private func updateHashComparison() {
+        let expected = expectedHash.stringValue.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !expected.isEmpty, !digest.stringValue.isEmpty, let algorithm = selectedHashAlgorithm else {
+            hashStatus.stringValue = ""; return
+        }
+        guard expected.utf8.count == algorithm.hexLength,
+              expected.utf8.allSatisfy({ (48...57).contains($0) || (97...102).contains($0) }) else {
+            hashStatus.stringValue = L("\(algorithm.rawValue) 해시값을 입력하세요.", "Enter a \(algorithm.rawValue) hash."); return
+        }
+        showHashMatch(expected == digest.stringValue)
+    }
+    private func showHashMatch(_ matches: Bool) {
+        hashStatus.stringValue = matches ? L("해시값이 일치합니다.", "Hashes match.") : L("해시값이 다릅니다.", "Hashes differ.")
+    }
+    private var selectedHashAlgorithm: FileHashAlgorithm? {
+        hashAlgorithm.titleOfSelectedItem.flatMap(FileHashAlgorithm.init(rawValue:))
+    }
+    @objc private func chooseHashComparison(_ sender: Any?) {
+        guard let window, hashTask == nil else { return }
+        let panel = NSOpenPanel(); panel.canChooseFiles = true; panel.canChooseDirectories = false
+        panel.beginSheetModal(for: window) { [weak self] result in
+            if result == .OK, let url = panel.url { self?.startHash(comparing: url) }
         }
     }
-    private func cancelHash() { hashTask?.cancel() }
-    private func finishHash() { hashTask = nil; hashButton.title = L("해시 계산", "Calculate Hash"); hashProgress.stopAnimation(nil); hashProgress.isHidden = true }
+    private func startHash(comparing comparisonURL: URL? = nil) {
+        guard hashTask == nil, items.count == 1, !items[0].isDirectory, let algorithm = selectedHashAlgorithm else { return }
+        let item = items[0]
+        hashButton.title = L("취소", "Cancel"); hashProgress.isHidden = false; hashProgress.startAnimation(nil); digest.stringValue = ""
+        hashStatus.stringValue = ""
+        hashAlgorithm.isEnabled = false; compareHashButton.isEnabled = false; expectedHash.isEnabled = false
+        if comparisonURL != nil { expectedHash.stringValue = "" }
+        hashTask = Task { [weak self, inspector] in
+            do {
+                let value = try await inspector.hash(item.url, algorithm: algorithm)
+                var comparison: String?
+                if let comparisonURL { comparison = try await inspector.hash(comparisonURL, algorithm: algorithm) }
+                try Task.checkCancellation()
+                guard let self else { return }
+                self.digest.stringValue = value
+                if let comparison { self.showHashMatch(value == comparison) } else { self.updateHashComparison() }
+                self.finishHash()
+                self.announceHashResult()
+            } catch {
+                guard let self, !Task.isCancelled else { return }
+                self.hashStatus.stringValue = L("해시 계산 실패: ", "Hash failed: ") + error.localizedDescription
+                self.finishHash()
+                self.announceHashResult()
+            }
+        }
+    }
+    private func cancelHash() {
+        hashTask?.cancel()
+        hashStatus.stringValue = L("해시 계산을 취소했습니다.", "Hash calculation cancelled.")
+        finishHash()
+        announceHashResult()
+    }
+    private func announceHashResult() {
+        guard let window else { return }
+        let message = hashStatus.stringValue.isEmpty ? L("해시 계산을 완료했습니다.", "Hash calculation complete.") : hashStatus.stringValue
+        NSAccessibility.post(element: window, notification: .announcementRequested, userInfo: [
+            .announcement: message, .priority: NSAccessibilityPriorityLevel.medium.rawValue
+        ])
+    }
+    private func finishHash() {
+        hashTask = nil
+        hashButton.title = L("해시 계산", "Calculate Hash"); hashProgress.stopAnimation(nil); hashProgress.isHidden = true
+        let enabled = items.count == 1 && !items[0].isDirectory
+        hashButton.isEnabled = enabled; hashAlgorithm.isEnabled = enabled
+        compareHashButton.isEnabled = enabled; expectedHash.isEnabled = enabled
+    }
     @objc private func inspectSignature(_ sender: Any?) {
         guard items.count == 1, signatureTask == nil else { return }
         signatureButton.isEnabled = false; signatureDetails.stringValue = L("서명을 확인하는 중…", "Inspecting signature…")
@@ -182,7 +270,17 @@ final class FileInfoWindow: NSWindowController {
     }
     var qaHashing: Bool { hashTask != nil }
     var qaDigest: String? { digest.stringValue.isEmpty ? nil : digest.stringValue }
-    func qaStartHash() { startHash() }
+    func qaStartHash(_ algorithm: FileHashAlgorithm = .sha256, comparing url: URL? = nil) {
+        hashAlgorithm.selectItem(withTitle: algorithm.rawValue)
+        changeHashAlgorithm(nil)
+        startHash(comparing: url)
+    }
+    func qaCompareHash(_ value: String) -> String {
+        expectedHash.stringValue = value
+        compareEnteredHash(nil)
+        return hashStatus.stringValue
+    }
+    var qaHashStatus: String { hashStatus.stringValue }
     func qaSetTags(_ value: String) { tagField.stringValue = value; saveTags(nil) }
     var qaTags: [String] { (try? FileTagService().snapshot(items[0].url).tags) ?? [] }
     func qaInspectSignature() { inspectSignature(nil) }
