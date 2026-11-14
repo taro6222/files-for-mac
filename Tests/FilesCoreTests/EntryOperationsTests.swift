@@ -413,14 +413,17 @@ func entryMoveUndoPreservesEditsInsideMovedOrBackedUpFolder(crossVolume: Bool, e
     let record = try #require(EntryOperations.latestUndoMove(journalDirectory: journal))
     let item = try #require(record.items.first)
     let backup = try #require(item.backup)
-    // Reproduce the state after the original location was restored but backup publication failed.
-    try fm.moveItem(at: target, to: source)
-    let pending = MoveUndoRecord(operationId: record.operationId, items: [item.awaitingBackupRestore()],
-                                 createdAt: record.createdAt)
-    try JSONEncoder().encode(pending).write(to: journal.appendingPathComponent("undo-move-\(record.operationId).json"))
-    try Data("external".utf8).write(to: target)
+    let partial = await EntryOperations.undoMove(record, journalDirectory: journal) { path in
+        do { try Data("external".utf8).write(to: path, options: .withoutOverwriting) }
+        catch { Issue.record(error) }
+    }
+    #expect(partial.state == "partial")
+    #expect(partial.items.map(\.state) == ["conflict"])
+    #expect(partial.journalError == nil)
+    #expect(try String(contentsOf: source, encoding: .utf8) == "new")
 
     let retry = try #require(EntryOperations.latestUndoMove(journalDirectory: journal))
+    #expect(retry.items.first?.backupRestorePending == true)
     let blocked = await EntryOperations.undoMove(retry, journalDirectory: journal)
     #expect(blocked.items.map(\.state) == ["conflict"])
     #expect(try String(contentsOf: target, encoding: .utf8) == "external")

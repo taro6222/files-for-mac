@@ -1022,6 +1022,11 @@ public enum EntryOperations {
     }
 
     public static func undoMove(_ record: MoveUndoRecord, journalDirectory: URL) async -> MoveUndoResult {
+        await undoMove(record, journalDirectory: journalDirectory, beforeBackupRestore: { _ in })
+    }
+
+    static func undoMove(_ record: MoveUndoRecord, journalDirectory: URL,
+                         beforeBackupRestore: @escaping @Sendable (URL) -> Void) async -> MoveUndoResult {
         await Task.detached(priority: .userInitiated) {
             let fm = FileManager.default
             var results: [MoveUndoItemResult] = []
@@ -1073,12 +1078,16 @@ public enum EntryOperations {
                     }
                     if let backup = item.backup, let identity = item.backupIdentity {
                         pendingBackupRestorations.insert(index)
+                        beforeBackupRestore(item.target)
                         guard try matchesUndoEntry(backup, identity: identity, snapshot: item.backupSnapshot, fileManager: fm) else {
                             throw MoveFailure(text: LString.undoBackupChanged)
                         }
                         try restoreUndoBackup(backup, to: item.target)
                     }
                     result = MoveUndoItemResult(source: item.source, target: item.target, state: "completed", message: nil)
+                } catch EntryOperationError.conflict {
+                    result = MoveUndoItemResult(source: item.source, target: item.target,
+                        state: "conflict", message: LString.pathConflictMessage)
                 } catch {
                     result = MoveUndoItemResult(source: item.source, target: item.target, state: "failed", message: error.localizedDescription)
                 }
