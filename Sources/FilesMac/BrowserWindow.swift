@@ -64,7 +64,7 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
     private let sidebar = NSStackView()
     private let content = AppBackgroundView()
     private let folderFilter = FolderFilterField()
-    private let workspaceSplit = NSSplitView()
+    private let workspaceSplit = WorkspaceSplitView()
     private let primaryPaneHost = NSView()
     private let secondaryPaneHost = NSView()
     private var secondaryPane: SecondaryBrowserPane?
@@ -2617,6 +2617,41 @@ private final class BrowserFileTable: NSTableView, NSMenuItemValidation {
     }
 }
 
+private final class WorkspaceSplitView: NSSplitView, NSSplitViewDelegate {
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        delegate = self
+    }
+
+    required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
+
+    func applyInitialRatio(_ ratio: Double) {
+        let ratio = min(0.8, max(0.2, ratio))
+        if isVertical {
+            resizeSideBySide(primaryFraction: ratio)
+        } else {
+            setPosition(bounds.height * ratio, ofDividerAt: 0)
+        }
+    }
+
+    func splitView(_ splitView: NSSplitView, resizeSubviewsWithOldSize oldSize: NSSize) {
+        guard isVertical, arrangedSubviews.count == 2, oldSize.width > 0 else {
+            adjustSubviews()
+            return
+        }
+        resizeSideBySide(primaryFraction: arrangedSubviews[0].frame.width / oldSize.width)
+    }
+
+    private func resizeSideBySide(primaryFraction: CGFloat) {
+        let divider = min(dividerThickness, bounds.width)
+        let left = min(max(0, bounds.width * primaryFraction), bounds.width - divider)
+        arrangedSubviews[0].frame = NSRect(x: 0, y: 0, width: left, height: bounds.height)
+        arrangedSubviews[1].frame = NSRect(x: left + divider, y: 0,
+            width: bounds.width - left - divider, height: bounds.height)
+        needsDisplay = true
+    }
+}
+
 private final class TabScrollStackView: NSStackView {
     var onTabScroll: ((Double, Double) -> Void)?
     override func scrollWheel(with event: NSEvent) {
@@ -2715,7 +2750,7 @@ extension BrowserWindow {
         window?.contentView?.layoutSubtreeIfNeeded()
         workspaceSplit.adjustSubviews()
         let dimension = workspaceSplit.isVertical ? workspaceSplit.bounds.width : workspaceSplit.bounds.height
-        if dimension > 0 { workspaceSplit.setPosition(dimension * CGFloat(min(0.8, max(0.2, ratio))), ofDividerAt: 0) }
+        if dimension > 0 { workspaceSplit.applyInitialRatio(ratio) }
         if activate { secondaryPane?.focusFiles() }
     }
     private func restoreWorkspace(_ state: SplitTabState) {
@@ -3704,7 +3739,7 @@ extension BrowserWindow {
                     let actual = restored.workspaceSnapshot()
                     metrics["restoredSplitRatio_\(axis.rawValue)"] = actual.ratio
                     checks["splitWorkspaceRestores_\(axis.rawValue)"] = actual.axis == axis
-                        && (axis == .vertical || abs(actual.ratio - 0.35) < 0.01)
+                        && abs(actual.ratio - 0.35) < 0.01
                         && actual.activePaneID == secondary.id
                         && actual.panes.map(\.id) == [primary.id, secondary.id]
                         && actual.panes.map { $0.tab.location?.path } == [columnFolder.path, gridFolder.path]
