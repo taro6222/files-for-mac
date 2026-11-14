@@ -4737,6 +4737,7 @@ private struct ReleaseSoakFailure: Error, CustomStringConvertible {
 private struct ReleaseSoakSample: Encodable {
     let cycle: Int
     let rssBytes: UInt64
+    let elapsedSeconds: Double
 }
 
 private struct ReleaseSoakReport: Encodable {
@@ -4894,11 +4895,14 @@ extension BrowserWindow {
         var samples: [ReleaseSoakSample] = []
         var lastSample = start
 
-        func report(state: String, error: String? = nil) throws {
+        func elapsedSeconds() -> Double {
             let time = start.duration(to: clock.now).components
-            let elapsed = Double(time.seconds) + Double(time.attoseconds) / 1e18
+            return Double(time.seconds) + Double(time.attoseconds) / 1e18
+        }
+
+        func report(state: String, error: String? = nil) throws {
             let report = ReleaseSoakReport(state: state, targetSeconds: duration,
-                elapsedSeconds: elapsed, cycles: cycles, peakRSSBytes: peakRSS,
+                elapsedSeconds: elapsedSeconds(), cycles: cycles, peakRSSBytes: peakRSS,
                 samples: samples, error: error)
             try encoder.encode(report).write(to: root.appendingPathComponent("report.json"), options: .atomic)
         }
@@ -4967,20 +4971,29 @@ extension BrowserWindow {
                 }
                 guard (window.tabbedWindows?.count ?? 1) == 1 else { throw ReleaseSoakFailure("Closed tab remained in the window group") }
                 try fm.removeItem(at: journals)
-                browser.goHome(nil)
+                // Return through history so the repeated workload keeps one forward
+                // entry instead of retaining two additional entries per cycle.
+                browser.goBack(nil)
+                guard browser.model.location == nil, browser.model.history.back.isEmpty,
+                      browser.model.history.forward.count == 1 else {
+                    throw ReleaseSoakFailure("Navigation history did not return to its expected size")
+                }
                 cycles += 1
                 let rss = currentResidentBytes()
                 guard rss > 0 else { throw ReleaseSoakFailure("Unable to read process RSS") }
                 peakRSS = max(peakRSS, rss)
                 if cycles == 1 || lastSample.duration(to: clock.now) >= .seconds(30) {
-                    samples.append(.init(cycle: cycles, rssBytes: rss))
+                    samples.append(.init(cycle: cycles, rssBytes: rss, elapsedSeconds: elapsedSeconds()))
                     lastSample = clock.now
                 }
                 try report(state: "running")
                 try await Task.sleep(for: .seconds(2))
             } while start.duration(to: clock.now) < .seconds(duration)
 
-            samples.append(.init(cycle: cycles, rssBytes: currentResidentBytes()))
+            let finalRSS = currentResidentBytes()
+            guard finalRSS > 0 else { throw ReleaseSoakFailure("Unable to read final process RSS") }
+            peakRSS = max(peakRSS, finalRSS)
+            samples.append(.init(cycle: cycles, rssBytes: finalRSS, elapsedSeconds: elapsedSeconds()))
             try report(state: "completed")
             exitCode = 0
         } catch {

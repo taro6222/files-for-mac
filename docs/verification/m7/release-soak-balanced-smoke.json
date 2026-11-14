@@ -1,0 +1,29 @@
+{
+  "cycles" : 21,
+  "elapsedSeconds" : 69.021710833,
+  "peakRSSBytes" : 162725888,
+  "samples" : [
+    {
+      "cycle" : 1,
+      "elapsedSeconds" : 0.991245792,
+      "rssBytes" : 152649728
+    },
+    {
+      "cycle" : 12,
+      "elapsedSeconds" : 31.922490833,
+      "rssBytes" : 157827072
+    },
+    {
+      "cycle" : 20,
+      "elapsedSeconds" : 62.600784042,
+      "rssBytes" : 160350208
+    },
+    {
+      "cycle" : 21,
+      "elapsedSeconds" : 69.021709542,
+      "rssBytes" : 159318016
+    }
+  ],
+  "state" : "completed",
+  "targetSeconds" : 65
+}
