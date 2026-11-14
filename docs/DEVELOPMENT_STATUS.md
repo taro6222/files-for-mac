@@ -4,6 +4,8 @@
 
 ## 이번 구현 단위
 
+상세 목록 셀 수가 제한된 장시간 시험에서 AppKit 관찰 객체의 보유를 확인하고 최근 위치 갱신 대조를 시작했다. [M7 중간 힙 비교](verification/m7/INCREMENT_92.md)
+
 복사·이동 충돌 비교에 이미지와 PDF 첫 페이지의 썸네일을 표시한다. [M7 충돌 이미지·PDF 미리보기](verification/m7/INCREMENT_91.md)
 
 복사·이동 충돌 창에서 원본과 기존 대상의 텍스트 미리보기를 비교한다. [M7 충돌 텍스트 미리보기](verification/m7/INCREMENT_90.md)
