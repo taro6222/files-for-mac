@@ -811,6 +811,43 @@ func crossVolumeMovePreservesSourceWhenExtendedAttributeChanges(_ location: Stri
     }
 }
 
+@Test(arguments: ["acl", "mode"])
+func crossVolumeMovePreservesSourceWhenStagedPermissionsChange(_ permission: String) async throws {
+    let root = try entryFixture()
+    let fm = FileManager.default
+    defer { try? fm.removeItem(at: root) }
+    let destination = root.appendingPathComponent("dest", isDirectory: true)
+    let source = root.appendingPathComponent("move.txt")
+    try fm.createDirectory(at: destination, withIntermediateDirectories: true)
+    let payload = Data("file contents".utf8)
+    try payload.write(to: source)
+    try fm.setAttributes([.posixPermissions: 0o640], ofItemAtPath: source.path)
+
+    let result = try await EntryOperations.moveAcrossVolumeForTesting([source], to: destination,
+        journalDirectory: root.appendingPathComponent("journal")) { progress in
+        guard progress.phase == "verifying",
+              let files = try? FileManager.default.contentsOfDirectory(at: destination, includingPropertiesForKeys: nil),
+              let stage = files.first(where: { $0.lastPathComponent.hasPrefix(".files-move-") }) else { return }
+        let staged = stage.appendingPathComponent("payload")
+        if permission == "acl" {
+            let chmod = Process()
+            chmod.executableURL = URL(fileURLWithPath: "/bin/chmod")
+            chmod.arguments = ["+a", "everyone allow readattr", staged.path]
+            do {
+                try chmod.run()
+                chmod.waitUntilExit()
+                #expect(chmod.terminationStatus == 0)
+            } catch { Issue.record(error) }
+        } else {
+            #expect(Darwin.chmod(staged.path, 0o600) == 0)
+        }
+    }
+    #expect(result.items.first?.state == "failed")
+    #expect(try Data(contentsOf: source) == payload)
+    #expect(try fm.attributesOfItem(atPath: source.path)[.posixPermissions] as? Int == 0o640)
+    #expect(!fm.fileExists(atPath: destination.appendingPathComponent(source.lastPathComponent).path))
+}
+
 @Test(arguments: [false, true])
 func moveUndoPreservesResourceForkFromLegacyJournal(legacy: Bool) async throws {
     let root = try entryFixture()

@@ -399,20 +399,24 @@ public enum CopyEngine {
     }
 
     private static func snapshot(_ root: URL, cancellation: CopyCancellation) throws -> [String: String] {
-        try makeSnapshot(root, cancellation: cancellation, includeExtendedAttributes: false).withPermissions
+        try makeSnapshot(root, cancellation: cancellation, includeTransferMetadata: false).withPermissions
     }
 
     struct VerificationSnapshot {
         var withPermissions: [String: String] = [:]
         var content: [String: String] = [:]
         var extendedAttributes: [String: [Data: SHA256.Digest]] = [:]
+        var accessControlLists: [String: Data] = [:]
+        var hasNativePermissions = true
 
         func matchesTransferredContents(of source: Self) -> Bool {
             content == source.content && extendedAttributes == source.extendedAttributes
+                && accessControlLists == source.accessControlLists
+                && (!hasNativePermissions || !source.hasNativePermissions || withPermissions == source.withPermissions)
         }
 
         func matchesOriginal(_ original: Self) -> Bool {
-            withPermissions == original.withPermissions && extendedAttributes == original.extendedAttributes
+            withPermissions == original.withPermissions && matchesTransferredContents(of: original)
         }
 
         var legacyPermissionsSnapshot: [String: String] {
@@ -424,13 +428,25 @@ public enum CopyEngine {
     }
 
     static func makeSnapshot(_ root: URL, cancellation: CopyCancellation,
-                             includeExtendedAttributes: Bool = true) throws -> VerificationSnapshot {
+                             includeTransferMetadata: Bool = true) throws -> VerificationSnapshot {
         let fm = FileManager()
         var snapshot = VerificationSnapshot()
         func visit(_ url: URL, relative: String) throws {
             try cancellation.check()
             let attrs = try fm.attributesOfItem(atPath: url.path)
             let type = attrs[.type] as? FileAttributeType
+            if includeTransferMetadata, relative.isEmpty, type != .typeSymbolicLink {
+                var volume = statfs()
+                guard statfs(url.path, &volume) == 0 else {
+                    throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
+                }
+                let filesystem = withUnsafeBytes(of: volume.f_fstypename) {
+                    String(decoding: $0.prefix(while: { $0 != 0 }), as: UTF8.self)
+                }
+                // FAT exposes synthesized modes. Still check the original and
+                // the published copy against their own subsequent snapshots.
+                snapshot.hasNativePermissions = filesystem != "exfat" && filesystem != "msdos"
+            }
             switch type {
             case .typeSymbolicLink:
                 let link = "link:" + (try fm.destinationOfSymbolicLink(atPath: url.path))
@@ -457,13 +473,28 @@ public enum CopyEngine {
                 snapshot.content[relative] = "file:" + digest
             default: throw CopyFailure(text: "Unsupported special file: " + url.path)
             }
-            if includeExtendedAttributes {
+            if includeTransferMetadata {
                 let attributes = try attributeDigests(url, cancellation: cancellation)
                 if !attributes.isEmpty { snapshot.extendedAttributes[relative] = attributes }
+                snapshot.accessControlLists[relative] = try accessControlList(url)
             }
         }
         try visit(root, relative: "")
         return snapshot
+    }
+
+    private static func accessControlList(_ url: URL) throws -> Data? {
+        guard let acl = acl_get_link_np(url.path, ACL_TYPE_EXTENDED) else {
+            if errno == ENOENT || errno == ENOTSUP || errno == EOPNOTSUPP { return nil }
+            throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
+        }
+        defer { acl_free(UnsafeMutableRawPointer(acl)) }
+        var length = 0
+        guard let text = acl_to_text(acl, &length) else {
+            throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
+        }
+        defer { acl_free(text) }
+        return length > 0 ? Data(bytes: text, count: length) : nil
     }
 
     private static func attributeDigests(_ url: URL, cancellation: CopyCancellation) throws -> [Data: SHA256.Digest] {

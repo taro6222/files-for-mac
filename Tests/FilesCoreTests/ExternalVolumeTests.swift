@@ -235,6 +235,35 @@ import Testing
     }
 }
 
+@Test func mountedVolumeExFATMoveKeepsSourceWhenACLDoesNotTransfer() async throws {
+    guard let path = ProcessInfo.processInfo.environment["FILES_TEST_EXFAT_VOLUME"] else { return }
+    let fm = FileManager.default
+    let root = fm.temporaryDirectory.appendingPathComponent("FilesMac-ACL-\(UUID())", isDirectory: true)
+    let destination = URL(fileURLWithPath: path, isDirectory: true)
+        .appendingPathComponent(root.lastPathComponent, isDirectory: true)
+    defer { try? fm.removeItem(at: root); try? fm.removeItem(at: destination) }
+    try fm.createDirectory(at: root, withIntermediateDirectories: false)
+    try fm.createDirectory(at: destination, withIntermediateDirectories: false)
+    let source = root.appendingPathComponent("access.txt")
+    let target = destination.appendingPathComponent(source.lastPathComponent)
+    let payload = Data("ACL transfer check".utf8)
+    try payload.write(to: source)
+    let chmod = Process()
+    chmod.executableURL = URL(fileURLWithPath: "/bin/chmod")
+    chmod.arguments = ["+a", "everyone allow readattr", source.path]
+    try chmod.run()
+    chmod.waitUntilExit()
+    try #require(chmod.terminationStatus == 0)
+
+    let report = try await EntryOperations.move([source], to: destination,
+        journalDirectory: root.appendingPathComponent("journal"))
+    #expect(report.items.first?.state == "failed")
+    #expect(try Data(contentsOf: source) == payload)
+    let acl = try #require(acl_get_file(source.path, ACL_TYPE_EXTENDED))
+    acl_free(UnsafeMutableRawPointer(acl))
+    #expect(!fm.fileExists(atPath: target.path))
+}
+
 @Test func systemTrashMoveAndRestoreRoundTrip() async throws {
     guard ProcessInfo.processInfo.environment["FILES_TEST_SYSTEM_TRASH"] == "1" else { return }
     let fm = FileManager.default

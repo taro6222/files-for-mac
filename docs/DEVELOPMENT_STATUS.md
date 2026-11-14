@@ -8,6 +8,8 @@ M7 출시 검증이 진행 중이다. [유니버설 개발 프리뷰](verificati
 
 ## 이번 구현 단위
 
+복사와 교차 볼륨 이동에서 ACL과 POSIX 권한을 확인한다. [파일 권한 검증](verification/m7/INCREMENT_121.md)
+
 복사와 교차 볼륨 이동에서 Finder 태그 등 확장 속성을 비교하고, 전송 중 변경 시 원본을 보존한다. [확장 속성 검증](verification/m7/INCREMENT_120.md)
 
 교체 백업이 없는 이전 폴더 이동의 실행 취소와 다시 실행에서 내부 파일의 리소스 포크를 보존한다. [이전 기록 호환성](verification/m7/INCREMENT_119.md)
