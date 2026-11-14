@@ -2521,7 +2521,7 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         guard model.location == url, !model.wasCancelled else { return }
         if model.isLoading { pendingRefresh = true }
         else {
-            FileIconCache.shared.removeAll()
+            FileIconCache.shared.invalidateFileIcons()
             savePosition()
             model.reload()
         }
@@ -3490,12 +3490,17 @@ extension BrowserWindow {
                 let reuses = reads == 1
                 _ = cache.icon(for: cacheFile.replacingSize(2), load: iconLoader)
                 let invalidates = reads == 2
+                let genericIcon = cache.genericIcon(forExtension: "txt")
+                cache.invalidateFileIcons()
+                _ = cache.icon(for: cacheFile, load: iconLoader)
+                checks["fileIconInvalidationKeepsGenericIcon"] = reads == 3
+                    && cache.genericIcon(forExtension: "txt") === genericIcon
                 cache.removeAll()
                 _ = cache.icon(for: cacheFile, load: iconLoader)
                 cache.configure(enabled: false, limitMiB: 8)
                 _ = cache.icon(for: cacheFile, load: iconLoader)
                 _ = cache.icon(for: cacheFile, load: iconLoader)
-                checks["previewCacheLifecycle"] = reuses && invalidates && reads == 5
+                checks["previewCacheLifecycle"] = reuses && invalidates && reads == 6
                 try capture("advanced-settings", view: delegate.qaAdvancedSettingsContentView)
                 delegate.qaAdvancedSettingsContentView?.window?.close(); window.makeKeyAndOrderFront(nil)
                 delegate.showGeneralSettings(nil); try await Task.sleep(for: .milliseconds(50)); let widgetsBefore = delegate.qaGeneralWidgetStates

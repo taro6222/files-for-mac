@@ -54,9 +54,13 @@ final class FileIconCache {
     }
 
     func removeAll() {
-        cache.removeAllObjects()
+        invalidateFileIcons()
         extensionIcons.removeAllObjects()
         genericIcons.removeAllObjects()
+    }
+
+    func invalidateFileIcons() {
+        cache.removeAllObjects()
     }
 
     func icon(for item: FileItem, load: (String) -> NSImage = NSWorkspace.shared.icon(forFile:)) -> NSImage {

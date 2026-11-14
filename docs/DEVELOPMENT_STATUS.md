@@ -4,6 +4,8 @@
 
 ## 이번 구현 단위
 
+파일 변경을 감지했을 때 파일 전용 아이콘만 다시 읽고, 공통 아이콘은 재사용한다. [M7 아이콘 갱신 검증](verification/m7/INCREMENT_63.md)
+
 전체 AppKit 회귀 시험도 표준화된 임시 경로에서 실행해 한국어·영어와 밝은·어두운 테마 각 조합의 219개 검사를 통과했다. [M7 전체 AppKit 회귀](verification/m7/INCREMENT_62.md)
 
 임시 경로에서 AppKit 회귀를 다시 실행해 그리드 선택 복원과 템플릿 파일 생성을 포함한 53개 검사가 네 언어·테마 조합에서 모두 통과했다. [M7 AppKit 재검증](verification/m7/INCREMENT_61.md)
