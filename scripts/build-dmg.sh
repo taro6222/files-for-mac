@@ -37,7 +37,7 @@ cp docs/RELEASE_NOTES.md "$stage/contents/Release Notes.txt"
 if [[ "$mode" == --release ]]; then
   codesign --force --options runtime --timestamp --sign "$FILES_SIGNING_IDENTITY" "$app"
 fi
-codesign --verify --all-architectures --strict --verbose=2 "$app"
+scripts/verify-dmg-contents.sh "$stage/contents"
 
 image="$stage/$file_name"
 /usr/bin/hdiutil create -volname "Files macOS" -srcfolder "$stage/contents" -format UDZO "$image"

@@ -32,6 +32,6 @@ trap cleanup EXIT
 /usr/bin/hdiutil attach "$image" -readonly -nobrowse -mountpoint "$mount_dir"
 mounted=true
 app="$mount_dir/Files macOS.app"
-bash "$script_dir/verify-universal-app.sh" "$app"
+bash "$script_dir/verify-dmg-contents.sh" "$mount_dir"
 /usr/bin/syspolicy_check distribution "$app"
 printf 'Release image and app passed verification: %s\n' "$image"
