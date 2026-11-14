@@ -1707,6 +1707,13 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         NSPasteboard.general.clearContents()
         NSPasteboard.general.writeObjects(urls)
     }
+    func cutFilesToClipboard() {
+        guard canCutFiles else { return }
+        let urls = activeSelectedItems.map { $0.url as NSURL }
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.writeObjects(urls)
+        NSPasteboard.general.setData(Data([1]), forType: Self.cutPasteboardType)
+    }
     @objc func copyItemPath(_ sender: Any?) { copyPaths(activeSelectedItems.map(\.url), quoted: false) }
     @objc func copyItemPathWithQuotes(_ sender: Any?) { copyPaths(activeSelectedItems.map(\.url), quoted: true) }
     @objc func copyCurrentPath(_ sender: Any?) { copyPaths(activeModel.location.map { [$0] } ?? [], quoted: false) }
@@ -1719,11 +1726,22 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
     private var clipboardFiles: [URL] {
         (NSPasteboard.general.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL]) ?? []
     }
+    private static let cutPasteboardType = NSPasteboard.PasteboardType("org.files-community.filesmac.cut")
+    private var clipboardIsCut: Bool { NSPasteboard.general.data(forType: Self.cutPasteboardType) != nil }
     var canCopyFiles: Bool { !activeModel.isLoading && !activeSelectedItems.isEmpty }
-    var canPasteFiles: Bool { activeModel.location != nil && !activeModel.isLoading && !CopyWindow.isRunning && !Self.entryOperationRunning && !clipboardFiles.isEmpty }
+    var canCutFiles: Bool { canCopyFiles && !MoveWindow.isRunning && !Self.entryOperationRunning }
+    var canPasteFiles: Bool {
+        activeModel.location != nil && !activeModel.isLoading && !CopyWindow.isRunning && !MoveWindow.isRunning
+            && !Self.entryOperationRunning && !clipboardFiles.isEmpty
+    }
     func pasteFilesFromClipboard() {
         guard canPasteFiles, let destination = activeModel.location else { return }
-        prepareCopy(sources: clipboardFiles, destination: destination)
+        let sources = clipboardFiles
+        if clipboardIsCut {
+            prepareMove(sources: sources, destination: destination) {
+                NSPasteboard.general.clearContents()
+            }
+        } else { prepareCopy(sources: sources, destination: destination) }
     }
     private func prepareCopy(sources: [URL], destination: URL) {
         guard !Self.entryOperationRunning, !CopyWindow.isRunning, !FolderMergeWindow.isRunning, let window else { return }
@@ -1760,7 +1778,7 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
               lstat(target.path, &targetInfo) == 0, (targetInfo.st_mode & S_IFMT) == S_IFDIR else { return false }
         return true
     }
-    private func prepareMove(sources: [URL], destination: URL) {
+    private func prepareMove(sources: [URL], destination: URL, onStarted: (() -> Void)? = nil) {
         guard !Self.entryOperationRunning, !MoveWindow.isRunning, let window else { return }
         let targetModel = activeModel
         let alert = NSAlert()
@@ -1772,6 +1790,7 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         alert.addButton(withTitle: L("취소", "Cancel"))
         alert.beginSheetModal(for: window) { response in
             guard response == .alertFirstButtonReturn || response == .alertSecondButtonReturn else { return }
+            onStarted?()
             MoveWindow.start(sources: sources, destination: destination,
                              conflictPolicy: response == .alertSecondButtonReturn ? .replace : .skip) {
                 targetModel.reload()
@@ -1894,10 +1913,12 @@ final class FlippedView: NSView { override var isFlipped: Bool { true } }
 
 @MainActor
 private final class BrowserFileTable: NSTableView, NSMenuItemValidation {
+    @objc func cut(_ sender: Any?) { (window?.windowController as? BrowserWindow)?.cutFilesToClipboard() }
     @objc func copy(_ sender: Any?) { (window?.windowController as? BrowserWindow)?.copyFilesToClipboard() }
     @objc func paste(_ sender: Any?) { (window?.windowController as? BrowserWindow)?.pasteFilesFromClipboard() }
     func validateMenuItem(_ item: NSMenuItem) -> Bool {
         let browser = window?.windowController as? BrowserWindow
+        if item.action == #selector(cut(_:)) { return browser?.canCutFiles == true }
         if item.action == #selector(copy(_:)) { return browser?.canCopyFiles == true }
         if item.action == #selector(paste(_:)) { return browser?.canPasteFiles == true }
         return true
@@ -3036,6 +3057,14 @@ extension BrowserWindow {
             root.layoutSubtreeIfNeeded(); root.displayIfNeeded()
             checks["gridVisible"] = !controller.gridView.isHidden && controller.scroll.isHidden
             checks["gridSelectionIdentity"] = controller.gridView.selectedItems.map(\.id) == [gridFolder.path]
+            controller.cutFilesToClipboard()
+            checks["cutClipboardCommand"] = controller.clipboardIsCut && controller.canPasteFiles
+            checks["clipboardTransferCommandsCatalog"] = [#selector(NSText.cut(_:)), #selector(NSText.copy(_:)),
+                #selector(NSText.paste(_:))].allSatisfy { action in
+                    paletteEntries.contains { $0.item.action == action }
+                }
+            controller.copyFilesToClipboard()
+            checks["copyClipboardClearsCutIntent"] = !controller.clipboardIsCut && controller.canPasteFiles
             controller.model.setGrouping(.init(field: .name)); controller.render()
             checks["gridGroupingSections"] = controller.gridView.qaSectionCount > 1
                 && !controller.gridView.qaSectionTitles.contains("")
