@@ -1,0 +1,86 @@
+name: Windows reference capture
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  capture:
+    runs-on: windows-2025-vs2026
+    timeout-minutes: 45
+    env:
+      UPSTREAM_SHA: 99951c66928c4da714da8b1dd46039421182cbab
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          repository: files-community/Files
+          ref: 99951c66928c4da714da8b1dd46039421182cbab
+          path: upstream
+          persist-credentials: false
+      - uses: microsoft/setup-msbuild@30375c66a4eea26614e0d39710365f22f8b0af57 # v3
+      - uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5
+        with:
+          global-json-file: upstream/global.json
+      - name: Build and sign the pinned source on the temporary runner
+        working-directory: upstream
+        shell: pwsh
+        run: |
+          if ((git rev-parse HEAD) -ne $env:UPSTREAM_SHA) { throw 'Unexpected upstream source' }
+          $certificate = Join-Path $env:RUNNER_TEMP 'FilesApp_SelfSigned.pfx'
+          $packageDir = Join-Path $env:RUNNER_TEMP 'FilesPackages'
+          ./.github/scripts/Generate-SelfCertPfx.ps1 -Destination $certificate
+          msbuild Files.slnx -t:Restore -p:Platform=x64 -p:Configuration=Release -p:PublishReadyToRun=true -v:quiet
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          msbuild src/Files.App/Files.App.csproj -t:Build -p:Platform=x64 -p:Configuration=Release `
+            -p:AppxBundlePlatforms=x64 -p:AppxBundle=Always -p:GenerateAppxPackageOnBuild=true `
+            -p:UapAppxPackageBuildMode=SideloadOnly "-p:AppxPackageDir=$packageDir/" `
+            -p:AppxPackageSigningEnabled=true "-p:PackageCertificateKeyFile=$certificate" `
+            -p:PackageCertificatePassword= -p:PackageCertificateThumbprint= -v:quiet
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Install the upstream package and runtime
+        working-directory: upstream
+        shell: powershell
+        run: |
+          Import-PfxCertificate -FilePath (Join-Path $env:RUNNER_TEMP 'FilesApp_SelfSigned.pfx') `
+            -CertStoreLocation Cert:\LocalMachine\Root -Password (New-Object System.Security.SecureString)
+          [xml]$props = Get-Content Directory.Packages.props
+          $sdk = ($props.Project.ItemGroup.PackageVersion | Where-Object Include -eq 'Microsoft.WindowsAppSDK').Version
+          if ($sdk -notmatch '^\d+\.\d+\.\d+$') { throw "Unexpected Windows App SDK version $sdk" }
+          $majorMinor = ($sdk -split '\.')[0..1] -join '.'
+          $installer = Join-Path $env:RUNNER_TEMP 'windowsappruntimeinstall-x64.exe'
+          Invoke-WebRequest "https://aka.ms/windowsappsdk/$majorMinor/$sdk/windowsappruntimeinstall-x64.exe" -OutFile $installer
+          $runtime = Start-Process $installer -ArgumentList '--quiet','--force' -Wait -PassThru
+          if ($runtime.ExitCode -ne 0) { throw "Windows App Runtime installation failed with $($runtime.ExitCode)" }
+          $packageDir = Join-Path $env:RUNNER_TEMP 'FilesPackages'
+          $package = Get-ChildItem $packageDir -Recurse -File -Filter '*.msixbundle' | Select-Object -First 1
+          if (-not $package) { throw 'Files MSIX bundle is missing' }
+          $dependencies = @(Get-ChildItem $packageDir -Recurse -File -Filter '*.appx' |
+            Where-Object { $_.DirectoryName -match '\\Dependencies\\' } | ForEach-Object FullName)
+          if ($dependencies.Count) { Add-AppxPackage -Path $package.FullName -DependencyPath $dependencies }
+          else { Add-AppxPackage -Path $package.FullName }
+          $installed = Get-AppxPackage -Name FilesDev
+          if ($installed.Version -ne [version]'4.2.9.0') { throw 'Unexpected installed Files version' }
+          "FILES_WINDOWS_APP_ID=$($installed.PackageFamilyName)!App" >> $env:GITHUB_ENV
+          "FILES_WINDOWS_PACKAGE_SHA=$((Get-FileHash $package.FullName -Algorithm SHA256).Hash.ToLowerInvariant())" >> $env:GITHUB_ENV
+      - name: Capture the running Windows Home page
+        shell: pwsh
+        run: |
+          Set-DisplayResolution -Width 1920 -Height 1080 -Force
+          $driverPath = Join-Path ${env:ProgramFiles(x86)} 'Windows Application Driver\WinAppDriver.exe'
+          $driver = Start-Process $driverPath -PassThru
+          try {
+            python scripts/capture-windows-reference.py build/windows-reference
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          } finally {
+            Stop-Process -Id $driver.Id -ErrorAction SilentlyContinue
+          }
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: files-v4.2.9-windows-reference
+          path: build/windows-reference
+          if-no-files-found: error
