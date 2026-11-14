@@ -56,6 +56,9 @@ public struct BrowserPreferencesArchive: Codable, Equatable, Sendable {
     public let showHomeFavorites: Bool
     public let showHomeVolumes: Bool
     public let showHomeRecent: Bool
+    public let homeFavoritesExpanded: Bool?
+    public let homeVolumesExpanded: Bool?
+    public let homeRecentExpanded: Bool?
     public let viewSize: String
     public let appearance: String
     public let continueLastSession: Bool
@@ -112,6 +115,9 @@ public final class BrowserPreferences {
     public private(set) var showHomeFavorites: Bool
     public private(set) var showHomeVolumes: Bool
     public private(set) var showHomeRecent: Bool
+    public private(set) var homeFavoritesExpanded: Bool
+    public private(set) var homeVolumesExpanded: Bool
+    public private(set) var homeRecentExpanded: Bool
     public private(set) var viewSize: BrowserViewSize
     public private(set) var appearance: BrowserAppearance
     public private(set) var continueLastSession: Bool
@@ -162,6 +168,9 @@ public final class BrowserPreferences {
         showHomeFavorites = defaults.object(forKey: "showHomeFavorites") as? Bool ?? true
         showHomeVolumes = defaults.object(forKey: "showHomeVolumes") as? Bool ?? true
         showHomeRecent = defaults.object(forKey: "showHomeRecent") as? Bool ?? true
+        homeFavoritesExpanded = defaults.object(forKey: "homeFavoritesExpanded") as? Bool ?? true
+        homeVolumesExpanded = defaults.object(forKey: "homeVolumesExpanded") as? Bool ?? true
+        homeRecentExpanded = defaults.object(forKey: "homeRecentExpanded") as? Bool ?? true
         viewSize = defaults.string(forKey: "viewSize").flatMap(BrowserViewSize.init(rawValue:)) ?? .medium
         appearance = defaults.string(forKey: "appearance").flatMap(BrowserAppearance.init(rawValue:)) ?? .system
         continueLastSession = defaults.object(forKey: "continueLastSession") as? Bool ?? true
@@ -313,6 +322,7 @@ public final class BrowserPreferences {
             showEditTagsMenu: showEditTagsMenu,
             showCreateShortcut: showCreateShortcut,
             showHomeFavorites: showHomeFavorites, showHomeVolumes: showHomeVolumes, showHomeRecent: showHomeRecent,
+            homeFavoritesExpanded: homeFavoritesExpanded, homeVolumesExpanded: homeVolumesExpanded, homeRecentExpanded: homeRecentExpanded,
             viewSize: viewSize.rawValue, appearance: appearance.rawValue, continueLastSession: continueLastSession, sizeUnit: sizeUnit.rawValue,
             openFoldersInNewTab: openFoldersInNewTab, scrollToPreviousFolderOnUp: scrollToPreviousFolderOnUp,
             showFileExtensionWarning: showFileExtensionWarning,
@@ -364,6 +374,7 @@ public final class BrowserPreferences {
         showEditTagsMenu = archive.showEditTagsMenu ?? true
         showCreateShortcut = archive.showCreateShortcut ?? true
         showHomeFavorites = archive.showHomeFavorites; showHomeVolumes = archive.showHomeVolumes; showHomeRecent = archive.showHomeRecent
+        homeFavoritesExpanded = archive.homeFavoritesExpanded ?? true; homeVolumesExpanded = archive.homeVolumesExpanded ?? true; homeRecentExpanded = archive.homeRecentExpanded ?? true
         viewSize = size; appearance = importedAppearance; continueLastSession = archive.continueLastSession; sizeUnit = importedSizeUnit
         openFoldersInNewTab = archive.openFoldersInNewTab ?? false; scrollToPreviousFolderOnUp = archive.scrollToPreviousFolderOnUp ?? true
         showFileExtensionWarning = archive.showFileExtensionWarning ?? true; startupLocationPath = archive.startupLocationPath
@@ -384,6 +395,7 @@ public final class BrowserPreferences {
         defaults.set(showEditTagsMenu, forKey: "showEditTagsMenu")
         defaults.set(showCreateShortcut, forKey: "showCreateShortcut")
         defaults.set(showHomeFavorites, forKey: "showHomeFavorites"); defaults.set(showHomeVolumes, forKey: "showHomeVolumes"); defaults.set(showHomeRecent, forKey: "showHomeRecent")
+        defaults.set(homeFavoritesExpanded, forKey: "homeFavoritesExpanded"); defaults.set(homeVolumesExpanded, forKey: "homeVolumesExpanded"); defaults.set(homeRecentExpanded, forKey: "homeRecentExpanded")
         defaults.set(viewSize.rawValue, forKey: "viewSize"); defaults.set(appearance.rawValue, forKey: "appearance"); defaults.set(continueLastSession, forKey: "continueLastSession"); defaults.set(sizeUnit.rawValue, forKey: "sizeUnit")
         defaults.set(openFoldersInNewTab, forKey: "openFoldersInNewTab"); defaults.set(scrollToPreviousFolderOnUp, forKey: "scrollToPreviousFolderOnUp"); defaults.set(showFileExtensionWarning, forKey: "showFileExtensionWarning")
         if let startupLocationPath { defaults.set(startupLocationPath, forKey: "startupLocationPath") } else { defaults.removeObject(forKey: "startupLocationPath") }
@@ -423,6 +435,28 @@ public final class BrowserPreferences {
         defaults.removeObject(forKey: "toolbarOrder"); defaults.removeObject(forKey: "hiddenToolbarItems"); changed()
     }
     public enum HomeSection { case favorites, volumes, recent }
+    public func setHomeSectionExpanded(_ section: HomeSection, expanded: Bool) {
+        let current: Bool
+        switch section {
+        case .favorites: current = homeFavoritesExpanded
+        case .volumes: current = homeVolumesExpanded
+        case .recent: current = homeRecentExpanded
+        }
+        guard current != expanded else { return }
+        switch section {
+        case .favorites: homeFavoritesExpanded = expanded; defaults.set(expanded, forKey: "homeFavoritesExpanded")
+        case .volumes: homeVolumesExpanded = expanded; defaults.set(expanded, forKey: "homeVolumesExpanded")
+        case .recent: homeRecentExpanded = expanded; defaults.set(expanded, forKey: "homeRecentExpanded")
+        }
+        changed()
+    }
+    public func toggleHomeSectionExpanded(_ section: HomeSection) {
+        switch section {
+        case .favorites: setHomeSectionExpanded(section, expanded: !homeFavoritesExpanded)
+        case .volumes: setHomeSectionExpanded(section, expanded: !homeVolumesExpanded)
+        case .recent: setHomeSectionExpanded(section, expanded: !homeRecentExpanded)
+        }
+    }
     public func setSection(_ section: HomeSection, visible: Bool) {
         let current: Bool
         switch section {

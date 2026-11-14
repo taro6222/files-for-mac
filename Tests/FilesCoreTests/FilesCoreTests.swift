@@ -881,6 +881,22 @@ private struct ChunkedLoader: DirectoryStreaming {
     #expect(preferences.collapsedSidebar.isEmpty)
 }
 
+@Test @MainActor func homeWidgetExpansionPersistsIndependentlyFromVisibility() {
+    let suite = "files-home-expansion-\(UUID())", defaults = UserDefaults(suiteName: suite)!
+    defer { defaults.removePersistentDomain(forName: suite) }
+    let preferences = BrowserPreferences(defaults: defaults, initialFavorites: [])
+    #expect(preferences.homeFavoritesExpanded && preferences.homeVolumesExpanded && preferences.homeRecentExpanded)
+    var changes = 0; let token = preferences.observe { changes += 1 }
+    preferences.setHomeSectionExpanded(.favorites, expanded: false)
+    preferences.setHomeSectionExpanded(.volumes, expanded: false)
+    preferences.setHomeSectionExpanded(.recent, expanded: false)
+    preferences.setHomeSectionExpanded(.recent, expanded: false)
+    let restored = BrowserPreferences(defaults: defaults, initialFavorites: [])
+    #expect(!restored.homeFavoritesExpanded && !restored.homeVolumesExpanded && !restored.homeRecentExpanded)
+    #expect(restored.showHomeFavorites && restored.showHomeVolumes && restored.showHomeRecent)
+    #expect(changes == 3); preferences.removeObserver(token)
+}
+
 @Test @MainActor func sidebarOrderRepairsUnknownAndDuplicateSavedValues() {
     let suite = "files-sidebar-invalid-\(UUID())", defaults: UserDefaults
     defaults = UserDefaults(suiteName: suite)!

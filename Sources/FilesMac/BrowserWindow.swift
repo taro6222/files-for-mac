@@ -532,6 +532,13 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         label.font = .systemFont(ofSize: 11, weight: .semibold); label.textColor = .secondaryLabelColor
         stack.addArrangedSubview(label); stack.setCustomSpacing(10, after: label)
     }
+    private func homeSection(_ title: String, expanded: Bool, action: Selector) {
+        let button = NSButton(title: (expanded ? "▾ " : "▸ ") + title, target: self, action: action)
+        button.bezelStyle = .recessed; button.isBordered = false; button.alignment = .left
+        button.font = .systemFont(ofSize: 11, weight: .semibold)
+        button.setAccessibilityLabel(title); button.setAccessibilityValue(expanded ? L("펼침", "Expanded") : L("접힘", "Collapsed"))
+        homeView.addArrangedSubview(button); homeView.setCustomSpacing(10, after: button)
+    }
     private func locationButton(_ title: String, symbol: String, url: URL?, in stack: NSStackView) {
         let b = LocationButton(title: title, target: self, action: #selector(openLocation(_:)))
         b.url = url; b.bezelStyle = .recessed; b.isBordered = false
@@ -618,12 +625,12 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         let subtitle = NSTextField(labelWithString: L("파일과 폴더를 한곳에서 탐색하세요.", "Your files and folders, in one place."))
         subtitle.textColor = .secondaryLabelColor; homeView.addArrangedSubview(subtitle)
         if preferences.showHomeFavorites {
-            section(L("빠른 접근", "Quick Access"), in: homeView)
-            for url in favorites { locationButton(displayName(url), symbol: "folder.fill", url: url, in: homeView) }
+            homeSection(L("빠른 접근", "Quick Access"), expanded: preferences.homeFavoritesExpanded, action: #selector(toggleHomeFavoritesExpanded(_:)))
+            if preferences.homeFavoritesExpanded { for url in favorites { locationButton(displayName(url), symbol: "folder.fill", url: url, in: homeView) } }
         }
         if preferences.showHomeVolumes {
-            section(L("드라이브", "Drives"), in: homeView)
-            for volume in volumes {
+            homeSection(L("드라이브", "Drives"), expanded: preferences.homeVolumesExpanded, action: #selector(toggleHomeVolumesExpanded(_:)))
+            if preferences.homeVolumesExpanded { for volume in volumes {
                 let card = VolumeCardView(); card.orientation = .vertical; card.alignment = .leading; card.spacing = 6
                 card.edgeInsets = NSEdgeInsets(top: 12, left: 14, bottom: 12, right: 14)
                 homeView.addArrangedSubview(card)
@@ -638,13 +645,13 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
                     meter.setAccessibilityLabel(L("사용한 공간 비율", "Used capacity"))
                     card.addArrangedSubview(meter); meter.widthAnchor.constraint(equalTo: card.widthAnchor, constant: -28).isActive = true
                 }
-            }
+            } }
         }
         if preferences.showHomeRecent {
-            section(L("최근 위치", "Recent Locations"), in: homeView)
-            if recent.isEmpty {
+            homeSection(L("최근 위치", "Recent Locations"), expanded: preferences.homeRecentExpanded, action: #selector(toggleHomeRecentExpanded(_:)))
+            if preferences.homeRecentExpanded && recent.isEmpty {
                 homeView.addArrangedSubview(NSTextField(labelWithString: L("방문한 폴더가 여기에 표시됩니다.", "Folders you visit will appear here.")))
-            } else {
+            } else if preferences.homeRecentExpanded {
                 for url in recent { locationButton(url.path, symbol: "clock", url: url, in: homeView) }
                 let clear = NSButton(title: L("최근 기록 지우기", "Clear Recent Locations"), target: self, action: #selector(clearRecent(_:)))
                 clear.bezelStyle = .rounded; homeView.addArrangedSubview(clear)
@@ -2117,6 +2124,9 @@ extension BrowserWindow {
     @objc private func toggleHomeFavorites(_ sender: Any?) { preferences.toggleSection(.favorites) }
     @objc private func toggleHomeVolumes(_ sender: Any?) { preferences.toggleSection(.volumes) }
     @objc private func toggleHomeRecent(_ sender: Any?) { preferences.toggleSection(.recent) }
+    @objc private func toggleHomeFavoritesExpanded(_ sender: Any?) { preferences.toggleHomeSectionExpanded(.favorites) }
+    @objc private func toggleHomeVolumesExpanded(_ sender: Any?) { preferences.toggleHomeSectionExpanded(.volumes) }
+    @objc private func toggleHomeRecentExpanded(_ sender: Any?) { preferences.toggleHomeSectionExpanded(.recent) }
 
     func controlTextDidChange(_ notification: Notification) {
         guard notification.object as? NSComboBox === pathField else { return }
@@ -2405,6 +2415,9 @@ extension BrowserWindow {
     var qaLocationMenuActions: Set<String> {
         Set(sidebar.arrangedSubviews.compactMap { $0 as? LocationButton }.flatMap { $0.menu?.items ?? [] }
             .compactMap { $0.action.map(NSStringFromSelector) })
+    }
+    var qaCollapsedHomeSectionCount: Int {
+        homeView.arrangedSubviews.compactMap { $0 as? NSButton }.filter { $0.title.hasPrefix("▸ ") }.count
     }
     var qaDetailGroupTitles: [String] { detailRows.compactMap { if case let .header(title) = $0 { return title }; return nil } }
     var qaVisibleContextActions: Set<String> { Set((table.menu?.items ?? []).filter { !$0.isHidden }.compactMap { $0.action.map(NSStringFromSelector) }) }
@@ -2704,6 +2717,14 @@ extension BrowserWindow {
             checks["detailColumnVisibilityPreference"] = controller.qaVisibleDetailColumns.isSuperset(of: ["name", "created", "git"])
                 && controller.qaVisibleDetailColumns.isDisjoint(with: ["modified", "kind", "size"])
             preferences.setShowCreatedColumn(false); preferences.setShowDateColumn(true); preferences.setShowTypeColumn(true); preferences.setShowSizeColumn(true); preferences.setShowGitStatusColumn(false)
+            preferences.setHomeSectionExpanded(.favorites, expanded: false)
+            preferences.setHomeSectionExpanded(.volumes, expanded: false)
+            preferences.setHomeSectionExpanded(.recent, expanded: false)
+            controller.buildHome()
+            checks["homeWidgetExpansion"] = controller.qaCollapsedHomeSectionCount == 3
+            preferences.setHomeSectionExpanded(.favorites, expanded: true)
+            preferences.setHomeSectionExpanded(.volumes, expanded: true)
+            preferences.setHomeSectionExpanded(.recent, expanded: true)
             let optionsIndex = preferences.toolbarOrder.firstIndex(of: .options)!
             preferences.moveToolbarItem(.options, by: -1)
             checks["toolbarOrderPreference"] = preferences.toolbarOrder.firstIndex(of: .options) == optionsIndex - 1
