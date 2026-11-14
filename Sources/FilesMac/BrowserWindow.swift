@@ -32,6 +32,8 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
     private let hiddenButton = NSButton()
     private let viewModeButton = NSPopUpButton()
     private let refreshButton = NSButton()
+    private static let refreshImage = NSImage(systemSymbolName: "arrow.clockwise", accessibilityDescription: nil)
+    private static let stopLoadingImage = NSImage(systemSymbolName: "xmark", accessibilityDescription: nil)
     private let favoriteButton = NSButton()
     private let optionsButton = NSButton()
     private let shelfToggle = NSButton()
@@ -316,6 +318,7 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         configure(forwardButton, "chevron.right", L("앞으로", "Forward"), #selector(goForward(_:)))
         configure(upButton, "arrow.up", L("상위 폴더", "Enclosing Folder"), #selector(goUp(_:)))
         configure(refreshButton, "arrow.clockwise", L("새로고침", "Refresh"), #selector(refreshOrStop(_:)))
+        refreshButton.image = Self.refreshImage
         pathField.numberOfVisibleItems = 8
         pathField.completes = false
         pathField.toolTip = L("경로 입력 후 아래 화살표로 추천 폴더를 선택하거나 Tab으로 완성", "Type a path, then use the dropdown or Tab to complete")
@@ -873,8 +876,11 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
             ($0.representedObject as? String) == model.viewMode.rawValue
         }) { viewModeButton.select(item) }
         let refreshTitle = model.isLoading ? L("읽기 중단", "Stop Loading") : L("새로고침", "Refresh")
-        refreshButton.image = NSImage(systemSymbolName: model.isLoading ? "xmark" : "arrow.clockwise", accessibilityDescription: refreshTitle)
-        refreshButton.toolTip = refreshTitle; refreshButton.setAccessibilityLabel(refreshTitle)
+        if refreshButton.toolTip != refreshTitle {
+            refreshButton.image = model.isLoading ? Self.stopLoadingImage : Self.refreshImage
+            refreshButton.toolTip = refreshTitle
+            refreshButton.setAccessibilityLabel(refreshTitle)
+        }
         if model.viewMode == .adaptive && !model.isLoading {
             adaptiveResolvedMode = adaptivePolicy.resolve(items: model.items, availableWidth: content.bounds.width)
         }
@@ -4480,11 +4486,17 @@ extension BrowserWindow {
                 loader: DelayedUIListLoader(), makeWatcher: { _ in nil })
             cancellable.window?.setFrame(NSRect(x: 80, y: 80, width: 900, height: 600), display: true)
             cancellable.showWindow(nil)
+            let idleImage = cancellable.refreshButton.image
             cancellable.navigate(denied)
+            let loadingImage = cancellable.refreshButton.image
+            cancellable.render()
+            checks["loadingButtonReusesSymbol"] = idleImage != nil && loadingImage != nil
+                && idleImage !== loadingImage && cancellable.refreshButton.image === loadingImage
             let hadStopLabel = cancellable.refreshButton.accessibilityLabel() == L("읽기 중단", "Stop Loading")
             cancellable.refreshButton.performClick(nil)
             checks["stopButtonCancels"] = hadStopLabel && cancellable.model.wasCancelled && !cancellable.model.isLoading
                 && cancellable.refreshButton.accessibilityLabel() == L("새로고침", "Refresh")
+            checks["loadingButtonRestoresRefreshSymbol"] = cancellable.refreshButton.image === idleImage
             checks["cancelledRecoveryVisible"] = !cancellable.recoveryActions.isHidden
             try capture("cancelled", view: cancellable.window?.contentView)
             try await Task.sleep(for: .milliseconds(400))
