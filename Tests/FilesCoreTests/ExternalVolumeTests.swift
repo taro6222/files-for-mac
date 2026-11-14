@@ -87,6 +87,30 @@ import Testing
             expectedIdentity: identity, journalDirectory: journal)
         #expect(try String(contentsOf: renamed.target, encoding: .utf8) == "old")
 
+        let swap = try await EntryOperations.batchRename([
+            .init(source: renamed.target, name: occupied.lastPathComponent),
+            .init(source: occupied, name: renamed.target.lastPathComponent),
+        ], journalDirectory: journal)
+        #expect(swap.state == "completed", "Batch swap failed on \(key): \(swap.items.map(\.message))")
+        #expect(try String(contentsOf: occupied, encoding: .utf8) == "old")
+        #expect(try String(contentsOf: renamed.target, encoding: .utf8) == "keep")
+        #expect(try FileManager.default.contentsOfDirectory(atPath: destination.path).allSatisfy {
+            !$0.hasPrefix(".files-rename-")
+        })
+        if !caseSensitive {
+            let partial = try await EntryOperations.batchRename([
+                .init(source: occupied, name: "Output.txt"),
+                .init(source: renamed.target, name: "output.txt"),
+            ], journalDirectory: journal)
+            #expect(partial.state == "failed")
+            #expect(partial.items.map(\.state) == ["completed", "failed"])
+            #expect(try String(contentsOf: destination.appendingPathComponent("Output.txt"), encoding: .utf8) == "old")
+            #expect(try String(contentsOf: renamed.target, encoding: .utf8) == "keep")
+            #expect(try FileManager.default.contentsOfDirectory(atPath: destination.path).allSatisfy {
+                !$0.hasPrefix(".files-rename-")
+            })
+        }
+
         let first = root.appendingPathComponent("CaseProbe")
         let second = root.appendingPathComponent("caseprobe")
         let firstFD = open(first.path, O_WRONLY | O_CREAT | O_EXCL, 0o600)

@@ -54,9 +54,14 @@ final class BatchRenameWindow: NSWindowController, NSWindowDelegate {
     private func finish(_ report: BatchRenameResult) {
         running = false
         let completed = report.items.filter { $0.state == "completed" || $0.state == "unchanged" }.count
-        label.stringValue = report.state == "completed"
-            ? L("일괄 이름 변경 완료", "Batch rename complete") + " · \(completed)/\(report.items.count)"
-            : L("이름 변경 계획을 적용하지 않았습니다", "Rename plan was not applied")
+        switch report.state {
+        case "completed":
+            label.stringValue = L("일괄 이름 변경 완료", "Batch rename complete") + " · \(completed)/\(report.items.count)"
+        case "failed":
+            label.stringValue = L("일괄 이름 변경 중단", "Batch rename stopped") + " · \(completed)/\(report.items.count)"
+        default:
+            label.stringValue = L("이름 변경 계획을 적용하지 않았습니다", "Rename plan was not applied")
+        }
         details.string = report.items.map { item in
             let state: String
             switch item.state {

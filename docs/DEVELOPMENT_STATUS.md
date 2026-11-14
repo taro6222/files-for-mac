@@ -4,6 +4,8 @@
 
 ## 이번 구현 단위
 
+실제 exFAT에서 일괄 이름 교환을 보완하고, 이름 충돌 시 부분 완료와 복구 결과를 검증했다. [M7 exFAT 일괄 이름 변경](verification/m7/INCREMENT_13.md)
+
 로컬 목록의 식별자 조회를 간소화해 10,000항목 전체 표시 p95 1.350초를 기록했고 exFAT 단일 항목 이름 변경을 보완했다. [M7 대형 폴더·exFAT](verification/m7/INCREMENT_12.md)
 
 프리뷰 새 프로세스 20회에서 창이 등록되기까지 p95 248 ms를 기록했다. [M7 프리뷰 시작 시간](verification/m7/INCREMENT_11.md)

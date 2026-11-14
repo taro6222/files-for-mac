@@ -95,19 +95,20 @@ public extension EntryOperations {
             let fd = open(parent.path, O_RDONLY | O_DIRECTORY | O_CLOEXEC)
             guard fd >= 0 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
             defer { close(fd) }
+            func rename(_ from: String, to: String) throws {
+                try CopyEngine.publishNoReplace(payload: parent.appendingPathComponent(from),
+                    target: parent.appendingPathComponent(to), sourceDirectoryFD: fd,
+                    sourceName: from, destinationDirectoryFD: fd, destinationName: to)
+            }
             var staged: [(index: Int, temporary: String)] = []
             do {
                 for index in requests.indices where requests[index].source.lastPathComponent != requests[index].name {
                     let temporary = ".files-rename-\(id)-\(index)"
-                    guard renameatx_np(fd, requests[index].source.lastPathComponent, fd, temporary, UInt32(RENAME_EXCL)) == 0 else {
-                        throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
-                    }
+                    try rename(results[index].source.lastPathComponent, to: temporary)
                     staged.append((index, temporary))
                 }
                 for entry in staged {
-                    guard renameatx_np(fd, entry.temporary, fd, requests[entry.index].name, UInt32(RENAME_EXCL)) == 0 else {
-                        throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
-                    }
+                    try rename(entry.temporary, to: requests[entry.index].name)
                     results[entry.index] = BatchRenameItemResult(source: results[entry.index].source, target: results[entry.index].target,
                         state: "completed", message: nil)
                 }
@@ -116,15 +117,23 @@ public extension EntryOperations {
                         state: "unchanged", message: nil)
                 }
             } catch {
-                for entry in staged.reversed() where exists(parent.appendingPathComponent(entry.temporary)) {
-                    try? fm.moveItem(at: parent.appendingPathComponent(entry.temporary), to: requests[entry.index].source)
+                let failure = error.localizedDescription
+                for entry in staged.reversed() where results[entry.index].state == "planned" {
+                    let item = results[entry.index]
+                    do {
+                        try rename(entry.temporary, to: item.source.lastPathComponent)
+                    } catch {
+                        let temporaryURL = parent.appendingPathComponent(entry.temporary)
+                        results[entry.index] = BatchRenameItemResult(source: item.source, target: item.target,
+                            state: "failed", message: "\(failure)\n\(temporaryURL.path): \(error.localizedDescription)")
+                    }
                 }
                 for index in results.indices where results[index].state == "planned" {
                     results[index] = BatchRenameItemResult(source: results[index].source, target: results[index].target,
-                        state: "failed", message: error.localizedDescription)
+                        state: "failed", message: failure)
                 }
-                try? save("failed")
-                return BatchRenameResult(id: id, state: "failed", items: results, journalError: nil)
+                do { try save("failed") } catch { journalError = error.localizedDescription }
+                return BatchRenameResult(id: id, state: "failed", items: results, journalError: journalError)
             }
             do { try save("completed") } catch { journalError = error.localizedDescription }
             return BatchRenameResult(id: id, state: "completed", items: results, journalError: journalError)
