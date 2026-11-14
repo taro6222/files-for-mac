@@ -1,13 +1,18 @@
 #!/bin/bash
 set -euo pipefail
 
-if [[ $# -lt 1 || $# -gt 2 || ${1##*/} != Files-macOS.dmg ]]; then
-  echo "Usage: $0 /path/to/Files-macOS.dmg [expected-Team-ID]" >&2
+if [[ $# -lt 1 || $# -gt 3 || ${1##*/} != Files-macOS.dmg ]]; then
+  echo "Usage: $0 /path/to/Files-macOS.dmg [expected-Team-ID [expected-SHA-256]]" >&2
   exit 64
 fi
 release_team=${2-}
-if [[ $# -eq 2 && ! "$release_team" =~ ^[A-Z0-9]{10}$ ]]; then
+if [[ $# -ge 2 && ! "$release_team" =~ ^[A-Z0-9]{10}$ ]]; then
   echo "Expected a 10-character Developer ID Team ID." >&2
+  exit 64
+fi
+release_sha=${3-}
+if [[ $# -eq 3 && ! "$release_sha" =~ ^[a-f0-9]{64}$ ]]; then
+  echo "Expected a lowercase 64-character SHA-256." >&2
   exit 64
 fi
 script_dir=$(cd "$(dirname "$0")" && pwd)
@@ -19,6 +24,10 @@ expected=$(awk '
 actual=$(shasum -a 256 < "$image")
 if [[ "${actual%% *}" != "$expected" ]]; then
   echo "Release checksum mismatch." >&2
+  exit 65
+fi
+if [[ -n "$release_sha" && "$expected" != "$release_sha" ]]; then
+  echo "Downloaded image does not match the expected release SHA-256." >&2
   exit 65
 fi
 

@@ -6,6 +6,14 @@
 bash scripts/verify-release-dmg.sh ~/Downloads/Files-macOS.dmg
 ```
 
+배포 검증 시에는 빌드 호스트에서 기록한 Developer ID Team ID와 최종 DMG의 SHA-256을 별도 경로로 전달하고 함께 지정한다.
+
+```bash
+bash scripts/verify-release-dmg.sh ~/Downloads/Files-macOS.dmg "$team_id" "$release_sha256"
+```
+
+검증기는 내려받은 이미지와 체크섬 파일이 서로 일치하는지 확인하고, 지정한 SHA-256과도 대조한다. 이어서 지정된 팀의 서명, 공증과 Gatekeeper 검사를 실행한다.
+
 배포자가 별도로 확인해 준 Team ID가 있으면 두 번째 인자로 전달한다. 이 경우 DMG와 앱의 서명을 모두 해당 팀에 대조한다. 인자를 생략하면 앱과 DMG의 서명 팀 일치를 검사한다.
 
 같은 위치의 `Files-macOS.dmg.sha256`에 기록한 해시를 대조하고, 이미지 무결성·코드 서명·공증 티켓·Gatekeeper 결과를 확인한다. 읽기 전용 마운트에서 [DMG 내용물과 앱 서명](INCREMENT_55.md)을 검사한 뒤 macOS 배포 정책 검사를 실행한다. 그 후 깨끗한 Mac의 Finder에서 앱을 Applications 폴더로 복사하고 처음 실행한 결과를 기록한다. [Apple 공증 및 배포 안내](https://developer.apple.com/documentation/security/notarizing-macos-software-before-distribution)
