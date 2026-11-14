@@ -4,6 +4,8 @@
 
 ## 이번 구현 단위
 
+프리뷰 설치·교체·복원 각 단계에서 네 설정과 사용자 파일 내용이 유지되는지 확인한다. [M7 설정 보존 검증](verification/m7/PREVIEW_0.1.0.md)
+
 정식 DMG 빌드에서 다운로드와 같은 검증을 실행한 뒤 산출물을 교체한다. [M7 산출물 교체 검증](verification/m7/INCREMENT_16.md)
 
 정식 DMG 검증에서 이미지와 내부 앱에 같은 팀의 Developer ID Application 서명을 요구한다. [M7 정식 DMG 검증](verification/m7/INCREMENT_21.md)

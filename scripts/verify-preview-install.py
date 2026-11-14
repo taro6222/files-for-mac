@@ -289,9 +289,29 @@ def exercise(previous, candidate, root, bundle_id):
     isolate(app, bundle_id)
     installed_binary = app / "Contents/MacOS/FilesMac"
     prior_binary = sha256(installed_binary)
-    run("defaults", "write", bundle_id, "startupLocationPath", "-string", fixture)
-    run("defaults", "write", bundle_id, "continueLastSession", "-bool", "NO")
+    expected_preferences = {
+        "startupLocationPath": str(fixture),
+        "continueLastSession": False,
+        "favorites": [str(fixture)],
+        "showExtensions": False,
+    }
+    prefs = root / "initial-preferences.plist"
+    prefs.write_bytes(plistlib.dumps(expected_preferences))
+    run("defaults", "import", bundle_id, prefs)
+    verified_stages = []
+
+    def verify_user_state(stage):
+        exported = subprocess.check_output(["defaults", "export", bundle_id, "-"])
+        saved = plistlib.loads(exported)
+        for key, value in expected_preferences.items():
+            if key not in saved or type(saved[key]) is not type(value) or saved[key] != value:
+                raise RuntimeError(f"{stage}: preference changed or missing: {key}")
+        if user_file.read_text() != "Preview upgrade fixture\n":
+            raise RuntimeError(f"{stage}: user file changed")
+        verified_stages.append(stage)
+
     initial_time = launch(app, probe, fixture, home, launch_log)
+    verify_user_state("firstInstall")
 
     with mounted(candidate, mountpoint) as mounted_app:
         verify_signature(mounted_app)
@@ -306,6 +326,7 @@ def exercise(previous, candidate, root, bundle_id):
             if sha256(installed_binary) != prior_binary:
                 raise RuntimeError("Staging modified the installed executable")
             failure_time = launch(app, probe, fixture, home, launch_log)
+            verify_user_state("afterStagedSignatureFailure")
         else:
             raise RuntimeError("The damaged staging bundle passed code-signature validation")
         run("ditto", mounted_app / "Contents/Info.plist", staged / "Contents/Info.plist")
@@ -319,12 +340,13 @@ def exercise(previous, candidate, root, bundle_id):
     upgrade_time = launch(app, probe, fixture, home, launch_log)
     if version(app) != next_version or sha256(installed_binary) != next_binary:
         raise RuntimeError("The installed bundle does not match the candidate")
+    verify_user_state("afterReplacement")
     app.rename(staged)
     backup.rename(app)
     rollback_time = launch(app, probe, fixture, home, launch_log)
-    if (version(app) != prior_version or sha256(installed_binary) != prior_binary
-            or user_file.read_text() != "Preview upgrade fixture\n"):
-        raise RuntimeError("Rollback failed to preserve the original bundle or fixture data")
+    if version(app) != prior_version or sha256(installed_binary) != prior_binary:
+        raise RuntimeError("Rollback failed to restore the original bundle")
+    verify_user_state("afterRollback")
     return {
         "previousImageSHA256": previous_hash,
         "candidateImageSHA256": candidate_hash,
@@ -333,6 +355,10 @@ def exercise(previous, candidate, root, bundle_id):
         "previousTestExecutableSHA256": prior_binary,
         "candidateTestExecutableSHA256": next_binary,
         **launch_environment(),
+        "preservedUserState": {
+            "preferenceKeys": list(expected_preferences),
+            "verifiedStages": verified_stages,
+        },
         "windowVisibleSeconds": {
             "firstInstall": initial_time,
             "afterStagedSignatureFailure": failure_time,
