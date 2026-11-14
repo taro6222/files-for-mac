@@ -702,6 +702,7 @@ public enum EntryOperations {
             var publishedSnapshots = Array<[String: String]?>(repeating: nil, count: normalizedSources.count)
             var backupIdentities = Array<String?>(repeating: nil, count: normalizedSources.count)
             var backupSnapshots = Array<[String: String]?>(repeating: nil, count: normalizedSources.count)
+            var canRecordUndo = Array(repeating: true, count: normalizedSources.count)
             var backupURLs = Array<URL?>(repeating: nil, count: normalizedSources.count)
             var crossVolumeItems = Array(repeating: false, count: normalizedSources.count)
             var finalState = "completed"
@@ -726,6 +727,18 @@ public enum EntryOperations {
                     let source = normalizedSources[index]
                     let target = normalizedDestination.appendingPathComponent(source.lastPathComponent)
                     var backup: URL?
+                    func snapshotForUndo(_ url: URL) throws -> [String: String]? {
+                        do {
+                            return try directoryUndoSnapshot(url, cancellation: cancellation)
+                        } catch is CancellationError {
+                            throw CancellationError()
+                        } catch {
+                            // A rename may work on a folder we cannot read or which
+                            // contains special files. Never offer an unchecked Undo.
+                            canRecordUndo[index] = false
+                            return nil
+                        }
+                    }
                     func emit(_ phase: String) {
                         progress(MoveProgress(index: index, total: normalizedSources.count,
                                               name: source.lastPathComponent, phase: phase))
@@ -803,7 +816,7 @@ public enum EntryOperations {
                                 itemStates[index] = MoveItemOperationResult(source: source, target: target, state: "backingUp", message: nil)
                                 try save(state: finalState); emit("backingUp"); try cancellation.check()
                                 let backupIdentity = try snapshotIdentity(target, fileManager: fm)
-                                let backupSnapshot = crossVolume ? try directoryUndoSnapshot(target, cancellation: cancellation) : nil
+                                let backupSnapshot = try snapshotForUndo(target)
                                 do {
                                     try CopyEngine.publishNoReplace(payload: target, target: proposedBackup,
                                         sourceDirectoryFD: destinationFD, sourceName: target.lastPathComponent,
@@ -876,7 +889,13 @@ public enum EntryOperations {
                                 publishedIdentities[index] = payloadIdentity
                                 publishedSnapshots[index] = payloadSnapshot
                             } else {
+                                let identity = try snapshotIdentity(source, fileManager: fm)
+                                let snapshot = try snapshotForUndo(source)
                                 try cancellation.check(); emit("committing")
+                                try cancellation.check()
+                                guard try snapshotIdentity(source, fileManager: fm) == identity else {
+                                    throw EntryOperationError.sourceChanged
+                                }
                                 if flattenPlan != nil || redoItem != nil {
                                     let sourceFD = open(source.deletingLastPathComponent().path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
                                     guard sourceFD >= 0 else { throw EntryOperationError.sourceChanged }
@@ -895,8 +914,12 @@ public enum EntryOperations {
                                 } else {
                                     try fm.moveItem(at: source, to: target)
                                 }
+                                publishedIdentities[index] = identity
+                                publishedSnapshots[index] = snapshot
                             }
-                            itemStates[index] = MoveItemOperationResult(source: source, target: target, state: "completed", message: nil)
+                            itemStates[index] = MoveItemOperationResult(source: source, target: target, state: "completed",
+                                message: canRecordUndo[index] ? nil : LString.moveUndoSnapshotUnavailable,
+                                recoveryBackup: canRecordUndo[index] ? nil : backup)
                         } catch is CancellationError {
                             itemStates[index] = MoveItemOperationResult(source: source, target: target, state: "cancelled",
                                 message: nil, recoveryBackup: restoreBackup())
@@ -928,7 +951,9 @@ public enum EntryOperations {
             }
 
             do {
-                let completed = itemStates.enumerated().filter { $0.element.state == "completed" }
+                let completed = itemStates.enumerated().filter {
+                    $0.element.state == "completed" && canRecordUndo[$0.offset]
+                }
                 if !completed.isEmpty {
                         let undoItems = try completed.map { indexed in
                             let item = indexed.element
@@ -1103,6 +1128,9 @@ private enum LString {
     static let undoSourceConflict = "원래 위치에 같은 이름의 항목이 있어 실행 취소하지 않았습니다."
     static let undoSourceParentMissing = "원래 상위 폴더가 없어 실행 취소하지 않았습니다."
     static let undoBackupChanged = "교체 전 백업이 없거나 변경되어 실행 취소하지 않았습니다."
+    static let moveUndoSnapshotUnavailable = Locale.preferredLanguages.first?.hasPrefix("ko") == true
+        ? "폴더의 하위 항목을 검증할 수 없어 이 항목의 실행 취소를 기록하지 않았습니다."
+        : "Undo is unavailable for this item because its folder contents could not be verified."
     static let crossVolumeVerificationFailed = "복사 결과가 원본과 일치하지 않거나 복사 중 원본이 변경됐습니다."
     static let crossVolumeSourceChanged = "복사 결과를 확정한 뒤 원본이 변경되어 원본 삭제를 중단했습니다."
     static let crossVolumeDestinationChanged = "복사 결과를 확정한 뒤 대상이 변경되어 원본 삭제를 중단했습니다."

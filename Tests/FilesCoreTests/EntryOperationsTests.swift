@@ -1,4 +1,5 @@
 import Foundation
+import Darwin
 import Testing
 
 @Test func flattenMovesNestedEntriesWithoutReplacingAndSupportsUndo() async throws {
@@ -318,8 +319,8 @@ private func entryFixture() throws -> URL {
     #expect(try String(contentsOf: destination.appendingPathComponent("move.txt"), encoding: .utf8) == "old")
 }
 
-@Test(arguments: [false, true])
-func entryCrossVolumeMoveUndoPreservesEditsInsideMovedOrBackedUpFolder(editBackup: Bool) async throws {
+@Test(arguments: [false, true], [false, true])
+func entryMoveUndoPreservesEditsInsideMovedOrBackedUpFolder(crossVolume: Bool, editBackup: Bool) async throws {
     let root = try entryFixture()
     let fm = FileManager.default
     defer { try? fm.removeItem(at: root) }
@@ -332,8 +333,14 @@ func entryCrossVolumeMoveUndoPreservesEditsInsideMovedOrBackedUpFolder(editBacku
     try Data("new".utf8).write(to: source.appendingPathComponent("child"))
     try Data("old".utf8).write(to: target.appendingPathComponent("child"))
 
-    let move = try await EntryOperations.moveAcrossVolumeForTesting([source], to: destination,
-        conflictPolicy: .replace, journalDirectory: journal)
+    let move: MoveOperationResult
+    if crossVolume {
+        move = try await EntryOperations.moveAcrossVolumeForTesting([source], to: destination,
+            conflictPolicy: .replace, journalDirectory: journal)
+    } else {
+        move = try await EntryOperations.move([source], to: destination,
+            conflictPolicy: .replace, journalDirectory: journal)
+    }
     #expect(move.state == "completed")
     let record = try #require(EntryOperations.latestUndoMove(journalDirectory: journal))
     let backup = try #require(record.items.first?.backup)
@@ -346,6 +353,26 @@ func entryCrossVolumeMoveUndoPreservesEditsInsideMovedOrBackedUpFolder(editBacku
     #expect(try String(contentsOf: edited, encoding: .utf8) == "edited")
     #expect(try String(contentsOf: (editBackup ? target : backup).appendingPathComponent("child"), encoding: .utf8)
         == (editBackup ? "new" : "old"))
+}
+
+@Test func entrySameVolumeMoveWithFIFOCompletesWithoutUncheckedUndo() async throws {
+    let root = try entryFixture()
+    let fm = FileManager.default
+    defer { try? fm.removeItem(at: root) }
+    let journal = root.appendingPathComponent("journal")
+    let source = root.appendingPathComponent("folder")
+    let destination = root.appendingPathComponent("dest")
+    try fm.createDirectory(at: source, withIntermediateDirectories: true)
+    try fm.createDirectory(at: destination, withIntermediateDirectories: true)
+    #expect(mkfifo(source.appendingPathComponent("pipe").path, 0o600) == 0)
+
+    let move = try await EntryOperations.move([source], to: destination, journalDirectory: journal)
+    #expect(move.items.map(\.state) == ["completed"])
+    #expect(move.items.first?.message != nil)
+    #expect(EntryOperations.latestUndoMove(journalDirectory: journal) == nil)
+    let moved = destination.appendingPathComponent("folder/pipe")
+    var info = stat()
+    #expect(lstat(moved.path, &info) == 0 && (info.st_mode & S_IFMT) == S_IFIFO)
 }
 
 @Test func entryMoveUndoPreservesChangedReplacementBackup() async throws {
