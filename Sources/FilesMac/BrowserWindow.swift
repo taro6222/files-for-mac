@@ -60,7 +60,9 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
     private var archiveWindow: ArchiveWindow?
     private let quickLook = QuickLookController()
     private let homeView = NSStackView()
+    private let homeRecentView = NSStackView()
     private var homeNeedsUpdate = true
+    private var homeRecentNeedsUpdate = true
     private let sidebar = NSStackView()
     private let content = AppBackgroundView()
     private let folderFilter = FolderFilterField()
@@ -203,7 +205,9 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         model.onChange = { [weak self] in self?.render() }
         preferencesToken = preferences.observe(includesRecentLocations: false) { [weak self] in self?.preferencesChanged() }
         recentLocationsToken = preferences.observeRecentLocations { [weak self] in
-            self?.invalidateHome()
+            guard let self else { return }
+            self.homeRecentNeedsUpdate = true
+            if self.model.location == nil { self.updateHomeIfNeeded() }
         }
         let primarySnapshot = initialWorkspace?.panes.first?.tab ?? initialSnapshot
         if let primarySnapshot { model.restore(primarySnapshot) }
@@ -367,6 +371,8 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         setupTable(restoresLayout: restoresLayout)
         homeView.orientation = .vertical; homeView.alignment = .leading; homeView.spacing = 16
         homeView.edgeInsets = NSEdgeInsets(top: 32, left: 32, bottom: 32, right: 32)
+        homeRecentView.orientation = .vertical; homeRecentView.alignment = .leading
+        homeRecentView.spacing = homeView.spacing
         homeView.translatesAutoresizingMaskIntoConstraints = false
         homeScroll.drawsBackground = false; homeScroll.hasVerticalScroller = true
         homeScroll.translatesAutoresizingMaskIntoConstraints = false; content.addSubview(homeScroll)
@@ -739,7 +745,11 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
     }
     private func invalidateHome() {
         homeNeedsUpdate = true
-        if model.location == nil { buildHome() }
+        if model.location == nil { updateHomeIfNeeded() }
+    }
+    private func updateHomeIfNeeded() {
+        if homeNeedsUpdate { buildHome() }
+        else if homeRecentNeedsUpdate { updateHomeRecent() }
     }
     private func buildHome() {
         homeNeedsUpdate = false
@@ -783,26 +793,42 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         }
         if preferences.showHomeRecent {
             homeSection(L("최근 위치", "Recent Locations"), expanded: preferences.homeRecentExpanded, action: #selector(toggleHomeRecentExpanded(_:)))
-            if preferences.homeRecentExpanded && recent.isEmpty {
-                homeView.addArrangedSubview(NSTextField(labelWithString: L("방문한 폴더가 여기에 표시됩니다.", "Folders you visit will appear here.")))
-            } else if preferences.homeRecentExpanded {
-                for url in recent { locationButton(url.path, symbol: "clock", url: url, in: homeView) }
-                let clear = SidebarKeyboardButton(title: L("최근 기록 지우기", "Clear Recent Locations"), target: self, action: #selector(clearRecent(_:)))
-                clear.bezelStyle = .rounded; homeView.addArrangedSubview(clear)
+            if preferences.homeRecentExpanded {
+                homeView.addArrangedSubview(homeRecentView)
+                homeRecentView.widthAnchor.constraint(equalTo: homeView.widthAnchor, constant: -64).isActive = true
             }
         }
-        if let focusedButton {
-            let buttons = homeKeyboardButtons
-            let replacement = buttons.first {
-                $0.action == focusedButton.action && $0.accessibilityLabel() == focusedButton.accessibilityLabel()
-                    && ($0 as? LocationButton)?.url == (focusedButton as? LocationButton)?.url
-            }
-            if let button = replacement ?? buttons.first { focusHomeButton(button) }
+        updateHomeRecent()
+        if let focusedButton { restoreHomeFocus(from: focusedButton) }
+    }
+    private func updateHomeRecent() {
+        homeRecentNeedsUpdate = false
+        let focusedButton = (window?.firstResponder as? SidebarKeyboardButton).flatMap {
+            $0.isDescendant(of: homeRecentView) ? $0 : nil
         }
+        homeRecentView.arrangedSubviews.forEach { homeRecentView.removeArrangedSubview($0); $0.removeFromSuperview() }
+        guard homeRecentView.superview === homeView else { return }
+        if recent.isEmpty {
+            homeRecentView.addArrangedSubview(NSTextField(labelWithString: L("방문한 폴더가 여기에 표시됩니다.", "Folders you visit will appear here.")))
+        } else {
+            for url in recent { locationButton(url.path, symbol: "clock", url: url, in: homeRecentView) }
+            let clear = SidebarKeyboardButton(title: L("최근 기록 지우기", "Clear Recent Locations"), target: self, action: #selector(clearRecent(_:)))
+            clear.bezelStyle = .rounded
+            homeRecentView.addArrangedSubview(clear)
+        }
+        if let focusedButton { restoreHomeFocus(from: focusedButton) }
+    }
+    private func restoreHomeFocus(from previous: SidebarKeyboardButton) {
+        let buttons = homeKeyboardButtons
+        let replacement = buttons.first {
+            $0.action == previous.action && $0.accessibilityLabel() == previous.accessibilityLabel()
+                && ($0 as? LocationButton)?.url == (previous as? LocationButton)?.url
+        }
+        if let button = replacement ?? buttons.first { focusHomeButton(button) }
     }
     private var homeKeyboardButtons: [SidebarKeyboardButton] {
         homeView.arrangedSubviews.flatMap { view in
-            (view as? VolumeCardView)?.arrangedSubviews ?? [view]
+            (view as? NSStackView)?.arrangedSubviews ?? [view]
         }.compactMap { $0 as? SidebarKeyboardButton }.filter { !$0.isHiddenOrHasHiddenAncestor && $0.isEnabled }
     }
     private func focusHomeButton(_ button: SidebarKeyboardButton) {
@@ -924,7 +950,7 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         homeScroll.isHidden = model.location != nil
         if model.location == nil {
             lastRecordedLocation = nil
-            if homeNeedsUpdate { buildHome() }
+            updateHomeIfNeeded()
         }
         var revealEntry = false
         if let target = pendingEntrySelection, !model.isLoading {
@@ -5589,16 +5615,25 @@ extension BrowserWindow {
                 && controller.model.location == network.url
             controller.goHome(nil)
             let homeContent = controller.homeView.arrangedSubviews.first
+            let currentNetworkButton = controller.homeView.arrangedSubviews.compactMap { $0 as? LocationButton }
+                .first { $0.url == network.url && $0.title == shareName }
             controller.render()
             checks["homeReusesUnchangedViews"] = homeContent != nil
                 && controller.homeView.arrangedSubviews.first === homeContent
             preferences.clearRecent()
             preferences.recordVisit(recoveryFolder)
             let recentPath = recoveryFolder.standardizedFileURL.path
-            let homeLocations = controller.homeView.arrangedSubviews.compactMap { $0 as? LocationButton }
-            checks["homeRecentRefresh"] = homeLocations.contains {
-                $0.url?.path == recentPath && $0.title == recentPath
-            } && homeLocations.contains { $0.url == network.url && $0.title == shareName }
+            let recentButton = controller.homeRecentView.arrangedSubviews.compactMap { $0 as? LocationButton }
+                .first { $0.url?.path == recentPath && $0.title == recentPath }
+            if let recentButton { controller.focusHomeButton(recentButton) }
+            preferences.recordVisit(source)
+            let recentButtons = controller.homeRecentView.arrangedSubviews.compactMap { $0 as? LocationButton }
+            let recentOrderUpdated = recentButtons.compactMap { $0.url?.path } == [source.standardizedFileURL.path, recentPath]
+            let otherHomeViewsReused = controller.homeView.arrangedSubviews.first === homeContent
+                && controller.homeView.arrangedSubviews.contains { $0 === currentNetworkButton }
+            let recentFocusRestored = (window.firstResponder as? LocationButton)?.url?.path == recentPath
+            diagnostics["homeRecentRefresh"] = [recentOrderUpdated, otherHomeViewsReused, recentFocusRestored]
+            checks["homeRecentRefresh"] = recentOrderUpdated && otherHomeViewsReused && recentFocusRestored
             func showsHomeVolumeEntries() -> Bool {
                 controller.homeView.arrangedSubviews.contains {
                     ($0 as? LocationButton)?.title == shareName || $0 is VolumeCardView
