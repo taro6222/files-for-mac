@@ -915,7 +915,9 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         }
         folderFilter.synchronize(with: model, visible: preferences.showFilterHeader)
         updateShelf()
-        titleLabel.stringValue = model.location.map(displayName) ?? L("홈", "Home")
+        // Window titles must remain usable while reading a slow or inaccessible location.
+        titleLabel.stringValue = model.location.map { $0.path == "/" ? "/" : $0.lastPathComponent }
+            ?? L("홈", "Home")
         window?.title = "\(titleLabel.stringValue) — Files macOS"
         if pathField.currentEditor() == nil { pathField.stringValue = model.location?.path ?? "" }
         backButton.isEnabled = !model.history.back.isEmpty; forwardButton.isEnabled = !model.history.forward.isEmpty

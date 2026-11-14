@@ -1,0 +1,41 @@
+{
+  "executableSHA256": "6790016b0061734e1d5d7cf73fcd7fff1f4193932400d106e5949221fe6d5a20",
+  "samples": [
+    {
+      "fixture": "Existing Startup Folder",
+      "trial": 1,
+      "windowSeconds": 0.562,
+      "interactiveSeconds": 0.807
+    },
+    {
+      "fixture": "Missing Startup Folder",
+      "trial": 1,
+      "windowSeconds": 0.25,
+      "interactiveSeconds": 0.484
+    },
+    {
+      "fixture": "File as Startup Folder",
+      "trial": 1,
+      "windowSeconds": 0.245,
+      "interactiveSeconds": 0.49
+    },
+    {
+      "fixture": "Existing Startup Folder",
+      "trial": 2,
+      "windowSeconds": 0.263,
+      "interactiveSeconds": 0.509
+    },
+    {
+      "fixture": "Missing Startup Folder",
+      "trial": 2,
+      "windowSeconds": 0.249,
+      "interactiveSeconds": 0.492
+    },
+    {
+      "fixture": "File as Startup Folder",
+      "trial": 2,
+      "windowSeconds": 0.257,
+      "interactiveSeconds": 0.496
+    }
+  ]
+}

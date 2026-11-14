@@ -63,10 +63,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         }
         if restored.isEmpty {
             let startup = BrowserPreferences.shared.startupLocationPath.map { URL(fileURLWithPath: $0, isDirectory: true) }
-            var isDirectory: ObjCBool = false
-            if let startup, FileManager.default.fileExists(atPath: startup.path, isDirectory: &isDirectory), isDirectory.boolValue {
-                makeBrowser(location: startup)
-            } else { newWindow(nil) }
+            // Resolve the saved location through the asynchronous browser loader.
+            // Its recovery UI handles missing, inaccessible, and non-folder paths.
+            makeBrowser(location: startup)
         }
         else {
             var first: BrowserWindow?
