@@ -1,6 +1,12 @@
 #!/bin/bash
 set -euo pipefail
 cd "$(dirname "$0")/.."
+test_args=(--disable-sandbox --filter mountedVolume)
+case "${1:-}" in
+  "") ;;
+  --skip-build) test_args+=(--skip-build) ;;
+  *) echo "Usage: $0 [--skip-build]" >&2; exit 2 ;;
+esac
 root=$(/usr/bin/mktemp -d /tmp/files-volume-matrix.XXXXXX)
 devices=()
 cleanup() {
@@ -42,7 +48,6 @@ create_raw_volume FAT32 'MS-DOS FAT32' FILES_TEST_FAT32_VOLUME
 create_raw_volume HFS JHFS+ FILES_TEST_HFS_VOLUME
 export CLANG_MODULE_CACHE_PATH="$PWD/.build/ModuleCache"
 export SWIFT_TMPDIR=/tmp
-test_args=(--disable-sandbox --filter mountedVolume)
 if [[ "$(xcode-select -p)" == /Library/Developer/CommandLineTools ]]; then
   testing_plugin=/Library/Developer/CommandLineTools/usr/lib/swift/host/plugins/testing/libTestingMacros.dylib
   if [[ -f "$testing_plugin" ]]; then
