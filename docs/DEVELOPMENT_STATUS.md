@@ -8,6 +8,8 @@ M7 출시 검증이 진행 중이다. [유니버설 개발 프리뷰](verificati
 
 ## 이번 구현 단위
 
+macOS 15의 두 CI 러너에서 유니버설 프리뷰를 설치하고 Launch Services로 실행하도록 구성했다. [설치 실행 검증](verification/m7/INCREMENT_178.md)
+
 고정 원본에서 인벤토리를 다시 추출해 검토 기록을 보존한 상태로 대조할 수 있다. [원본 재대조](verification/m7/INCREMENT_177.md)
 
 원본 대응 인벤토리에서 고정 SHA와 근거 파일의 존재를 CI로 검사하고 명령 팔레트의 근거 경로를 바로잡았다. [인벤토리 검증](verification/m7/INCREMENT_176.md)

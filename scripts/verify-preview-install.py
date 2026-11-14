@@ -277,7 +277,8 @@ def measure_startup(image, root, bundle_id, *, interactive=False, launch_service
         **launch_environment(),
         "imageSHA256": digest,
         "appVersion": app_version,
-        "metric": "Process creation to the first matching AppKit window in the WindowServer list",
+        "metric": ("Launch Services request" if launch_services else "Process creation")
+                  + " to the first matching AppKit window in the WindowServer list",
         "cacheCondition": "Fresh processes; shared OS caches, no cache purge",
         "seconds": samples,
         "p95Seconds": p95,
@@ -427,8 +428,8 @@ def main():
                         help="Require this architecture in each launched app process during startup measurement")
     parser.add_argument("--expect-macos", help="Require this exact macOS product version before startup measurement")
     args = parser.parse_args()
-    if args.launch_services and not args.interactive_startup:
-        parser.error("--launch-services requires --interactive-startup")
+    if args.launch_services and not (args.startup or args.interactive_startup):
+        parser.error("--launch-services requires a startup measurement")
     startup = args.startup or args.interactive_startup
     if startup and args.candidate is not None:
         parser.error("Startup measurement accepts one preview image")
