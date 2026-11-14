@@ -68,6 +68,7 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
     private let primaryPaneHost = NSView()
     private let secondaryPaneHost = NSView()
     private var secondaryPane: SecondaryBrowserPane?
+    private var isRestoringSplitWorkspace = false
     private var secondaryActive = false
     private var primaryPaneID = UUID()
     private var secondaryPaneID: UUID?
@@ -2784,8 +2785,10 @@ private func capacityDescription(_ volume: MountedVolume) -> String {
 
 extension BrowserWindow {
     fileprivate func canAcceptTabSplit(from source: BrowserWindow) -> Bool {
-        secondaryPane == nil && source.secondaryPane == nil
-            && window?.attachedSheet == nil && source.window?.attachedSheet == nil
+        guard let window, let sourceWindow = source.window else { return false }
+        return !isRestoringSplitWorkspace && !source.isRestoringSplitWorkspace
+            && secondaryPane == nil && source.secondaryPane == nil
+            && window.attachedSheet == nil && sourceWindow.attachedSheet == nil
     }
 
     fileprivate func splitByDroppingTab(from source: BrowserWindow, at edge: TabSplitEdge) -> Bool {
@@ -2885,10 +2888,13 @@ extension BrowserWindow {
     }
     private func restoreWorkspace(_ state: SplitTabState) {
         guard state.panes.count == 2 else { return }
+        isRestoringSplitWorkspace = true
         let secondary = state.panes[1]
         Task { @MainActor [weak self] in
-            self?.installSecondaryPane(axis: state.axis, snapshot: secondary.tab, id: secondary.id,
-                                       ratio: state.ratio, activate: state.activePaneID == secondary.id)
+            guard let self else { return }
+            defer { isRestoringSplitWorkspace = false }
+            installSecondaryPane(axis: state.axis, snapshot: secondary.tab, id: secondary.id,
+                                 ratio: state.ratio, activate: state.activePaneID == secondary.id)
         }
     }
     private func setSecondaryActive(_ active: Bool) {
@@ -3859,6 +3865,8 @@ extension BrowserWindow {
                         axis: axis, ratio: 0.35, activePaneID: secondary.id)])
                     let restored = BrowserWindow(preferences: preferences, restoresFrame: false,
                                                 initialWorkspace: splitStore.load().first)
+                    checks["tabSplitRejectsPendingSession_\(axis.rawValue)"] =
+                        !restored.canAcceptTabSplit(from: controller) && !controller.canAcceptTabSplit(from: restored)
                     restored.showWindow(nil)
                     let restoreStart = ContinuousClock.now
                     while (restored.secondaryPane == nil || restored.model.isLoading || restored.secondaryPane?.model.isLoading == true)
@@ -3938,7 +3946,20 @@ extension BrowserWindow {
                 ] {
                     let source = BrowserWindow(preferences: preferences, restoresFrame: false, initialSnapshot: secondary.tab)
                     let target = BrowserWindow(preferences: preferences, restoresFrame: false, initialSnapshot: primary.tab)
+                    source.showWindow(nil)
+                    target.showWindow(nil)
+                    if let sourceWindow = source.window, let targetWindow = target.window {
+                        targetWindow.addTabbedWindow(sourceWindow, ordered: .above)
+                        sourceWindow.makeKeyAndOrderFront(nil)
+                    }
+                    let wasTabbed = target.window?.tabbedWindows?.contains { $0 === source.window } == true
+                    var didCloseSource = false
+                    source.onClose = { didCloseSource = true }
                     let dropped = target.splitByDroppingTab(from: source, at: edge)
+                    let closeStart = ContinuousClock.now
+                    while !didCloseSource && elapsed(closeStart) < 2 {
+                        try await Task.sleep(for: .milliseconds(20))
+                    }
                     let state = target.workspaceSnapshot()
                     checks["tabSplitDrop_\(edge)"] = dropped && state.axis == expectedAxis
                         && state.panes.map { $0.tab.location?.path } == [first.path, last.path]
@@ -3946,8 +3967,19 @@ extension BrowserWindow {
                         && state.activePane.tab.viewMode == .list
                         && state.activePane.tab.history.forward.map { $0.url?.path } == [columnFolder.path]
                         && !target.canAcceptTabSplit(from: source)
+                        && wasTabbed && didCloseSource && target.window?.isVisible == true
+                        && target.window?.tabbedWindows?.contains { $0 === source.window } != true
                     target.close()
                 }
+                let sameTab = BrowserWindow(preferences: preferences, restoresFrame: false, initialSnapshot: primary.tab)
+                sameTab.showWindow(nil)
+                let splitSameTab = sameTab.splitByDroppingTab(from: sameTab, at: .right)
+                let sameTabState = sameTab.workspaceSnapshot()
+                checks["tabSplitKeepsSameTabOpen"] = splitSameTab && sameTab.window?.isVisible == true
+                    && sameTabState.panes.map { $0.tab.location?.path } == [columnFolder.path, columnFolder.path]
+                    && !sameTab.splitByDroppingTab(from: sameTab, at: .bottom)
+                    && sameTab.workspaceSnapshot().panes.map(\.id) == sameTabState.panes.map(\.id)
+                sameTab.close()
                 window.makeKeyAndOrderFront(nil)
                 try capture("general-settings", view: delegate.qaGeneralSettingsContentView)
                 delegate.qaToggleGeneralWidgets(); delegate.qaToggleGeneralOpenNewTabOnStartup(); delegate.qaToggleGeneralNewTabPolicies(); delegate.qaToggleGeneralSizeUnit(); delegate.qaCycleGeneralDefaultSortDirectoryPlacement(); delegate.qaToggleGeneralAutoSizeColumnsInDetailsLayout(); delegate.qaToggleGeneralCalculateFolderSizes(); delegate.qaToggleGeneralShowThumbnails(); delegate.qaToggleGeneralDoubleClickToGoUp(); delegate.qaToggleGeneralReverseTabScrollDirection(); delegate.qaToggleGeneralOpenFoldersInNewTab(); delegate.qaToggleGeneralScrollToPreviousFolderOnUp(); delegate.qaToggleGeneralShowFileExtensionWarning(); delegate.qaToggleGeneralContextMenuItems(); delegate.qaGeneralSettingsContentView?.window?.close(); window.makeKeyAndOrderFront(nil)
