@@ -4,6 +4,8 @@
 
 ## 이번 구현 단위
 
+AppKit 복사 취소 액션의 상태 반영을 네 언어·테마 조합에서 측정했다. [M7 취소 피드백](verification/m7/INCREMENT_31.md)
+
 스크롤을 제외한 대조군에서도 캡처 간격 p95가 약 33ms로 나타났다. [M7 캡처 대조군](verification/m7/INCREMENT_30.md)
 
 일반 파일 아이콘에서 확장자 타입 조회를 재사용한다. [M7 일반 아이콘 캐시](verification/m7/INCREMENT_29.md)

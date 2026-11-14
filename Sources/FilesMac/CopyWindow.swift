@@ -117,6 +117,28 @@ final class CopyWindow: NSWindowController, NSWindowDelegate {
         ])
     }
 #if DEBUG
+    static func qaCancellationFeedback(sources: [URL], destination: URL) -> [Double]? {
+        let clock = ContinuousClock()
+        var samples: [Double] = []
+        for _ in 0..<20 {
+            let controller = CopyWindow(sources: sources, destination: destination, conflictPolicy: .skip)
+            guard let window = controller.window else { return nil }
+            controller.showWindow(nil)
+            window.contentView?.layoutSubtreeIfNeeded()
+            let start = clock.now
+            controller.cancel.performClick(nil)
+            let elapsed = start.duration(to: clock.now).components
+            guard controller.cancellation.isCancelled, !controller.cancel.isEnabled,
+                  controller.label.stringValue.hasPrefix(L("취소 요청됨", "Cancellation requested")) else {
+                controller.close()
+                return nil
+            }
+            samples.append(Double(elapsed.seconds) + Double(elapsed.attoseconds) / 1e18)
+            controller.close()
+        }
+        return samples
+    }
+
     var qaAccessibleResult: Bool {
         !running && progress.accessibilityLabel() == L("복사 진행률", "Copy progress")
             && details.accessibilityLabel() == L("복사 상세 결과", "Copy details")

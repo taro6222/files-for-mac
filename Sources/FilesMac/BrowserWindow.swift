@@ -4638,6 +4638,10 @@ extension BrowserWindow {
             iconCache.removeAll()
             _ = iconCache.genericIcon(forExtension: "txt", resolve: lookup)
             checks["genericIconExtensionCache"] = reused && resolutions == 2
+            let cancelSamples = CopyWindow.qaCancellationFeedback(
+                sources: [source.appendingPathComponent("conflict.txt")], destination: target)
+            checks["copyCancellationFeedback"] = cancelSamples?.count == 20
+            diagnostics["copyCancellationFeedbackSeconds"] = cancelSamples
             let result: [String: Any] = ["checks": checks, "diagnostics": diagnostics,
                 "language": Locale.preferredLanguages.first ?? "unknown", "theme": dark ? "dark" : "light",
                 "os": ProcessInfo.processInfo.operatingSystemVersionString]
