@@ -40,11 +40,18 @@ fi
 xcrun stapler validate "$image"
 spctl --assess --type open --context context:primary-signature --verbose=2 "$image"
 
-mount_dir=$(mktemp -d "${TMPDIR:-/tmp}/files-verify-dmg.XXXXXX")
+verify_dir=$(mktemp -d "${TMPDIR:-/tmp}/files-verify-dmg.XXXXXX")
+mount_dir="$verify_dir/mount"
+mkdir "$mount_dir"
 mounted=false
 cleanup() {
-  if "$mounted"; then /usr/bin/hdiutil detach "$mount_dir" >/dev/null; fi
+  rm -rf -- "$verify_dir/installation"
+  if "$mounted" && ! /usr/bin/hdiutil detach "$mount_dir" >/dev/null; then
+    echo "Could not detach verification mount: $mount_dir" >&2
+    return 1
+  fi
   rmdir "$mount_dir"
+  rmdir "$verify_dir"
 }
 trap cleanup EXIT
 /usr/bin/hdiutil attach "$image" -readonly -nobrowse -mountpoint "$mount_dir"
@@ -63,4 +70,10 @@ if [[ -z "$release_team" ]]; then
 fi
 /usr/bin/codesign --verify --all-architectures --strict -R "=$developer_id" "$app"
 /usr/bin/syspolicy_check distribution "$app"
-printf 'Release image and app passed verification: %s\n' "$image"
+installation="$verify_dir/installation"
+mkdir "$installation"
+installed_app="$installation/Files macOS.app"
+/usr/bin/ditto "$app" "$installed_app"
+/usr/bin/codesign --verify --all-architectures --strict -R "=$developer_id" "$installed_app"
+/usr/bin/syspolicy_check distribution "$installed_app"
+printf 'Release image, mounted app, and copied app passed verification: %s\n' "$image"

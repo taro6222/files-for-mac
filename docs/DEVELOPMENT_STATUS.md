@@ -8,6 +8,8 @@ M7 출시 검증이 진행 중이다. [유니버설 개발 프리뷰](verificati
 
 ## 이번 구현 단위
 
+정식 DMG 검증에서 마운트한 앱을 격리 경로에 복사한 뒤 서명과 배포 정책을 다시 확인한다. [복사 후 검증](verification/m7/INCREMENT_144.md)
+
 정식 DMG 다운로드 검증에 빌드 시 별도로 기록한 SHA-256 대조를 추가했다. [다운로드 이미지 대조](verification/m7/INCREMENT_143.md)
 
 SMB 통합 시험에 앱의 폴더 목록과 외부 파일 변경 후 다시 읽기 검사를 추가했다. [SMB 목록 검증](verification/m7/INCREMENT_142.md)
