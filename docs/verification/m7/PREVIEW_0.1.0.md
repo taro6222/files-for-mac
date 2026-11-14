@@ -2,13 +2,15 @@
 
 ## 설치 이미지
 
-- 앱 소스 `2be27178c1c24acab414c5d2dbbb7f30cff6d570`, Apple Silicon·Intel 슬라이스, macOS 14.0 배포 대상.
-- 로컬 경로 `build/Files-macOS-preview.dmg`. SHA-256 `fd058d82045c956578762b6e07219a66ccc1dd9c1c383bb3a0cceaadf771df7f`.
-- DMG 내부 체크섬, SHA-256, 읽기 전용 마운트, 모든 슬라이스의 ad-hoc 서명을 검사했다. Apple Silicon에서 마운트한 이미지를 복사해 격리 경로에서 실행했다. 손상된 교체본은 거부했고, 정상 교체와 복원 후에 저장한 시작 폴더를 다시 열었다. 두 앱의 버전 표기는 0.1.0 (1)로 같아서 실행 파일 해시를 대조했다. [설치 검증 결과](preview-install-2be2717.json)
+- 앱 소스 `a973f0d2c62cc091aea17c68bfd77954f211e928`, Apple Silicon·Intel 슬라이스, macOS 14.0 배포 대상.
+- 로컬 경로 `build/Files-macOS-preview.dmg`. SHA-256 `bfdbd24b41c08197b6c836e2131a137a533209585fe073b23ad15d6cef887fb5`.
+- DMG 내부 체크섬, SHA-256, 읽기 전용 마운트, 모든 슬라이스의 ad-hoc 서명을 검사했다. Apple Silicon에서 마운트한 이미지를 복사해 격리 경로에서 실행했다. 손상된 교체본은 거부했고, 정상 교체와 복원 후에 저장한 시작 폴더를 다시 열었다. 두 앱의 버전 표기는 0.1.0 (1)로 같아서 실행 파일 해시를 대조했다. [설치 검증 결과](preview-install-a973f0d.json)
+
+작업 폴더 아래의 재마운트에서는 디렉터리 조회가 중단됐다. 로컬 임시 디렉터리에 읽기 전용으로 다시 마운트해 설치 링크, 라이선스, 릴리스 노트, 앱 서명과 두 아키텍처를 모두 검사했다.
 
 ## 검증
 
-- Swift Testing 212개 통과. 한국어·영어 × 밝게·어둡게의 파일 작업 AppKit 검사 51개씩 통과.
+- 최근 Swift Testing 213개 통과. 한국어·영어 × 밝게·어둡게의 파일 작업 53개, 전체 AppKit 219개씩 통과. [파일 작업](INCREMENT_61.md) · [전체 AppKit](INCREMENT_62.md)
 - 파일 작업은 템플릿, 이동 실행 취소·재실행, 복사 취소, 교체 파일 보호 및 재생성된 APFS 폴더 감시 복구를 포함한다.
 - APFS·대소문자 구분 APFS·exFAT, 시스템 휴지통, 루프백 FTP/FTPS/SFTP 증거는 출시 검증 현황에서 추적한다. 이번 소스에는 테스트 프로세스를 강제 종료한 뒤 교차 볼륨의 교체 이동 실행 취소를 재개한 검증이 포함된다. [강제 종료 복구](INCREMENT_54.md)
 
