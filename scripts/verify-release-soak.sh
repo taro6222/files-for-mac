@@ -3,8 +3,8 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 seconds=${1:-28800}
 workload=${3-full}
-if [[ $# -gt 3 || ! "$seconds" =~ ^[1-9][0-9]*$ || ( "$workload" != full && "$workload" != navigation ) ]]; then
-  echo "Usage: $0 [positive-duration-seconds [existing-run-parent-directory [full|navigation]]]" >&2
+if [[ $# -gt 3 || ! "$seconds" =~ ^[1-9][0-9]*$ || ( "$workload" != full && "$workload" != navigation && "$workload" != tabs ) ]]; then
+  echo "Usage: $0 [positive-duration-seconds [existing-run-parent-directory [full|navigation|tabs]]]" >&2
   exit 2
 fi
 source_sha=$(git rev-parse --verify HEAD)

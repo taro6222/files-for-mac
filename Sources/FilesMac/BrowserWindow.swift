@@ -5478,6 +5478,7 @@ private struct ReleaseSoakSample: Encodable {
 private enum ReleaseSoakWorkload: String, Encodable {
     case full
     case navigation
+    case tabs
 }
 
 private struct ReleaseSoakReport: Encodable {
@@ -5617,7 +5618,7 @@ extension BrowserWindow {
         let environment = ProcessInfo.processInfo.environment
         guard let duration = environment["FILES_SOAK_SECONDS"].flatMap(Int.init), duration > 0,
               let workload = ReleaseSoakWorkload(rawValue: environment["FILES_SOAK_WORKLOAD"] ?? "full") else {
-            fputs("Expected a positive soak duration and workload full or navigation.\n", stderr)
+            fputs("Expected a positive soak duration and workload full, navigation, or tabs.\n", stderr)
             exit(2)
         }
 
@@ -5683,7 +5684,7 @@ extension BrowserWindow {
             }
         }
 
-        func transferInNewTab(attachedTo window: NSWindow) async throws {
+        func exerciseNewTab(attachedTo window: NSWindow) async throws {
             var tab: BrowserWindow? = BrowserWindow(preferences: preferences,
                 restoresFrame: false, initialLocation: destination)
             weak let releasedTab = tab
@@ -5697,17 +5698,19 @@ extension BrowserWindow {
                 try await tab.waitForSoakListing(at: destination, count: 0)
                 releasedWatcher = tab.watcher
 
-                let copy = await CopyEngine.run(sources: [transferSource], destination: destination,
-                    journalDirectory: journals, cancellation: CopyCancellation(), recordUndo: false)
-                guard copy.state == "completed", copy.journalError == nil else {
-                    throw ReleaseSoakFailure("Copy failed: \(copy.state)")
+                if workload == .full {
+                    let copy = await CopyEngine.run(sources: [transferSource], destination: destination,
+                        journalDirectory: journals, cancellation: CopyCancellation(), recordUndo: false)
+                    guard copy.state == "completed", copy.journalError == nil else {
+                        throw ReleaseSoakFailure("Copy failed: \(copy.state)")
+                    }
+                    // Wait for the real directory watcher to surface the published file.
+                    try await tab.waitForSoakListing(at: destination, count: 1)
+                    let result = destination.appendingPathComponent(transferSource.lastPathComponent)
+                    guard try Data(contentsOf: result) == payload else { throw ReleaseSoakFailure("Copy content mismatch") }
+                    try fm.removeItem(at: result)
+                    try await tab.waitForSoakListing(at: destination, count: 0)
                 }
-                // Wait for the real directory watcher to surface the published file.
-                try await tab.waitForSoakListing(at: destination, count: 1)
-                let result = destination.appendingPathComponent(transferSource.lastPathComponent)
-                guard try Data(contentsOf: result) == payload else { throw ReleaseSoakFailure("Copy content mismatch") }
-                try fm.removeItem(at: result)
-                try await tab.waitForSoakListing(at: destination, count: 0)
                 tab.onClose = { didClose = true }
                 tab.close()
                 let closeDeadline = clock.now.advanced(by: .seconds(5))
@@ -5724,7 +5727,7 @@ extension BrowserWindow {
                 try await Task.sleep(for: .milliseconds(20))
             }
             guard (window.tabbedWindows?.count ?? 1) == 1 else { throw ReleaseSoakFailure("Closed tab remained in the window group") }
-            try fm.removeItem(at: journals)
+            if workload == .full { try fm.removeItem(at: journals) }
         }
 
         var exitCode: Int32 = 1
@@ -5749,8 +5752,8 @@ extension BrowserWindow {
                 browser.navigate(source)
                 try await browser.waitForSoakListing(at: source, count: 129)
 
-                if workload == .full {
-                    try await transferInNewTab(attachedTo: window)
+                if workload != .navigation {
+                    try await exerciseNewTab(attachedTo: window)
                 }
                 // Return through history so the repeated workload keeps one forward
                 // entry instead of retaining two additional entries per cycle.
