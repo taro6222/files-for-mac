@@ -8,6 +8,8 @@ M7 출시 검증이 진행 중이다. [유니버설 개발 프리뷰](verificati
 
 ## 이번 구현 단위
 
+외부 환경이 없는 통합 시험을 Swift Testing이 건너뜀으로 표시한다. [통합 시험 상태](verification/m7/INCREMENT_171.md)
+
 폴더 권한 작업 중단을 포함한 유니버설 프리뷰를 갱신하고 설치·교체·복원 및 기동을 확인했다. [프리뷰 검증](verification/m7/PREVIEW_0.1.0.md)
 
 현재 엔진으로 FTP·FTPS·SFTP 루프백 통합 검사를 재실행했다. [원격 프로토콜 재검증](verification/m7/INCREMENT_170.md)

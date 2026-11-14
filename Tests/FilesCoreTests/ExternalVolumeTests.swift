@@ -3,10 +3,16 @@ import Darwin
 import Testing
 @testable import FilesCore
 
-@Test func mountedVolumeProviderDiscoversRealMatrix() throws {
+func hasIntegrationFixture(_ keys: String...) -> Bool {
+    let environment = ProcessInfo.processInfo.environment
+    return keys.contains { environment[$0] != nil }
+}
+
+@Test(.enabled(if: hasIntegrationFixture("FILES_TEST_APFS_VOLUME", "FILES_TEST_APFSX_VOLUME", "FILES_TEST_EXFAT_VOLUME"), "Requires an integration fixture"))
+func mountedVolumeProviderDiscoversRealMatrix() throws {
     let environment = ProcessInfo.processInfo.environment
     let keys = ["FILES_TEST_APFS_VOLUME", "FILES_TEST_APFSX_VOLUME", "FILES_TEST_EXFAT_VOLUME"]
-    guard keys.allSatisfy({ environment[$0] != nil }) else { return }
+    guard keys.allSatisfy({ environment[$0] != nil }) else { Issue.record("Integration fixture is incomplete"); return }
     let discovered = MountedVolumeProvider().mountedVolumes()
     for key in keys {
         let expected = URL(fileURLWithPath: environment[key]!, isDirectory: true).standardizedFileURL
@@ -16,8 +22,9 @@ import Testing
     }
 }
 
-@Test func mountedVolumeAPFSPreservesFileMetadataThroughCopyMoveAndUndo() async throws {
-    guard let path = ProcessInfo.processInfo.environment["FILES_TEST_APFSX_VOLUME"] else { return }
+@Test(.enabled(if: hasIntegrationFixture("FILES_TEST_APFSX_VOLUME"), "Requires an integration fixture"))
+func mountedVolumeAPFSPreservesFileMetadataThroughCopyMoveAndUndo() async throws {
+    guard let path = ProcessInfo.processInfo.environment["FILES_TEST_APFSX_VOLUME"] else { Issue.record("Integration fixture is incomplete"); return }
     let fm = FileManager.default
     let root = fm.temporaryDirectory.appendingPathComponent("FilesMac-Metadata-\(UUID())", isDirectory: true)
     let destination = URL(fileURLWithPath: path, isDirectory: true)
@@ -112,14 +119,16 @@ import Testing
     #expect(!fm.fileExists(atPath: target.path))
 }
 
-@Test(arguments: [
+@Test(.enabled(if: hasIntegrationFixture("FILES_TEST_APFSX_VOLUME", "FILES_TEST_EXFAT_VOLUME",
+                                         "FILES_TEST_FAT32_VOLUME", "FILES_TEST_HFS_VOLUME"),
+               "Requires the mounted volume matrix"), arguments: [
     ("FILES_TEST_APFSX_VOLUME", 0.000001),
     ("FILES_TEST_EXFAT_VOLUME", 1.0),
     ("FILES_TEST_FAT32_VOLUME", 2.0),
     ("FILES_TEST_HFS_VOLUME", 1.0)
 ])
 func mountedVolumePreservesNestedCreationTimes(volumeKey: String, tolerance: TimeInterval) async throws {
-    guard let path = ProcessInfo.processInfo.environment[volumeKey] else { return }
+    guard let path = ProcessInfo.processInfo.environment[volumeKey] else { Issue.record("Missing fixture: \(volumeKey)"); return }
     let fm = FileManager.default
     let root = fm.temporaryDirectory.appendingPathComponent("FilesMac-FolderDates-\(UUID())", isDirectory: true)
     let destination = URL(fileURLWithPath: path, isDirectory: true)
@@ -201,14 +210,15 @@ func mountedVolumePreservesNestedCreationTimes(volumeKey: String, tolerance: Tim
     }
 }
 
-@Test func mountedVolumeCopyMoveUndoAndCaseSemantics() async throws {
+@Test(.enabled(if: hasIntegrationFixture("FILES_TEST_APFS_VOLUME", "FILES_TEST_APFSX_VOLUME", "FILES_TEST_EXFAT_VOLUME"), "Requires an integration fixture"))
+func mountedVolumeCopyMoveUndoAndCaseSemantics() async throws {
     let environment = ProcessInfo.processInfo.environment
     let configurations: [(String, Bool)] = [
         ("FILES_TEST_APFS_VOLUME", false),
         ("FILES_TEST_APFSX_VOLUME", true),
         ("FILES_TEST_EXFAT_VOLUME", false)
     ]
-    guard configurations.allSatisfy({ environment[$0.0] != nil }) else { return }
+    guard configurations.allSatisfy({ environment[$0.0] != nil }) else { Issue.record("Integration fixture is incomplete"); return }
     for (key, caseSensitive) in configurations {
         let volume = URL(fileURLWithPath: environment[key]!, isDirectory: true)
         let root = volume.appendingPathComponent("FilesM2-\(UUID().uuidString)", isDirectory: true)
@@ -354,8 +364,9 @@ func mountedVolumePreservesNestedCreationTimes(volumeKey: String, tolerance: Tim
     }
 }
 
-@Test func mountedVolumeExFATMoveKeepsSourceWhenACLDoesNotTransfer() async throws {
-    guard let path = ProcessInfo.processInfo.environment["FILES_TEST_EXFAT_VOLUME"] else { return }
+@Test(.enabled(if: hasIntegrationFixture("FILES_TEST_EXFAT_VOLUME"), "Requires an integration fixture"))
+func mountedVolumeExFATMoveKeepsSourceWhenACLDoesNotTransfer() async throws {
+    guard let path = ProcessInfo.processInfo.environment["FILES_TEST_EXFAT_VOLUME"] else { Issue.record("Integration fixture is incomplete"); return }
     let fm = FileManager.default
     let root = fm.temporaryDirectory.appendingPathComponent("FilesMac-ACL-\(UUID())", isDirectory: true)
     let destination = URL(fileURLWithPath: path, isDirectory: true)
@@ -384,8 +395,9 @@ func mountedVolumePreservesNestedCreationTimes(volumeKey: String, tolerance: Tim
     #expect(!fm.fileExists(atPath: target.path))
 }
 
-@Test func systemTrashMoveAndRestoreRoundTrip() async throws {
-    guard ProcessInfo.processInfo.environment["FILES_TEST_SYSTEM_TRASH"] == "1" else { return }
+@Test(.enabled(if: hasIntegrationFixture("FILES_TEST_SYSTEM_TRASH"), "Requires an integration fixture"))
+func systemTrashMoveAndRestoreRoundTrip() async throws {
+    guard ProcessInfo.processInfo.environment["FILES_TEST_SYSTEM_TRASH"] == "1" else { Issue.record("Integration fixture is incomplete"); return }
     let fm = FileManager.default
     let root = fm.urls(for: .cachesDirectory, in: .userDomainMask)[0]
         .appendingPathComponent("FilesMac-TrashTest-\(UUID().uuidString)", isDirectory: true)
@@ -415,8 +427,9 @@ func mountedVolumePreservesNestedCreationTimes(volumeKey: String, tolerance: Tim
     trashed = nil
 }
 
-@Test func mountedSMBCopyMoveUndoRoundTrip() async throws {
-    guard let path = ProcessInfo.processInfo.environment["FILES_TEST_SMB_VOLUME"] else { return }
+@Test(.enabled(if: hasIntegrationFixture("FILES_TEST_SMB_VOLUME"), "Requires an integration fixture"))
+func mountedSMBCopyMoveUndoRoundTrip() async throws {
+    guard let path = ProcessInfo.processInfo.environment["FILES_TEST_SMB_VOLUME"] else { Issue.record("Integration fixture is incomplete"); return }
     let fm = FileManager.default
     let volume = URL(fileURLWithPath: path, isDirectory: true).standardizedFileURL
     var fileSystem = statfs()

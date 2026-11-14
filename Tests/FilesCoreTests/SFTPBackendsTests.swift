@@ -144,7 +144,8 @@ import Testing
     #expect(throws: SFTPBackendError.invalidTrustStore) { try SFTPConnectionPreparation().prepare(profile: profile, knownHostsFile: root.appendingPathComponent("missing"), securityScoped: false) }
 }
 
-@Test func sftpLocalFixtureListsDownloadsAndProbesRenameThroughOpenSSH() async throws {
+@Test(.enabled(if: hasIntegrationFixture("FILES_TEST_SFTP_PORT"), "Requires an integration fixture"))
+func sftpLocalFixtureListsDownloadsAndProbesRenameThroughOpenSSH() async throws {
     let environment = ProcessInfo.processInfo.environment
     guard let portText = environment["FILES_TEST_SFTP_PORT"], let port = Int(portText),
           let username = environment["FILES_TEST_SFTP_USERNAME"],
@@ -152,7 +153,7 @@ import Testing
           let knownHostsPath = environment["FILES_TEST_SFTP_KNOWN_HOSTS"],
           let wrongKnownHostsPath = environment["FILES_TEST_SFTP_WRONG_KNOWN_HOSTS"],
           let remoteRoot = environment["FILES_TEST_SFTP_REMOTE_ROOT"],
-          let largeRemotePath = environment["FILES_TEST_SFTP_LARGE_REMOTE"] else { return }
+          let largeRemotePath = environment["FILES_TEST_SFTP_LARGE_REMOTE"] else { Issue.record("Integration fixture is incomplete"); return }
     let profile = try RemoteConnectionProfile(name: "Fixture", remoteProtocol: .sftp, host: "127.0.0.1", port: port, rootPath: remoteRoot, username: username)
     let key = SFTPKeyConfiguration(username: username, identityFile: URL(fileURLWithPath: identityPath), knownHostsFile: URL(fileURLWithPath: knownHostsPath))
     let provider = SFTPRemoteProvider(), entries = try await provider.list(profile: profile, key: key, remotePath: remoteRoot)

@@ -114,10 +114,11 @@ func curlFTPPlansKeepCredentialsOffArgumentsAndDescriptions(remoteProtocol: Remo
     }
 }
 
-@Test func ftpLocalFixtureListsAndDownloadsThroughRealCurl() async throws {
+@Test(.enabled(if: hasIntegrationFixture("FILES_TEST_FTP_PORT"), "Requires an integration fixture"))
+func ftpLocalFixtureListsAndDownloadsThroughRealCurl() async throws {
     let environment = ProcessInfo.processInfo.environment
     guard let portText = environment["FILES_TEST_FTP_PORT"], let port = Int(portText),
-          let username = environment["FILES_TEST_FTP_USERNAME"], let password = environment["FILES_TEST_FTP_PASSWORD"] else { return }
+          let username = environment["FILES_TEST_FTP_USERNAME"], let password = environment["FILES_TEST_FTP_PASSWORD"] else { Issue.record("Integration fixture is incomplete"); return }
     let profile = try RemoteConnectionProfile(name: "Fixture", remoteProtocol: .ftp, host: "127.0.0.1", port: port)
     let credential = RemoteCredential(username: username, secret: Data(password.utf8)), provider = FTPRemoteProvider()
     let entries = try await provider.list(profile: profile, credential: credential, remotePath: "/")
@@ -136,12 +137,13 @@ func curlFTPPlansKeepCredentialsOffArgumentsAndDescriptions(remoteProtocol: Remo
     #expect(probeArtifacts.isEmpty)
 }
 
-@Test func ftpsLocalFixtureValidatesCertificateAndHostnameThroughRealCurl() async throws {
+@Test(.enabled(if: hasIntegrationFixture("FILES_TEST_FTPS_VALID_PORT", "FILES_TEST_FTPS_MISMATCH_PORT"), "Requires an integration fixture"))
+func ftpsLocalFixtureValidatesCertificateAndHostnameThroughRealCurl() async throws {
     let environment = ProcessInfo.processInfo.environment
     guard let validPortText = environment["FILES_TEST_FTPS_VALID_PORT"], let validPort = Int(validPortText),
           let mismatchPortText = environment["FILES_TEST_FTPS_MISMATCH_PORT"], let mismatchPort = Int(mismatchPortText),
           let username = environment["FILES_TEST_FTP_USERNAME"], let password = environment["FILES_TEST_FTP_PASSWORD"],
-          let caPath = environment["FILES_TEST_FTPS_CA"] else { return }
+          let caPath = environment["FILES_TEST_FTPS_CA"] else { Issue.record("Integration fixture is incomplete"); return }
     let credential = RemoteCredential(username: username, secret: Data(password.utf8))
     let valid = try RemoteConnectionProfile(name: "Valid FTPS", remoteProtocol: .ftps, host: "localhost", port: validPort)
     let provider = FTPRemoteProvider(trustedCAFile: URL(fileURLWithPath: caPath))

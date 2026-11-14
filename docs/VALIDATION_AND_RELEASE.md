@@ -102,7 +102,7 @@ fixture 생성 스크립트는 반복 실행 가능하게 만들고 사용자의
 - provider 변경: capability별 계약 테스트와 오류 주입.
 - 릴리스 후보: 지원 환경 전체 회귀, 교차 볼륨, 네트워크, 성능, 장시간 시험.
 
-향후 증거 위치: `docs/verification/<version>/` 아래 `coverage.csv`, `test-report.md`, `performance.json`, `ui/`, `platform-differences.md`, `release-checklist.md`. 실제 실행 전 빈 성공 보고서를 만들지 않는다.
+향후 증거 위치: `docs/verification/<version>/` 아래 `coverage.csv`, `test-report.md`, `performance.json`, `ui/`, `platform-differences.md`, `release-checklist.md`. 실제 실행 전 빈 성공 보고서를 만들지 않는다. 실환경을 설정하지 않아 건너뛴 시험은 통과 건수에서 제외한다.
 
 coverage 지표를 분리한다.
 

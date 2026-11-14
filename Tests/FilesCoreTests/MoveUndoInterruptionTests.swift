@@ -3,10 +3,11 @@ import Foundation
 import Testing
 @testable import FilesCore
 
-@Test func moveUndoInterruptionWorker() async throws {
+@Test(.enabled(if: hasIntegrationFixture("FILES_UNDO_INTERRUPTION_ROOT", "FILES_UNDO_INTERRUPTION_PHASE"), "Requires an integration fixture"))
+func moveUndoInterruptionWorker() async throws {
     let environment = ProcessInfo.processInfo.environment
     guard let path = environment["FILES_UNDO_INTERRUPTION_ROOT"],
-          let phase = environment["FILES_UNDO_INTERRUPTION_PHASE"] else { return }
+          let phase = environment["FILES_UNDO_INTERRUPTION_PHASE"] else { Issue.record("Integration fixture is incomplete"); return }
     let checkpoint = environment["FILES_UNDO_INTERRUPTION_CHECKPOINT"] ?? "copy-published"
     try #require(["copy-published", "backup-pending", "no-backup-copy-published"].contains(checkpoint))
     let hasBackup = checkpoint != "no-backup-copy-published"
