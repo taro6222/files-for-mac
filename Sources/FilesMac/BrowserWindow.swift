@@ -2507,6 +2507,38 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
                     return "\(url.path)\n\(kind) · \(bytes) · \(date)"
                 }
 
+                func preview(_ url: URL, expected: stat) -> String {
+                    let unavailable = L("텍스트 미리보기 없음", "Text preview unavailable")
+                    guard expected.st_mode & S_IFMT == S_IFREG else { return unavailable }
+                    let descriptor = open(url.path, O_RDONLY | O_NOFOLLOW | O_NONBLOCK | O_CLOEXEC)
+                    guard descriptor >= 0 else { return unavailable }
+                    let handle = FileHandle(fileDescriptor: descriptor, closeOnDealloc: true)
+                    defer { try? handle.close() }
+                    var actual = stat()
+                    guard fstat(descriptor, &actual) == 0, actual.st_mode & S_IFMT == S_IFREG,
+                          actual.st_dev == expected.st_dev, actual.st_ino == expected.st_ino else { return unavailable }
+                    let limit = 4096
+                    guard let data = try? handle.read(upToCount: limit + 1) else {
+                        return actual.st_size == 0 ? L("빈 파일", "Empty file") : unavailable
+                    }
+                    let truncated = data.count > limit || actual.st_size > Int64(data.count)
+                    let bytes = data.prefix(limit)
+                    // The byte limit may fall in the middle of a UTF-8 scalar.
+                    var text = String(data: bytes, encoding: .utf8)
+                    if text == nil && truncated && !bytes.isEmpty {
+                        for count in 1...min(3, bytes.count) {
+                            if let prefix = String(data: bytes.dropLast(count), encoding: .utf8) {
+                                text = prefix
+                                break
+                            }
+                        }
+                    }
+                    guard let text, text.unicodeScalars.allSatisfy({
+                        !CharacterSet.controlCharacters.contains($0) || $0 == "\n" || $0 == "\r" || $0 == "\t"
+                    }) else { return unavailable }
+                    return text + (truncated ? "\n…" : "")
+                }
+
                 var pairs: [String] = []
                 for source in sources.prefix(12) {
                     guard !Task.isCancelled else { return "" }
@@ -2514,11 +2546,13 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
                     var targetInfo = stat()
                     guard lstat(target.path, &targetInfo) == 0 else { continue }
                     var sourceInfo = stat()
-                    let original = lstat(source.path, &sourceInfo) == 0
-                        ? describe(source, info: sourceInfo)
+                    let sourceExists = lstat(source.path, &sourceInfo) == 0
+                    let original = sourceExists
+                        ? describe(source, info: sourceInfo) + "\n" + preview(source, expected: sourceInfo)
                         : source.path + "\n" + L("정보를 읽을 수 없습니다.", "Unable to read information.")
                     pairs.append(L("원본", "Source") + "\n" + original + "\n"
-                        + L("기존 대상", "Existing Destination") + "\n" + describe(target, info: targetInfo))
+                        + L("기존 대상", "Existing Destination") + "\n" + describe(target, info: targetInfo)
+                        + "\n" + preview(target, expected: targetInfo))
                 }
                 if pairs.isEmpty {
                     pairs.append(L("확인한 항목에 표시할 기존 대상이 없습니다.", "No existing destinations to display for the checked items."))
@@ -5258,6 +5292,8 @@ extension BrowserWindow {
                    text.accessibilityLabel() == L("원본과 기존 대상 비교", "Source and Existing Destination Comparison") {
                     return text.string.contains(source.path) && text.string.contains(existing.path)
                         && text.string.contains(formatByteCount(6, unit: preferences.sizeUnit))
+                        && text.string.components(separatedBy: .newlines).contains("source")
+                        && text.string.components(separatedBy: .newlines).contains("target")
                         && !text.isEditable
                 }
                 return view.subviews.contains { hasConflictComparison(in: $0, source: source, existing: existing) }
