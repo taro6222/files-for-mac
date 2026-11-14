@@ -25,6 +25,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     private let diagnosticArtifacts = DiagnosticArtifacts()
     func applicationDidFinishLaunching(_ notification: Notification) {
         #if RELEASE_PERFORMANCE_QA
+        if let directory = ProcessInfo.processInfo.environment["FILES_SOAK_DIRECTORY"] {
+            Task { @MainActor in await BrowserWindow.runReleaseSoak(directory: directory) }
+            return
+        }
         if let fixture = ProcessInfo.processInfo.environment["FILES_PERFORMANCE_FIXTURE"] {
             Task { @MainActor in await BrowserWindow.measureReleasePerformance(fixture: fixture) }
             return

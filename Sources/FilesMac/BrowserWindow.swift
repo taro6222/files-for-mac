@@ -4614,6 +4614,26 @@ private final class VolumeCardView: NSStackView {
 }
 
 #if RELEASE_PERFORMANCE_QA
+private struct ReleaseSoakFailure: Error, CustomStringConvertible {
+    let description: String
+    init(_ description: String) { self.description = description }
+}
+
+private struct ReleaseSoakSample: Encodable {
+    let cycle: Int
+    let rssBytes: UInt64
+}
+
+private struct ReleaseSoakReport: Encodable {
+    let state: String
+    let targetSeconds: Int
+    let elapsedSeconds: Double
+    let cycles: Int
+    let peakRSSBytes: UInt64
+    let samples: [ReleaseSoakSample]
+    let error: String?
+}
+
 extension BrowserWindow {
     static func measureReleasePerformance(fixture path: String) async {
         let environment = ProcessInfo.processInfo.environment
@@ -4686,6 +4706,139 @@ extension BrowserWindow {
         } catch {
             fputs("Performance report: \(error)\n", stderr)
         }
+    }
+
+    static func runReleaseSoak(directory: String) async {
+        let environment = ProcessInfo.processInfo.environment
+        guard let duration = environment["FILES_SOAK_SECONDS"].flatMap(Int.init), duration > 0 else { exit(2) }
+
+        let root = URL(fileURLWithPath: directory, isDirectory: true)
+        let fm = FileManager.default
+        let suite = "FilesMac.ReleaseSoak.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defaults.set(false, forKey: "showThumbnails")
+        let preferences = BrowserPreferences(defaults: defaults, initialFavorites: [])
+        let source = root.appendingPathComponent("source")
+        let destination = root.appendingPathComponent("destination")
+        let transferSource = source.appendingPathComponent("payload.bin")
+        let journals = root.appendingPathComponent("journals")
+        let payload = Data(repeating: 0x5A, count: 1_048_576)
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        let clock = ContinuousClock()
+        let start = clock.now
+        var cycles = 0
+        var peakRSS: UInt64 = 0
+        var samples: [ReleaseSoakSample] = []
+        var lastSample = start
+
+        func report(state: String, error: String? = nil) throws {
+            let time = start.duration(to: clock.now).components
+            let elapsed = Double(time.seconds) + Double(time.attoseconds) / 1e18
+            let report = ReleaseSoakReport(state: state, targetSeconds: duration,
+                elapsedSeconds: elapsed, cycles: cycles, peakRSSBytes: peakRSS,
+                samples: samples, error: error)
+            try encoder.encode(report).write(to: root.appendingPathComponent("report.json"), options: .atomic)
+        }
+
+        let browser = BrowserWindow(preferences: preferences, restoresFrame: false)
+        var exitCode: Int32 = 1
+        defer {
+            browser.close()
+            defaults.removePersistentDomain(forName: suite)
+            exit(exitCode)
+        }
+        do {
+            guard let window = browser.window else { throw ReleaseSoakFailure("Missing browser window") }
+            try fm.createDirectory(at: source, withIntermediateDirectories: false)
+            try fm.createDirectory(at: destination, withIntermediateDirectories: false)
+            try payload.write(to: transferSource)
+            for index in 0..<128 {
+                try Data().write(to: source.appendingPathComponent("file-\(index).txt"))
+            }
+            browser.showWindow(nil)
+            try report(state: "running")
+
+            // The same window, preference store and process span all cycles.
+            repeat {
+                browser.navigate(source)
+                try await browser.waitForSoakListing(at: source, count: 129)
+
+                var tab: BrowserWindow? = BrowserWindow(preferences: preferences,
+                    restoresFrame: false, initialLocation: destination)
+                weak let releasedTab = tab
+                weak var releasedWatcher: DirectoryWatcher?
+                var didClose = false
+                do {
+                    guard let tab, let tabWindow = tab.window else { throw ReleaseSoakFailure("Missing tab") }
+                    tab.showWindow(nil)
+                    window.addTabbedWindow(tabWindow, ordered: .above)
+                    guard window.tabbedWindows?.count == 2 else { throw ReleaseSoakFailure("Tab did not attach") }
+                    try await tab.waitForSoakListing(at: destination, count: 0)
+                    releasedWatcher = tab.watcher
+
+                    let copy = await CopyEngine.run(sources: [transferSource], destination: destination,
+                        journalDirectory: journals, cancellation: CopyCancellation(), recordUndo: false)
+                    guard copy.state == "completed", copy.journalError == nil else {
+                        throw ReleaseSoakFailure("Copy failed: \(copy.state)")
+                    }
+                    // Wait for the real directory watcher to surface the published file.
+                    try await tab.waitForSoakListing(at: destination, count: 1)
+                    let result = destination.appendingPathComponent(transferSource.lastPathComponent)
+                    guard try Data(contentsOf: result) == payload else { throw ReleaseSoakFailure("Copy content mismatch") }
+                    try fm.removeItem(at: result)
+                    try await tab.waitForSoakListing(at: destination, count: 0)
+                    tab.onClose = { didClose = true }
+                    tab.close()
+                    let closeDeadline = clock.now.advanced(by: .seconds(5))
+                    while !didClose {
+                        guard clock.now < closeDeadline else { throw ReleaseSoakFailure("Tab close callback did not run") }
+                        try await Task.sleep(for: .milliseconds(20))
+                    }
+                    tab.onClose = nil
+                }
+                tab = nil
+                let cleanupDeadline = clock.now.advanced(by: .seconds(10))
+                while releasedTab != nil || releasedWatcher != nil {
+                    guard clock.now < cleanupDeadline else { throw ReleaseSoakFailure("Closed tab retained: \(releasedTab != nil); watcher retained: \(releasedWatcher != nil)") }
+                    try await Task.sleep(for: .milliseconds(20))
+                }
+                guard (window.tabbedWindows?.count ?? 1) == 1 else { throw ReleaseSoakFailure("Closed tab remained in the window group") }
+                try fm.removeItem(at: journals)
+                browser.goHome(nil)
+                cycles += 1
+                let rss = currentResidentBytes()
+                guard rss > 0 else { throw ReleaseSoakFailure("Unable to read process RSS") }
+                peakRSS = max(peakRSS, rss)
+                if cycles == 1 || lastSample.duration(to: clock.now) >= .seconds(30) {
+                    samples.append(.init(cycle: cycles, rssBytes: rss))
+                    lastSample = clock.now
+                }
+                try report(state: "running")
+                try await Task.sleep(for: .seconds(2))
+            } while start.duration(to: clock.now) < .seconds(duration)
+
+            samples.append(.init(cycle: cycles, rssBytes: currentResidentBytes()))
+            try report(state: "completed")
+            exitCode = 0
+        } catch {
+            let detail = String(describing: error)
+            try? report(state: "failed", error: detail)
+            fputs("Release soak: \(detail)\n", stderr)
+        }
+    }
+
+    private func waitForSoakListing(at location: URL, count: Int) async throws {
+        let deadline = ContinuousClock.now.advanced(by: .seconds(15))
+        while model.isLoading || model.location?.path != location.path
+                || model.items.count != count || watcherStatus != .active {
+            if model.failure != nil || ContinuousClock.now >= deadline {
+                throw ReleaseSoakFailure("Expected \(count) rows at \(location.lastPathComponent), got \(model.items.count)")
+            }
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        window?.contentView?.layoutSubtreeIfNeeded()
+        guard table.numberOfRows == count else { throw ReleaseSoakFailure("Rendered row count mismatch") }
     }
 
     private static func currentResidentBytes() -> UInt64 {
