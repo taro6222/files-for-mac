@@ -987,16 +987,12 @@ private struct DelayedLoader: DirectoryLoading {
     #expect(try await results(FileSearchQuery(text: "report", minimumSize: 20)).isEmpty)
 }
 
-private struct DelayedSearch: FileSearching {
+private struct ControlledSearch: FileSearching {
+    let old: AsyncThrowingStream<FileSearchBatch, Error>
+    let new: AsyncThrowingStream<FileSearchBatch, Error>
+
     func batches(in root: URL, query: FileSearchQuery) -> AsyncThrowingStream<FileSearchBatch, Error> {
-        AsyncThrowingStream { continuation in
-            let task = Task {
-                try? await Task.sleep(for: query.text == "old" ? .milliseconds(120) : .milliseconds(10))
-                continuation.yield(FileSearchBatch(items: [FileItem(url: root.appendingPathComponent(query.text), name: query.text, isDirectory: false)], skippedLocations: query.text == "new" ? 2 : 0))
-                continuation.finish()
-            }
-            continuation.onTermination = { _ in task.cancel() }
-        }
+        query.text == "old" ? old : new
     }
 }
 
@@ -1043,10 +1039,38 @@ private struct FixedSearch: FileSearching {
 }
 
 @Test @MainActor func searchModelDiscardsStaleResultsAndReportsCancellation() async throws {
-    let model = SearchModel(searcher: DelayedSearch()), root = URL(fileURLWithPath: "/tmp")
+    let old = AsyncThrowingStream<FileSearchBatch, Error>.makeStream()
+    let new = AsyncThrowingStream<FileSearchBatch, Error>.makeStream()
+    let model = SearchModel(searcher: ControlledSearch(old: old.stream, new: new.stream))
+    let root = URL(fileURLWithPath: "/tmp")
+    defer {
+        model.cancel()
+        old.continuation.finish()
+        new.continuation.finish()
+    }
+    func waitUntil(_ condition: () -> Bool) async throws {
+        let clock = ContinuousClock()
+        let deadline = clock.now.advanced(by: .seconds(5))
+        while !condition(), clock.now < deadline {
+            try await clock.sleep(for: .milliseconds(5))
+        }
+        try #require(condition(), "Search did not reach the expected state")
+    }
+    func batch(_ name: String, skipped: Int = 0) -> FileSearchBatch {
+        FileSearchBatch(items: [FileItem(url: root.appendingPathComponent(name), name: name, isDirectory: false)],
+                        skippedLocations: skipped)
+    }
+
     model.search(in: root, query: FileSearchQuery(text: "old"))
+    old.continuation.yield(batch("old"))
+    try await waitUntil { model.results.map(\.name) == ["old"] }
+    #expect(model.isSearching)
     model.search(in: root, query: FileSearchQuery(text: "new"))
-    try await Task.sleep(for: .milliseconds(150))
+    old.continuation.yield(batch("stale", skipped: 5))
+    old.continuation.finish()
+    new.continuation.yield(batch("new", skipped: 2))
+    new.continuation.finish()
+    try await waitUntil { !model.isSearching }
     #expect(model.results.map(\.name) == ["new"]); #expect(model.skippedLocations == 2); #expect(!model.isSearching)
     model.search(in: root, query: FileSearchQuery(text: "old")); model.cancel()
     #expect(model.wasCancelled); #expect(!model.isSearching); #expect(model.results.isEmpty)
