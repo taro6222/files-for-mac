@@ -46,15 +46,19 @@ jobs:
       - name: Audit parity inventories
         run: python3 scripts/audit-parity.py
       - name: Build app and test targets
+        if: github.event_name != 'workflow_dispatch' || !inputs.verify_upgrade
         timeout-minutes: 12
         run: swift build --build-tests --disable-sandbox -Xswiftc -gnone
       - name: Run Swift tests
+        if: github.event_name != 'workflow_dispatch' || !inputs.verify_upgrade
         timeout-minutes: 5
         run: swift test --skip-build --disable-xctest --no-parallel
       - name: Verify mounted file systems
+        if: github.event_name != 'workflow_dispatch' || !inputs.verify_upgrade
         timeout-minutes: 5
         run: bash scripts/verify-volume-matrix.sh --skip-build
       - name: Verify AppKit file operations
+        if: github.event_name != 'workflow_dispatch' || !inputs.verify_upgrade
         timeout-minutes: 9
         run: bash scripts/verify-m2-ui.sh "$(swift build --show-bin-path)/FilesMac"
       - name: Build and launch the installed developer preview
