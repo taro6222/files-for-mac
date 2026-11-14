@@ -60,6 +60,8 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
     private var archiveWindow: ArchiveWindow?
     private let quickLook = QuickLookController()
     private let homeView = NSStackView()
+    private let homeFavoriteGrid = HomeCardGrid(minimumCardWidth: 140, cardHeight: 70)
+    private let homeDriveGrid = HomeCardGrid(minimumCardWidth: 200, cardHeight: 92)
     private let homeRecentView = NSStackView()
     private var homeNeedsUpdate = true
     private var homeRecentNeedsUpdate = true
@@ -648,13 +650,19 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         button.setAccessibilityLabel(title); button.setAccessibilityValue(expanded ? L("펼침", "Expanded") : L("접힘", "Collapsed"))
         homeView.addArrangedSubview(button); homeView.setCustomSpacing(10, after: button)
     }
-    private func locationButton(_ title: String, symbol: String, url: URL?, in stack: NSStackView) {
+    private func locationButton(_ title: String, symbol: String, url: URL?, in stack: NSStackView,
+                                prominent: Bool = false) {
         let b = LocationButton(title: title, target: self, action: #selector(openLocation(_:)))
         b.url = url; b.bezelStyle = .recessed; b.isBordered = false
         b.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         b.alignment = .left; b.font = .systemFont(ofSize: 13)
         b.image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)
-        b.imagePosition = .imageLeading; b.imageHugsTitle = true
+        b.imagePosition = prominent ? .imageAbove : .imageLeading
+        b.imageHugsTitle = true
+        if prominent {
+            b.alignment = .center
+            b.image = b.image?.withSymbolConfiguration(.init(pointSize: 20, weight: .regular))
+        }
         b.toolTip = url?.path ?? title; b.setAccessibilityLabel(title)
         let menu = NSMenu(); menu.autoenablesItems = false
         if let url, favorites.contains(url) {
@@ -707,7 +715,7 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         }
         b.menu = menu
         stack.addArrangedSubview(b)
-        b.heightAnchor.constraint(equalToConstant: 32).isActive = true
+        b.heightAnchor.constraint(equalToConstant: prominent ? 54 : 32).isActive = true
         b.widthAnchor.constraint(equalTo: stack.widthAnchor, constant: -(stack.edgeInsets.left + stack.edgeInsets.right)).isActive = true
     }
     private func buildSidebar() {
@@ -762,33 +770,45 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
             $0.isDescendant(of: homeView) ? $0 : nil
         }
         homeView.arrangedSubviews.forEach { homeView.removeArrangedSubview($0); $0.removeFromSuperview() }
-        let heading = NSTextField(labelWithString: L("홈", "Home")); heading.font = .systemFont(ofSize: 28, weight: .bold)
-        homeView.addArrangedSubview(heading)
-        let subtitle = NSTextField(labelWithString: L("파일과 폴더를 한곳에서 탐색하세요.", "Your files and folders, in one place."))
-        subtitle.textColor = .secondaryLabelColor; homeView.addArrangedSubview(subtitle)
+        var favoriteCards: [NSView] = []
+        var driveCards: [NSView] = []
         if preferences.showHomeFavorites {
             homeSection(L("빠른 접근", "Quick Access"), expanded: preferences.homeFavoritesExpanded, action: #selector(toggleHomeFavoritesExpanded(_:)))
-            if preferences.homeFavoritesExpanded { for url in favorites { locationButton(displayName(url), symbol: "folder.fill", url: url, in: homeView) } }
+            if preferences.homeFavoritesExpanded {
+                favoriteCards = favorites.map { url in
+                    let card = HomeLocationCardView(insets: NSEdgeInsets(top: 8, left: 10, bottom: 8, right: 10))
+                    locationButton(displayName(url), symbol: "folder.fill", url: url, in: card, prominent: true)
+                    return card
+                }
+            }
         }
+        placeHomeCards(favoriteCards, in: homeFavoriteGrid)
         if preferences.showHomeVolumes {
             homeSection(L("드라이브", "Drives"), expanded: preferences.homeVolumesExpanded, action: #selector(toggleHomeVolumesExpanded(_:)))
-            if preferences.homeVolumesExpanded { for volume in volumes where volume.isLocal != false {
-                let card = VolumeCardView(); card.orientation = .vertical; card.alignment = .leading; card.spacing = 6
-                card.edgeInsets = NSEdgeInsets(top: 12, left: 14, bottom: 12, right: 14)
-                homeView.addArrangedSubview(card)
-                card.widthAnchor.constraint(equalTo: homeView.widthAnchor, constant: -64).isActive = true
-                locationButton(volume.name, symbol: "externaldrive.fill", url: volume.url, in: card)
-                let description = NSTextField(labelWithString: capacityDescription(volume))
-                description.font = .systemFont(ofSize: 11); description.textColor = .secondaryLabelColor
-                card.addArrangedSubview(description)
-                if let usedFraction = volume.usedFraction {
-                    let meter = NSLevelIndicator(); meter.levelIndicatorStyle = .continuousCapacity
-                    meter.minValue = 0; meter.maxValue = 1; meter.doubleValue = usedFraction
-                    meter.setAccessibilityLabel(L("사용한 공간 비율", "Used capacity"))
-                    card.addArrangedSubview(meter); meter.widthAnchor.constraint(equalTo: card.widthAnchor, constant: -28).isActive = true
+            if preferences.homeVolumesExpanded {
+                driveCards = volumes.filter { $0.isLocal != false }.map { volume in
+                    let card = HomeLocationCardView(insets: NSEdgeInsets(top: 10, left: 12, bottom: 10, right: 12))
+                    locationButton(volume.name, symbol: "externaldrive.fill", url: volume.url, in: card)
+                    let description = NSTextField(labelWithString: capacityDescription(volume))
+                    description.font = .systemFont(ofSize: 11)
+                    description.textColor = .secondaryLabelColor
+                    description.lineBreakMode = .byTruncatingTail
+                    description.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+                    card.addArrangedSubview(description)
+                    description.widthAnchor.constraint(lessThanOrEqualTo: card.widthAnchor, constant: -24).isActive = true
+                    if let usedFraction = volume.usedFraction {
+                        let meter = NSLevelIndicator()
+                        meter.levelIndicatorStyle = .continuousCapacity
+                        meter.minValue = 0; meter.maxValue = 1; meter.doubleValue = usedFraction
+                        meter.setAccessibilityLabel(L("사용한 공간 비율", "Used capacity"))
+                        card.addArrangedSubview(meter)
+                        meter.widthAnchor.constraint(equalTo: card.widthAnchor, constant: -24).isActive = true
+                    }
+                    return card
                 }
-            } }
+            }
         }
+        placeHomeCards(driveCards, in: homeDriveGrid)
         if preferences.showHomeNetwork {
             homeSection(L("네트워크 위치", "Network Locations"), expanded: preferences.homeNetworkExpanded,
                         action: #selector(toggleHomeNetworkExpanded(_:)))
@@ -813,6 +833,13 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         }
         updateHomeRecent()
         if let focusedButton { restoreHomeFocus(from: focusedButton) }
+    }
+    private func placeHomeCards(_ cards: [NSView], in grid: HomeCardGrid) {
+        grid.replaceCards(cards)
+        guard !cards.isEmpty else { return }
+        homeView.addArrangedSubview(grid)
+        grid.widthAnchor.constraint(equalTo: homeView.widthAnchor,
+                                    constant: -(homeView.edgeInsets.left + homeView.edgeInsets.right)).isActive = true
     }
     private func updateHomeRecent() {
         homeRecentNeedsUpdate = false
@@ -840,9 +867,15 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         if let button = replacement ?? buttons.first { focusHomeButton(button) }
     }
     private var homeKeyboardButtons: [SidebarKeyboardButton] {
-        homeView.arrangedSubviews.flatMap { view in
-            (view as? NSStackView)?.arrangedSubviews ?? [view]
-        }.compactMap { $0 as? SidebarKeyboardButton }.filter { !$0.isHiddenOrHasHiddenAncestor && $0.isEnabled }
+        func buttons(in view: NSView) -> [SidebarKeyboardButton] {
+            if let button = view as? SidebarKeyboardButton {
+                return button.isHiddenOrHasHiddenAncestor || !button.isEnabled ? [] : [button]
+            }
+            if let stack = view as? NSStackView { return stack.arrangedSubviews.flatMap { buttons(in: $0) } }
+            if let grid = view as? HomeCardGrid { return grid.subviews.flatMap { buttons(in: $0) } }
+            return []
+        }
+        return buttons(in: homeView)
     }
     private func focusHomeButton(_ button: SidebarKeyboardButton) {
         guard window?.makeFirstResponder(button) == true else { return }
@@ -854,6 +887,18 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         let buttons = homeKeyboardButtons
         if let index = buttons.firstIndex(of: button), buttons.indices.contains(index + offset) {
             focusHomeButton(buttons[index + offset])
+        }
+        return true
+    }
+    fileprivate func moveHomeCardFocus(from button: SidebarKeyboardButton, by offset: Int) -> Bool {
+        guard button.isDescendant(of: homeView), let card = button.superview as? HomeLocationCardView,
+              let grid = card.superview as? HomeCardGrid,
+              let index = grid.subviews.firstIndex(of: card) else { return false }
+        let next = index + offset
+        if grid.subviews.indices.contains(next), grid.subviews[next].frame.minY == card.frame.minY,
+           let nextCard = grid.subviews[next] as? HomeLocationCardView,
+           let nextButton = nextCard.arrangedSubviews.first as? SidebarKeyboardButton {
+            focusHomeButton(nextButton)
         }
         return true
     }
@@ -3696,6 +3741,8 @@ class SidebarKeyboardButton: NSButton {
         }
         if modifiers.isEmpty, event.keyCode == 36 || event.keyCode == 76 || event.keyCode == 49,
            (window?.windowController as? BrowserWindow)?.activateHomeButton(self) == true { return }
+        if modifiers.isEmpty, event.keyCode == 123 || event.keyCode == 124,
+           (window?.windowController as? BrowserWindow)?.moveHomeCardFocus(from: self, by: event.keyCode == 124 ? 1 : -1) == true { return }
         if modifiers.isEmpty, event.keyCode == 125 || event.keyCode == 126 {
             let offset = event.keyCode == 125 ? 1 : -1
             if (window?.windowController as? BrowserWindow)?.moveHomeFocus(from: self, by: offset) == true { return }
@@ -3882,7 +3929,7 @@ extension BrowserWindow {
             controller.buildSidebar()
             controller.buildHome()
             let storageAction = #selector(openStorageSettingsForVolume(_:))
-            let homeDrives = controller.homeView.arrangedSubviews.compactMap { $0 as? VolumeCardView }
+            let homeDrives = controller.homeDriveGrid.subviews.compactMap { $0 as? HomeLocationCardView }
                 .flatMap { $0.arrangedSubviews.compactMap { $0 as? LocationButton } }
             let sidebarDrives = controller.sidebar.arrangedSubviews.compactMap { $0 as? LocationButton }
             let homeCommand = homeDrives.first { $0.url == local.url }?.menu?.items.first { $0.action == storageAction }
@@ -3913,6 +3960,48 @@ extension BrowserWindow {
             controller.volumes = sampleVolumes
             controller.buildSidebar()
             controller.buildHome()
+            if let window = controller.window, let originalSize = window.contentView?.bounds.size {
+                let cardFixtureRoot = destination.appendingPathComponent("home-card-fixtures", isDirectory: true)
+                let cardFixtures = (1...7).map { cardFixtureRoot.appendingPathComponent("Folder \($0)", isDirectory: true) }
+                defer { try? FileManager.default.removeItem(at: cardFixtureRoot) }
+                for url in cardFixtures {
+                    try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+                    preferences.toggleFavorite(url)
+                }
+                controller.volumes = [local, MountedVolume(url: fixture.deletingLastPathComponent(), name: "QA Backup", isLocal: true)]
+                controller.buildHome()
+                let grid = controller.homeFavoriteGrid
+                let first = grid.subviews.first
+                let firstButton = controller.homeKeyboardButtons.first { ($0 as? LocationButton)?.url == fixture }
+                if let firstButton { controller.focusHomeButton(firstButton) }
+                window.setContentSize(NSSize(width: 900, height: originalSize.height))
+                window.contentView?.layoutSubtreeIfNeeded()
+                let narrowRows = Set(grid.subviews.map { $0.frame.minY }).count
+                let narrowHeight = grid.bounds.height
+                window.setContentSize(NSSize(width: 1500, height: originalSize.height))
+                window.contentView?.layoutSubtreeIfNeeded()
+                let wideRows = Set(grid.subviews.map { $0.frame.minY }).count
+                let wideHeight = grid.bounds.height
+                let driveFrames = controller.homeDriveGrid.subviews.map(\.frame)
+                checks["homeCardsReflowPreservingFocus"] = narrowRows > wideRows && narrowHeight > wideHeight
+                    && grid.subviews.first === first && window.firstResponder === firstButton
+                    && driveFrames.count == 2 && driveFrames[0].minY == driveFrames[1].minY
+                    && driveFrames[0].maxX < driveFrames[1].minX
+                if let right = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [],
+                    timestamp: 0, windowNumber: window.windowNumber, context: nil, characters: "\u{f703}",
+                    charactersIgnoringModifiers: "\u{f703}", isARepeat: false, keyCode: 124) {
+                    window.sendEvent(right)
+                    checks["homeCardHorizontalKeyboardNavigation"] = (window.firstResponder as? LocationButton)?.url == cardFixtures[0]
+                } else { checks["homeCardHorizontalKeyboardNavigation"] = false }
+                try capture("home-card-grid")
+                window.setContentSize(originalSize)
+                for url in cardFixtures { preferences.toggleFavorite(url) }
+                controller.volumes = sampleVolumes
+                controller.buildHome()
+            } else {
+                checks["homeCardsReflowPreservingFocus"] = false
+                checks["homeCardHorizontalKeyboardNavigation"] = false
+            }
             let backgroundFixture = destination.appendingPathComponent("background-fixture.png")
             let backgroundImage = NSImage(size: NSSize(width: 96, height: 64)); backgroundImage.lockFocus()
             NSColor(calibratedRed: 0.12, green: 0.34, blue: 0.62, alpha: 1).setFill(); NSRect(x: 0, y: 0, width: 96, height: 64).fill()
@@ -6033,7 +6122,7 @@ extension BrowserWindow {
             controller.goHome(nil)
             let networkButton = controller.homeView.arrangedSubviews.compactMap { $0 as? LocationButton }
                 .first { $0.url == network.url }
-            let homeCards = controller.homeView.arrangedSubviews.compactMap { $0 as? VolumeCardView }
+            let homeCards = controller.homeDriveGrid.subviews.compactMap { $0 as? HomeLocationCardView }
                 .flatMap { $0.arrangedSubviews.compactMap { $0 as? LocationButton } }
             checks["homeNetworkLocationOpensMountedPath"] = networkButton?.accessibilityLabel() == shareName
                 && homeCards.contains { $0.url == local.url } && !homeCards.contains { $0.url == network.url }
@@ -6097,7 +6186,7 @@ extension BrowserWindow {
             func showsNetworkEntry() -> Bool {
                 controller.homeView.arrangedSubviews.contains { ($0 as? LocationButton)?.title == shareName }
             }
-            func showsLocalCard() -> Bool { controller.homeView.arrangedSubviews.contains { $0 is VolumeCardView } }
+            func showsLocalCard() -> Bool { !controller.homeDriveGrid.subviews.isEmpty }
             preferences.setHomeSectionExpanded(.volumes, expanded: false)
             let drivesCollapseIndependently = !showsLocalCard() && showsNetworkEntry()
             preferences.setHomeSectionExpanded(.volumes, expanded: true)
@@ -6182,7 +6271,68 @@ private final class BrowserBackgroundView: NSView {
     }
 }
 
-private final class VolumeCardView: NSStackView {
+private final class HomeCardGrid: NSView {
+    private let minimumCardWidth: CGFloat
+    private let cardHeight: CGFloat
+    private let spacing: CGFloat = 10
+    override var isFlipped: Bool { true }
+
+    init(minimumCardWidth: CGFloat, cardHeight: CGFloat) {
+        self.minimumCardWidth = minimumCardWidth
+        self.cardHeight = cardHeight
+        super.init(frame: .zero)
+    }
+
+    required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
+
+    func replaceCards(_ cards: [NSView]) {
+        subviews.forEach { $0.removeFromSuperview() }
+        cards.forEach { addSubview($0) }
+        invalidateIntrinsicContentSize()
+        needsLayout = true
+    }
+
+    private func columnCount(for width: CGFloat) -> Int {
+        max(1, Int((width + spacing) / (minimumCardWidth + spacing)))
+    }
+
+    override var intrinsicContentSize: NSSize {
+        guard !subviews.isEmpty else { return NSSize(width: NSView.noIntrinsicMetric, height: 0) }
+        let columns = columnCount(for: bounds.width)
+        let rows = (subviews.count + columns - 1) / columns
+        return NSSize(width: NSView.noIntrinsicMetric, height: CGFloat(rows) * (cardHeight + spacing) - spacing)
+    }
+
+    override func setFrameSize(_ newSize: NSSize) {
+        let oldColumns = columnCount(for: bounds.width)
+        super.setFrameSize(newSize)
+        if columnCount(for: bounds.width) != oldColumns { invalidateIntrinsicContentSize() }
+        needsLayout = true
+    }
+
+    override func layout() {
+        super.layout()
+        let columns = columnCount(for: bounds.width)
+        let width = max(0, min(minimumCardWidth * 1.5,
+                               (bounds.width - CGFloat(columns - 1) * spacing) / CGFloat(columns)))
+        for (index, card) in subviews.enumerated() {
+            card.frame = NSRect(x: CGFloat(index % columns) * (width + spacing),
+                                y: CGFloat(index / columns) * (cardHeight + spacing),
+                                width: width, height: cardHeight)
+        }
+    }
+}
+
+private final class HomeLocationCardView: NSStackView {
+    init(insets: NSEdgeInsets) {
+        super.init(frame: .zero)
+        orientation = .vertical
+        alignment = .leading
+        spacing = 6
+        edgeInsets = insets
+    }
+    required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
+
     override func draw(_ dirtyRect: NSRect) {
         NSColor.quaternaryLabelColor.withAlphaComponent(0.08).setFill()
         NSBezierPath(roundedRect: bounds, xRadius: 8, yRadius: 8).fill()
