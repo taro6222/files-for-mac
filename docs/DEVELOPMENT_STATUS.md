@@ -8,6 +8,8 @@ M7 출시 검증이 진행 중이다. [유니버설 개발 프리뷰](verificati
 
 ## 이번 구현 단위
 
+권한 시트에서 30,000개 파일 변경을 중단하고 표시 건수와 실제 변경을 대조했다. [AppKit 중간 중단](verification/m7/INCREMENT_166.md)
+
 APFS의 30,000개 파일 권한 변경을 세 차례 중간 중단하고 실제 파일 상태와 보고 건수를 대조했다. [중간 중단 검증](verification/m7/INCREMENT_165.md)
 
 폴더 권한 일괄 적용 시트에서 작업 중단과 처리 결과를 제공한다. [중단 검증](verification/m7/INCREMENT_164.md)

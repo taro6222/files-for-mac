@@ -270,14 +270,15 @@ final class FileInfoWindow: NSWindowController, NSTextFieldDelegate {
     private func cancelTasks() { inspectTask?.cancel(); inspectTask = nil; hashTask?.cancel(); hashTask = nil; signatureTask?.cancel(); signatureTask = nil }
 #if DEBUG
     var qaLoaded: Bool { properties != nil }
-    func qaApplyFolderMode(acl: String? = nil, group: String? = nil, stopImmediately: Bool = false) async throws -> Bool {
+    func qaApplyFolderMode(acl: String? = nil, group: String? = nil, stopImmediately: Bool = false,
+                           watchFiles: [URL] = []) async throws -> Bool {
         guard let sheet = openPermissions() else { return false }
         defer { sheet.dismissQA() }
         let deadline = ContinuousClock.now + .seconds(5)
         while !sheet.qaReady && ContinuousClock.now < deadline {
             try await Task.sleep(for: .milliseconds(20))
         }
-        return try await sheet.qaApplyDescendants(acl: acl, group: group, stopImmediately: stopImmediately)
+        return try await sheet.qaApplyDescendants(acl: acl, group: group, stopImmediately: stopImmediately, watchFiles: watchFiles)
     }
     func qaOwnerControlMatchesPrivileges() async throws -> Bool {
         guard let sheet = openPermissions() else { return false }
@@ -743,7 +744,7 @@ private final class FilePermissionsSheet: NSObject, NSTextViewDelegate {
 #if DEBUG
     var qaReady: Bool { initial != nil }
     var qaOwnerEnabled: Bool { ownerList.isEnabled }
-    func qaApplyDescendants(acl: String?, group: String?, stopImmediately: Bool) async throws -> Bool {
+    func qaApplyDescendants(acl: String?, group: String?, stopImmediately: Bool, watchFiles: [URL]) async throws -> Bool {
         guard includeDescendants.isEnabled else { return false }
         if let group {
             let deadline = ContinuousClock.now + .seconds(5)
@@ -765,10 +766,33 @@ private final class FilePermissionsSheet: NSObject, NSTextViewDelegate {
         save.performClick(nil)
         if stopImmediately { stop.performClick(nil) }
         let deadline = ContinuousClock.now + .seconds(5)
+        if !watchFiles.isEmpty {
+            while stop.isEnabled && !stop.isHidden && ContinuousClock.now < deadline {
+                let changed = watchFiles.contains {
+                    (try? FileManager.default.attributesOfItem(atPath: $0.path)[.posixPermissions] as? Int) == 0o750
+                }
+                if changed {
+                    stop.performClick(nil)
+                    break
+                }
+                try await Task.sleep(for: .milliseconds(1))
+            }
+        }
         while !refreshAfterClose && ContinuousClock.now < deadline {
             try await Task.sleep(for: .milliseconds(20))
         }
-        return refreshAfterClose && (!stopImmediately || status.stringValue.hasPrefix(L("중단됨.", "Stopped.")))
+        guard refreshAfterClose else { return false }
+        if !watchFiles.isEmpty {
+            let files = try FileManager.default.contentsOfDirectory(at: url, includingPropertiesForKeys: nil)
+            let changed = try files.filter {
+                try FileManager.default.attributesOfItem(atPath: $0.path)[.posixPermissions] as? Int == 0o750
+            }.count
+            let expected = L("중단됨. 변경한 항목은 유지됩니다. 적용 \(changed)개, 건너뜀 0개, 실패 0개.",
+                             "Stopped. Changes already made are kept. Applied to \(changed), skipped 0, failed 0.")
+            NSLog("Folder permissions QA: %d changed / %d files; %@", changed, files.count, status.stringValue)
+            return changed > 0 && changed < files.count && status.stringValue == expected
+        }
+        return !stopImmediately || status.stringValue.hasPrefix(L("중단됨.", "Stopped."))
     }
     func dismissQA() {
         alert.window.sheetParent?.endSheet(alert.window)

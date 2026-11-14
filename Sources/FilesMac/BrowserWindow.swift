@@ -4610,6 +4610,28 @@ extension BrowserWindow {
                 let applied = try await info.qaApplyFolderMode()
                 let enclosedMode = try await FilePropertiesInspector().permissions(enclosed).mode
                 checks["fileInfoFolderPermissions"] = applied && enclosedMode == 0o750
+                if ProcessInfo.processInfo.environment["FILES_UI_QA_PARTIAL_PERMISSION_STOP"] == "1" {
+                    // An opt-in APFS fixture keeps the ordinary smoke suite short.
+                    let tree = destination.appendingPathComponent("partial-permission-stop", isDirectory: true)
+                    let monitored = try await Task.detached {
+                        let manager = FileManager.default
+                        try manager.createDirectory(at: tree, withIntermediateDirectories: false,
+                                                    attributes: [.posixPermissions: 0o750])
+                        var samples: [URL] = []
+                        for index in 0..<30_000 {
+                            let file = tree.appendingPathComponent("file-\(index)")
+                            guard manager.createFile(atPath: file.path, contents: Data(),
+                                                     attributes: [.posixPermissions: 0o600]) else {
+                                throw CocoaError(.fileWriteUnknown)
+                            }
+                            if index.isMultiple(of: 151) { samples.append(file) }
+                        }
+                        return samples
+                    }.value
+                    info.present(items: [FileItem(url: tree, name: tree.lastPathComponent, isDirectory: true)])
+                    checks["fileInfoPartiallyStopsFolderPermissions"] = try await info.qaApplyFolderMode(watchFiles: monitored)
+                    try fm.removeItem(at: tree)
+                }
                 let aclFolder = destination.appendingPathComponent("acl-tree", isDirectory: true)
                 let aclChild = aclFolder.appendingPathComponent("enclosed.txt")
                 try fm.createDirectory(at: aclFolder, withIntermediateDirectories: true)
