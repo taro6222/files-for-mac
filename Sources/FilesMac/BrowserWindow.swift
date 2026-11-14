@@ -245,6 +245,8 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
                     NSWorkspace.shared.notificationCenter.removeObserver(token)
                 }
                 self.observerTokens.removeAll(); self.onClose?()
+                // The close callback can still read the workspace's selection and layout.
+                self.window?.contentView = nil
             }
         })
         observerTokens.append(NotificationCenter.default.addObserver(forName: NSWindow.didResizeNotification, object: w, queue: .main) { [weak self] _ in

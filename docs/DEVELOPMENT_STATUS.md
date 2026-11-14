@@ -4,6 +4,8 @@
 
 ## 이번 구현 단위
 
+닫은 창의 작업 공간을 저장한 뒤 AppKit 콘텐츠를 해제한다. [M7 창 종료 시 콘텐츠 해제](verification/m7/INCREMENT_95.md)
+
 보조 브라우저를 독립 창과 네이티브 탭으로 각각 열고 닫는 장시간 대조를 추가했다. [M7 창·탭 부하 비교](verification/m7/INCREMENT_94.md)
 
 최근 방문 기록 변경 시 홈의 최근 위치 목록만 갱신하고, 기존 드라이브·네트워크 뷰와 키보드 초점을 유지한다. [M7 홈 갱신 범위](verification/m7/INCREMENT_93.md)
