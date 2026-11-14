@@ -33,6 +33,7 @@ import Testing
     let payload = Data("data fork".utf8)
     let modificationDate = Date(timeIntervalSince1970: 1_700_000_000)
     let creationDate = Date(timeIntervalSince1970: 1_600_000_000)
+    let accessSeconds = 1_650_000_000
     let xattrs = [
         "com.filesmac.fixture": Data("extended attribute".utf8),
         "com.apple.ResourceFork": Data("resource fork".utf8),
@@ -61,6 +62,17 @@ import Testing
         return String(cString: text)
     }
     let expectedACL = try aclText(source)
+    func setAccessTime(_ file: URL) throws {
+        var dates = [timespec(tv_sec: accessSeconds, tv_nsec: 0),
+                     timespec(tv_sec: Int(modificationDate.timeIntervalSince1970), tv_nsec: 0)]
+        try #require(utimensat(AT_FDCWD, file.path, &dates, AT_SYMLINK_NOFOLLOW) == 0)
+    }
+    func verifyAccessTime(_ file: URL) throws {
+        var info = stat()
+        try #require(lstat(file.path, &info) == 0)
+        #expect(info.st_atimespec.tv_sec == accessSeconds)
+        #expect(info.st_atimespec.tv_nsec == 0)
+    }
     func verify(_ file: URL) throws {
         #expect(try Data(contentsOf: file) == payload)
         let attrs = try fm.attributesOfItem(atPath: file.path)
@@ -75,21 +87,27 @@ import Testing
         }
     }
 
+    try setAccessTime(source)
     let copy = await CopyEngine.run(sources: [source], destination: destination,
         journalDirectory: journal, cancellation: CopyCancellation())
     try #require(copy.items.first?.state == "completed")
+    try verifyAccessTime(target)
     try verify(source)
     try verify(target)
     let copyUndo = try #require(CopyEngine.latestUndoCopy(journalDirectory: journal))
     #expect(await CopyEngine.undoCopy(copyUndo, journalDirectory: journal).state == "completed")
     #expect(!fm.fileExists(atPath: target.path))
+    try setAccessTime(source)
     let move = try await EntryOperations.move([source], to: destination, journalDirectory: journal)
     try #require(move.items.first?.state == "completed")
     #expect(!fm.fileExists(atPath: source.path))
+    try verifyAccessTime(target)
     try verify(target)
     let moveUndo = try #require(EntryOperations.latestUndoMove(journalDirectory: journal))
     #expect(moveUndo.items.first?.crossVolume == true)
+    try setAccessTime(target)
     #expect(await EntryOperations.undoMove(moveUndo, journalDirectory: journal).state == "completed")
+    try verifyAccessTime(source)
     try verify(source)
     #expect(!fm.fileExists(atPath: target.path))
 }

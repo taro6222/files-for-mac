@@ -240,6 +240,7 @@ public enum CopyEngine {
                         throw CopyFailure(text: "Source changed during copying.")
                     }
                     try verifiedPayload.verifyTransferredContents(of: before)
+                    try before.restoreAccessTimes(in: payload, verifiedCopy: verifiedPayload, cancellation: cancellation)
                     // Capture the item we verified before publication. A cancellation or an
                     // external change after publication must not redefine the undo record.
                     let undoIdentity = try entryIdentity(payload)
@@ -433,6 +434,8 @@ public enum CopyEngine {
         var withPermissions: [String: String] = [:]
         var content: [String: String] = [:]
         var metadata = CopyTransferMetadata()
+        var accessTimes: [String: timespec] = [:]
+        var accessTimeIdentities: [String: (device: dev_t, inode: ino_t)] = [:]
         var modificationTimeResolution: TimeInterval = 0
         var filesystemType = ""
         var hasNativePermissions = true
@@ -500,11 +503,11 @@ public enum CopyEngine {
             for (path, date) in dates {
                 try cancellation.check()
                 let isDirectory = content[path] == "directory"
-                let descriptor = try openStagedEntry(parent: parent, name: payload.lastPathComponent,
-                                                     path: path, isDirectory: isDirectory)
+                let descriptor = try openTransferEntry(parent: parent, name: payload.lastPathComponent,
+                    path: path, isDirectory: isDirectory, mismatch: .creationTime)
                 defer { close(descriptor) }
                 var info = stat()
-                guard fstat(descriptor, &info) == 0,
+                guard fstat(descriptor, &info) == 0, info.st_nlink == 1 || isDirectory,
                       info.st_mode & S_IFMT == (isDirectory ? S_IFDIR : S_IFREG) else {
                     throw TransferMismatch.creationTime
                 }
@@ -522,7 +525,46 @@ public enum CopyEngine {
             }
         }
 
-        private func openStagedEntry(parent: Int32, name: String, path: String, isDirectory: Bool) throws -> Int32 {
+        func restoreAccessTimes(in payload: URL, verifiedCopy: Self, cancellation: CopyCancellation) throws {
+            guard filesystemType == "apfs", !accessTimes.isEmpty else { return }
+            let parent = open(payload.deletingLastPathComponent().path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
+            guard parent >= 0 else { throw TransferMismatch.accessTime }
+            defer { close(parent) }
+            var volume = statfs()
+            guard fstatfs(parent, &volume) == 0 else { throw TransferMismatch.accessTime }
+            let filesystem = withUnsafeBytes(of: volume.f_fstypename) {
+                String(decoding: $0.prefix { $0 != 0 }, as: UTF8.self)
+            }
+            guard filesystem == "apfs" else { return }
+            for (path, time) in accessTimes {
+                try cancellation.check()
+                let isDirectory = content[path] == "directory"
+                let descriptor = try openTransferEntry(parent: parent, name: payload.lastPathComponent,
+                    path: path, isDirectory: isDirectory, mismatch: .accessTime)
+                defer { close(descriptor) }
+                var info = stat()
+                guard let identity = verifiedCopy.accessTimeIdentities[path],
+                      fstat(descriptor, &info) == 0, info.st_nlink == 1 || isDirectory,
+                      info.st_dev == identity.device, info.st_ino == identity.inode,
+                      info.st_mode & S_IFMT == (isDirectory ? S_IFDIR : S_IFREG) else {
+                    throw TransferMismatch.accessTime
+                }
+                if info.st_atimespec.tv_sec != time.tv_sec || info.st_atimespec.tv_nsec != time.tv_nsec {
+                    var attributes = attrlist()
+                    attributes.bitmapcount = UInt16(ATTR_BIT_MAP_COUNT)
+                    attributes.commonattr = attrgroup_t(ATTR_CMN_ACCTIME)
+                    var accessTime = time
+                    guard fsetattrlist(descriptor, &attributes, &accessTime, MemoryLayout<timespec>.size, 0) == 0,
+                          fstat(descriptor, &info) == 0,
+                          info.st_atimespec.tv_sec == time.tv_sec, info.st_atimespec.tv_nsec == time.tv_nsec else {
+                        throw TransferMismatch.accessTime
+                    }
+                }
+            }
+        }
+
+        private func openTransferEntry(parent: Int32, name: String, path: String, isDirectory: Bool,
+                                       mismatch: TransferMismatch) throws -> Int32 {
             let components = [name] + path.split(separator: "/").map(String.init)
             var current = parent
             for (index, component) in components.enumerated() {
@@ -530,7 +572,7 @@ public enum CopyEngine {
                 let flags = O_RDONLY | O_NOFOLLOW | O_NONBLOCK | O_CLOEXEC | (directory ? O_DIRECTORY : 0)
                 let next = openat(current, component, flags)
                 if current != parent { close(current) }
-                guard next >= 0 else { throw TransferMismatch.creationTime }
+                guard next >= 0 else { throw mismatch }
                 current = next
             }
             return current
@@ -545,7 +587,7 @@ public enum CopyEngine {
     }
 
     enum TransferMismatch: String, LocalizedError {
-        case contents, extendedAttributes, accessControlList, permissions, modificationTime, creationTime
+        case contents, extendedAttributes, accessControlList, permissions, modificationTime, creationTime, accessTime
 
         var errorDescription: String? {
             message(korean: Locale.preferredLanguages.first?.hasPrefix("ko") == true)
@@ -560,6 +602,7 @@ public enum CopyEngine {
             case .permissions: property = ("POSIX permissions", "POSIX 권한")
             case .modificationTime: property = ("modification time", "수정 시간")
             case .creationTime: property = ("creation time", "생성 시간")
+            case .accessTime: property = ("access time", "접근 시간")
             }
             return korean
                 ? "복사본의 \(property.korean) 검증에 실패했습니다. 원본을 보존했습니다."
@@ -597,6 +640,12 @@ public enum CopyEngine {
                     snapshot.modificationTimeResolution = 1
                 default: break
                 }
+            }
+            if includeTransferMetadata, snapshot.filesystemType == "apfs", type != .typeSymbolicLink {
+                var info = stat()
+                guard lstat(url.path, &info) == 0 else { throw TransferMismatch.accessTime }
+                snapshot.accessTimes[relative] = info.st_atimespec
+                snapshot.accessTimeIdentities[relative] = (info.st_dev, info.st_ino)
             }
             switch type {
             case .typeSymbolicLink:

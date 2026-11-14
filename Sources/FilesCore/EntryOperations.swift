@@ -291,6 +291,7 @@ public enum EntryOperations {
         guard matchesTransfer(target, identity: payloadIdentity, snapshot: verifiedPayload, fileManager: fm) else {
             throw MoveFailure(text: LString.crossVolumeDestinationChanged)
         }
+        try before.restoreAccessTimes(in: target, verifiedCopy: verifiedPayload, cancellation: CopyCancellation())
         guard try snapshotIdentity(source, fileManager: fm) == sourceIdentity else {
             throw MoveFailure(text: LString.crossVolumeSourceChanged)
         }
@@ -981,6 +982,7 @@ public enum EntryOperations {
                                 guard matchesTransfer(target, identity: payloadIdentity, snapshot: verifiedPayload, fileManager: fm) else {
                                     throw MoveFailure(text: LString.crossVolumeDestinationChanged)
                                 }
+                                try before.restoreAccessTimes(in: target, verifiedCopy: verifiedPayload, cancellation: cancellation)
                                 try cancellation.check()
                                 guard try snapshotIdentity(source, fileManager: fm) == sourceIdentity else {
                                     throw MoveFailure(text: LString.crossVolumeSourceChanged)

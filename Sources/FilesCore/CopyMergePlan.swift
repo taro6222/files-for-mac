@@ -174,6 +174,7 @@ public enum CopyMergeExecutor {
                         throw MergeFailure(text: "Source changed during copying.")
                     }
                     try copied.verifyTransferredContents(of: before)
+                    try before.restoreAccessTimes(in: temporary, verifiedCopy: copied, cancellation: cancellation)
                     let targetIdentity = try identity(temporary)
                     guard try identity(parent) == action.expectedParentIdentity else {
                         throw MergeFailure(text: "Destination parent changed before publication.")
