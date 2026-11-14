@@ -36,7 +36,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         #endif
         _ = try? diagnosticArtifacts.append(event: "application launched")
         applyAppearance()
-        preferencesToken = BrowserPreferences.shared.observe { [weak self] in self?.applyAppearance() }
+        preferencesToken = BrowserPreferences.shared.observe(includesRecentLocations: false) { [weak self] in self?.applyAppearance() }
         buildMenu()
         configureShortcuts()
         #if DEBUG

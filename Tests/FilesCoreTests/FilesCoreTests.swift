@@ -448,6 +448,35 @@ private struct DelayedLoader: DirectoryLoading {
     #expect(BrowserPreferences(defaults: defaults).viewSize == .medium)
 }
 
+@Test @MainActor func recentLocationsNotifyHomeWithoutReapplyingOtherPreferences() {
+    let suite = "files-recent-observers-\(UUID())"
+    let defaults = UserDefaults(suiteName: suite)!
+    defer { defaults.removePersistentDomain(forName: suite) }
+    let preferences = BrowserPreferences(defaults: defaults)
+    let location = URL(fileURLWithPath: "/example")
+    var allChanges = 0
+    var settingsChanges = 0
+    var homeSnapshots: [[URL]] = []
+    preferences.observe { allChanges += 1 }
+    preferences.observe(includesRecentLocations: false) { settingsChanges += 1 }
+    let token = preferences.observeRecentLocations { [unowned preferences] in
+        homeSnapshots.append(preferences.recent)
+    }
+
+    preferences.recordVisit(location)
+    preferences.recordVisit(location)
+    preferences.setShowExtensions(false)
+    preferences.clearRecent()
+    #expect(allChanges == 3)
+    #expect(settingsChanges == 1)
+    #expect(homeSnapshots == [[location], []])
+
+    preferences.removeObserver(token)
+    preferences.recordVisit(location)
+    #expect(allChanges == 4)
+    #expect(homeSnapshots.count == 2)
+}
+
 @Test @MainActor func toolbarPreferencesRepairPersistMoveHideAndReset() {
     let suite = "toolbar-preferences-tests-\(UUID())", defaults = UserDefaults(suiteName: suite)!
     defer { defaults.removePersistentDomain(forName: suite) }

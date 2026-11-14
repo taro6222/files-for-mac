@@ -134,7 +134,8 @@ public enum BrowserToolbarItem: String, CaseIterable, Sendable {
 public final class BrowserPreferences {
     public static let shared = BrowserPreferences()
     private let defaults: UserDefaults
-    private var observers: [UUID: () -> Void] = [:]
+    private var observers: [UUID: (includesRecentLocations: Bool, callback: () -> Void)] = [:]
+    private var recentLocationObservers: [UUID: () -> Void] = [:]
     public enum SidebarSection: String, CaseIterable, Sendable { case favorites, locations }
     public private(set) var sidebarOrder: [SidebarSection]
     public private(set) var collapsedSidebar: Set<SidebarSection>
@@ -307,10 +308,29 @@ public final class BrowserPreferences {
         folderViewPreferences = (defaults.data(forKey: "folderViewPreferences").flatMap { try? JSONDecoder().decode([String: FolderViewPreference].self, from: $0) }) ?? [:]
     }
     @discardableResult public func observe(_ callback: @escaping () -> Void) -> UUID {
-        let id = UUID(); observers[id] = callback; return id
+        observe(includesRecentLocations: true, callback)
     }
-    public func removeObserver(_ id: UUID) { observers.removeValue(forKey: id) }
-    private func changed() { for callback in Array(observers.values) { callback() } }
+    @discardableResult public func observe(includesRecentLocations: Bool, _ callback: @escaping () -> Void) -> UUID {
+        let id = UUID()
+        observers[id] = (includesRecentLocations, callback)
+        return id
+    }
+    @discardableResult public func observeRecentLocations(_ callback: @escaping () -> Void) -> UUID {
+        let id = UUID()
+        recentLocationObservers[id] = callback
+        return id
+    }
+    public func removeObserver(_ id: UUID) {
+        observers.removeValue(forKey: id)
+        recentLocationObservers.removeValue(forKey: id)
+    }
+    private func changed() {
+        for observer in Array(observers.values) { observer.callback() }
+    }
+    private func recentLocationsChanged() {
+        for observer in Array(observers.values) where observer.includesRecentLocations { observer.callback() }
+        for callback in Array(recentLocationObservers.values) { callback() }
+    }
     public func toggleSidebar(_ section: SidebarSection) {
         if collapsedSidebar.contains(section) { collapsedSidebar.remove(section) }
         else { collapsedSidebar.insert(section) }
@@ -336,10 +356,10 @@ public final class BrowserPreferences {
         let url = url.standardizedFileURL
         guard recent.first != url else { return }
         recent.removeAll { $0 == url }; recent.insert(url, at: 0); recent = Array(recent.prefix(10))
-        defaults.set(recent.map(\.path), forKey: "recent"); changed()
+        defaults.set(recent.map(\.path), forKey: "recent"); recentLocationsChanged()
     }
     public func clearRecent() {
-        recent = []; defaults.set([], forKey: "recent"); changed()
+        recent = []; defaults.set([], forKey: "recent"); recentLocationsChanged()
     }
     public func setShowHidden(_ value: Bool) {
         showHidden = value; defaults.set(value, forKey: "showHidden"); changed()

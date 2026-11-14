@@ -76,6 +76,7 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
     private func refreshActivePane() { if secondaryActive { secondaryPane?.refresh() } else { refresh(nil) } }
     private let preferences: BrowserPreferences
     private var preferencesToken: UUID?
+    private var recentLocationsToken: UUID?
     private var favorites: [URL] { preferences.favorites }
     private var recent: [URL] { preferences.recent }
     private let homeScroll = NSScrollView()
@@ -184,7 +185,11 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         setupUI(restoresLayout: restoresFrame)
         applyAppBackground()
         model.onChange = { [weak self] in self?.render() }
-        preferencesToken = preferences.observe { [weak self] in self?.preferencesChanged() }
+        preferencesToken = preferences.observe(includesRecentLocations: false) { [weak self] in self?.preferencesChanged() }
+        recentLocationsToken = preferences.observeRecentLocations { [weak self] in
+            guard let self, self.model.location == nil else { return }
+            self.buildHome()
+        }
         let primarySnapshot = initialWorkspace?.panes.first?.tab ?? initialSnapshot
         if let primarySnapshot { model.restore(primarySnapshot) }
         else {
@@ -215,6 +220,7 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
                 self.inspector.clear()
                 self.secondaryPane?.shutdown()
                 if let token = self.preferencesToken { self.preferences.removeObserver(token) }
+                if let token = self.recentLocationsToken { self.preferences.removeObserver(token) }
                 for token in self.observerTokens {
                     NotificationCenter.default.removeObserver(token)
                     NSWorkspace.shared.notificationCenter.removeObserver(token)
@@ -5206,8 +5212,9 @@ extension BrowserWindow {
     }
 
     private func waitForSoakListing(at location: URL, count: Int) async throws {
+        let expectedPath = location.standardizedFileURL.path
         let deadline = ContinuousClock.now.advanced(by: .seconds(15))
-        while model.isLoading || model.location?.path != location.path
+        while model.isLoading || model.location?.path != expectedPath
                 || model.items.count != count || watcherStatus != .active {
             if model.failure != nil || ContinuousClock.now >= deadline {
                 let actualLocation = model.location?.lastPathComponent ?? "none"
