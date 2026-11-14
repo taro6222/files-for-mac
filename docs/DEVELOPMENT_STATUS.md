@@ -4,6 +4,8 @@
 
 ## 이번 구현 단위
 
+로컬 임시 경로에서 프리뷰 설치·교체·복원을 재검증하고, RSS와 물리 메모리를 함께 기록하는 후보로 8시간 시험을 시작했다. [M7 로컬 설치와 장시간 시험](verification/m7/INCREMENT_68.md)
+
 장시간 시험에서 사이클별 RSS와 macOS 물리 메모리 사용량을 함께 측정한다. [M7 메모리 계측 검증](verification/m7/INCREMENT_67.md)
 
 Git 열을 숨긴 창에서는 목록용 Git 조회를 생략한다. [M7 Git 조회 검증](verification/m7/INCREMENT_66.md)

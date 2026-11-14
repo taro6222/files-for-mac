@@ -350,6 +350,7 @@ def main():
     modes.add_argument("--startup", action="store_true", help="Measure 20 launches from one preview image")
     modes.add_argument("--interactive-startup", action="store_true", help="Measure 20 launches through an About menu accessibility action")
     parser.add_argument("--launch-services", action="store_true", help="Use Launch Services for interactive startup measurement")
+    parser.add_argument("--run-parent", type=Path, help="Existing directory for the isolated installation and mount")
     args = parser.parse_args()
     if args.launch_services and not args.interactive_startup:
         parser.error("--launch-services requires --interactive-startup")
@@ -361,9 +362,14 @@ def main():
     images = [image.resolve() for image in (args.previous, args.candidate) if image is not None]
     if any(image.name != "Files-macOS-preview.dmg" for image in images):
         parser.error("Use local Files-macOS-preview.dmg files")
-    build = Path(__file__).resolve().parents[1] / "build"
-    build.mkdir(exist_ok=True)
-    root = Path(tempfile.mkdtemp(prefix="preview-install.", dir=build))
+    if args.run_parent is None:
+        run_parent = Path(__file__).resolve().parents[1] / "build"
+        run_parent.mkdir(exist_ok=True)
+    else:
+        run_parent = args.run_parent.resolve()
+        if not run_parent.is_dir():
+            parser.error("--run-parent must be an existing directory")
+    root = Path(tempfile.mkdtemp(prefix="preview-install.", dir=run_parent))
     bundle_id = f"org.taro6222.files-for-mac.qa.{uuid.uuid4()}"
     print(root, flush=True)
     try:
