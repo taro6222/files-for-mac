@@ -52,6 +52,7 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
     private var archiveWindow: ArchiveWindow?
     private let quickLook = QuickLookController()
     private let homeView = NSStackView()
+    private var homeNeedsUpdate = true
     private let sidebar = NSStackView()
     private let content = AppBackgroundView()
     private let folderFilter = FolderFilterField()
@@ -187,8 +188,7 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         model.onChange = { [weak self] in self?.render() }
         preferencesToken = preferences.observe(includesRecentLocations: false) { [weak self] in self?.preferencesChanged() }
         recentLocationsToken = preferences.observeRecentLocations { [weak self] in
-            guard let self, self.model.location == nil else { return }
-            self.buildHome()
+            self?.invalidateHome()
         }
         let primarySnapshot = initialWorkspace?.panes.first?.tab ?? initialSnapshot
         if let primarySnapshot { model.restore(primarySnapshot) }
@@ -709,7 +709,12 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
             }
         }
     }
+    private func invalidateHome() {
+        homeNeedsUpdate = true
+        if model.location == nil { buildHome() }
+    }
     private func buildHome() {
+        homeNeedsUpdate = false
         let focusedButton = (window?.firstResponder as? SidebarKeyboardButton).flatMap {
             $0.isDescendant(of: homeView) ? $0 : nil
         }
@@ -875,7 +880,10 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         listView.isHidden = model.location == nil || !showsList
         columnView.isHidden = model.location == nil || !showsColumns
         homeScroll.isHidden = model.location != nil
-        if model.location == nil { lastRecordedLocation = nil; buildHome() }
+        if model.location == nil {
+            lastRecordedLocation = nil
+            if homeNeedsUpdate { buildHome() }
+        }
         var revealEntry = false
         if let target = pendingEntrySelection, !model.isLoading {
             pendingEntrySelection = nil
@@ -2676,7 +2684,7 @@ extension BrowserWindow {
         if !preferences.showFilterHeader { model.setNameFilter("") }
         secondaryPane?.applyPreferences()
         if preferences.calculateFolderSizes { startFolderSizeCalculationIfNeeded() } else { folderSizeTask?.cancel(); folderSizeTask = nil }
-        if model.location == nil { buildHome() }
+        invalidateHome()
         if model.showHidden != preferences.showHidden {
             savePosition(); model.showHidden = preferences.showHidden; model.reload()
         } else if !rendering {
@@ -2922,7 +2930,7 @@ extension BrowserWindow {
             let result = await Task.detached(priority: .utility) { MountedVolumeProvider().mountedVolumes() }.value
             guard let self, !Task.isCancelled else { return }
             self.volumes = result; self.buildSidebar()
-            if self.model.location == nil { self.buildHome() }
+            self.invalidateHome()
         }
     }
     private func refreshCloudLocations() {
@@ -4763,6 +4771,7 @@ extension BrowserWindow {
             let network = MountedVolume(url: recoveryFolder, name: shareName, isLocal: false)
             let local = MountedVolume(url: target, name: "QA Local Disk", isLocal: true)
             controller.volumes = [network, local]
+            controller.invalidateHome()
             controller.goHome(nil)
             let networkButton = controller.homeView.arrangedSubviews.compactMap { $0 as? LocationButton }
                 .first { $0.url == network.url }
@@ -4804,6 +4813,17 @@ extension BrowserWindow {
             checks["homeNetworkLocationOpensMountedPath"] = checks["homeNetworkLocationOpensMountedPath"] == true
                 && controller.model.location == network.url
             controller.goHome(nil)
+            let homeContent = controller.homeView.arrangedSubviews.first
+            controller.render()
+            checks["homeReusesUnchangedViews"] = homeContent != nil
+                && controller.homeView.arrangedSubviews.first === homeContent
+            preferences.clearRecent()
+            preferences.recordVisit(recoveryFolder)
+            let recentPath = recoveryFolder.standardizedFileURL.path
+            let homeLocations = controller.homeView.arrangedSubviews.compactMap { $0 as? LocationButton }
+            checks["homeRecentRefresh"] = homeLocations.contains {
+                $0.url?.path == recentPath && $0.title == recentPath
+            } && homeLocations.contains { $0.url == network.url && $0.title == shareName }
             func showsHomeVolumeEntries() -> Bool {
                 controller.homeView.arrangedSubviews.contains {
                     ($0 as? LocationButton)?.title == shareName || $0 is VolumeCardView
