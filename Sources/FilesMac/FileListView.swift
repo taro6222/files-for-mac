@@ -33,6 +33,7 @@ final class FileListView: NSView, NSTableViewDataSource, NSTableViewDelegate {
     private var groupTitles: [String] = []
     private var suppressSelectionNotification = false
     private var viewSize: BrowserViewSize = .medium
+    var showsThumbnails = true { didSet { if oldValue != showsThumbnails { table.reloadData() } } }
     var onSelectionChange: ((Set<String>) -> Void)?
     var onOpen: ((FileItem) -> Void)?
     var onActivate: (() -> Void)?
@@ -110,7 +111,7 @@ final class FileListView: NSView, NSTableViewDataSource, NSTableViewDelegate {
             NSLayoutConstraint.activate([icon.leadingAnchor.constraint(equalTo: cell.leadingAnchor, constant: 8), icon.centerYAnchor.constraint(equalTo: cell.centerYAnchor), icon.widthAnchor.constraint(equalToConstant: 20), icon.heightAnchor.constraint(equalToConstant: 20), label.leadingAnchor.constraint(equalTo: icon.trailingAnchor, constant: 7), label.trailingAnchor.constraint(equalTo: cell.trailingAnchor, constant: -8), label.centerYAnchor.constraint(equalTo: cell.centerYAnchor)])
             return cell
         }()
-        guard let item = item(at: row) else { return nil }; cell.imageView?.image = NSWorkspace.shared.icon(forFile: item.url.path)
+        guard let item = item(at: row) else { return nil }; cell.imageView?.image = fileIcon(for: item, showsThumbnails: showsThumbnails)
         cell.textField?.stringValue = item.displayName(showExtensions: true); return cell
     }
     func tableView(_ tableView: NSTableView, rowViewForRow row: Int) -> NSTableRowView? { Row() }

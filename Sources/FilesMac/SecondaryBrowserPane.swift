@@ -348,11 +348,12 @@ final class SecondaryBrowserPane: NSView, NSTableViewDataSource, NSTableViewDele
         table.selectRowIndexes(selected, byExtendingSelection: false)
         gridView.apply(viewSize: effectiveViewSize)
         listView.apply(viewSize: effectiveViewSize)
+        gridView.showsThumbnails = preferences.showThumbnails; listView.showsThumbnails = preferences.showThumbnails
         gridView.update(items: model.items, selection: model.history.current.selection,
                         scrollOffset: model.history.current.scrollOffset, grouping: model.grouping)
         listView.update(items: model.items, selection: model.history.current.selection,
                         scrollOffset: model.history.current.scrollOffset, grouping: model.grouping)
-        columnView.showHidden = model.showHidden; columnView.sortOrder = model.sortOrder
+        columnView.showHidden = model.showHidden; columnView.sortOrder = model.sortOrder; columnView.showsThumbnails = preferences.showThumbnails
         columnView.update(baseURL: model.location, items: model.items, selection: model.history.current.selection)
         if !model.isLoading {
             scroll.contentView.scroll(to: NSPoint(x: 0, y: model.history.current.scrollOffset)); scroll.reflectScrolledClipView(scroll.contentView)
@@ -375,7 +376,7 @@ final class SecondaryBrowserPane: NSView, NSTableViewDataSource, NSTableViewDele
         guard let item = detailItem(at: row, in: detailRows) else { return nil }
         let cell = tableView.makeView(withIdentifier: id, owner: self) as? NSTableCellView ?? makeCell(id)
         switch id.rawValue {
-        case "name": cell.textField?.stringValue = item.displayName(showExtensions: true)
+        case "name": cell.textField?.stringValue = item.displayName(showExtensions: true); cell.imageView?.image = fileIcon(for: item, showsThumbnails: preferences.showThumbnails)
         case "created": cell.textField?.stringValue = item.created.map(dateFormatter.string) ?? "—"
         case "modified": cell.textField?.stringValue = item.modified.map(dateFormatter.string) ?? "—"
         case "kind": cell.textField?.stringValue = item.kind
@@ -489,6 +490,7 @@ final class SecondaryBrowserPane: NSView, NSTableViewDataSource, NSTableViewDele
     var qaGridItemSize: NSSize { gridView.qaItemSize }
     var qaListRowHeight: CGFloat { listView.qaRowHeight }
     var qaColumnIntegration: (ready: Bool, source: URL?) { (columnView.qaHasDropHandler, columnView.qaPasteboardURL()) }
+    var qaThumbnailPolicyApplied: Bool { gridView.showsThumbnails == preferences.showThumbnails && listView.showsThumbnails == preferences.showThumbnails && columnView.showsThumbnails == preferences.showThumbnails }
     #endif
 }
 

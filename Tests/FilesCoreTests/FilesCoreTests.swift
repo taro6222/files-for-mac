@@ -600,6 +600,17 @@ private struct DelayedLoader: DirectoryLoading {
     #expect(notifications == 1); preferences.removeObserver(token)
 }
 
+@Test @MainActor func showThumbnailsDefaultsOnPersistsAndAvoidsDuplicateNotifications() {
+    let suite = "thumbnail-preference-tests-\(UUID())", defaults = UserDefaults(suiteName: suite)!
+    defer { defaults.removePersistentDomain(forName: suite) }
+    let preferences = BrowserPreferences(defaults: defaults, initialFavorites: [])
+    #expect(preferences.showThumbnails)
+    var notifications = 0; let token = preferences.observe { notifications += 1 }
+    preferences.setShowThumbnails(false); preferences.setShowThumbnails(false)
+    #expect(!BrowserPreferences(defaults: defaults, initialFavorites: []).showThumbnails)
+    #expect(notifications == 1); preferences.removeObserver(token)
+}
+
 @Test func folderSizeCalculatorCountsNestedRegularFilesAndSkipsSymbolicLinks() throws {
     let root = FileManager.default.temporaryDirectory.appendingPathComponent("folder-size-\(UUID())", isDirectory: true)
     defer { try? FileManager.default.removeItem(at: root) }
@@ -684,6 +695,7 @@ private struct DelayedLoader: DirectoryLoading {
     source.setAlwaysOpenDualPaneInNewTab(true); source.setAlwaysSwitchToNewlyOpenedTab(true)
     source.setAppBackgroundPresentation(fit: .fit, opacity: 0.4, horizontal: .trailing, vertical: .top)
     source.setCalculateFolderSizes(true)
+    source.setShowThumbnails(false)
     source.setShowCreatedColumn(true); source.setShowDateColumn(false); source.setShowTypeColumn(false); source.setShowSizeColumn(false); source.setShowGitStatusColumn(true)
     source.setShowFileTagColumn(true); source.setShowPathColumn(true)
     source.setShowCompressionOptions(false); source.setShowOpenTerminal(false); source.setShowCreateFolderWithSelection(false)
@@ -710,6 +722,7 @@ private struct DelayedLoader: DirectoryLoading {
     #expect(destination.appBackgroundFit == .fit && destination.appBackgroundOpacity == 0.4)
     #expect(destination.appBackgroundHorizontalAlignment == .trailing && destination.appBackgroundVerticalAlignment == .top)
     #expect(destination.calculateFolderSizes)
+    #expect(!destination.showThumbnails)
     #expect(destination.showCreatedColumn && !destination.showDateColumn && !destination.showTypeColumn && !destination.showSizeColumn && destination.showGitStatusColumn)
     #expect(destination.showFileTagColumn && destination.showPathColumn)
     #expect(!destination.showCompressionOptions && !destination.showOpenTerminal && !destination.showCreateFolderWithSelection)

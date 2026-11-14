@@ -63,8 +63,8 @@ final class FileGridView: NSView, NSCollectionViewDataSource, NSCollectionViewDe
             view.layer?.backgroundColor = isSelected ? NSColor.selectedContentBackgroundColor.withAlphaComponent(0.28).cgColor : NSColor.clear.cgColor
             view.layer?.cornerRadius = 8
         } }
-        func configure(item: FileItem, iconSize: CGFloat) {
-            representedObject = item; icon.image = NSWorkspace.shared.icon(forFile: item.url.path)
+        func configure(item: FileItem, iconSize: CGFloat, showsThumbnails: Bool) {
+            representedObject = item; icon.image = fileIcon(for: item, showsThumbnails: showsThumbnails)
             iconWidth?.constant = iconSize; iconHeight?.constant = iconSize
             label.stringValue = item.displayName(showExtensions: true)
             view.setAccessibilityElement(true); view.setAccessibilityLabel(label.stringValue)
@@ -92,6 +92,7 @@ final class FileGridView: NSView, NSCollectionViewDataSource, NSCollectionViewDe
     private var suppressSelectionNotification = false
     private var iconSize: CGFloat = 56
     private var viewSize: BrowserViewSize = .medium
+    var showsThumbnails = true { didSet { if oldValue != showsThumbnails { collection.reloadData() } } }
     var onSelectionChange: ((Set<String>) -> Void)?
     var onOpen: ((FileItem) -> Void)?
     var onActivate: (() -> Void)?
@@ -172,7 +173,7 @@ final class FileGridView: NSView, NSCollectionViewDataSource, NSCollectionViewDe
     func collectionView(_ collectionView: NSCollectionView, numberOfItemsInSection section: Int) -> Int { groups.indices.contains(section) ? groups[section].items.count : 0 }
     func collectionView(_ collectionView: NSCollectionView, itemForRepresentedObjectAt indexPath: IndexPath) -> NSCollectionViewItem {
         let item = collectionView.makeItem(withIdentifier: Item.identifier, for: indexPath)
-        if let view = item as? Item, let value = self.item(at: indexPath) { view.configure(item: value, iconSize: iconSize) }
+        if let view = item as? Item, let value = self.item(at: indexPath) { view.configure(item: value, iconSize: iconSize, showsThumbnails: showsThumbnails) }
         return item
     }
     func collectionView(_ collectionView: NSCollectionView, viewForSupplementaryElementOfKind kind: NSCollectionView.SupplementaryElementKind, at indexPath: IndexPath) -> NSView {

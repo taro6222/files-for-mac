@@ -65,7 +65,7 @@ final class FileColumnView: NSView {
                 NSLayoutConstraint.activate([icon.leadingAnchor.constraint(equalTo: cell.leadingAnchor, constant: 7), icon.centerYAnchor.constraint(equalTo: cell.centerYAnchor), icon.widthAnchor.constraint(equalToConstant: 18), icon.heightAnchor.constraint(equalToConstant: 18), label.leadingAnchor.constraint(equalTo: icon.trailingAnchor, constant: 6), label.centerYAnchor.constraint(equalTo: cell.centerYAnchor), arrow.leadingAnchor.constraint(greaterThanOrEqualTo: label.trailingAnchor, constant: 4), arrow.trailingAnchor.constraint(equalTo: cell.trailingAnchor, constant: -8), arrow.centerYAnchor.constraint(equalTo: cell.centerYAnchor)])
                 return cell
             }()
-            let item = items[row]; cell.imageView?.image = NSWorkspace.shared.icon(forFile: item.url.path); cell.textField?.stringValue = item.name
+            let item = items[row]; cell.imageView?.image = fileIcon(for: item, showsThumbnails: owner?.showsThumbnails ?? true); cell.textField?.stringValue = item.name
             (cell.subviews.first { $0.identifier?.rawValue == "arrow" } as? NSTextField)?.stringValue = item.isBrowsable ? "›" : ""
             return cell
         }
@@ -93,6 +93,7 @@ final class FileColumnView: NSView {
     private var baseIDs: [String] = []
     private var loadGeneration = 0
     var showHidden = false
+    var showsThumbnails = true { didSet { if oldValue != showsThumbnails { columns.forEach { $0.table.reloadData() } } } }
     var sortOrder = SortOrder()
     var onSelectionChange: ((Set<String>) -> Void)?
     var onOpen: ((FileItem) -> Void)?

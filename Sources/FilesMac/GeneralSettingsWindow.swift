@@ -16,6 +16,7 @@ final class GeneralSettingsWindow: NSWindowController {
     private let defaultSortDirectoryPlacement = NSPopUpButton()
     private let autoSizeColumnsInDetailsLayout = NSButton(checkboxWithTitle: L("상세 보기 열 너비 자동 맞춤", "Automatically Fit Detail Columns"), target: nil, action: nil)
     private let calculateFolderSizes = NSButton(checkboxWithTitle: L("폴더 크기 계산", "Calculate Folder Sizes"), target: nil, action: nil)
+    private let showThumbnails = NSButton(checkboxWithTitle: L("썸네일 표시", "Show Thumbnails"), target: nil, action: nil)
     private let openFoldersInNewTab = NSButton(checkboxWithTitle: L("폴더를 새 탭에서 열기", "Open Folders in New Tabs"), target: nil, action: nil)
     private let scrollToPreviousFolderOnUp = NSButton(checkboxWithTitle: L("상위 이동 시 이전 폴더 표시", "Reveal Previous Folder When Going Up"), target: nil, action: nil)
     private let showFileExtensionWarning = NSButton(checkboxWithTitle: L("파일 확장자 변경 경고", "Warn When Changing File Extensions"), target: nil, action: nil)
@@ -56,6 +57,7 @@ final class GeneralSettingsWindow: NSWindowController {
         defaultSortDirectoryPlacement.target = self; defaultSortDirectoryPlacement.action = #selector(changeDefaultSortDirectoryPlacement(_:)); stack.addArrangedSubview(defaultSortDirectoryPlacement)
         configure(autoSizeColumnsInDetailsLayout, action: #selector(changeAutoSizeColumnsInDetailsLayout(_:))); stack.addArrangedSubview(autoSizeColumnsInDetailsLayout)
         configure(calculateFolderSizes, action: #selector(changeCalculateFolderSizes(_:))); stack.addArrangedSubview(calculateFolderSizes)
+        configure(showThumbnails, action: #selector(changeShowThumbnails(_:))); stack.addArrangedSubview(showThumbnails)
         configure(openFoldersInNewTab, action: #selector(changeOpenFoldersInNewTab(_:))); stack.addArrangedSubview(openFoldersInNewTab)
         configure(scrollToPreviousFolderOnUp, action: #selector(changeScrollToPreviousFolderOnUp(_:))); stack.addArrangedSubview(scrollToPreviousFolderOnUp)
         configure(showFileExtensionWarning, action: #selector(changeShowFileExtensionWarning(_:))); stack.addArrangedSubview(showFileExtensionWarning)
@@ -88,6 +90,8 @@ final class GeneralSettingsWindow: NSWindowController {
         sizeUnit.selectItem(at: preferences.sizeUnit == .binary ? 0 : 1)
         defaultSortDirectoryPlacement.selectItem(at: SortDirectoryPlacement.allCases.firstIndex(of: preferences.defaultSortDirectoryPlacement) ?? 0)
         autoSizeColumnsInDetailsLayout.state = preferences.autoSizeColumnsInDetailsLayout ? .on : .off
+        calculateFolderSizes.state = preferences.calculateFolderSizes ? .on : .off
+        showThumbnails.state = preferences.showThumbnails ? .on : .off
         calculateFolderSizes.state = preferences.calculateFolderSizes ? .on : .off
         openFoldersInNewTab.state = preferences.openFoldersInNewTab ? .on : .off
         scrollToPreviousFolderOnUp.state = preferences.scrollToPreviousFolderOnUp ? .on : .off
@@ -122,6 +126,7 @@ final class GeneralSettingsWindow: NSWindowController {
     }
     @objc private func changeAutoSizeColumnsInDetailsLayout(_ sender: Any?) { preferences.setAutoSizeColumnsInDetailsLayout(autoSizeColumnsInDetailsLayout.state == .on) }
     @objc private func changeCalculateFolderSizes(_ sender: Any?) { preferences.setCalculateFolderSizes(calculateFolderSizes.state == .on) }
+    @objc private func changeShowThumbnails(_ sender: Any?) { preferences.setShowThumbnails(showThumbnails.state == .on) }
     @objc private func changeOpenFoldersInNewTab(_ sender: Any?) { preferences.setOpenFoldersInNewTab(openFoldersInNewTab.state == .on) }
     @objc private func changeScrollToPreviousFolderOnUp(_ sender: Any?) { preferences.setScrollToPreviousFolderOnUp(scrollToPreviousFolderOnUp.state == .on) }
     @objc private func changeShowFileExtensionWarning(_ sender: Any?) { preferences.setShowFileExtensionWarning(showFileExtensionWarning.state == .on) }
@@ -148,6 +153,7 @@ final class GeneralSettingsWindow: NSWindowController {
     var qaDefaultSortDirectoryPlacement: SortDirectoryPlacement { preferences.defaultSortDirectoryPlacement }
     var qaAutoSizeColumnsInDetailsLayout: Bool { preferences.autoSizeColumnsInDetailsLayout }
     var qaCalculateFolderSizes: Bool { preferences.calculateFolderSizes }
+    var qaShowThumbnails: Bool { preferences.showThumbnails }
     var qaOpenFoldersInNewTab: Bool { preferences.openFoldersInNewTab }
     var qaScrollToPreviousFolderOnUp: Bool { preferences.scrollToPreviousFolderOnUp }
     var qaShowFileExtensionWarning: Bool { preferences.showFileExtensionWarning }
@@ -162,6 +168,7 @@ final class GeneralSettingsWindow: NSWindowController {
     }
     func qaToggleAutoSizeColumnsInDetailsLayout() { autoSizeColumnsInDetailsLayout.performClick(nil) }
     func qaToggleCalculateFolderSizes() { calculateFolderSizes.performClick(nil) }
+    func qaToggleShowThumbnails() { showThumbnails.performClick(nil) }
     func qaToggleOpenFoldersInNewTab() { openFoldersInNewTab.performClick(nil) }
     func qaToggleScrollToPreviousFolderOnUp() { scrollToPreviousFolderOnUp.performClick(nil) }
     func qaToggleShowFileExtensionWarning() { showFileExtensionWarning.performClick(nil) }

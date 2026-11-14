@@ -772,11 +772,12 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         table.selectRowIndexes(selected, byExtendingSelection: false)
         gridView.apply(viewSize: effectiveViewSize)
         listView.apply(viewSize: effectiveViewSize)
+        gridView.showsThumbnails = preferences.showThumbnails; listView.showsThumbnails = preferences.showThumbnails
         gridView.update(items: model.items, selection: model.history.current.selection,
                         scrollOffset: model.history.current.scrollOffset, grouping: model.grouping)
         listView.update(items: model.items, selection: model.history.current.selection,
                         scrollOffset: model.history.current.scrollOffset, grouping: model.grouping)
-        columnView.showHidden = model.showHidden; columnView.sortOrder = model.sortOrder
+        columnView.showHidden = model.showHidden; columnView.sortOrder = model.sortOrder; columnView.showsThumbnails = preferences.showThumbnails
         columnView.update(baseURL: model.location, items: model.items, selection: model.history.current.selection)
         if !model.isLoading {
             scroll.contentView.scroll(to: NSPoint(x: 0, y: model.history.current.scrollOffset))
@@ -843,8 +844,8 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         case "name":
             cell.textField?.stringValue = item.displayName(showExtensions: preferences.showExtensions)
             cell.toolTip = item.name
-            let cacheKey = item.isDirectory ? (item.isPackage ? item.url.path : "folder") : item.url.pathExtension
-            if iconCache[cacheKey] == nil { iconCache[cacheKey] = NSWorkspace.shared.icon(forFile: item.url.path) }
+            let cacheKey = preferences.showThumbnails ? "preview:\(item.url.path)" : "type:\(item.isDirectory ? (item.isPackage ? "bundle" : "folder") : item.url.pathExtension.lowercased())"
+            if iconCache[cacheKey] == nil { iconCache[cacheKey] = fileIcon(for: item, showsThumbnails: preferences.showThumbnails) }
             cell.imageView?.image = iconCache[cacheKey]
         case "git": cell.textField?.stringValue = gitStatus(for: item)
         case "tag": cell.textField?.stringValue = item.tags.isEmpty ? "—" : item.tags.joined(separator: ", ")
@@ -2572,6 +2573,10 @@ extension BrowserWindow {
     }
     var qaDetailGroupTitles: [String] { detailRows.compactMap { if case let .header(title) = $0 { return title }; return nil } }
     var qaVisibleContextActions: Set<String> { Set((table.menu?.items ?? []).filter { !$0.isHidden }.compactMap { $0.action.map(NSStringFromSelector) }) }
+    var qaThumbnailPolicyApplied: Bool {
+        gridView.showsThumbnails == preferences.showThumbnails && listView.showsThumbnails == preferences.showThumbnails
+            && columnView.showsThumbnails == preferences.showThumbnails && (secondaryPane?.qaThumbnailPolicyApplied ?? true)
+    }
 #endif
     static func runUIVerification(output: String) async {
         let fm = FileManager.default
@@ -2743,12 +2748,13 @@ extension BrowserWindow {
                 let defaultSortBefore = delegate.qaGeneralDefaultSortDirectoryPlacement
                 let autoSizeColumnsBefore = delegate.qaGeneralAutoSizeColumnsInDetailsLayout
                 let calculateFolderSizesBefore = delegate.qaGeneralCalculateFolderSizes
+                let showThumbnailsBefore = delegate.qaGeneralShowThumbnails
                 let startupTabBefore = delegate.qaGeneralOpenNewTabOnStartup
                 let newTabPoliciesBefore = delegate.qaGeneralNewTabPolicies
                 let revealBefore = delegate.qaGeneralScrollToPreviousFolderOnUp
                 let extensionWarningBefore = delegate.qaGeneralShowFileExtensionWarning
                 let contextMenuBefore = delegate.qaGeneralContextMenuStates
-                delegate.qaToggleGeneralWidgets(); delegate.qaToggleGeneralOpenNewTabOnStartup(); delegate.qaToggleGeneralNewTabPolicies(); delegate.qaToggleGeneralSizeUnit(); delegate.qaCycleGeneralDefaultSortDirectoryPlacement(); delegate.qaToggleGeneralAutoSizeColumnsInDetailsLayout(); delegate.qaToggleGeneralCalculateFolderSizes(); delegate.qaToggleGeneralOpenFoldersInNewTab(); delegate.qaToggleGeneralScrollToPreviousFolderOnUp(); delegate.qaToggleGeneralShowFileExtensionWarning(); delegate.qaToggleGeneralContextMenuItems(); let widgetsAfter = delegate.qaGeneralWidgetStates
+                delegate.qaToggleGeneralWidgets(); delegate.qaToggleGeneralOpenNewTabOnStartup(); delegate.qaToggleGeneralNewTabPolicies(); delegate.qaToggleGeneralSizeUnit(); delegate.qaCycleGeneralDefaultSortDirectoryPlacement(); delegate.qaToggleGeneralAutoSizeColumnsInDetailsLayout(); delegate.qaToggleGeneralCalculateFolderSizes(); delegate.qaToggleGeneralShowThumbnails(); delegate.qaToggleGeneralOpenFoldersInNewTab(); delegate.qaToggleGeneralScrollToPreviousFolderOnUp(); delegate.qaToggleGeneralShowFileExtensionWarning(); delegate.qaToggleGeneralContextMenuItems(); let widgetsAfter = delegate.qaGeneralWidgetStates
                 let contextMenuAfter = delegate.qaGeneralContextMenuStates
                 let contextMenusToggled = contextMenuBefore?.count == contextMenuAfter?.count
                     && zip(contextMenuBefore ?? [], contextMenuAfter ?? []).allSatisfy { $0 != $1 }
@@ -2758,6 +2764,7 @@ extension BrowserWindow {
                     && delegate.qaGeneralDefaultSortDirectoryPlacement != defaultSortBefore
                     && delegate.qaGeneralAutoSizeColumnsInDetailsLayout != autoSizeColumnsBefore
                     && delegate.qaGeneralCalculateFolderSizes != calculateFolderSizesBefore
+                    && delegate.qaGeneralShowThumbnails != showThumbnailsBefore
                     && delegate.qaGeneralOpenNewTabOnStartup != startupTabBefore
                     && delegate.qaGeneralNewTabPolicies?.0 != newTabPoliciesBefore?.0
                     && delegate.qaGeneralNewTabPolicies?.1 != newTabPoliciesBefore?.1
@@ -2788,11 +2795,15 @@ extension BrowserWindow {
                 while controller.model.items.first(where: { $0.name == "000-grid-folder" })?.size != 21 && folderSizeWait.duration(to: .now) < .seconds(5) { try await Task.sleep(for: .milliseconds(20)) }
                 checks["folderSizeCalculation"] = controller.model.items.first(where: { $0.name == "000-grid-folder" })?.size == 21
                 preferences.setCalculateFolderSizes(false)
+                preferences.setShowThumbnails(false)
+                checks["thumbnailPolicyPrimary"] = controller.qaThumbnailPolicyApplied
                 controller.clearSelection(nil)
                 let expectedPaneURL = controller.contextFolderURL
                 controller.openInNewPane(nil); try await Task.sleep(for: .milliseconds(50))
                 let openedPaneState = controller.workspaceSnapshot()
                 checks["openCurrentFolderInNewPane"] = expectedPaneURL != nil && openedPaneState.panes.count == 2 && openedPaneState.panes[1].tab.location == expectedPaneURL
+                checks["thumbnailPolicyBothPanes"] = controller.qaThumbnailPolicyApplied
+                preferences.setShowThumbnails(true)
                 controller.arrangePanesHorizontally(nil); checks["arrangePanesHorizontally"] = controller.workspaceSnapshot().axis == .horizontal
                 controller.arrangePanesVertically(nil); checks["arrangePanesVertically"] = controller.workspaceSnapshot().axis == .vertical
                 let activePaneBeforeFocus = controller.workspaceSnapshot().activePaneID
@@ -2805,7 +2816,7 @@ extension BrowserWindow {
                 controller.toggleDualPane(nil); checks["toggleDualPaneOpens"] = controller.workspaceSnapshot().isSplit
                 controller.closeSecondaryPane(nil)
                 try capture("general-settings", view: delegate.qaGeneralSettingsContentView)
-                delegate.qaToggleGeneralWidgets(); delegate.qaToggleGeneralOpenNewTabOnStartup(); delegate.qaToggleGeneralNewTabPolicies(); delegate.qaToggleGeneralSizeUnit(); delegate.qaCycleGeneralDefaultSortDirectoryPlacement(); delegate.qaToggleGeneralAutoSizeColumnsInDetailsLayout(); delegate.qaToggleGeneralCalculateFolderSizes(); delegate.qaToggleGeneralOpenFoldersInNewTab(); delegate.qaToggleGeneralScrollToPreviousFolderOnUp(); delegate.qaToggleGeneralShowFileExtensionWarning(); delegate.qaToggleGeneralContextMenuItems(); delegate.qaGeneralSettingsContentView?.window?.close(); window.makeKeyAndOrderFront(nil)
+                delegate.qaToggleGeneralWidgets(); delegate.qaToggleGeneralOpenNewTabOnStartup(); delegate.qaToggleGeneralNewTabPolicies(); delegate.qaToggleGeneralSizeUnit(); delegate.qaCycleGeneralDefaultSortDirectoryPlacement(); delegate.qaToggleGeneralAutoSizeColumnsInDetailsLayout(); delegate.qaToggleGeneralCalculateFolderSizes(); delegate.qaToggleGeneralShowThumbnails(); delegate.qaToggleGeneralOpenFoldersInNewTab(); delegate.qaToggleGeneralScrollToPreviousFolderOnUp(); delegate.qaToggleGeneralShowFileExtensionWarning(); delegate.qaToggleGeneralContextMenuItems(); delegate.qaGeneralSettingsContentView?.window?.close(); window.makeKeyAndOrderFront(nil)
                 delegate.showArchiveCapabilities(nil); try await Task.sleep(for: .milliseconds(50))
                 checks["archiveCapabilitiesWindow"] = delegate.qaArchiveCapabilitiesVisible
                 try capture("archive-capabilities", view: delegate.qaArchiveCapabilitiesContentView)
