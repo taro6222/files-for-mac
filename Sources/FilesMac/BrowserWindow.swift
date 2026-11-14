@@ -4630,6 +4630,14 @@ extension BrowserWindow {
                     checks["moveResultKeyboardClose"] = resultWindow.performKeyEquivalent(with: close) && !resultWindow.isVisible
                 } else { checks["moveResultKeyboardClose"] = false }
             } else { checks["moveConflictKeyboardShortcut"] = false }
+            let iconCache = FileIconCache()
+            var resolutions = 0
+            let lookup: (String) -> UTType? = { _ in resolutions += 1; return .plainText }
+            let icon = iconCache.genericIcon(forExtension: "txt", resolve: lookup)
+            let reused = iconCache.genericIcon(forExtension: "txt", resolve: lookup) === icon
+            iconCache.removeAll()
+            _ = iconCache.genericIcon(forExtension: "txt", resolve: lookup)
+            checks["genericIconExtensionCache"] = reused && resolutions == 2
             let result: [String: Any] = ["checks": checks, "diagnostics": diagnostics,
                 "language": Locale.preferredLanguages.first ?? "unknown", "theme": dark ? "dark" : "light",
                 "os": ProcessInfo.processInfo.operatingSystemVersionString]

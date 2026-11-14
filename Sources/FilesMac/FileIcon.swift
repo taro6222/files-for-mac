@@ -5,10 +5,8 @@ import UniformTypeIdentifiers
 @MainActor
 func fileIcon(for item: FileItem, showsThumbnails: Bool) -> NSImage {
     if showsThumbnails { return FileIconCache.shared.icon(for: item) }
-    let type: UTType
-    if item.isDirectory { type = item.isPackage ? .bundle : .folder }
-    else { type = UTType(filenameExtension: item.url.pathExtension) ?? .data }
-    return FileIconCache.shared.genericIcon(for: type)
+    if item.isDirectory { return FileIconCache.shared.genericIcon(for: item.isPackage ? .bundle : .folder) }
+    return FileIconCache.shared.genericIcon(forExtension: item.url.pathExtension)
 }
 
 // AppKit supplies the file-specific image. The app retains it only in memory.
@@ -17,6 +15,11 @@ final class FileIconCache {
     static let shared = FileIconCache()
 
     private let cache = NSCache<NSString, NSImage>()
+    private let extensionIcons: NSCache<NSString, NSImage> = {
+        let cache = NSCache<NSString, NSImage>()
+        cache.countLimit = 128
+        return cache
+    }()
     private let genericIcons: NSCache<NSString, NSImage> = {
         let cache = NSCache<NSString, NSImage>()
         cache.countLimit = 128
@@ -41,8 +44,19 @@ final class FileIconCache {
         return icon
     }
 
+    func genericIcon(forExtension fileExtension: String,
+                     resolve: (String) -> UTType? = { UTType(filenameExtension: $0) }) -> NSImage {
+        let key = fileExtension as NSString
+        if let cached = extensionIcons.object(forKey: key) { return cached }
+        let icon = genericIcon(for: resolve(fileExtension) ?? .data)
+        extensionIcons.setObject(icon, forKey: key)
+        return icon
+    }
+
     func removeAll() {
         cache.removeAllObjects()
+        extensionIcons.removeAllObjects()
+        genericIcons.removeAllObjects()
     }
 
     func icon(for item: FileItem, load: (String) -> NSImage = NSWorkspace.shared.icon(forFile:)) -> NSImage {

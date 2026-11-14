@@ -4,6 +4,8 @@
 
 ## 이번 구현 단위
 
+일반 파일 아이콘에서 확장자 타입 조회를 재사용한다. [M7 일반 아이콘 캐시](verification/m7/INCREMENT_29.md)
+
 60Hz 화면 갱신에 맞춘 스크롤에서도 창 갱신 간격 p95는 약 33ms였다. [M7 스크롤 입력 비교](verification/m7/INCREMENT_28.md)
 
 60Hz 창 캡처에서 10,000항목 스크롤 갱신 간격 p95 33.41ms를 기록했다. [M7 창 프레임 측정](verification/m7/INCREMENT_27.md)
