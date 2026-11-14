@@ -890,6 +890,7 @@ func moveUndoPreservesResourceForkFromLegacyJournal(legacy: Bool) async throws {
         var json = try #require(JSONSerialization.jsonObject(with: Data(contentsOf: recordURL)) as? [String: Any])
         var items = try #require(json["items"] as? [[String: Any]])
         items[0].removeValue(forKey: "snapshotIncludesResourceForks")
+        items[0].removeValue(forKey: "targetMetadata")
         var snapshot = try #require(items[0]["targetSnapshot"] as? [String: String])
         let digest = try #require(snapshot["/file"])
         let suffix = try #require(digest.range(of: ":resource:"))
@@ -918,6 +919,35 @@ func moveUndoPreservesResourceForkFromLegacyJournal(legacy: Bool) async throws {
         #expect(!fm.fileExists(atPath: source.path))
         #expect(getxattr(targetFile.path, attribute, nil, 0, 0, 0) == resource.count)
     }
+}
+
+@Test(arguments: [false, true])
+func replacementMoveUndoPreservesMetadataOnlyChanges(changeBackup: Bool) async throws {
+    let root = try entryFixture()
+    let fm = FileManager.default
+    defer { try? fm.removeItem(at: root) }
+    let journal = root.appendingPathComponent("journal")
+    let destination = root.appendingPathComponent("dest", isDirectory: true)
+    let source = root.appendingPathComponent("file")
+    let target = destination.appendingPathComponent("file")
+    try fm.createDirectory(at: destination, withIntermediateDirectories: false)
+    try Data("new".utf8).write(to: source)
+    try Data("old".utf8).write(to: target)
+    let move = try await EntryOperations.move([source], to: destination, conflictPolicy: .replace, journalDirectory: journal)
+    try #require(move.state == "completed")
+    let record = try #require(EntryOperations.latestUndoMove(journalDirectory: journal))
+    let backup = try #require(record.items.first?.backup)
+    let changed = changeBackup ? backup : target
+    let attribute = "com.filesmac.move-undo-test"
+    let value: UInt8 = 42
+    try #require(withUnsafePointer(to: value) { setxattr(changed.path, attribute, $0, 1, 0, 0) } == 0)
+    let undo = await EntryOperations.undoMove(record, journalDirectory: journal)
+    #expect(undo.items.map(\.state) == ["changed"])
+    #expect(!fm.fileExists(atPath: source.path))
+    #expect(try Data(contentsOf: target) == Data("new".utf8))
+    #expect(try Data(contentsOf: backup) == Data("old".utf8))
+    #expect(getxattr(changed.path, attribute, nil, 0, 0, 0) == 1)
+    #expect(EntryOperations.latestUndoMove(journalDirectory: journal)?.operationId == record.operationId)
 }
 
 @Test func entryReplacementCancellationReportsBackupWhenDestinationIsOccupied() async throws {
