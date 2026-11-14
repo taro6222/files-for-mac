@@ -80,14 +80,20 @@ public struct MoveUndoItem: Codable, Sendable {
     public let backup: URL?
     public let backupIdentity: String?
     public let crossVolume: Bool
+    public let targetSnapshot: [String: String]?
+    public let backupSnapshot: [String: String]?
 
     public init(source: URL, target: URL, targetIdentity: String, backup: URL? = nil,
-                backupIdentity: String? = nil, crossVolume: Bool = false) {
+                backupIdentity: String? = nil, crossVolume: Bool = false,
+                targetSnapshot: [String: String]? = nil, backupSnapshot: [String: String]? = nil) {
         self.source = source; self.target = target; self.targetIdentity = targetIdentity
         self.backup = backup; self.backupIdentity = backupIdentity; self.crossVolume = crossVolume
+        self.targetSnapshot = targetSnapshot; self.backupSnapshot = backupSnapshot
     }
 
-    private enum CodingKeys: String, CodingKey { case source, target, targetIdentity, backup, backupIdentity, crossVolume }
+    private enum CodingKeys: String, CodingKey {
+        case source, target, targetIdentity, backup, backupIdentity, crossVolume, targetSnapshot, backupSnapshot
+    }
     public init(from decoder: Decoder) throws {
         let values = try decoder.container(keyedBy: CodingKeys.self)
         source = try values.decode(URL.self, forKey: .source)
@@ -96,6 +102,8 @@ public struct MoveUndoItem: Codable, Sendable {
         backup = try values.decodeIfPresent(URL.self, forKey: .backup)
         backupIdentity = try values.decodeIfPresent(String.self, forKey: .backupIdentity)
         crossVolume = try values.decodeIfPresent(Bool.self, forKey: .crossVolume) ?? false
+        targetSnapshot = try values.decodeIfPresent([String: String].self, forKey: .targetSnapshot)
+        backupSnapshot = try values.decodeIfPresent([String: String].self, forKey: .backupSnapshot)
     }
 }
 
@@ -168,11 +176,27 @@ public enum EntryOperations {
             && (try? snapshotIdentity(url, fileManager: fileManager)) == identity
     }
 
-    private static func transferForUndo(_ source: URL, to target: URL, crossVolume: Bool) throws {
+    private static func directoryUndoSnapshot(_ url: URL, cancellation: CopyCancellation) throws -> [String: String]? {
+        let attributes = try FileManager.default.attributesOfItem(atPath: url.path)
+        guard attributes[.type] as? FileAttributeType == .typeDirectory else { return nil }
+        return try CopyEngine.verifiedSnapshot(url, cancellation: cancellation)
+    }
+
+    private static func matchesUndoEntry(_ url: URL, identity: String, snapshot: [String: String]?,
+                                         fileManager: FileManager) throws -> Bool {
+        guard try snapshotIdentity(url, fileManager: fileManager) == identity else { return false }
+        guard let snapshot else { return true }
+        return try CopyEngine.verifiedSnapshot(url) == snapshot
+            && snapshotIdentity(url, fileManager: fileManager) == identity
+    }
+
+    private static func transferForUndo(_ source: URL, to target: URL, crossVolume: Bool,
+                                        expectedSnapshot: [String: String]?) throws {
         let fm = FileManager.default
         if !crossVolume { try fm.moveItem(at: source, to: target); return }
         let sourceIdentity = try snapshotIdentity(source, fileManager: fm)
         let before = try CopyEngine.verifiedSnapshot(source)
+        guard expectedSnapshot == nil || before == expectedSnapshot else { throw EntryOperationError.sourceChanged }
         let contentBefore = try CopyEngine.verifiedContentSnapshot(source)
         let stage = target.deletingLastPathComponent().appendingPathComponent(".files-undo-\(UUID().uuidString)")
         try fm.createDirectory(at: stage, withIntermediateDirectories: false)
@@ -675,6 +699,9 @@ public enum EntryOperations {
                                        state: "queued", message: nil)
             }
             var publishedIdentities = Array<String?>(repeating: nil, count: normalizedSources.count)
+            var publishedSnapshots = Array<[String: String]?>(repeating: nil, count: normalizedSources.count)
+            var backupIdentities = Array<String?>(repeating: nil, count: normalizedSources.count)
+            var backupSnapshots = Array<[String: String]?>(repeating: nil, count: normalizedSources.count)
             var backupURLs = Array<URL?>(repeating: nil, count: normalizedSources.count)
             var crossVolumeItems = Array(repeating: false, count: normalizedSources.count)
             var finalState = "completed"
@@ -775,6 +802,8 @@ public enum EntryOperations {
                                 backupURLs[index] = proposedBackup
                                 itemStates[index] = MoveItemOperationResult(source: source, target: target, state: "backingUp", message: nil)
                                 try save(state: finalState); emit("backingUp"); try cancellation.check()
+                                let backupIdentity = try snapshotIdentity(target, fileManager: fm)
+                                let backupSnapshot = crossVolume ? try directoryUndoSnapshot(target, cancellation: cancellation) : nil
                                 do {
                                     try CopyEngine.publishNoReplace(payload: target, target: proposedBackup,
                                         sourceDirectoryFD: destinationFD, sourceName: target.lastPathComponent,
@@ -782,6 +811,8 @@ public enum EntryOperations {
                                 } catch CopyPublicationError.conflict { throw EntryOperationError.conflict }
                                 backup = proposedBackup
                                 backupURLs[index] = proposedBackup
+                                backupIdentities[index] = backupIdentity
+                                backupSnapshots[index] = backupSnapshot
                             }
                             if crossVolume {
                                 let sourceIdentity = try snapshotIdentity(source, fileManager: fm)
@@ -798,11 +829,14 @@ public enum EntryOperations {
                                 try cancellation.check()
                                 itemStates[index] = MoveItemOperationResult(source: source, target: target, state: "verifying", message: nil)
                                 try save(state: finalState); emit("verifying")
-                                guard try CopyEngine.verifiedContentSnapshot(payload, cancellation: cancellation) == contentBefore,
+                                let verifiedPayload = try CopyEngine.makeSnapshot(payload, cancellation: cancellation)
+                                guard verifiedPayload.content == contentBefore,
                                       try CopyEngine.verifiedSnapshot(source, cancellation: cancellation) == before else {
                                     throw MoveFailure(text: LString.crossVolumeVerificationFailed)
                                 }
                                 let payloadIdentity = try snapshotIdentity(payload, fileManager: fm)
+                                let payloadSnapshot = verifiedPayload.content[""] == "directory"
+                                    ? verifiedPayload.withPermissions : nil
                                 try cancellation.check(); emit("committing")
                                 let stageFD = open(stage.path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
                                 guard stageFD >= 0 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
@@ -840,6 +874,7 @@ public enum EntryOperations {
                                 // Keep the verified destination if source removal was attempted.
                                 try fm.removeItem(at: source)
                                 publishedIdentities[index] = payloadIdentity
+                                publishedSnapshots[index] = payloadSnapshot
                             } else {
                                 try cancellation.check(); emit("committing")
                                 if flattenPlan != nil || redoItem != nil {
@@ -899,9 +934,11 @@ public enum EntryOperations {
                             let item = indexed.element
                             let backup = backupURLs[indexed.offset]
                             return MoveUndoItem(source: item.source, target: item.target,
-                                targetIdentity: try publishedIdentities[indexed.offset] ?? snapshotIdentity(item.target, fileManager: fm), backup: backup,
-                                backupIdentity: try backup.map { try snapshotIdentity($0, fileManager: fm) },
-                                crossVolume: crossVolumeItems[indexed.offset])
+                                targetIdentity: try publishedIdentities[indexed.offset] ?? snapshotIdentity(item.target, fileManager: fm),
+                                backup: backup, backupIdentity: backupIdentities[indexed.offset],
+                                crossVolume: crossVolumeItems[indexed.offset],
+                                targetSnapshot: publishedSnapshots[indexed.offset],
+                                backupSnapshot: backupSnapshots[indexed.offset])
                         }
                         let record = MoveUndoRecord(operationId: operationId, items: undoItems, createdAt: Date())
                         try JSONEncoder().encode(record).write(
@@ -926,14 +963,14 @@ public enum EntryOperations {
                 do {
                     if let backup = item.backup {
                         guard entryExists(backup), let expected = item.backupIdentity,
-                              try snapshotIdentity(backup, fileManager: fm) == expected else {
+                              try matchesUndoEntry(backup, identity: expected, snapshot: item.backupSnapshot, fileManager: fm) else {
                             results.append(MoveUndoItemResult(source: item.source, target: item.target, state: "changed", message: LString.undoBackupChanged)); continue
                         }
                     }
                     guard entryExists(item.target) else {
                         results.append(MoveUndoItemResult(source: item.source, target: item.target, state: "notFound", message: LString.undoTargetMissing)); continue
                     }
-                    guard try snapshotIdentity(item.target, fileManager: fm) == item.targetIdentity else {
+                    guard try matchesUndoEntry(item.target, identity: item.targetIdentity, snapshot: item.targetSnapshot, fileManager: fm) else {
                         results.append(MoveUndoItemResult(source: item.source, target: item.target, state: "changed", message: LString.undoTargetChanged)); continue
                     }
                     guard !entryExists(item.source) else {
@@ -942,15 +979,21 @@ public enum EntryOperations {
                     guard fm.fileExists(atPath: item.source.deletingLastPathComponent().path) else {
                         results.append(MoveUndoItemResult(source: item.source, target: item.target, state: "notFound", message: LString.undoSourceParentMissing)); continue
                     }
-                    let replaySnapshot = item.backup == nil ? try? CopyEngine.verifiedSnapshot(item.target) : nil
+                    let replaySnapshot = item.backup == nil ? item.targetSnapshot ?? (try? CopyEngine.verifiedSnapshot(item.target)) : nil
                     let destinationFolder = ShelfEntry(item.target.deletingLastPathComponent())
-                    try transferForUndo(item.target, to: item.source, crossVolume: item.crossVolume)
+                    try transferForUndo(item.target, to: item.source, crossVolume: item.crossVolume,
+                                        expectedSnapshot: item.targetSnapshot)
                     if let replaySnapshot, let destinationFolder,
                        let identity = try? snapshotIdentity(item.source, fileManager: fm) {
                         replay.append(.init(source: item.source, target: item.target, identity: identity,
                                             snapshot: replaySnapshot, destinationFolder: destinationFolder))
                     }
-                    if let backup = item.backup { try fm.moveItem(at: backup, to: item.target) }
+                    if let backup = item.backup, let identity = item.backupIdentity {
+                        guard try matchesUndoEntry(backup, identity: identity, snapshot: item.backupSnapshot, fileManager: fm) else {
+                            throw MoveFailure(text: LString.undoBackupChanged)
+                        }
+                        try fm.moveItem(at: backup, to: item.target)
+                    }
                     result = MoveUndoItemResult(source: item.source, target: item.target, state: "completed", message: nil)
                 } catch {
                     result = MoveUndoItemResult(source: item.source, target: item.target, state: "failed", message: error.localizedDescription)

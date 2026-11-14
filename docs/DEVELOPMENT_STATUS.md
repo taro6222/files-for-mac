@@ -4,6 +4,8 @@
 
 ## 이번 구현 단위
 
+교차 볼륨 이동 실행 취소에서 대상과 교체 백업 폴더 내부의 변경을 확인한다. [M7 폴더 실행 취소 검증](verification/m7/INCREMENT_44.md)
+
 교차 볼륨 이동에서 게시 직후 대상 파일이 교체되면 원본을 보존한다. [M7 게시 후 변경 감지](verification/m7/INCREMENT_43.md)
 
 Launch Services에서 유니버설 프리뷰를 열어 메뉴 응답을 20회 측정했다. [M7 Launch Services 시작](verification/m7/INCREMENT_42.md)

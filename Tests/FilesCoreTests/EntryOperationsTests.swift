@@ -318,6 +318,36 @@ private func entryFixture() throws -> URL {
     #expect(try String(contentsOf: destination.appendingPathComponent("move.txt"), encoding: .utf8) == "old")
 }
 
+@Test(arguments: [false, true])
+func entryCrossVolumeMoveUndoPreservesEditsInsideMovedOrBackedUpFolder(editBackup: Bool) async throws {
+    let root = try entryFixture()
+    let fm = FileManager.default
+    defer { try? fm.removeItem(at: root) }
+    let journal = root.appendingPathComponent("journal")
+    let destination = root.appendingPathComponent("dest")
+    let source = root.appendingPathComponent("folder")
+    let target = destination.appendingPathComponent("folder")
+    try fm.createDirectory(at: source, withIntermediateDirectories: true)
+    try fm.createDirectory(at: target, withIntermediateDirectories: true)
+    try Data("new".utf8).write(to: source.appendingPathComponent("child"))
+    try Data("old".utf8).write(to: target.appendingPathComponent("child"))
+
+    let move = try await EntryOperations.moveAcrossVolumeForTesting([source], to: destination,
+        conflictPolicy: .replace, journalDirectory: journal)
+    #expect(move.state == "completed")
+    let record = try #require(EntryOperations.latestUndoMove(journalDirectory: journal))
+    let backup = try #require(record.items.first?.backup)
+    let edited = (editBackup ? backup : target).appendingPathComponent("child")
+    try Data("edited".utf8).write(to: edited)
+
+    let undo = await EntryOperations.undoMove(record, journalDirectory: journal)
+    #expect(undo.items.map(\.state) == ["changed"])
+    #expect(!fm.fileExists(atPath: source.path))
+    #expect(try String(contentsOf: edited, encoding: .utf8) == "edited")
+    #expect(try String(contentsOf: (editBackup ? target : backup).appendingPathComponent("child"), encoding: .utf8)
+        == (editBackup ? "new" : "old"))
+}
+
 @Test func entryMoveUndoPreservesChangedReplacementBackup() async throws {
     let root = try entryFixture(); defer { try? FileManager.default.removeItem(at: root) }
     let journal = root.appendingPathComponent("journal")

@@ -387,7 +387,7 @@ public enum CopyEngine {
         try makeSnapshot(root, cancellation: cancellation).content
     }
 
-    private static func makeSnapshot(_ root: URL, cancellation: CopyCancellation) throws
+    static func makeSnapshot(_ root: URL, cancellation: CopyCancellation) throws
         -> (withPermissions: [String: String], content: [String: String]) {
         let fm = FileManager()
         var withPermissions: [String: String] = [:]
