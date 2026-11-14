@@ -465,6 +465,8 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         }
         let menu = NSMenu()
         let folder = menu.addItem(withTitle: L("새 폴더…", "New Folder…"), action: #selector(createFolder(_:)), keyEquivalent: ""); folder.target = self
+        let newItem = menu.addItem(withTitle: L("새 항목…", "New Item…"), action: #selector(addItem(_:)), keyEquivalent: "")
+        newItem.target = self
         let folderFromSelection = menu.addItem(withTitle: L("선택 항목으로 새 폴더…", "New Folder with Selection…"), action: #selector(createFolderFromSelection(_:)), keyEquivalent: ""); folderFromSelection.target = self
         createFolderWithSelectionMenuItem = folderFromSelection
         let rename = menu.addItem(withTitle: L("이름 변경…", "Rename…"), action: #selector(renameSelection(_:)), keyEquivalent: ""); rename.target = self
@@ -1562,6 +1564,52 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
             }
         }
     }
+    private enum NewItemKind: CaseIterable {
+        case folder, file, symbolicLink
+
+        var title: String {
+            switch self {
+            case .folder: L("폴더", "Folder")
+            case .file: L("빈 파일", "Empty File")
+            case .symbolicLink: L("심볼릭 링크", "Symbolic Link")
+            }
+        }
+    }
+
+    private var canAddItem: Bool {
+        activeModel.location != nil && !activeModel.isLoading && !activeModel.wasCancelled
+            && activeModel.failure == nil && !fileOperationIsRunning && window?.attachedSheet == nil
+    }
+
+    @objc func addItem(_ sender: Any?) {
+        guard canAddItem, let parent = activeModel.location, let window else { return }
+        let origin = activeModel
+        let alert = NSAlert()
+        alert.messageText = L("새 항목", "New Item")
+        alert.informativeText = parent.path
+        let choices = NSPopUpButton(frame: NSRect(x: 0, y: 0, width: 280, height: 26))
+        choices.addItems(withTitles: NewItemKind.allCases.map(\.title))
+        choices.setAccessibilityLabel(L("새 항목 유형", "New Item Type"))
+        alert.accessoryView = choices
+        alert.addButton(withTitle: L("계속", "Continue"))
+        alert.addButton(withTitle: L("취소", "Cancel"))
+        alert.window.initialFirstResponder = choices
+        alert.beginSheetModal(for: window) { [weak self, weak window] response in
+            guard response == .alertFirstButtonReturn,
+                  NewItemKind.allCases.indices.contains(choices.indexOfSelectedItem) else { return }
+            let kind = NewItemKind.allCases[choices.indexOfSelectedItem]
+            Task { @MainActor in
+                guard let self, let window, window.isVisible, self.canAddItem,
+                      self.activeModel === origin, origin.location == parent else { return }
+                switch kind {
+                case .folder: self.createFolder(nil)
+                case .file: self.createFile(nil)
+                case .symbolicLink: self.createSymbolicLinkFromDialog(nil)
+                }
+            }
+        }
+    }
+
     @objc func createFolder(_ sender: Any?) { promptForEntryName(source: nil) }
     @objc func createFile(_ sender: Any?) {
         guard let parent = activeModel.location, let window else { return }
@@ -2828,6 +2876,7 @@ extension BrowserWindow {
         case #selector(flattenFolder(_:)): return flattenCandidate != nil
         case #selector(createFolder(_:)): return activeModel.location != nil && !activeModel.isLoading && !Self.entryOperationRunning && !CopyWindow.isRunning
         case #selector(createFile(_:)): return activeModel.location != nil && !activeModel.isLoading && !Self.entryOperationRunning
+        case #selector(addItem(_:)): return canAddItem
         case #selector(createFolderFromSelection(_:)): return activeModel.location != nil && !activeModel.isLoading && !activeSelectedItems.isEmpty && !Self.entryOperationRunning && !MoveWindow.isRunning
         case #selector(extractArchivesHere(_:)), #selector(extractArchivesSmart(_:)), #selector(extractArchivesToChildFolders(_:)): return activeModel.location != nil && !activeModel.isLoading && !selectedArchiveURLs.isEmpty && !ArchiveExtractionWindow.isRunning
         case #selector(setAsDesktopWallpaper(_:)), #selector(setAsAppBackground(_:)): return activeSelectedItems.count == 1 && !activeSelectedItems[0].isBrowsable && NSImage(contentsOf: activeSelectedItems[0].url) != nil
@@ -3711,6 +3760,36 @@ extension BrowserWindow {
                 #selector(sortMixed(_:))].allSatisfy { action in paletteEntries.contains { $0.item.action == action } }
             controller.sortByName(nil); controller.sortFoldersFirst(nil)
             try capture("files-top")
+            let newItemCommand = paletteEntries.first { $0.item.action == #selector(addItem(_:)) }
+            if let newItemCommand, controller.validateMenuItem(newItemCommand.item) {
+                NSApp.sendAction(#selector(addItem(_:)), to: controller, from: newItemCommand.item)
+            }
+            func descendant<T: NSView>(of view: NSView?, matching type: T.Type) -> T? {
+                guard let view else { return nil }
+                if let match = view as? T { return match }
+                return view.subviews.lazy.compactMap { descendant(of: $0, matching: type) }.first
+            }
+            if let chooser = window.attachedSheet,
+               let types = descendant(of: chooser.contentView, matching: NSPopUpButton.self) {
+                let matches = types.itemTitles == NewItemKind.allCases.map(\.title)
+                types.selectItem(at: 1)
+                window.endSheet(chooser, returnCode: .alertFirstButtonReturn)
+                let newItemWait = ContinuousClock.now
+                while (window.attachedSheet == nil || window.attachedSheet === chooser) && elapsed(newItemWait) < 3 {
+                    try await Task.sleep(for: .milliseconds(20))
+                }
+                let fileSheet = window.attachedSheet
+                let defaultName = L("새 문서.txt", "New Document.txt")
+                func containsName(_ view: NSView) -> Bool {
+                    (view as? NSTextField)?.stringValue == defaultName || view.subviews.contains(where: containsName)
+                }
+                checks["newItemChooserRoutesToFile"] = matches && fileSheet !== chooser
+                    && fileSheet?.contentView.map(containsName) == true
+                if let fileSheet { window.endSheet(fileSheet, returnCode: .alertSecondButtonReturn) }
+            } else {
+                checks["newItemChooserRoutesToFile"] = false
+                if let chooser = window.attachedSheet { window.endSheet(chooser, returnCode: .alertSecondButtonReturn) }
+            }
             if let folderRow = controller.detailRows.indices.first(where: {
                 detailItem(at: $0, in: controller.detailRows)?.url.path == gridFolder.path
             }) {
