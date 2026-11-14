@@ -4,6 +4,8 @@
 
 ## 이번 구현 단위
 
+Windows 원본 탐색 화면의 XAML과 macOS 캡처를 대조하고 상태 표시줄의 개발 단계 문구를 제거했다. [탐색 화면 대조](reference/UI_BASELINE.md)
+
 폴더 감시 복구와 최근 파일 작업 변경을 포함한 0.1.0 유니버설 프리뷰를 다시 빌드했다. [개발 프리뷰 확인](verification/m7/PREVIEW_0.1.0.md)
 
 삭제 후 같은 경로에 다시 생긴 폴더에서 읽기와 자동 갱신을 복구한다. [M7 폴더 감시 복구](verification/m7/INCREMENT_34.md)

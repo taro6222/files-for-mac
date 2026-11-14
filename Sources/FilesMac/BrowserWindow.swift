@@ -375,9 +375,6 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         bottom.edgeInsets = NSEdgeInsets(top: 7, left: 18, bottom: 7, right: 18)
         status.font = .systemFont(ofSize: 11); status.textColor = .secondaryLabelColor
         bottom.addArrangedSubview(status); bottom.addArrangedSubview(NSView())
-        let phase = NSTextField(labelWithString: L("M3 · 보기 및 사용자 지정", "M3 · Views and customization"))
-        phase.font = .systemFont(ofSize: 11); phase.textColor = .tertiaryLabelColor
-        bottom.addArrangedSubview(phase)
         shelf.onDrop = { [weak self] urls in self?.preferences.addToShelf(urls) }
         shelf.onOperation = { [weak self] operation, entries in self?.performShelfOperation(operation, entries: entries) }
         main.addArrangedSubview(shelf)
