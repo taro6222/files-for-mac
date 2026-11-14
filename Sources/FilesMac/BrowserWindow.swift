@@ -147,6 +147,7 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
     private enum WatcherStatus { case idle, connecting, active, unavailable }
     private var watcherStatus: WatcherStatus = .idle
     private let makeWatcher: @Sendable (URL) -> DirectoryWatcher?
+    private let loadMountedVolumes: @Sendable () -> [MountedVolume]
     private var watcherTask: Task<Void, Never>?
     private var watchedURL: URL?
     private var pendingRefresh = false
@@ -178,6 +179,7 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
          loader: any DirectoryLoading = LocalFileSystem(),
          cloudProvider: CloudLocationProvider = CloudLocationProvider(),
          makeWatcher: @escaping @Sendable (URL) -> DirectoryWatcher? = { DirectoryWatcher(url: $0) },
+         loadMountedVolumes: @escaping @Sendable () -> [MountedVolume] = { MountedVolumeProvider().mountedVolumes() },
          openSystemURL: @escaping (URL) -> Bool = { NSWorkspace.shared.open($0) },
          undoJournalDirectory: URL? = nil,
          filePasteboard: NSPasteboard = .general) {
@@ -186,6 +188,7 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         FileIconCache.shared.configure(enabled: preferences.enableThumbnailCache, limitMiB: preferences.thumbnailCacheLimitMiB)
         self.cloudProvider = cloudProvider
         self.makeWatcher = makeWatcher
+        self.loadMountedVolumes = loadMountedVolumes
         self.openSystemURL = openSystemURL
         self.undoJournalDirectory = undoJournalDirectory ?? Self.operationJournalDirectory
         self.filePasteboard = filePasteboard
@@ -3405,8 +3408,8 @@ extension BrowserWindow {
     }
     private func refreshVolumes() {
         volumeTask?.cancel()
-        volumeTask = Task { [weak self] in
-            let result = await Task.detached(priority: .utility) { MountedVolumeProvider().mountedVolumes() }.value
+        volumeTask = Task { [weak self, loadMountedVolumes] in
+            let result = await Task.detached(priority: .utility, operation: loadMountedVolumes).value
             guard let self, !Task.isCancelled else { return }
             self.volumes = result; self.buildSidebar()
             self.invalidateHome()
@@ -5439,6 +5442,7 @@ extension BrowserWindow {
             let pasteboard = NSPasteboard.withUniqueName()
             defer { pasteboard.releaseGlobally() }
             let controller = BrowserWindow(preferences: preferences, restoresFrame: false,
+                                           loadMountedVolumes: { [] },
                                            undoJournalDirectory: journals, filePasteboard: pasteboard)
             guard let window = controller.window, let content = window.contentView else { throw CocoaError(.coderInvalidValue) }
             window.appearance = NSAppearance(named: dark ? .darkAqua : .aqua)
@@ -5457,6 +5461,7 @@ extension BrowserWindow {
                 guard let png = bitmap.representation(using: .png, properties: [:]) else { throw CocoaError(.fileWriteUnknown) }
                 try png.write(to: destination.appendingPathComponent(name + ".png"))
             }
+            fputs("File operation QA: copy and folder merge\n", stderr)
             controller.navigate(target); try await settle()
             let report = await CopyMergeBatch.run(
                 sources: [source.appendingPathComponent("new.txt"), mergeSource, source.appendingPathComponent("conflict.txt")],
@@ -5466,6 +5471,7 @@ extension BrowserWindow {
             checks["listReflectsCopy"] = controller.model.items.contains { $0.name == "new.txt" }
             checks["mergePreservesConflict"] = (try String(contentsOf: target.appendingPathComponent("conflict.txt"), encoding: .utf8)) == "target"
             checks["mergeAddsNested"] = fm.fileExists(atPath: mergeTarget.appendingPathComponent("nested.txt").path)
+            fputs("File operation QA: split view and navigation\n", stderr)
             checks["splitWorkspace"] = { controller.splitVertically(nil); return controller.workspaceSnapshot().isSplit }()
             guard let secondary = controller.secondaryPane else { throw CocoaError(.validationMissingMandatoryProperty) }
             let secondaryStart = ContinuousClock.now
@@ -5564,6 +5570,7 @@ extension BrowserWindow {
             let undoMenu = NSMenuItem(title: "", action: #selector(undoLastCopy(_:)), keyEquivalent: "")
             checks["undoMenuAction"] = undoMenu.action == #selector(undoLastCopy(_:))
             checks["undoMenuEnabled"] = controller.canUndoCopy(journalDirectory: journals)
+            fputs("File operation QA: undo and redo\n", stderr)
             try capture("merged-split")
             let unifiedUndo = NSMenuItem(title: "", action: #selector(undoLastFileTransfer(_:)), keyEquivalent: "z")
             checks["unifiedUndoRoutesToCopy"] = controller.validateMenuItem(unifiedUndo)
@@ -5629,6 +5636,7 @@ extension BrowserWindow {
                 checks["templateNameAndContents"] = false
                 if let sheet = window.attachedSheet { window.endSheet(sheet, returnCode: .alertSecondButtonReturn) }
             }
+            fputs("File operation QA: file conflicts and retry\n", stderr)
             let existing = target.appendingPathComponent("conflict.txt")
             let copySource = source.appendingPathComponent("conflict.txt")
             func keyboardEvent(_ key: String, code: UInt16, modifiers: NSEvent.ModifierFlags = []) -> NSEvent? {
@@ -5815,6 +5823,7 @@ extension BrowserWindow {
                 && (try? Data(contentsOf: target.appendingPathComponent(blockedMove.lastPathComponent))) == movePayload
                 && (try? Data(contentsOf: target.appendingPathComponent(ordinaryMove.lastPathComponent))) == movePayload
             NSApp.windows.compactMap { $0.windowController as? MoveWindow }.forEach { $0.close() }
+            fputs("File operation QA: image and PDF preview\n", stderr)
             let imageFile = source.appendingPathComponent("preview.png")
             let pdfFile = source.appendingPathComponent("preview.pdf")
             let canvas = CGContext(data: nil, width: 16, height: 12, bitsPerComponent: 8,
@@ -5944,6 +5953,7 @@ extension BrowserWindow {
             iconCache.removeAll()
             _ = iconCache.genericIcon(forExtension: "txt", resolve: lookup)
             checks["genericIconExtensionCache"] = reused && resolutions == 2
+            fputs("File operation QA: copy cancellation\n", stderr)
             let cancelSamples = CopyWindow.qaCancellationFeedback(
                 sources: [source.appendingPathComponent("conflict.txt")], destination: target)
             checks["copyCancellationFeedback"] = cancelSamples?.count == 20
@@ -5953,6 +5963,7 @@ extension BrowserWindow {
             diagnostics["copyCancellationDuringVerification"] = try await CopyWindow.qaCancellationDuringVerification(
                 source: cancellationSource, destination: target, journals: journals)
             checks["copyCancellationDuringVerification"] = true
+            fputs("File operation QA: folder watcher recovery\n", stderr)
             let recoveryFolder = root.appendingPathComponent("recoverable", isDirectory: true)
             try fm.createDirectory(at: recoveryFolder, withIntermediateDirectories: false)
             controller.navigate(recoveryFolder)
@@ -5973,7 +5984,8 @@ extension BrowserWindow {
             try Data().write(to: recoveryFolder.appendingPathComponent("noticed.txt"))
             try await controller.waitForFolderQA { controller.model.items.contains { $0.name == "noticed.txt" } }
             checks["folderReplacementRestoresAutomaticRefresh"] = controller.recoveryActions.isHidden
-            await controller.volumeTask?.value
+            fputs("File operation QA: home navigation with fixture volumes\n", stderr)
+            controller.volumeTask?.cancel()
             let shareName = "QA Network Share"
             let network = MountedVolume(url: recoveryFolder, name: shareName, isLocal: false)
             let local = MountedVolume(url: target, name: "QA Local Disk", isLocal: true)

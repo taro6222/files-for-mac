@@ -23,6 +23,7 @@ for language in ko en; do
     mkdir "$output"
     python3 - "$binary" "$output" "$language" "$theme" <<'PY'
 import json
+from itertools import islice
 import os
 from pathlib import Path
 import subprocess
@@ -33,10 +34,25 @@ language, theme = sys.argv[3:]
 env = dict(os.environ, FILES_M2_UI_QA_OUTPUT=str(output), FILES_UI_QA_THEME=theme)
 log = output / "run.log"
 report = output / "report.json"
+stack = output / "timeout-sample.txt"
 try:
     with log.open("wb") as stream:
-        subprocess.run([binary, "-AppleLanguages", f"({language})", "-AppleLocale", language],
-                       env=env, stdout=stream, stderr=subprocess.STDOUT, check=True, timeout=120)
+        arguments = [binary, "-AppleLanguages", f"({language})", "-AppleLocale", language]
+        with subprocess.Popen(arguments, env=env, stdout=stream, stderr=subprocess.STDOUT) as app:
+            try:
+                status = app.wait(timeout=120)
+            except subprocess.TimeoutExpired:
+                try:
+                    subprocess.run(["/usr/bin/sample", str(app.pid), "1", "-file", stack],
+                                   stdout=stream, stderr=subprocess.STDOUT, timeout=5)
+                except (OSError, subprocess.TimeoutExpired) as error:
+                    print(f"Could not sample timed-out process: {error}", file=sys.stderr)
+                raise
+            finally:
+                if app.poll() is None:
+                    app.kill()
+            if status:
+                raise subprocess.CalledProcessError(status, arguments)
     result = json.loads(report.read_text())
     if not result["checks"] or not all(value is True for value in result["checks"].values()):
         raise ValueError("file operation checks failed or are missing")
@@ -45,6 +61,10 @@ except (subprocess.SubprocessError, OSError, ValueError, KeyError) as error:
         print(log.read_text(errors="replace"), file=sys.stderr)
     if report.exists():
         print(report.read_text(), file=sys.stderr)
+    if stack.exists():
+        print(f"Timeout sample: {stack}", file=sys.stderr)
+        with stack.open(errors="replace") as sample:
+            sys.stderr.writelines(islice(sample, 100))
     raise SystemExit(f"{language}/{theme}: {error}")
 print(f"{language}/{theme}: {len(result['checks'])} file operation UI checks passed")
 print(json.dumps(result, ensure_ascii=False, indent=2))
