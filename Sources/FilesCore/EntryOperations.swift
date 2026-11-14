@@ -56,6 +56,7 @@ public struct MoveItemOperationResult: Sendable {
     public let target: URL
     public let state: String
     public let message: String?
+    public fileprivate(set) var recoveryBackup: URL? = nil
 }
 
 public struct MoveOperationResult: Sendable {
@@ -684,6 +685,24 @@ public enum EntryOperations {
                         progress(MoveProgress(index: index, total: normalizedSources.count,
                                               name: source.lastPathComponent, phase: phase))
                     }
+                    func restoreBackup() -> URL? {
+                        guard let backup else { return nil }
+                        do {
+                            var opened = stat(), current = stat()
+                            guard fstat(destinationFD, &opened) == 0,
+                                  lstat(normalizedDestination.path, &current) == 0,
+                                  opened.st_dev == current.st_dev, opened.st_ino == current.st_ino else {
+                                throw EntryOperationError.sourceChanged
+                            }
+                            try CopyEngine.publishNoReplace(payload: backup, target: target,
+                                sourceDirectoryFD: destinationFD, sourceName: backup.lastPathComponent,
+                                destinationDirectoryFD: destinationFD, destinationName: target.lastPathComponent)
+                            backupURLs[index] = nil
+                            return nil
+                        } catch {
+                            return backup
+                        }
+                    }
                     if cancellation.isCancelled {
                         itemStates[index] = MoveItemOperationResult(source: source, target: target, state: "cancelled", message: nil)
                         finalState = "cancelled"
@@ -811,16 +830,16 @@ public enum EntryOperations {
                             undoEligible[index] = true
                             itemStates[index] = MoveItemOperationResult(source: source, target: target, state: "completed", message: nil)
                         } catch is CancellationError {
-                            if let backup, !entryExists(target) { try? fm.moveItem(at: backup, to: target); backupURLs[index] = nil }
-                            itemStates[index] = MoveItemOperationResult(source: source, target: target, state: "cancelled", message: nil)
+                            itemStates[index] = MoveItemOperationResult(source: source, target: target, state: "cancelled",
+                                message: nil, recoveryBackup: restoreBackup())
                             finalState = "cancelled"
                         } catch EntryOperationError.conflict {
-                            if let backup, !entryExists(target) { try? fm.moveItem(at: backup, to: target); backupURLs[index] = nil }
-                            itemStates[index] = MoveItemOperationResult(source: source, target: target, state: "conflict", message: LString.pathConflictMessage)
+                            itemStates[index] = MoveItemOperationResult(source: source, target: target, state: "conflict",
+                                message: LString.pathConflictMessage, recoveryBackup: restoreBackup())
                             finalState = "partial"
                         } catch {
-                            if let backup, !entryExists(target) { try? fm.moveItem(at: backup, to: target); backupURLs[index] = nil }
-                            itemStates[index] = MoveItemOperationResult(source: source, target: target, state: "failed", message: error.localizedDescription)
+                            itemStates[index] = MoveItemOperationResult(source: source, target: target, state: "failed",
+                                message: error.localizedDescription, recoveryBackup: restoreBackup())
                             finalState = "partial"
                         }
                     }

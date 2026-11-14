@@ -149,6 +149,9 @@ final class MoveWindow: NSWindowController, NSWindowDelegate {
             }
             return "[\(status)] " + item.source.path + " → " + item.target.path +
                 (item.message.map { "\n  " + $0 } ?? "")
+                + (item.recoveryBackup.map {
+                    "\n  " + L("자동 복원 실패 · 백업 경로: ", "Automatic restore failed · Backup path: ") + $0.path
+                } ?? "")
         }.joined(separator: "\n\n")
         if let error = report.journalError { details.string += "\n\n" + L("저널 저장 오류: ", "Journal error: ") + error }
         showResult()

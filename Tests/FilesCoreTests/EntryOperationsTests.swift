@@ -426,6 +426,40 @@ private func entryFixture() throws -> URL {
     #expect((try FileManager.default.contentsOfDirectory(atPath: destination.path)).allSatisfy { !$0.hasPrefix(".files-move-") })
 }
 
+@Test func entryReplacementCancellationReportsBackupWhenDestinationIsOccupied() async throws {
+    let root = try entryFixture()
+    let fm = FileManager.default
+    defer { try? fm.removeItem(at: root) }
+    let journal = root.appendingPathComponent("journal")
+    let destination = root.appendingPathComponent("dest")
+    let source = root.appendingPathComponent("move.txt")
+    let target = destination.appendingPathComponent(source.lastPathComponent)
+    try fm.createDirectory(at: destination, withIntermediateDirectories: true)
+    try Data("source".utf8).write(to: source)
+    try Data("original target".utf8).write(to: target)
+    let cancellation = CopyCancellation()
+
+    let report = try await EntryOperations.moveAcrossVolumeForTesting(
+        [source], to: destination, conflictPolicy: .replace, journalDirectory: journal, cancellation: cancellation
+    ) { progress in
+        if progress.phase == "verifying" {
+            try? Data("concurrent target".utf8).write(to: target, options: .withoutOverwriting)
+            cancellation.cancel()
+        }
+    }
+
+    #expect(report.state == "cancelled")
+    #expect(try Data(contentsOf: source) == Data("source".utf8))
+    #expect(try Data(contentsOf: target) == Data("concurrent target".utf8))
+    let backup = destination.appendingPathComponent(".files-move-backup-\(report.id)-0")
+    #expect(try Data(contentsOf: backup) == Data("original target".utf8))
+    #expect(report.items.first?.recoveryBackup == backup)
+    let journalData = try Data(contentsOf: journal.appendingPathComponent("move-\(report.id).json"))
+    let record = try #require(JSONSerialization.jsonObject(with: journalData) as? [String: Any])
+    let items = try #require(record["items"] as? [[String: Any]])
+    #expect(items.first?["backup"] as? String == backup.absoluteString)
+}
+
 private extension Data {
     func append(to url: URL) throws {
         let handle = try FileHandle(forWritingTo: url)
