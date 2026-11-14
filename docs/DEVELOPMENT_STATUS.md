@@ -4,6 +4,8 @@
 
 ## 이번 구현 단위
 
+512 MiB 검증 복사 시간 중앙값이 0.964초에서 0.586초로 줄었다. [M7 복사 처리량](verification/m7/INCREMENT_24.md)
+
 복사 검증의 중복 해시 읽기를 줄이고 게시 전에 실행 취소 정보를 확보한다. [M7 복사 검증](verification/m7/INCREMENT_23.md)
 
 최초 v1 설정 구조의 가져오기·저장을 검사하고 지원 범위 밖의 스키마를 명확히 안내한다. [M7 이전 설정 가져오기](verification/m7/INCREMENT_22.md)
