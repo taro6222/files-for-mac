@@ -335,12 +335,13 @@ public enum CopyEngine {
     /// Any destination observed before or after a failed fallback is reported as a conflict.
     static func publishNoReplace(payload: URL, target: URL,
                                  sourceDirectoryFD: Int32, sourceName: String,
-                                 destinationDirectoryFD: Int32, destinationName: String) throws {
+                                 destinationDirectoryFD: Int32, destinationName: String,
+                                 allowPathFallback: Bool = true) throws {
         if renameatx_np(sourceDirectoryFD, sourceName, destinationDirectoryFD,
                         destinationName, UInt32(RENAME_EXCL)) == 0 { return }
         let publicationError = errno
         if publicationError == EEXIST { throw CopyPublicationError.conflict }
-        guard publicationError == ENOTSUP || publicationError == EINVAL else {
+        guard allowPathFallback, publicationError == ENOTSUP || publicationError == EINVAL else {
             throw POSIXError(POSIXErrorCode(rawValue: publicationError) ?? .EIO)
         }
         var existing = stat()

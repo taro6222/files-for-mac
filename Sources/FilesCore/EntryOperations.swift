@@ -57,6 +57,7 @@ public struct MoveItemOperationResult: Sendable {
     public let state: String
     public let message: String?
     public fileprivate(set) var recoveryBackup: URL? = nil
+    public fileprivate(set) var retrySource: ShelfEntry? = nil
 }
 
 public struct MoveOperationResult: Sendable {
@@ -657,6 +658,15 @@ public enum EntryOperations {
                            cancellation: cancellation, progress: progress)
     }
 
+    public static func retryMove(_ sources: [ShelfEntry], to destination: ShelfEntry, journalDirectory: URL,
+                                 cancellation: CopyCancellation,
+                                 progress: @escaping @Sendable (MoveProgress) -> Void = { _ in }) async throws -> MoveOperationResult {
+        try await moveImpl(sources.map(\.url), to: destination.url, conflictPolicy: .skip,
+                           journalDirectory: journalDirectory, forceCrossVolume: false,
+                           cancellation: cancellation, progress: progress,
+                           retrySources: sources, retryDestination: destination)
+    }
+
     static func moveAcrossVolumeForTesting(_ sources: [URL], to destination: URL,
                                            conflictPolicy: MoveConflictPolicy = .skip,
                                            journalDirectory: URL, cancellation: CopyCancellation = CopyCancellation(),
@@ -693,7 +703,8 @@ public enum EntryOperations {
     private static func moveImpl(_ sources: [URL], to destination: URL, conflictPolicy: MoveConflictPolicy,
                                  journalDirectory: URL, forceCrossVolume: Bool, cancellation: CopyCancellation,
                                  progress: @escaping @Sendable (MoveProgress) -> Void,
-                                 flattenPlan: FolderFlattenPlan? = nil, redoItem: MoveRedoRecord.Item? = nil) async throws -> MoveOperationResult {
+                                 flattenPlan: FolderFlattenPlan? = nil, redoItem: MoveRedoRecord.Item? = nil,
+                                 retrySources: [ShelfEntry]? = nil, retryDestination: ShelfEntry? = nil) async throws -> MoveOperationResult {
         let normalizedSources = sources.map(\.standardizedFileURL)
         guard !normalizedSources.isEmpty else { throw EntryOperationError.noSources }
         return try await Task.detached(priority: .userInitiated) {
@@ -704,9 +715,9 @@ public enum EntryOperations {
             let destinationFD = open(normalizedDestination.path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
             guard destinationFD >= 0 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
             defer { close(destinationFD) }
-            if let redoItem {
+            if let expectedDestination = redoItem?.destinationFolder ?? retryDestination {
                 var opened = stat(), current = stat()
-                guard redoItem.destinationFolder.isCurrent,
+                guard expectedDestination.isCurrent,
                       fstat(destinationFD, &opened) == 0, lstat(normalizedDestination.path, &current) == 0,
                       opened.st_dev == current.st_dev, opened.st_ino == current.st_ino else {
                     throw EntryOperationError.sourceChanged
@@ -766,6 +777,7 @@ public enum EntryOperations {
                     let target = normalizedDestination.appendingPathComponent(source.lastPathComponent)
                     var backup: URL?
                     var backupVerified = false
+                    var retrySource: ShelfEntry?
                     func snapshotForUndo(_ url: URL) throws -> [String: String]? {
                         do {
                             let attributes = try fm.attributesOfItem(atPath: url.path)
@@ -838,6 +850,9 @@ public enum EntryOperations {
                         }
 
                         do {
+                            if let retrySources, !retrySources[index].isCurrent {
+                                throw EntryOperationError.sourceChanged
+                            }
                             if let redoItem {
                                 guard redoItem.target.standardizedFileURL.path == target.path,
                                       redoItem.destinationFolder.isCurrent,
@@ -851,6 +866,7 @@ public enum EntryOperations {
                                 throw EntryOperationError.sourceChanged
                             }
                             let crossVolume = forceCrossVolume || sourceDevice != destinationDevice
+                            if retrySources != nil && crossVolume { throw EntryOperationError.sourceChanged }
                             crossVolumeItems[index] = crossVolume
                             if entryExists(target) {
                                 if conflictPolicy == .skip {
@@ -942,6 +958,9 @@ public enum EntryOperations {
                                 publishedIdentities[index] = payloadIdentity
                                 publishedSnapshots[index] = payloadSnapshot
                             } else {
+                                if conflictPolicy == .skip, flattenPlan == nil, redoItem == nil {
+                                    retrySource = retrySources?[index] ?? ShelfEntry(source)
+                                }
                                 let identity = try snapshotIdentity(source, fileManager: fm)
                                 let snapshot = try snapshotForUndo(source)
                                 try cancellation.check(); emit("committing")
@@ -949,7 +968,7 @@ public enum EntryOperations {
                                 guard try snapshotIdentity(source, fileManager: fm) == identity else {
                                     throw EntryOperationError.sourceChanged
                                 }
-                                if flattenPlan != nil || redoItem != nil {
+                                if flattenPlan != nil || redoItem != nil || retrySources != nil {
                                     let sourceFD = open(source.deletingLastPathComponent().path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
                                     guard sourceFD >= 0 else { throw EntryOperationError.sourceChanged }
                                     defer { close(sourceFD) }
@@ -959,10 +978,15 @@ public enum EntryOperations {
                                             throw EntryOperationError.sourceChanged
                                         }
                                     }
+                                    if let retrySources {
+                                        guard retryDestination?.isCurrent == true,
+                                              retrySources[index].isCurrent else { throw EntryOperationError.sourceChanged }
+                                    }
                                     do {
                                         try CopyEngine.publishNoReplace(payload: source, target: target,
                                             sourceDirectoryFD: sourceFD, sourceName: source.lastPathComponent,
-                                            destinationDirectoryFD: destinationFD, destinationName: target.lastPathComponent)
+                                            destinationDirectoryFD: destinationFD, destinationName: target.lastPathComponent,
+                                            allowPathFallback: retrySources == nil)
                                     } catch CopyPublicationError.conflict { throw EntryOperationError.conflict }
                                 } else {
                                     try fm.moveItem(at: source, to: target)
@@ -983,7 +1007,8 @@ public enum EntryOperations {
                             finalState = "partial"
                         } catch {
                             itemStates[index] = MoveItemOperationResult(source: source, target: target, state: "failed",
-                                message: error.localizedDescription, recoveryBackup: restoreBackup())
+                                message: error.localizedDescription, recoveryBackup: restoreBackup(),
+                                retrySource: retrySource?.isCurrent == true ? retrySource : nil)
                             finalState = "partial"
                         }
                     }

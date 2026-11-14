@@ -52,6 +52,35 @@ private func entryFixture() throws -> URL {
     return root
 }
 
+@Test func moveRetryPreservesReplacedSourceAndExistingTarget() async throws {
+    let root = try entryFixture(); defer { try? FileManager.default.removeItem(at: root) }
+    let fm = FileManager.default
+    let destination = root.appendingPathComponent("destination")
+    let journal = root.appendingPathComponent("journal")
+    try fm.createDirectory(at: destination, withIntermediateDirectories: false)
+    let expectedDestination = try #require(ShelfEntry(destination))
+    let replaced = root.appendingPathComponent("replaced")
+    let unchanged = root.appendingPathComponent("unchanged")
+    let occupiedTarget = destination.appendingPathComponent("unchanged")
+    let original = Data("original".utf8)
+    let external = Data("external".utf8)
+    try original.write(to: replaced)
+    try original.write(to: unchanged)
+    let expectedReplaced = try #require(ShelfEntry(replaced))
+    let expectedUnchanged = try #require(ShelfEntry(unchanged))
+    try fm.moveItem(at: replaced, to: root.appendingPathComponent("original"))
+    try external.write(to: replaced)
+    try external.write(to: occupiedTarget)
+
+    let report = try await EntryOperations.retryMove([expectedReplaced, expectedUnchanged], to: expectedDestination,
+                                                      journalDirectory: journal, cancellation: CopyCancellation())
+    #expect(report.items.map(\.state) == ["failed", "conflict"])
+    #expect(try Data(contentsOf: replaced) == external)
+    #expect(try Data(contentsOf: unchanged) == original)
+    #expect(try Data(contentsOf: occupiedTarget) == external)
+    #expect(!fm.fileExists(atPath: destination.appendingPathComponent("replaced").path))
+}
+
 @Test func entryNamesRejectTraversalAndAllowUnicode() throws {
     for name in ["", " ", ".", "..", "a/b", "a:b", "a\0b"] {
         #expect(throws: EntryOperationError.self) { try EntryOperations.validateName(name) }

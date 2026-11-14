@@ -5499,6 +5499,36 @@ extension BrowserWindow {
                     checks["moveResultKeyboardClose"] = resultWindow.performKeyEquivalent(with: close) && !resultWindow.isVisible
                 } else { checks["moveResultKeyboardClose"] = false }
             } else { checks["moveConflictKeyboardShortcut"] = false }
+            let restricted = source.appendingPathComponent("move-retry-source", isDirectory: true)
+            try fm.createDirectory(at: restricted, withIntermediateDirectories: false)
+            let blockedMove = restricted.appendingPathComponent("retry-move.txt")
+            let ordinaryMove = source.appendingPathComponent("ordinary-move.txt")
+            let movePayload = Data("move retry fixture".utf8)
+            try movePayload.write(to: blockedMove)
+            try movePayload.write(to: ordinaryMove)
+            try fm.setAttributes([.posixPermissions: 0o500], ofItemAtPath: restricted.path)
+            defer { try? fm.setAttributes([.posixPermissions: 0o700], ofItemAtPath: restricted.path) }
+            var moveCompletions = 0
+            MoveWindow.start(sources: [ordinaryMove, blockedMove], destination: target, journalDirectory: journals) {
+                moveCompletions += 1
+            }
+            let moveRetryStart = ContinuousClock.now
+            while moveCompletions < 1 && elapsed(moveRetryStart) < 5 {
+                try await Task.sleep(for: .milliseconds(20))
+            }
+            let moveResult = NSApp.windows.filter(\.isVisible).compactMap { $0.windowController as? MoveWindow }.first
+            let canRetryMove = moveResult?.qaCanRetry == true && fm.fileExists(atPath: blockedMove.path)
+                && !fm.fileExists(atPath: ordinaryMove.path)
+            try fm.setAttributes([.posixPermissions: 0o700], ofItemAtPath: restricted.path)
+            moveResult?.qaRetry()
+            while moveCompletions < 2 && elapsed(moveRetryStart) < 10 {
+                try await Task.sleep(for: .milliseconds(20))
+            }
+            checks["moveRetriesOnlyFailedItems"] = canRetryMove && moveCompletions == 2
+                && !fm.fileExists(atPath: blockedMove.path)
+                && (try? Data(contentsOf: target.appendingPathComponent(blockedMove.lastPathComponent))) == movePayload
+                && (try? Data(contentsOf: target.appendingPathComponent(ordinaryMove.lastPathComponent))) == movePayload
+            NSApp.windows.compactMap { $0.windowController as? MoveWindow }.forEach { $0.close() }
             let imageFile = source.appendingPathComponent("preview.png")
             let pdfFile = source.appendingPathComponent("preview.pdf")
             let canvas = CGContext(data: nil, width: 16, height: 12, bitsPerComponent: 8,

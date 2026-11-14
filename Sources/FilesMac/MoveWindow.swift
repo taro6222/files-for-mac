@@ -13,12 +13,17 @@ final class MoveWindow: NSWindowController, NSWindowDelegate {
     private let progress = NSProgressIndicator()
     private let details = NSTextView()
     private let close = NSButton(title: L("취소", "Cancel"), target: nil, action: #selector(cancelMove(_:)))
+    private let retry = NSButton(title: L("실패 항목 다시 시도", "Retry Failed Items"), target: nil,
+                                 action: #selector(retryFailedItems(_:)))
+    private var retryAction: (() -> Void)?
 
     static func start(sources: [URL], destination: URL, conflictPolicy: MoveConflictPolicy = .skip,
-                      flattenPlan: FolderFlattenPlan? = nil,
+                      flattenPlan: FolderFlattenPlan? = nil, retrySources: [ShelfEntry]? = nil,
+                      retryDestination: ShelfEntry? = nil,
                       journalDirectory: URL,
                       completion: @escaping @MainActor () -> Void) {
         guard !isRunning else { return }
+        let destinationIdentity = retryDestination ?? ShelfEntry(destination)
         let controller = MoveWindow(sources: sources, destination: destination, conflictPolicy: conflictPolicy)
         operations.append(controller)
         controller.showWindow(nil)
@@ -29,14 +34,27 @@ final class MoveWindow: NSWindowController, NSWindowDelegate {
                     Task { @MainActor in controller?.update(update) }
                 }
                 let report: MoveOperationResult
-                if let flattenPlan {
+                if let retrySources, let retryDestination {
+                    report = try await EntryOperations.retryMove(retrySources, to: retryDestination,
+                        journalDirectory: journalDirectory, cancellation: controller.cancellation, progress: progress)
+                } else if let flattenPlan {
                     report = try await EntryOperations.flatten(flattenPlan, journalDirectory: journalDirectory,
                         cancellation: controller.cancellation, progress: progress)
                 } else {
                     report = try await EntryOperations.move(sources, to: destination, conflictPolicy: conflictPolicy,
                         journalDirectory: journalDirectory, cancellation: controller.cancellation, progress: progress)
                 }
-                await MainActor.run { controller.finish(report) }
+                controller.finish(report)
+                let failures = report.items.compactMap(\.retrySource)
+                if report.state != "cancelled", report.journalError == nil,
+                   let destinationIdentity, !failures.isEmpty {
+                    controller.retryAction = {
+                        start(sources: failures.map(\.url), destination: destinationIdentity.url,
+                              retrySources: failures, retryDestination: destinationIdentity,
+                              journalDirectory: journalDirectory, completion: completion)
+                    }
+                    controller.retry.isHidden = false
+                }
             } catch {
                 await MainActor.run { controller.fail(error) }
             }
@@ -95,6 +113,7 @@ final class MoveWindow: NSWindowController, NSWindowDelegate {
         close.keyEquivalent = "\u{1b}"
         close.bezelStyle = .rounded
         stack.addArrangedSubview(close)
+        retry.target = self; retry.isHidden = true; stack.addArrangedSubview(retry)
         scroll.heightAnchor.constraint(greaterThanOrEqualToConstant: 180).isActive = true
         for view in [target, policy, label, progress, scroll] { view.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true }
     }
@@ -182,6 +201,14 @@ final class MoveWindow: NSWindowController, NSWindowDelegate {
         announceStatus()
     }
 
+    @objc private func retryFailedItems(_ sender: Any?) {
+        guard let retryAction, !Self.isRunning, !CopyWindow.isRunning, !FolderMergeWindow.isRunning,
+              !BrowserWindow.entryOperationRunning else { NSSound.beep(); return }
+        self.retryAction = nil
+        retry.isHidden = true
+        retryAction()
+    }
+
     private func announceStatus() {
         guard let window else { return }
         NSAccessibility.post(element: window, notification: .announcementRequested, userInfo: [
@@ -191,6 +218,8 @@ final class MoveWindow: NSWindowController, NSWindowDelegate {
     }
 
 #if DEBUG
+    var qaCanRetry: Bool { !retry.isHidden }
+    func qaRetry() { retry.performClick(nil) }
     var qaAccessibleConflict: Bool {
         !running && progress.accessibilityLabel() == L("이동 진행률", "Move progress")
             && details.accessibilityLabel() == L("이동 상세 결과", "Move details")
