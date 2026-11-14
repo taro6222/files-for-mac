@@ -238,21 +238,26 @@ public enum EntryOperations {
         }
     }
 
-    private static func transferForUndo(_ source: URL, to target: URL, crossVolume: Bool,
-                                        expectedIdentity: String,
-                                        expectedSnapshot: [String: String]?,
-                                        expectedMetadata: CopyTransferMetadata?,
+    private static func transferForUndo(_ item: MoveUndoItem,
                                         checkpointCopy: (String, CopyEngine.VerificationSnapshot) throws -> Void,
                                         afterCopyPublication: () throws -> Void) throws
         -> (identity: String, snapshot: CopyEngine.VerificationSnapshot) {
         let fm = FileManager.default
+        let source = item.target
+        let target = item.source
         let sourceIdentity = try snapshotIdentity(source, fileManager: fm)
-        guard sourceIdentity == expectedIdentity else { throw EntryOperationError.sourceChanged }
+        guard sourceIdentity == item.targetIdentity else { throw EntryOperationError.sourceChanged }
         let before = try CopyEngine.makeSnapshot(source, cancellation: CopyCancellation())
-        guard expectedSnapshot == nil || before.withPermissions == expectedSnapshot,
-              expectedMetadata == nil || before.metadata == expectedMetadata,
+        let allowsLegacyForks = item.snapshotIncludesResourceForks == nil && item.backup == nil && item.targetMetadata == nil
+        guard item.targetSnapshot == nil || before.withPermissions == item.targetSnapshot
+                || (allowsLegacyForks && before.legacyPermissionsSnapshot == item.targetSnapshot),
+              item.targetMetadata == nil || before.metadata == item.targetMetadata,
               try snapshotIdentity(source, fileManager: fm) == sourceIdentity else { throw EntryOperationError.sourceChanged }
-        if !crossVolume {
+        guard !entryExists(target) else { throw MoveUndoDestinationError.occupied }
+        guard fm.fileExists(atPath: target.deletingLastPathComponent().path) else {
+            throw MoveUndoDestinationError.missingParent
+        }
+        if !item.crossVolume {
             try fm.moveItem(at: source, to: target)
             return (sourceIdentity, before)
         }
@@ -1184,37 +1189,8 @@ public enum EntryOperations {
                     guard entryExists(item.target) else {
                         results.append(MoveUndoItemResult(source: item.source, target: item.target, state: "notFound", message: LString.undoTargetMissing)); continue
                     }
-                    var expectedSnapshot = item.targetSnapshot
-                    let targetMatches: Bool
-                    if item.snapshotIncludesResourceForks == nil, item.backup == nil, item.targetMetadata == nil,
-                       let recorded = item.targetSnapshot,
-                       try snapshotIdentity(item.target, fileManager: fm) == item.targetIdentity {
-                        // An older journal may omit forks. Carry the current fork
-                        // back intact, and pin it for transfer verification and Redo.
-                        let current = try CopyEngine.makeSnapshot(item.target, cancellation: CopyCancellation())
-                        let currentIdentity = try snapshotIdentity(item.target, fileManager: fm)
-                        targetMatches = (recorded == current.withPermissions || recorded == current.legacyPermissionsSnapshot)
-                            && currentIdentity == item.targetIdentity
-                        expectedSnapshot = current.withPermissions
-                    } else {
-                        targetMatches = try matchesUndoEntry(item.target, identity: item.targetIdentity,
-                            snapshot: expectedSnapshot, metadata: item.targetMetadata, fileManager: fm)
-                    }
-                    guard targetMatches else {
-                        results.append(MoveUndoItemResult(source: item.source, target: item.target, state: "changed", message: LString.undoTargetChanged))
-                        continue
-                    }
-                    guard !entryExists(item.source) else {
-                        results.append(MoveUndoItemResult(source: item.source, target: item.target, state: "conflict", message: LString.undoSourceConflict)); continue
-                    }
-                    guard fm.fileExists(atPath: item.source.deletingLastPathComponent().path) else {
-                        results.append(MoveUndoItemResult(source: item.source, target: item.target, state: "notFound", message: LString.undoSourceParentMissing)); continue
-                    }
                     let destinationFolder = ShelfEntry(item.target.deletingLastPathComponent())
-                    let restored = try transferForUndo(item.target, to: item.source, crossVolume: item.crossVolume,
-                                        expectedIdentity: item.targetIdentity,
-                                        expectedSnapshot: expectedSnapshot, expectedMetadata: item.targetMetadata,
-                                        checkpointCopy: { identity, snapshot in
+                    let restored = try transferForUndo(item, checkpointCopy: { identity, snapshot in
                         guard item.backup != nil else { return }
                         undoItems[index].restoredCopyIdentity = identity
                         undoItems[index].restoredCopySnapshot = snapshot.withPermissions
@@ -1238,6 +1214,15 @@ public enum EntryOperations {
                         try restoreUndoBackup(backup, to: item.target)
                     }
                     result = MoveUndoItemResult(source: item.source, target: item.target, state: "completed", message: nil)
+                } catch EntryOperationError.sourceChanged {
+                    result = MoveUndoItemResult(source: item.source, target: item.target,
+                        state: "changed", message: LString.undoTargetChanged)
+                } catch MoveUndoDestinationError.occupied {
+                    result = MoveUndoItemResult(source: item.source, target: item.target,
+                        state: "conflict", message: LString.undoSourceConflict)
+                } catch MoveUndoDestinationError.missingParent {
+                    result = MoveUndoItemResult(source: item.source, target: item.target,
+                        state: "notFound", message: LString.undoSourceParentMissing)
                 } catch EntryOperationError.conflict {
                     result = MoveUndoItemResult(source: item.source, target: item.target,
                         state: "conflict", message: LString.pathConflictMessage)
@@ -1355,6 +1340,10 @@ private enum LString {
     static let crossVolumeVerificationFailed = "복사 결과가 원본과 일치하지 않거나 복사 중 원본이 변경됐습니다."
     static let crossVolumeSourceChanged = "복사 결과를 확정한 뒤 원본이 변경되어 원본 삭제를 중단했습니다."
     static let crossVolumeDestinationChanged = "복사 결과를 확정한 뒤 대상이 변경되어 원본 삭제를 중단했습니다."
+}
+
+private enum MoveUndoDestinationError: Error {
+    case occupied, missingParent
 }
 
 private struct MoveFailure: LocalizedError {
