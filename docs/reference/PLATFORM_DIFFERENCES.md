@@ -10,6 +10,7 @@
 | Windows 셸 확장 메뉴 | Explorer shell extension verb를 앱 컨텍스트 메뉴의 하위 메뉴로 이동하는 설정은 macOS 앱 메뉴 모델에 적용되지 않는다. FilesMac 명령은 앱이 소유하고 공유 목적지는 `NSSharingServicePicker`가 런타임에 제공하므로 Windows 셸 확장 계층을 복제하지 않는다. | M6 `platform-excluded`; 앱 명령과 네이티브 공유 메뉴 검증 |
 | Windows 실행 환경·상주 기능 | 관리자 실행 경고와 WSL 섹션은 Windows 실행 환경에만 해당한다. FilesMac은 별도 백그라운드 agent나 메뉴 막대 상주 항목을 만들지 않으며 텔레메트리용 영구 사용자 ID도 생성하지 않는다. | M6 `platform-excluded`; lifecycle 또는 분석 기능을 향후 추가하려면 별도 개인정보·배포 설계 필요 |
 | 상태센터·요청 프롬프트 | Windows Files의 상태센터 teaching tip과 백그라운드 실행 알림은 제공하지 않는다. 작업 진행은 활성 네이티브 작업 창에서 표시하며 앱 종료 뒤 계속된다고 주장하지 않는다. 리뷰·후원 요청 팝업과 클릭 추적 값도 만들지 않는다. | M6 `platform-excluded`; 별도 background agent나 solicitation UX 없음 |
+| 탭 작업·진행 표시 | Windows 전용 탭 작업 버튼 표시 설정을 복제하지 않고 `NSWindow` 탭 바가 닫기·추가·순서 변경·창 분리를 소유한다. 앱 명령은 메뉴와 단축키로 제공한다. Windows 상태센터의 항상/작업 중 표시 설정 대신 복사·이동·압축·이름 변경·삭제마다 활성 AppKit 작업 창에서 진행·중단·결과를 표시하며 영구 상태센터를 만들지 않는다. | M6 `platform-alternative`; 네이티브 탭 명령·5회 다중 창 왕복·작업 창 진행/취소 UI 검증 |
 | 날짜·앱 인스턴스 | 파일 날짜는 별도 앱 형식 목록 대신 macOS 언어·지역 형식을 사용한다. 새 탭은 단일 `NSApplication`의 현재 브라우저 창에 네이티브 탭으로 추가한다. | M6 `platform-alternative`; 한/영 UI 4조합과 탭 UI 검증 |
 | 포인터·선택 동작 | 일반 파일 보기는 macOS 표준 더블 클릭으로 열고 명시적 클릭·키보드로 선택한다. 컬럼 보기는 단일 선택으로 다음 계층을 펼친다. Windows touch-only 단일 클릭 모드, hover 선택, 선택 체크박스를 그대로 추가하지 않는다. | M6 `platform-alternative`; 상세·그리드·목록·컬럼 UI QA 및 다중 선택 검증 |
 | 고급 설정 | Windows 시작 프로그램·system tray·Explorer/open dialog 대체·thumbnail cache 제어는 macOS 공개 앱 모델에 동일하게 대응하지 않는다. 이식 가능한 설정 관리 목적은 버전 지정 JSON 내보내기와 전체 선검증 후 원자적 가져오기로 제공한다. | M6 `platform-alternative`; 손상·미지원 버전 입력 무변경 단위 테스트 및 네이티브 창 UI 검증 |
