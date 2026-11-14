@@ -6,7 +6,7 @@ func fileGroupTitle(_ key: String, field: FileGroupField) -> String {
     if value == "unknown" { return L("알 수 없음", "Unknown") }
     switch field {
     case .none: return ""
-    case .name, .kind: return value
+    case .name, .kind, .tag: return value == "untagged" ? L("태그 없음", "Untagged") : value
     case .created, .modified:
         let parts = value.split(separator: "-").compactMap { Int($0) }
         guard let year = parts.first else { return value }

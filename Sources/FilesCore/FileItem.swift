@@ -14,14 +14,15 @@ public struct FileItem: Identifiable, Sendable, Equatable {
     public let created: Date?
     public let modified: Date?
     public let kind: String
+    public let tags: [String]
 
     public init(url: URL, name: String, isDirectory: Bool, identity: String? = nil, isPackage: Bool = false,
                 isSymbolicLink: Bool = false, isHidden: Bool = false,
-                size: Int64? = nil, created: Date? = nil, modified: Date? = nil, kind: String = "") {
+                size: Int64? = nil, created: Date? = nil, modified: Date? = nil, kind: String = "", tags: [String] = []) {
         self.identity = identity
         self.url = url; self.name = name; self.isDirectory = isDirectory
         self.isPackage = isPackage; self.isSymbolicLink = isSymbolicLink
-        self.isHidden = isHidden; self.size = size; self.created = created; self.modified = modified; self.kind = kind
+        self.isHidden = isHidden; self.size = size; self.created = created; self.modified = modified; self.kind = kind; self.tags = tags
     }
     public func displayName(showExtensions: Bool) -> String {
         guard !showExtensions, !isDirectory, !name.hasPrefix("."), !url.pathExtension.isEmpty else { return name }
@@ -30,7 +31,7 @@ public struct FileItem: Identifiable, Sendable, Equatable {
     public var isBrowsable: Bool { isDirectory && !isPackage }
 }
 
-public enum SortField: String, CaseIterable, Codable, Sendable { case name, created, modified, kind, size }
+public enum SortField: String, CaseIterable, Codable, Sendable { case name, created, modified, kind, size, tag }
 public enum SortDirectoryPlacement: String, CaseIterable, Codable, Sendable { case foldersFirst, filesFirst, mixed }
 public struct SortOrder: Codable, Equatable, Sendable {
     public var field: SortField
@@ -71,6 +72,7 @@ public struct SortOrder: Codable, Equatable, Sendable {
             case .name: comparison = a.name.localizedStandardCompare(b.name)
             case .created: comparison = compare(a.created, b.created)
             case .kind: comparison = a.kind.localizedStandardCompare(b.kind)
+            case .tag: comparison = a.tags.joined(separator: "\u{0}").localizedStandardCompare(b.tags.joined(separator: "\u{0}"))
             case .size:
                 comparison = compare(a.size, b.size)
             case .modified:

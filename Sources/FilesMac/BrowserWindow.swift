@@ -973,6 +973,7 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
     @objc func sortByModified(_ sender: Any?) { updateSort(field: .modified) }
     @objc func sortBySize(_ sender: Any?) { updateSort(field: .size) }
     @objc func sortByKind(_ sender: Any?) { updateSort(field: .kind) }
+    @objc func sortByTag(_ sender: Any?) { updateSort(field: .tag) }
     @objc func sortAscending(_ sender: Any?) { updateSort(ascending: true) }
     @objc func sortDescending(_ sender: Any?) { updateSort(ascending: false) }
     @objc func toggleSortDirection(_ sender: Any?) { updateSort(toggleDirection: true) }
@@ -1258,6 +1259,7 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
     @objc func groupByModified(_ sender: Any?) { updateGrouping(field: .modified) }
     @objc func groupBySize(_ sender: Any?) { updateGrouping(field: .size) }
     @objc func groupByKind(_ sender: Any?) { updateGrouping(field: .kind) }
+    @objc func groupByTag(_ sender: Any?) { updateGrouping(field: .tag) }
     @objc func groupByModifiedYear(_ sender: Any?) { updateGrouping(field: .modified, dateUnit: .year) }
     @objc func groupByModifiedMonth(_ sender: Any?) { updateGrouping(field: .modified, dateUnit: .month) }
     @objc func groupByModifiedDay(_ sender: Any?) { updateGrouping(field: .modified, dateUnit: .day) }
@@ -2335,6 +2337,8 @@ extension BrowserWindow {
         case #selector(arrangePanesVertically(_:)), #selector(arrangePanesHorizontally(_:)), #selector(focusOtherPane(_:)), #selector(openCurrentFolderInOtherPane(_:)): return secondaryPane != nil
         case #selector(toggleDualPane(_:)): return true
         case #selector(useCardsLayout(_:)): return activeModel.location != nil
+        case #selector(sortByTag(_:)): menuItem.state = activeModel.sortOrder.field == .tag ? .on : .off; return activeModel.location != nil
+        case #selector(groupByTag(_:)): menuItem.state = activeModel.grouping.field == .tag ? .on : .off; return activeModel.location != nil
         case #selector(pasteFilesToSelection(_:)): return canPasteToSelection
         case #selector(pasteFilesAsSymbolicLinks(_:)): return canPasteFiles
         case #selector(decreaseViewSize(_:)): return BrowserViewSize.allCases.firstIndex(of: activeEffectiveViewSize) != 0
@@ -3054,6 +3058,13 @@ extension BrowserWindow {
             checks["sortCommands"] = filesFirst && foldersFirst && descendingSize && controller.model.sortOrder.ascending
             controller.sortByCreated(nil)
             checks["createdDateSorting"] = controller.model.sortOrder.field == .created
+            controller.sortByTag(nil); controller.groupByTag(nil)
+            checks["finderTagSortAndGroupCommands"] = controller.model.sortOrder.field == .tag
+                && controller.model.grouping.field == .tag
+                && [#selector(sortByTag(_:)), #selector(groupByTag(_:))].allSatisfy { action in
+                    paletteEntries.contains { $0.item.action == action }
+                }
+            controller.groupByNone(nil)
             checks["sortCommandsCatalog"] = [#selector(sortByName(_:)), #selector(sortByCreated(_:)), #selector(sortByModified(_:)), #selector(sortBySize(_:)),
                 #selector(sortByKind(_:)), #selector(sortAscending(_:)), #selector(sortDescending(_:)),
                 #selector(toggleSortDirection(_:)), #selector(sortFoldersFirst(_:)), #selector(sortFilesFirst(_:)),

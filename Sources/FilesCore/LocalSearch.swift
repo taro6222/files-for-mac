@@ -98,7 +98,8 @@ public struct LocalFileSearch: FileSearching {
                             batch.append(FileItem(url: url, name: name, isDirectory: isDirectory,
                                 isPackage: v.isPackage ?? false, isSymbolicLink: v.isSymbolicLink ?? false,
                                 isHidden: v.isHidden ?? false, size: size, created: v.creationDate, modified: v.contentModificationDate,
-                                kind: isDirectory ? "Folder" : (url.pathExtension.isEmpty ? "File" : url.pathExtension.uppercased())))
+                                kind: isDirectory ? "Folder" : (url.pathExtension.isEmpty ? "File" : url.pathExtension.uppercased()),
+                                tags: v.tagNames ?? []))
                         } catch { skipped += 1 }
                         if batch.count >= 128 { continuation.yield(FileSearchBatch(items: batch, skippedLocations: skipped)); batch.removeAll(keepingCapacity: true) }
                     }
