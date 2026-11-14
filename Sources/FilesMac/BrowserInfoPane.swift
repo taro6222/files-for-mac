@@ -9,7 +9,12 @@ final class BrowserInfoPane: NSView {
     private let title = NSTextField(wrappingLabelWithString: "")
     private let text = NSTextField(wrappingLabelWithString: "")
     private let previewHost = NSView()
+    private let previous = NSButton()
+    private let next = NSButton()
+    private let position = NSTextField(labelWithString: "")
+    private let navigation = NSStackView()
     private var preview: QLPreviewView?
+    private var previewIndex = 0
     private var task: Task<Void, Never>?
     private var items: [FileItem] = []
     private var tab: InfoPaneTab?
@@ -30,7 +35,17 @@ final class BrowserInfoPane: NSView {
         title.font = .boldSystemFont(ofSize: 13)
         text.isSelectable = true
         text.textColor = .secondaryLabelColor
-        for view in [tabs, title, text, previewHost] { stack.addArrangedSubview(view) }
+        previous.title = L("이전", "Previous")
+        previous.target = self
+        previous.action = #selector(previousPreview)
+        next.title = L("다음", "Next")
+        next.target = self
+        next.action = #selector(nextPreview)
+        navigation.orientation = .horizontal
+        navigation.isHidden = true
+        previewHost.isHidden = true
+        for view in [previous, position, next] { navigation.addArrangedSubview(view) }
+        for view in [tabs, title, text, navigation, previewHost] { stack.addArrangedSubview(view) }
         addSubview(stack)
         NSLayoutConstraint.activate([
             stack.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 10),
@@ -47,6 +62,8 @@ final class BrowserInfoPane: NSView {
     required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
 
     @objc private func selectTab() { onTabChange?(tabs.selectedSegment == 1 ? .preview : .details) }
+    @objc private func previousPreview() { showPreview(at: previewIndex - 1) }
+    @objc private func nextPreview() { showPreview(at: previewIndex + 1) }
 
     func update(items: [FileItem], tab: InfoPaneTab, sizeUnit: BrowserSizeUnit) {
         guard items != self.items || tab != self.tab || sizeUnit != self.sizeUnit else { return }
@@ -55,38 +72,23 @@ final class BrowserInfoPane: NSView {
         self.tab = tab
         self.sizeUnit = sizeUnit
         tabs.selectedSegment = tab == .details ? 0 : 1
-        previewHost.isHidden = true
         guard let item = items.first else {
             title.stringValue = L("선택한 항목 없음", "No Selection")
             text.stringValue = ""
             return
         }
+        if tab == .preview {
+            showPreview(at: 0)
+            return
+        }
         guard items.count == 1 else {
             title.stringValue = L("\(items.count)개 항목 선택", "\(items.count) items selected")
-            text.stringValue = tab == .preview ? L("미리 볼 항목 하나를 선택하세요.", "Select one item to preview.") : ""
+            let folders = items.count(where: \.isDirectory)
+            let files = items.count - folders
+            text.stringValue = L("파일 \(files)개 · 폴더 \(folders)개", "\(files) files · \(folders) folders")
             return
         }
         title.stringValue = item.name
-        if tab == .preview {
-            guard !item.isDirectory, let view = QLPreviewView(frame: .zero, style: .normal) else {
-                text.stringValue = L("미리보기를 표시할 수 없습니다.", "Preview unavailable.")
-                return
-            }
-            text.stringValue = ""
-            previewHost.isHidden = false
-            view.translatesAutoresizingMaskIntoConstraints = false
-            previewHost.addSubview(view)
-            NSLayoutConstraint.activate([
-                view.leadingAnchor.constraint(equalTo: previewHost.leadingAnchor),
-                view.trailingAnchor.constraint(equalTo: previewHost.trailingAnchor),
-                view.topAnchor.constraint(equalTo: previewHost.topAnchor),
-                view.bottomAnchor.constraint(equalTo: previewHost.bottomAnchor)
-            ])
-            preview = view
-            view.autostarts = true
-            view.previewItem = item.url as NSURL
-            return
-        }
         text.stringValue = L("정보 읽는 중…", "Loading information…")
         task = Task { [weak self] in
             let properties = try? await FilePropertiesInspector().inspect(item.url)
@@ -108,12 +110,48 @@ final class BrowserInfoPane: NSView {
         }
     }
 
+    private func showPreview(at index: Int) {
+        guard items.indices.contains(index) else { return }
+        previewIndex = index
+        let item = items[index]
+        title.stringValue = item.name
+        navigation.isHidden = items.count < 2
+        previous.isEnabled = index > 0
+        next.isEnabled = index + 1 < items.count
+        position.stringValue = L("\(index + 1) / \(items.count)", "\(index + 1) of \(items.count)")
+        if preview == nil && !item.isDirectory {
+            preview = QLPreviewView(frame: .zero, style: .normal)
+        }
+        guard !item.isDirectory, let view = preview else {
+            preview?.previewItem = nil
+            previewHost.isHidden = true
+            text.stringValue = L("미리보기를 표시할 수 없습니다.", "Preview unavailable.")
+            return
+        }
+        text.stringValue = ""
+        previewHost.isHidden = false
+        if view.superview == nil {
+            view.translatesAutoresizingMaskIntoConstraints = false
+            previewHost.addSubview(view)
+            NSLayoutConstraint.activate([
+                view.leadingAnchor.constraint(equalTo: previewHost.leadingAnchor),
+                view.trailingAnchor.constraint(equalTo: previewHost.trailingAnchor),
+                view.topAnchor.constraint(equalTo: previewHost.topAnchor),
+                view.bottomAnchor.constraint(equalTo: previewHost.bottomAnchor)
+            ])
+            view.autostarts = true
+        }
+        view.previewItem = item.url as NSURL
+    }
+
     func clear() {
         task?.cancel()
         task = nil
         preview?.close()
         preview?.removeFromSuperview()
         preview = nil
+        previewHost.isHidden = true
+        navigation.isHidden = true
         items = []
         tab = nil
         title.stringValue = ""
@@ -124,5 +162,10 @@ final class BrowserInfoPane: NSView {
     var qaTitle: String { title.stringValue }
     var qaDetails: String { text.stringValue }
     var qaPreviewURL: URL? { (preview?.previewItem as? NSURL).map { $0 as URL } }
+    var qaPreviewNavigation: (previous: Bool, next: Bool)? {
+        navigation.isHidden ? nil : (previous.isEnabled, next.isEnabled)
+    }
+    func qaNextPreview() { next.performClick(nil) }
+    func qaPreviousPreview() { previous.performClick(nil) }
 #endif
 }

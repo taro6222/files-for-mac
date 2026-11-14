@@ -10,6 +10,7 @@ Windows의 비교 기준은 Files v4.2.9의 `99951c66928c4da714da8b1dd4603942118
 | UI-04 그리드 | `GridView`로 다중 선택, 그룹 머리글, 드래그 및 스크롤 자리 표시자를 제공한다. [GridLayoutPage.xaml][grid] | `files-grid.png`에서 아이콘·이름·선택 상태를 확인했다. `gridSelectionIdentity`와 `gridGroupingSections`가 통과했다. |
 | UI-05 컬럼 | `BladeView`가 초기 콘텐츠 프레임과 경계가 있는 개별 열을 배치한다. [ColumnsLayoutPage.xaml][columns] | `files-columns.png`에서 선택한 폴더의 계층별 열을 확인했다. `columnsHierarchy`, `columnsLeftNavigation` 및 폴더 열기 검사도 통과했다. |
 | UI-07 검색 | 탐색 툴바의 Omnibar가 검색 모드의 질의를 제출하고, 탐색 셸이 결과 화면에 검색 머리글을 표시한다. [NavigationToolbar.xaml][navigation] · [ModernShellPage.xaml][shell] | 별도 검색 창에 검색 방법, 범위, 메타데이터 필터와 결과 목록을 표시한다. `search.png`에서 결과 이름·위치·종류와 검색 방식별 상태를 확인했다. Spotlight 콘텐츠 검색은 [모든 인덱싱된 위치](../verification/m7/INCREMENT_78.md)를 선택할 수 있다. Windows 실행 캡처 대조가 남아 있다. |
+| UI-08 정보·미리보기 | 정보 패널에 상세·미리보기 탭, 속성 스크롤 영역, 미리보기 콘텐츠와 로딩·오류 표시를 배치한다. [InfoPane.xaml][info] | macOS 정보 패널은 상세 속성과 내장 Quick Look을 제공한다. 다중 선택에서 [이전·다음 미리보기](../verification/m7/INCREMENT_79.md)를 사용할 수 있다. Windows 실행 화면과 Quick Look 확장별 콘텐츠 렌더링 대조가 남아 있다. |
 
 macOS 캡처에서 발견한 상태 표시줄의 개발 단계 문구를 제거했다. 항목 수, 선택, 읽기 및 자동 갱신 상태는 상태 표시줄에 표시한다.
 
@@ -22,3 +23,4 @@ Windows 실행 화면을 동일 fixture·창 크기·테마로 캡처하는 작�
 [columns]: https://github.com/files-community/Files/blob/99951c66928c4da714da8b1dd46039421182cbab/src/Files.App/Views/Layouts/ColumnsLayoutPage.xaml
 [navigation]: https://github.com/files-community/Files/blob/99951c66928c4da714da8b1dd46039421182cbab/src/Files.App/UserControls/NavigationToolbar.xaml
 [shell]: https://github.com/files-community/Files/blob/99951c66928c4da714da8b1dd46039421182cbab/src/Files.App/Views/Shells/ModernShellPage.xaml
+[info]: https://github.com/files-community/Files/blob/99951c66928c4da714da8b1dd46039421182cbab/src/Files.App/UserControls/Pane/InfoPane.xaml

@@ -4,6 +4,8 @@
 
 ## 이번 구현 단위
 
+정보 패널에서 다중 선택 항목을 이전·다음으로 미리보고 상세 탭에서 파일과 폴더 개수를 확인할 수 있다. [M7 정보 패널 검증](verification/m7/INCREMENT_79.md)
+
 Spotlight 콘텐츠 검색에 모든 인덱싱된 위치 범위를 추가했다. [M7 인덱스 범위 검색](verification/m7/INCREMENT_78.md)
 
 검색 필드에서 방향키로 결과 목록에 이동하고 Return으로 기존 열기 동작을 실행할 수 있다. [M7 검색 키보드 검증](verification/m7/INCREMENT_77.md)

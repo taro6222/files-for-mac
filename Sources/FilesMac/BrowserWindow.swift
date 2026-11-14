@@ -3917,6 +3917,23 @@ extension BrowserWindow {
             controller.showInfoPanePreview(nil)
             checks["infoPanePreview"] = controller.inspector.qaPreviewURL?.path == searchHit.path
             try capture("info-pane-preview")
+            controller.table.selectRowIndexes([0, 1, 2], byExtendingSelection: false)
+            let previewItems = controller.primarySelectedItems
+            if previewItems.count == 3, previewItems[0].isDirectory, !previewItems[1].isDirectory {
+                let inspector = controller.inspector
+                let startsAtFolder = inspector.qaTitle == previewItems[0].name && inspector.qaPreviewURL == nil
+                    && inspector.qaPreviewNavigation?.previous == false && inspector.qaPreviewNavigation?.next == true
+                inspector.qaNextPreview()
+                let showsFile = inspector.qaPreviewURL?.path == previewItems[1].url.path
+                inspector.qaNextPreview()
+                let reachesEnd = inspector.qaTitle == previewItems[2].name && inspector.qaPreviewNavigation?.next == false
+                inspector.qaPreviousPreview()
+                checks["infoPaneMultiItemPreview"] = startsAtFolder && showsFile && reachesEnd
+                    && inspector.qaPreviewURL?.path == previewItems[1].url.path
+                    && controller.primarySelectedItems == previewItems
+            } else {
+                checks["infoPaneMultiItemPreview"] = false
+            }
             controller.toggleInfoPane(nil)
             checks["infoPaneReleasesPreview"] = controller.inspector.isHidden && controller.inspector.qaPreviewURL == nil
             controller.showInfoPaneDetails(nil)
