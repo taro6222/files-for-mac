@@ -8,6 +8,8 @@ M7 출시 검증이 진행 중이다. [유니버설 개발 프리뷰](verificati
 
 ## 이번 구현 단위
 
+다섯 로컬 파일 시스템, APFS 강제 종료 복구, 시스템 휴지통을 현재 엔진 소스로 재검증했다. [로컬 볼륨 재검증](verification/m7/INCREMENT_169.md)
+
 SMB 사전 검사에서 중단된 단계와 시험 폴더의 경로를 확인할 수 있다. [SMB 중단 진단](verification/m7/INCREMENT_168.md)
 
 SMB 통합 시험 전에 공유의 파일 생성·읽기·이름 변경·삭제 응답을 확인한다. [SMB 사전 검사](verification/m7/INCREMENT_167.md)
