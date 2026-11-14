@@ -4606,6 +4606,14 @@ extension BrowserWindow {
                 let applied = try await info.qaApplyFolderMode()
                 let enclosedMode = try await FilePropertiesInspector().permissions(enclosed).mode
                 checks["fileInfoFolderPermissions"] = applied && enclosedMode == 0o750
+                let aclFolder = destination.appendingPathComponent("acl-tree", isDirectory: true)
+                let aclChild = aclFolder.appendingPathComponent("enclosed.txt")
+                try fm.createDirectory(at: aclFolder, withIntermediateDirectories: true)
+                try Data().write(to: aclChild)
+                info.present(items: [FileItem(url: aclFolder, name: aclFolder.lastPathComponent, isDirectory: true)])
+                let appliedACL = try await info.qaApplyFolderMode(acl: "group::everyone::allow:read")
+                let enclosedACL = try await FilePropertiesInspector().permissions(aclChild).accessControlList
+                checks["fileInfoFolderACL"] = appliedACL && enclosedACL?.hasSuffix(":allow:read") == true
             } else {
                 checks["fileInfoHashComparison"] = false
                 checks["fileInfoHashFileComparison"] = false
@@ -4615,6 +4623,7 @@ extension BrowserWindow {
                 checks["fileInfoGroupOwnership"] = false
                 checks["fileInfoOwnerPrivileges"] = false
                 checks["fileInfoFolderPermissions"] = false
+                checks["fileInfoFolderACL"] = false
             }
             controller.infoWindow?.close(); window.makeKeyAndOrderFront(nil)
             let taggedURL = controller.activeSelectedItems.first?.url

@@ -1634,3 +1634,34 @@ private struct ManyBatchLoader: DirectoryStreaming {
     #expect(try await inspector.permissions(leaf).mode == 0o600)
     #expect(try await inspector.permissions(outside).mode == 0o644)
 }
+
+@Test func folderACLReplacesEnclosedACLsAndPreservesLinkedTargets() async throws {
+    let root = try fixture()
+    defer { try? FileManager.default.removeItem(at: root) }
+    let tree = root.appendingPathComponent("tree")
+    let child = tree.appendingPathComponent("child")
+    let external = root.appendingPathComponent("external")
+    try FileManager.default.createDirectory(at: tree, withIntermediateDirectories: false)
+    try Data().write(to: child)
+    try Data().write(to: external)
+    try FileManager.default.createSymbolicLink(at: tree.appendingPathComponent("link"), withDestinationURL: external)
+    let inspector = FilePropertiesInspector()
+    let initial = try await inspector.permissions(tree)
+    let originalChild = try await inspector.permissions(child)
+    _ = try await inspector.setAccessControlList("group::everyone::allow:read", at: child, expected: originalChild)
+    let entries = "group::everyone::allow:write"
+    let applied = try await inspector.setFolderAccessControlList(entries, at: tree, expected: initial)
+    let updated = try await inspector.permissions(tree)
+    let updatedChild = try await inspector.permissions(child)
+    #expect(applied.applied == 2 && applied.skipped == 1 && applied.failed == 0)
+    #expect(updated.accessControlList?.hasSuffix(":allow:write") == true)
+    #expect(updatedChild.accessControlList == updated.accessControlList)
+    #expect(updatedChild.mode == originalChild.mode)
+    #expect(try await inspector.permissions(external).accessControlList == nil)
+    await #expect(throws: FilePermissionError.changedPermissions) {
+        try await inspector.setFolderAccessControlList("", at: tree, expected: initial)
+    }
+    let cleared = try await inspector.setFolderAccessControlList("", at: tree, expected: updated)
+    #expect(cleared.applied == 2 && cleared.failed == 0)
+    #expect(try await inspector.permissions(child).accessControlList == nil)
+}

@@ -204,18 +204,45 @@ public struct FilePropertiesInspector: Sendable {
         guard (0...0o777).contains(mode) else { throw FilePermissionError.invalidMode }
         return try await Task.detached(priority: .utility) {
             try Self.withPermissionDescriptor(url) { descriptor in
-                try Self.checkPermissionSnapshot(Self.permissionSnapshot(descriptor), expected: expected)
-                var metadata = stat()
-                guard fstat(descriptor, &metadata) == 0 else { throw Self.permissionPOSIXError() }
-                guard metadata.st_mode & S_IFMT == S_IFDIR else { throw FilePermissionError.unsupportedFileType }
-                var result = FolderPermissionResult()
-                Self.applyFolderMode(mode, descriptor: descriptor, metadata: metadata, result: &result)
-                return result
+                try Self.updateFolder(descriptor, expected: expected) { entry, metadata in
+                    let requested = (metadata.st_mode & 0o7000) | mode_t(mode)
+                    var updated = stat()
+                    return fchmod(entry, requested) == 0 && fstat(entry, &updated) == 0
+                        && updated.st_mode & 0o7777 == requested
+                }
             }
         }.value
     }
 
-    private static func applyFolderMode(_ mode: Int, descriptor: Int32, metadata: stat, result: inout FolderPermissionResult) {
+    public func setFolderAccessControlList(_ entries: String, at url: URL, expected: FilePermissionSnapshot) async throws -> FolderPermissionResult {
+        try await Task.detached(priority: .utility) {
+            let acl = try Self.parsePermissionACL(entries, header: expected.aclHeader)
+            defer { acl_free(UnsafeMutableRawPointer(acl)) }
+            let requested = try Self.permissionACLText(acl)
+            return try Self.withPermissionDescriptor(url) { descriptor in
+                try Self.updateFolder(descriptor, expected: expected) { entry, _ in
+                    guard acl_set_fd_np(entry, acl, ACL_TYPE_EXTENDED) == 0,
+                          let updated = try? Self.permissionACL(entry) else { return false }
+                    return updated.entries == requested.entries
+                        && (updated.header == requested.header || requested.entries == nil)
+                }
+            }
+        }.value
+    }
+
+    private static func updateFolder(_ descriptor: Int32, expected: FilePermissionSnapshot,
+                                     apply: (Int32, stat) -> Bool) throws -> FolderPermissionResult {
+        try checkPermissionSnapshot(permissionSnapshot(descriptor), expected: expected)
+        var metadata = stat()
+        guard fstat(descriptor, &metadata) == 0 else { throw permissionPOSIXError() }
+        guard metadata.st_mode & S_IFMT == S_IFDIR else { throw FilePermissionError.unsupportedFileType }
+        var result = FolderPermissionResult()
+        visitPermissionTree(descriptor, metadata: metadata, result: &result, apply: apply)
+        return result
+    }
+
+    private static func visitPermissionTree(_ descriptor: Int32, metadata: stat, result: inout FolderPermissionResult,
+                                            apply: (Int32, stat) -> Bool) {
         let type = metadata.st_mode & S_IFMT
         if type == S_IFDIR {
             let directory = openat(descriptor, ".", O_RDONLY | O_DIRECTORY | O_CLOEXEC)
@@ -248,7 +275,7 @@ public struct FilePropertiesInspector: Sendable {
                             result.skipped += 1
                             return
                         }
-                        applyFolderMode(mode, descriptor: child, metadata: childMetadata, result: &result)
+                        visitPermissionTree(child, metadata: childMetadata, result: &result, apply: apply)
                     }
                 }
             }
@@ -257,11 +284,7 @@ public struct FilePropertiesInspector: Sendable {
             result.skipped += 1
             return
         }
-        let requested = (metadata.st_mode & 0o7000) | mode_t(mode)
-        var updated = stat()
-        guard fchmod(descriptor, requested) == 0, fstat(descriptor, &updated) == 0,
-              updated.st_mode & 0o7777 == requested else { result.failed += 1; return }
-        result.applied += 1
+        if apply(descriptor, metadata) { result.applied += 1 } else { result.failed += 1 }
     }
 
     public func setGroup(_ name: String, at url: URL, expected: FilePermissionSnapshot) async throws -> FilePermissionSnapshot {
@@ -309,14 +332,9 @@ public struct FilePropertiesInspector: Sendable {
     }
 
     public func setAccessControlList(_ entries: String, at url: URL, expected: FilePermissionSnapshot) async throws -> FilePermissionSnapshot {
-        guard !entries.utf8.contains(0) else { throw FilePermissionError.invalidAccessControlList }
-        let text = entries.trimmingCharacters(in: .whitespacesAndNewlines)
-        return try await Task.detached(priority: .utility) {
-            guard let acl = acl_from_text(expected.aclHeader + "\n" + text + "\n") else {
-                throw FilePermissionError.invalidAccessControlList
-            }
+        try await Task.detached(priority: .utility) {
+            let acl = try Self.parsePermissionACL(entries, header: expected.aclHeader)
             defer { acl_free(UnsafeMutableRawPointer(acl)) }
-            guard acl_valid(acl) == 0 else { throw FilePermissionError.invalidAccessControlList }
             return try Self.withPermissionDescriptor(url) { descriptor in
                 let current = try Self.permissionSnapshot(descriptor)
                 try Self.checkPermissionSnapshot(current, expected: expected)
@@ -324,6 +342,18 @@ public struct FilePropertiesInspector: Sendable {
                 return try Self.permissionSnapshot(descriptor)
             }
         }.value
+    }
+
+    private static func parsePermissionACL(_ entries: String, header: String) throws -> acl_t {
+        let text = entries.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !entries.utf8.contains(0), let acl = acl_from_text(header + "\n" + text + "\n") else {
+            throw FilePermissionError.invalidAccessControlList
+        }
+        guard acl_valid(acl) == 0 else {
+            acl_free(UnsafeMutableRawPointer(acl))
+            throw FilePermissionError.invalidAccessControlList
+        }
+        return acl
     }
 
     private static func checkPermissionSnapshot(_ current: FilePermissionSnapshot, expected: FilePermissionSnapshot) throws {
@@ -366,6 +396,10 @@ public struct FilePropertiesInspector: Sendable {
             throw permissionPOSIXError()
         }
         defer { acl_free(UnsafeMutableRawPointer(acl)) }
+        return try permissionACLText(acl)
+    }
+
+    private static func permissionACLText(_ acl: acl_t) throws -> (header: String, entries: String?) {
         var length = 0
         guard let text = acl_to_text(acl, &length) else { throw permissionPOSIXError() }
         defer { acl_free(text) }

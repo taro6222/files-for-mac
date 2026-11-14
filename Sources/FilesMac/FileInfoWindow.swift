@@ -270,14 +270,14 @@ final class FileInfoWindow: NSWindowController, NSTextFieldDelegate {
     private func cancelTasks() { inspectTask?.cancel(); inspectTask = nil; hashTask?.cancel(); hashTask = nil; signatureTask?.cancel(); signatureTask = nil }
 #if DEBUG
     var qaLoaded: Bool { properties != nil }
-    func qaApplyFolderMode() async throws -> Bool {
+    func qaApplyFolderMode(acl: String? = nil) async throws -> Bool {
         guard let sheet = openPermissions() else { return false }
         defer { sheet.dismissQA() }
         let deadline = ContinuousClock.now + .seconds(5)
         while !sheet.qaReady && ContinuousClock.now < deadline {
             try await Task.sleep(for: .milliseconds(20))
         }
-        return try await sheet.qaApplyDescendants()
+        return try await sheet.qaApplyDescendants(acl: acl)
     }
     func qaOwnerControlMatchesPrivileges() async throws -> Bool {
         guard let sheet = openPermissions() else { return false }
@@ -540,6 +540,10 @@ private final class FilePermissionsSheet: NSObject, NSTextViewDelegate {
 
     @objc private func permissionChanged(_ sender: Any?) {
         guard let initial else { return }
+        if aclText.isEditable {
+            updateACLSaveState()
+            return
+        }
         let requested = (initial.mode & 0o7000) | selectedMode
         status.stringValue = String(format: "%04o → %04o", initial.mode, requested)
         save.isEnabled = requested != initial.mode || includeDescendants.state == .on
@@ -555,7 +559,7 @@ private final class FilePermissionsSheet: NSObject, NSTextViewDelegate {
     @objc private func beginACLEdit(_ sender: Any?) {
         guard let initial, editACL.isEnabled else { return }
         checks.forEach { $0.isEnabled = false }
-        includeDescendants.isEnabled = false
+        includeDescendants.isEnabled = initial.isDirectory
         editACL.isEnabled = false
         groupList.isEnabled = false
         ownerList.isEnabled = false
@@ -637,7 +641,12 @@ private final class FilePermissionsSheet: NSObject, NSTextViewDelegate {
 
     private func updateACLSaveState() {
         guard aclText.isEditable, let initial else { return }
-        save.isEnabled = aclText.string.trimmingCharacters(in: .whitespacesAndNewlines) != (initial.accessControlList ?? "")
+        let recursive = includeDescendants.state == .on
+        save.isEnabled = recursive || aclText.string.trimmingCharacters(in: .whitespacesAndNewlines) != (initial.accessControlList ?? "")
+        if recursive {
+            status.stringValue = L("하위 항목의 기존 ACL을 이 ACL로 교체합니다.",
+                                   "This ACL will replace existing ACLs on enclosed items.")
+        }
     }
 
     @objc private func savePermissions(_ sender: Any?) {
@@ -664,14 +673,19 @@ private final class FilePermissionsSheet: NSObject, NSTextViewDelegate {
                     _ = try await inspector.setOwner(owner, at: url, expected: initial)
                 } else if let group {
                     _ = try await inspector.setGroup(group, at: url, expected: initial)
-                } else if let aclEntries {
-                    _ = try await inspector.setAccessControlList(aclEntries, at: url, expected: initial)
                 } else if recursive {
-                    let result = try await inspector.setFolderPermissions(requested, at: url, expected: initial)
+                    let result: FolderPermissionResult
+                    if let aclEntries {
+                        result = try await inspector.setFolderAccessControlList(aclEntries, at: url, expected: initial)
+                    } else {
+                        result = try await inspector.setFolderPermissions(requested, at: url, expected: initial)
+                    }
                     refreshAfterClose = true
                     status.stringValue = L("적용 \(result.applied)개, 건너뜀 \(result.skipped)개, 실패 \(result.failed)개.",
                                            "Applied to \(result.applied), skipped \(result.skipped), failed \(result.failed).")
                     return
+                } else if let aclEntries {
+                    _ = try await inspector.setAccessControlList(aclEntries, at: url, expected: initial)
                 } else {
                     _ = try await inspector.setPermissions(requested, at: url, expected: initial)
                 }
@@ -684,6 +698,7 @@ private final class FilePermissionsSheet: NSObject, NSTextViewDelegate {
             } catch FilePermissionError.invalidAccessControlList {
                 status.stringValue = L("ACL 형식을 확인하세요.", "Check the ACL entry format.")
                 aclText.isEditable = true
+                includeDescendants.isEnabled = initial.isDirectory
                 setRuleControlsEnabled(true)
                 save.isEnabled = true
             } catch {
@@ -694,8 +709,13 @@ private final class FilePermissionsSheet: NSObject, NSTextViewDelegate {
 #if DEBUG
     var qaReady: Bool { initial != nil }
     var qaOwnerEnabled: Bool { ownerList.isEnabled }
-    func qaApplyDescendants() async throws -> Bool {
+    func qaApplyDescendants(acl: String?) async throws -> Bool {
         guard includeDescendants.isEnabled else { return false }
+        if let acl {
+            editACL.performClick(nil)
+            guard aclText.isEditable else { return false }
+            aclText.string = acl
+        }
         includeDescendants.state = .on
         permissionChanged(nil)
         save.performClick(nil)
