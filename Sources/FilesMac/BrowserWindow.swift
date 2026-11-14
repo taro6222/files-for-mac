@@ -386,6 +386,7 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         }
         gridView.onActivate = { [weak self] in self?.setSecondaryActive(false) }
         gridView.onOpen = { [weak self] item in self?.openGridItem(item) }
+        gridView.onDoubleClickBackground = { [weak self] in self?.handleBackgroundDoubleClick() }
         gridView.onFileDrop = { [weak self] sources, item, intent in
             guard let self, let destination = item?.isBrowsable == true ? item?.url : self.model.location else { return false }
             if intent == .move { self.prepareMove(sources: sources, destination: destination) }
@@ -398,6 +399,7 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         }
         listView.onActivate = { [weak self] in self?.setSecondaryActive(false) }
         listView.onOpen = { [weak self] item in self?.openRenderedItem(item) }
+        listView.onDoubleClickBackground = { [weak self] in self?.handleBackgroundDoubleClick() }
         listView.onFileDrop = { [weak self] sources, item, intent in
             guard let self, let destination = item?.isBrowsable == true ? item?.url : self.model.location else { return false }
             if intent == .move { self.prepareMove(sources: sources, destination: destination) }
@@ -409,6 +411,7 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         }
         columnView.onActivate = { [weak self] in self?.setSecondaryActive(false) }
         columnView.onOpen = { [weak self] item in self?.openRenderedItem(item) }
+        columnView.onDoubleClickBackground = { [weak self] in self?.handleBackgroundDoubleClick() }
         columnView.onFileDrop = { [weak self] sources, item, columnURL, intent in
             guard let self else { return false }
             let destination = item?.isBrowsable == true ? item!.url : columnURL
@@ -953,6 +956,10 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
             if preferences.scrollToPreviousFolderOnUp { pendingEntrySelection = url.standardizedFileURL }
             navigate(url.deletingLastPathComponent())
         }
+    }
+    func handleBackgroundDoubleClick() {
+        guard preferences.doubleClickToGoUp else { return }
+        goUp(nil)
     }
     @objc func refresh(_ sender: Any?) { if secondaryActive { secondaryPane?.refresh() } else { savePosition(); model.reload() } }
     @objc func refreshOrStop(_ sender: Any?) {
@@ -1979,6 +1986,12 @@ final class FlippedView: NSView { override var isFlipped: Bool { true } }
 
 @MainActor
 private final class BrowserFileTable: NSTableView, NSMenuItemValidation {
+    override func mouseDown(with event: NSEvent) {
+        if event.clickCount == 2 && row(at: convert(event.locationInWindow, from: nil)) < 0 {
+            deselectAll(nil); (window?.windowController as? BrowserWindow)?.handleBackgroundDoubleClick(); return
+        }
+        super.mouseDown(with: event)
+    }
     @objc func cut(_ sender: Any?) { (window?.windowController as? BrowserWindow)?.cutFilesToClipboard() }
     @objc func copy(_ sender: Any?) { (window?.windowController as? BrowserWindow)?.copyFilesToClipboard() }
     @objc func paste(_ sender: Any?) { (window?.windowController as? BrowserWindow)?.pasteFilesFromClipboard() }
@@ -2749,12 +2762,13 @@ extension BrowserWindow {
                 let autoSizeColumnsBefore = delegate.qaGeneralAutoSizeColumnsInDetailsLayout
                 let calculateFolderSizesBefore = delegate.qaGeneralCalculateFolderSizes
                 let showThumbnailsBefore = delegate.qaGeneralShowThumbnails
+                let doubleClickToGoUpBefore = delegate.qaGeneralDoubleClickToGoUp
                 let startupTabBefore = delegate.qaGeneralOpenNewTabOnStartup
                 let newTabPoliciesBefore = delegate.qaGeneralNewTabPolicies
                 let revealBefore = delegate.qaGeneralScrollToPreviousFolderOnUp
                 let extensionWarningBefore = delegate.qaGeneralShowFileExtensionWarning
                 let contextMenuBefore = delegate.qaGeneralContextMenuStates
-                delegate.qaToggleGeneralWidgets(); delegate.qaToggleGeneralOpenNewTabOnStartup(); delegate.qaToggleGeneralNewTabPolicies(); delegate.qaToggleGeneralSizeUnit(); delegate.qaCycleGeneralDefaultSortDirectoryPlacement(); delegate.qaToggleGeneralAutoSizeColumnsInDetailsLayout(); delegate.qaToggleGeneralCalculateFolderSizes(); delegate.qaToggleGeneralShowThumbnails(); delegate.qaToggleGeneralOpenFoldersInNewTab(); delegate.qaToggleGeneralScrollToPreviousFolderOnUp(); delegate.qaToggleGeneralShowFileExtensionWarning(); delegate.qaToggleGeneralContextMenuItems(); let widgetsAfter = delegate.qaGeneralWidgetStates
+                delegate.qaToggleGeneralWidgets(); delegate.qaToggleGeneralOpenNewTabOnStartup(); delegate.qaToggleGeneralNewTabPolicies(); delegate.qaToggleGeneralSizeUnit(); delegate.qaCycleGeneralDefaultSortDirectoryPlacement(); delegate.qaToggleGeneralAutoSizeColumnsInDetailsLayout(); delegate.qaToggleGeneralCalculateFolderSizes(); delegate.qaToggleGeneralShowThumbnails(); delegate.qaToggleGeneralDoubleClickToGoUp(); delegate.qaToggleGeneralOpenFoldersInNewTab(); delegate.qaToggleGeneralScrollToPreviousFolderOnUp(); delegate.qaToggleGeneralShowFileExtensionWarning(); delegate.qaToggleGeneralContextMenuItems(); let widgetsAfter = delegate.qaGeneralWidgetStates
                 let contextMenuAfter = delegate.qaGeneralContextMenuStates
                 let contextMenusToggled = contextMenuBefore?.count == contextMenuAfter?.count
                     && zip(contextMenuBefore ?? [], contextMenuAfter ?? []).allSatisfy { $0 != $1 }
@@ -2765,6 +2779,7 @@ extension BrowserWindow {
                     && delegate.qaGeneralAutoSizeColumnsInDetailsLayout != autoSizeColumnsBefore
                     && delegate.qaGeneralCalculateFolderSizes != calculateFolderSizesBefore
                     && delegate.qaGeneralShowThumbnails != showThumbnailsBefore
+                    && delegate.qaGeneralDoubleClickToGoUp != doubleClickToGoUpBefore
                     && delegate.qaGeneralOpenNewTabOnStartup != startupTabBefore
                     && delegate.qaGeneralNewTabPolicies?.0 != newTabPoliciesBefore?.0
                     && delegate.qaGeneralNewTabPolicies?.1 != newTabPoliciesBefore?.1
@@ -2816,7 +2831,7 @@ extension BrowserWindow {
                 controller.toggleDualPane(nil); checks["toggleDualPaneOpens"] = controller.workspaceSnapshot().isSplit
                 controller.closeSecondaryPane(nil)
                 try capture("general-settings", view: delegate.qaGeneralSettingsContentView)
-                delegate.qaToggleGeneralWidgets(); delegate.qaToggleGeneralOpenNewTabOnStartup(); delegate.qaToggleGeneralNewTabPolicies(); delegate.qaToggleGeneralSizeUnit(); delegate.qaCycleGeneralDefaultSortDirectoryPlacement(); delegate.qaToggleGeneralAutoSizeColumnsInDetailsLayout(); delegate.qaToggleGeneralCalculateFolderSizes(); delegate.qaToggleGeneralShowThumbnails(); delegate.qaToggleGeneralOpenFoldersInNewTab(); delegate.qaToggleGeneralScrollToPreviousFolderOnUp(); delegate.qaToggleGeneralShowFileExtensionWarning(); delegate.qaToggleGeneralContextMenuItems(); delegate.qaGeneralSettingsContentView?.window?.close(); window.makeKeyAndOrderFront(nil)
+                delegate.qaToggleGeneralWidgets(); delegate.qaToggleGeneralOpenNewTabOnStartup(); delegate.qaToggleGeneralNewTabPolicies(); delegate.qaToggleGeneralSizeUnit(); delegate.qaCycleGeneralDefaultSortDirectoryPlacement(); delegate.qaToggleGeneralAutoSizeColumnsInDetailsLayout(); delegate.qaToggleGeneralCalculateFolderSizes(); delegate.qaToggleGeneralShowThumbnails(); delegate.qaToggleGeneralDoubleClickToGoUp(); delegate.qaToggleGeneralOpenFoldersInNewTab(); delegate.qaToggleGeneralScrollToPreviousFolderOnUp(); delegate.qaToggleGeneralShowFileExtensionWarning(); delegate.qaToggleGeneralContextMenuItems(); delegate.qaGeneralSettingsContentView?.window?.close(); window.makeKeyAndOrderFront(nil)
                 delegate.showArchiveCapabilities(nil); try await Task.sleep(for: .milliseconds(50))
                 checks["archiveCapabilitiesWindow"] = delegate.qaArchiveCapabilitiesVisible
                 try capture("archive-capabilities", view: delegate.qaArchiveCapabilitiesContentView)
@@ -3333,6 +3348,15 @@ extension BrowserWindow {
             while controller.model.isLoading && adaptiveLoadStart.duration(to: .now) < .seconds(10) {
                 try await Task.sleep(for: .milliseconds(10))
             }
+            preferences.setDoubleClickToGoUp(false); controller.handleBackgroundDoubleClick()
+            let disabledBackgroundStayed = controller.model.location == columnFolder.standardizedFileURL
+            preferences.setDoubleClickToGoUp(true); controller.handleBackgroundDoubleClick()
+            let backgroundUpStart = ContinuousClock.now
+            while controller.model.isLoading && backgroundUpStart.duration(to: .now) < .seconds(10) { try await Task.sleep(for: .milliseconds(10)) }
+            checks["doubleClickBackgroundGoUp"] = disabledBackgroundStayed && controller.model.location == gridFolder.standardizedFileURL
+            controller.navigate(columnFolder)
+            let adaptiveReloadStart = ContinuousClock.now
+            while controller.model.isLoading && adaptiveReloadStart.duration(to: .now) < .seconds(10) { try await Task.sleep(for: .milliseconds(10)) }
             controller.model.setViewMode(.adaptive); controller.render()
             root.layoutSubtreeIfNeeded(); root.displayIfNeeded()
             checks["adaptiveMediaUsesGrid"] = controller.model.viewMode == .adaptive

@@ -7,10 +7,17 @@ final class FileColumnView: NSView {
         var onActivate: (() -> Void)?
         var onRight: (() -> Void)?
         var onLeft: (() -> Void)?
+        var onDoubleClickBackground: (() -> Void)?
         var onValidateDrop: ((any NSDraggingInfo, Int) -> NSDragOperation)?
         var onAcceptDrop: ((any NSDraggingInfo, Int) -> Bool)?
         override func becomeFirstResponder() -> Bool { onActivate?(); return super.becomeFirstResponder() }
-        override func mouseDown(with event: NSEvent) { onActivate?(); super.mouseDown(with: event) }
+        override func mouseDown(with event: NSEvent) {
+            onActivate?()
+            if event.clickCount == 2 && row(at: convert(event.locationInWindow, from: nil)) < 0 {
+                deselectAll(nil); onDoubleClickBackground?(); return
+            }
+            super.mouseDown(with: event)
+        }
         override func keyDown(with event: NSEvent) {
             if event.keyCode == 124 { onRight?(); return }
             if event.keyCode == 123 { onLeft?(); return }
@@ -38,6 +45,7 @@ final class FileColumnView: NSView {
             table.onActivate = { [weak self] in self?.owner?.activate(column: self) }
             table.onRight = { [weak self] in self?.owner?.expand(column: self) }
             table.onLeft = { [weak self] in self?.owner?.moveLeft(from: self) }
+            table.onDoubleClickBackground = { [weak self] in self?.owner?.onDoubleClickBackground?() }
             table.onValidateDrop = { [weak self] info, row in self?.owner?.validateDrop(info, column: self, row: row) ?? [] }
             table.onAcceptDrop = { [weak self] info, row in self?.owner?.acceptDrop(info, column: self, row: row) ?? false }
             table.registerForDraggedTypes([.fileURL]); table.setDraggingSourceOperationMask([.copy, .move], forLocal: true); table.setDraggingSourceOperationMask(.copy, forLocal: false)
@@ -97,6 +105,7 @@ final class FileColumnView: NSView {
     var sortOrder = SortOrder()
     var onSelectionChange: ((Set<String>) -> Void)?
     var onOpen: ((FileItem) -> Void)?
+    var onDoubleClickBackground: (() -> Void)?
     var onActivate: (() -> Void)?
     var onFileDrop: (([URL], FileItem?, URL, FileDropIntent) -> Bool)?
     var contextMenu: NSMenu? { didSet { columns.forEach { $0.table.menu = contextMenu } } }

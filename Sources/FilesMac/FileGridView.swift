@@ -5,13 +5,15 @@ import FilesCore
 final class FileGridView: NSView, NSCollectionViewDataSource, NSCollectionViewDelegate {
     private final class CollectionView: NSCollectionView {
         var onOpen: (() -> Void)?
+        var onDoubleClickBackground: (() -> Void)?
         var onActivate: (() -> Void)?
         var onValidateDrop: ((any NSDraggingInfo, IndexPath?) -> NSDragOperation)?
         var onAcceptDrop: ((any NSDraggingInfo, IndexPath?) -> Bool)?
         override func mouseDown(with event: NSEvent) {
             onActivate?()
+            let hitsItem = indexPathForItem(at: convert(event.locationInWindow, from: nil)) != nil
             super.mouseDown(with: event)
-            if event.clickCount == 2 { onOpen?() }
+            if event.clickCount == 2 { hitsItem ? onOpen?() : onDoubleClickBackground?() }
         }
         override func becomeFirstResponder() -> Bool { onActivate?(); return super.becomeFirstResponder() }
         override func menu(for event: NSEvent) -> NSMenu? {
@@ -95,6 +97,7 @@ final class FileGridView: NSView, NSCollectionViewDataSource, NSCollectionViewDe
     var showsThumbnails = true { didSet { if oldValue != showsThumbnails { collection.reloadData() } } }
     var onSelectionChange: ((Set<String>) -> Void)?
     var onOpen: ((FileItem) -> Void)?
+    var onDoubleClickBackground: (() -> Void)? { didSet { collection.onDoubleClickBackground = onDoubleClickBackground } }
     var onActivate: (() -> Void)?
     var onFileDrop: (([URL], FileItem?, FileDropIntent) -> Bool)?
     var contextMenu: NSMenu? { get { collection.menu } set { collection.menu = newValue } }

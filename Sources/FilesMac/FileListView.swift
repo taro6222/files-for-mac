@@ -16,7 +16,14 @@ final class FileListView: NSView, NSTableViewDataSource, NSTableViewDelegate {
     }
     private final class Table: NSTableView {
         var onActivate: (() -> Void)?
-        override func mouseDown(with event: NSEvent) { onActivate?(); super.mouseDown(with: event) }
+        var onDoubleClickBackground: (() -> Void)?
+        override func mouseDown(with event: NSEvent) {
+            onActivate?()
+            if event.clickCount == 2 && row(at: convert(event.locationInWindow, from: nil)) < 0 {
+                deselectAll(nil); onDoubleClickBackground?(); return
+            }
+            super.mouseDown(with: event)
+        }
         override func becomeFirstResponder() -> Bool { onActivate?(); return super.becomeFirstResponder() }
         override func menu(for event: NSEvent) -> NSMenu? {
             onActivate?()
@@ -36,6 +43,7 @@ final class FileListView: NSView, NSTableViewDataSource, NSTableViewDelegate {
     var showsThumbnails = true { didSet { if oldValue != showsThumbnails { table.reloadData() } } }
     var onSelectionChange: ((Set<String>) -> Void)?
     var onOpen: ((FileItem) -> Void)?
+    var onDoubleClickBackground: (() -> Void)? { didSet { table.onDoubleClickBackground = onDoubleClickBackground } }
     var onActivate: (() -> Void)?
     var onFileDrop: (([URL], FileItem?, FileDropIntent) -> Bool)?
     var contextMenu: NSMenu? { get { table.menu } set { table.menu = newValue } }

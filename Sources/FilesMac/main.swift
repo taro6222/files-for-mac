@@ -550,6 +550,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     func qaToggleGeneralCalculateFolderSizes() { generalSettingsWindow?.qaToggleCalculateFolderSizes() }
     var qaGeneralShowThumbnails: Bool? { generalSettingsWindow?.qaShowThumbnails }
     func qaToggleGeneralShowThumbnails() { generalSettingsWindow?.qaToggleShowThumbnails() }
+    var qaGeneralDoubleClickToGoUp: Bool? { generalSettingsWindow?.qaDoubleClickToGoUp }
+    func qaToggleGeneralDoubleClickToGoUp() { generalSettingsWindow?.qaToggleDoubleClickToGoUp() }
     var qaGeneralOpenFoldersInNewTab: Bool? { generalSettingsWindow?.qaOpenFoldersInNewTab }
     func qaToggleGeneralOpenFoldersInNewTab() { generalSettingsWindow?.qaToggleOpenFoldersInNewTab() }
     var qaGeneralScrollToPreviousFolderOnUp: Bool? { generalSettingsWindow?.qaScrollToPreviousFolderOnUp }

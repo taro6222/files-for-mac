@@ -189,6 +189,7 @@ final class SecondaryBrowserPane: NSView, NSTableViewDataSource, NSTableViewDele
         stack.addArrangedSubview(toolbar)
         table.style = .fullWidth; table.rowHeight = 30; table.allowsMultipleSelection = true
         table.delegate = self; table.dataSource = self; table.onActivate = { [weak self] in self?.activate() }
+        table.onDoubleClickBackground = { [weak self] in self?.handleBackgroundDoubleClick() }
         table.doubleAction = #selector(openSelection(_:)); table.target = self
         table.registerForDraggedTypes([.fileURL])
         table.setDraggingSourceOperationMask([.copy, .move], forLocal: true)
@@ -218,6 +219,7 @@ final class SecondaryBrowserPane: NSView, NSTableViewDataSource, NSTableViewDele
         }
         gridView.onActivate = { [weak self] in self?.activate() }
         gridView.onOpen = { [weak self] item in self?.openGridItem(item) }
+        gridView.onDoubleClickBackground = { [weak self] in self?.handleBackgroundDoubleClick() }
         gridView.onFileDrop = { [weak self] sources, item, intent in
             guard let self, let destination = item?.isBrowsable == true ? item?.url : self.model.location else { return false }
             self.activate()
@@ -229,6 +231,7 @@ final class SecondaryBrowserPane: NSView, NSTableViewDataSource, NSTableViewDele
         }
         listView.onActivate = { [weak self] in self?.activate() }
         listView.onOpen = { [weak self] item in self?.openGridItem(item) }
+        listView.onDoubleClickBackground = { [weak self] in self?.handleBackgroundDoubleClick() }
         listView.onFileDrop = { [weak self] sources, item, intent in
             guard let self, let destination = item?.isBrowsable == true ? item?.url : self.model.location else { return false }
             self.activate(); return self.onFileDrop?(sources, destination, intent) ?? false
@@ -239,6 +242,7 @@ final class SecondaryBrowserPane: NSView, NSTableViewDataSource, NSTableViewDele
         }
         columnView.onActivate = { [weak self] in self?.activate() }
         columnView.onOpen = { [weak self] item in self?.openGridItem(item) }
+        columnView.onDoubleClickBackground = { [weak self] in self?.handleBackgroundDoubleClick() }
         columnView.onFileDrop = { [weak self] sources, item, columnURL, intent in
             guard let self else { return false }; self.activate()
             return self.onFileDrop?(sources, item?.isBrowsable == true ? item!.url : columnURL, intent) ?? false
@@ -445,6 +449,10 @@ final class SecondaryBrowserPane: NSView, NSTableViewDataSource, NSTableViewDele
     private func openGridItem(_ item: FileItem) {
         activate(); if item.isBrowsable && preferences.openFoldersInNewTab { onOpenFolderInNewTab?(item.url) } else if item.isBrowsable { navigate(item.url) } else { NSWorkspace.shared.open(item.url) }
     }
+    private func handleBackgroundDoubleClick() {
+        guard preferences.doubleClickToGoUp else { return }
+        goUp()
+    }
     private func updateWatcher() {
         guard watchedURL != model.location else { return }
         watcherTask?.cancel()
@@ -497,6 +505,13 @@ final class SecondaryBrowserPane: NSView, NSTableViewDataSource, NSTableViewDele
 @MainActor
 private final class ActivatingTableView: NSTableView {
     var onActivate: (() -> Void)?
-    override func mouseDown(with event: NSEvent) { onActivate?(); super.mouseDown(with: event) }
+    var onDoubleClickBackground: (() -> Void)?
+    override func mouseDown(with event: NSEvent) {
+        onActivate?()
+        if event.clickCount == 2 && row(at: convert(event.locationInWindow, from: nil)) < 0 {
+            deselectAll(nil); onDoubleClickBackground?(); return
+        }
+        super.mouseDown(with: event)
+    }
     override func becomeFirstResponder() -> Bool { onActivate?(); return super.becomeFirstResponder() }
 }
