@@ -1,0 +1,61 @@
+{
+  "imageSHA256": "3b07264d51ff5ea487aa8c5976a153171bdd8bfa9a05ccf104584e5795a0d387",
+  "samples": [
+    {
+      "location": "project",
+      "trial": 1,
+      "windowSeconds": 11.502,
+      "interactiveSeconds": 11.752,
+      "launchCallbackSeconds": 0.421
+    },
+    {
+      "location": "temporary",
+      "trial": 1,
+      "windowSeconds": 0.591,
+      "interactiveSeconds": 0.868,
+      "launchCallbackSeconds": 0.399
+    },
+    {
+      "location": "temporary",
+      "trial": 2,
+      "windowSeconds": 0.303,
+      "interactiveSeconds": 0.548,
+      "launchCallbackSeconds": 0.077
+    },
+    {
+      "location": "project",
+      "trial": 2,
+      "windowSeconds": 10.924,
+      "interactiveSeconds": 11.2,
+      "launchCallbackSeconds": 0.079
+    },
+    {
+      "location": "project",
+      "trial": 3,
+      "windowSeconds": 10.589,
+      "interactiveSeconds": 10.875,
+      "launchCallbackSeconds": 0.086
+    },
+    {
+      "location": "temporary",
+      "trial": 3,
+      "windowSeconds": 0.246,
+      "interactiveSeconds": 0.484,
+      "launchCallbackSeconds": 0.085
+    },
+    {
+      "location": "temporary",
+      "trial": 4,
+      "windowSeconds": 0.237,
+      "interactiveSeconds": 0.522,
+      "launchCallbackSeconds": 0.077
+    },
+    {
+      "location": "project",
+      "trial": 4,
+      "windowSeconds": 10.262,
+      "interactiveSeconds": 10.495,
+      "launchCallbackSeconds": 0.084
+    }
+  ]
+}
