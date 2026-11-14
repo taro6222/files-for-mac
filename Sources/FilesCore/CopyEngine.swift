@@ -407,16 +407,25 @@ public enum CopyEngine {
         var content: [String: String] = [:]
         var extendedAttributes: [String: [Data: SHA256.Digest]] = [:]
         var accessControlLists: [String: Data] = [:]
+        var modificationDates: [String: Date] = [:]
+        var modificationTimeResolution: TimeInterval = 0
         var hasNativePermissions = true
 
         func matchesTransferredContents(of source: Self) -> Bool {
-            content == source.content && extendedAttributes == source.extendedAttributes
-                && accessControlLists == source.accessControlLists
-                && (!hasNativePermissions || !source.hasNativePermissions || withPermissions == source.withPermissions)
+            let resolution = max(modificationTimeResolution, source.modificationTimeResolution)
+            guard content == source.content, extendedAttributes == source.extendedAttributes,
+                  accessControlLists == source.accessControlLists,
+                  !hasNativePermissions || !source.hasNativePermissions || withPermissions == source.withPermissions,
+                  modificationDates.count == source.modificationDates.count else { return false }
+            return modificationDates.allSatisfy { path, date in
+                guard let sourceDate = source.modificationDates[path] else { return false }
+                return date == sourceDate || abs(date.timeIntervalSince(sourceDate)) < resolution
+            }
         }
 
         func matchesOriginal(_ original: Self) -> Bool {
-            withPermissions == original.withPermissions && matchesTransferredContents(of: original)
+            withPermissions == original.withPermissions && modificationDates == original.modificationDates
+                && matchesTransferredContents(of: original)
         }
 
         var legacyPermissionsSnapshot: [String: String] {
@@ -446,6 +455,12 @@ public enum CopyEngine {
                 // FAT exposes synthesized modes. Still check the original and
                 // the published copy against their own subsequent snapshots.
                 snapshot.hasNativePermissions = filesystem != "exfat" && filesystem != "msdos"
+                switch filesystem {
+                case "exfat": snapshot.modificationTimeResolution = 0.01
+                case "msdos": snapshot.modificationTimeResolution = 2
+                case "hfs": snapshot.modificationTimeResolution = 1
+                default: break
+                }
             }
             switch type {
             case .typeSymbolicLink:
@@ -477,6 +492,9 @@ public enum CopyEngine {
                 let attributes = try attributeDigests(url, cancellation: cancellation)
                 if !attributes.isEmpty { snapshot.extendedAttributes[relative] = attributes }
                 snapshot.accessControlLists[relative] = try accessControlList(url)
+                if type != .typeSymbolicLink {
+                    snapshot.modificationDates[relative] = attrs[.modificationDate] as? Date
+                }
             }
         }
         try visit(root, relative: "")

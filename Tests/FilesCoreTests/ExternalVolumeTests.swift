@@ -124,16 +124,21 @@ import Testing
 
         let moveSource = local.appendingPathComponent("move-source.txt")
         try Data(repeating: 0xA5, count: 256 * 1024).write(to: moveSource)
+        let modified = Date(timeIntervalSince1970: 1_700_000_000.123)
+        try FileManager.default.setAttributes([.modificationDate: modified], ofItemAtPath: moveSource.path)
         let move = try await EntryOperations.move([moveSource], to: destination,
             conflictPolicy: .skip, journalDirectory: journal)
         #expect(move.state == "completed")
         #expect(!FileManager.default.fileExists(atPath: moveSource.path))
         let moved = destination.appendingPathComponent("move-source.txt")
         #expect(try Data(contentsOf: moved) == Data(repeating: 0xA5, count: 256 * 1024))
+        let movedDate = try #require(try FileManager.default.attributesOfItem(atPath: moved.path)[.modificationDate] as? Date)
+        #expect(abs(movedDate.timeIntervalSince(modified)) < 0.01)
         let moveUndo = try #require(EntryOperations.latestUndoMove(journalDirectory: journal))
         let moveUndoResult = await EntryOperations.undoMove(moveUndo, journalDirectory: journal)
         #expect(moveUndoResult.state == "completed")
         #expect(try Data(contentsOf: moveSource) == Data(repeating: 0xA5, count: 256 * 1024))
+        #expect(try FileManager.default.attributesOfItem(atPath: moveSource.path)[.modificationDate] as? Date == movedDate)
 
         let replaceSource = local.appendingPathComponent("replace.txt")
         let replaceTarget = destination.appendingPathComponent("replace.txt")
