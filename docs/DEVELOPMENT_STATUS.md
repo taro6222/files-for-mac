@@ -4,6 +4,8 @@
 
 ## 이번 구현 단위
 
+AppKit 마우스 추적에서 좌우 구분선 이동을 확인하고, 최소 창 너비에서 보조 패널의 경로 입력과 폴더 이동을 검증한다. [M7 분할 조작 검증](verification/m7/INCREMENT_85.md)
+
 최소 창 너비에서 좌우 분할 비율 유지와 기본 패널의 경로 입력 초점을 검증한다. [M7 최소 너비 검증](verification/m7/INCREMENT_84.md)
 
 좌우 분할 시작 및 창 크기 변경 중 패널 비율을 유지한다. [M7 좌우 분할 검증](verification/m7/INCREMENT_83.md)

@@ -581,6 +581,14 @@ final class SecondaryBrowserPane: NSView, NSTableViewDataSource, NSTableViewDele
         return .resolve(modifiers: modifiers, sourceAllowsMove: info.draggingSourceOperationMask.contains(.move))
     }
     #if DEBUG
+    func qaSubmitFocusedPath(_ url: URL) -> Bool {
+        guard pathField.frame.width > 0, let editor = pathField.currentEditor() else { return false }
+        editor.string = url.path
+        pathField.stringValue = url.path
+        submitPath(nil)
+        return true
+    }
+
     func qaNavigationAccessibility() -> Bool {
         let labels = [L("뒤로", "Back"), L("앞으로", "Forward"), L("상위 폴더", "Enclosing Folder"),
                       L("새로고침", "Refresh"), L("숨김 항목 전환", "Toggle Hidden Files")]

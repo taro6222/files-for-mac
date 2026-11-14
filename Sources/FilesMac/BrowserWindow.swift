@@ -3748,6 +3748,26 @@ extension BrowserWindow {
                         && actual.panes.last?.tab.history.forward.map { $0.url?.path } == [columnFolder.path]
                     if axis == .vertical, let restoredWindow = restored.window {
                         let split = restored.workspaceSplit
+                        let dividerX = restored.primaryPaneHost.frame.maxX + split.dividerThickness / 2
+                        let targetX = split.bounds.width * 0.55
+                        func dividerEvent(_ type: NSEvent.EventType, x: CGFloat) -> NSEvent? {
+                            NSEvent.mouseEvent(with: type,
+                                location: split.convert(NSPoint(x: x, y: split.bounds.midY), to: nil),
+                                modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
+                                windowNumber: restoredWindow.windowNumber, context: nil, eventNumber: 0,
+                                clickCount: 1, pressure: type == .leftMouseUp ? 0 : 1)
+                        }
+                        if let down = dividerEvent(.leftMouseDown, x: dividerX),
+                           let drag = dividerEvent(.leftMouseDragged, x: targetX),
+                           let up = dividerEvent(.leftMouseUp, x: targetX) {
+                            // NSSplitView consumes these events in its mouse-down tracking loop.
+                            NSApp.postEvent(up, atStart: true)
+                            NSApp.postEvent(drag, atStart: true)
+                            split.mouseDown(with: down)
+                            let draggedRatio = restored.workspaceSnapshot().ratio
+                            metrics["draggedSplitRatio"] = draggedRatio
+                            checks["sideBySideTracksDividerDrag"] = abs(draggedRatio - 0.55) < 0.03
+                        } else { checks["sideBySideTracksDividerDrag"] = false }
                         split.setPosition(split.bounds.width * 0.60, ofDividerAt: 0)
                         let adjustedRatio = restored.workspaceSnapshot().ratio
                         var narrowFrame = restoredWindow.frame
@@ -3764,6 +3784,11 @@ extension BrowserWindow {
                         restored.focusPath(nil)
                         checks["sideBySideCanFocusPrimaryPathAtMinimumWidth"] = !restored.secondaryActive
                             && restored.pathField.frame.width > 0 && restored.pathField.currentEditor() != nil
+                        restored.focusOtherPane(nil)
+                        restored.focusPath(nil)
+                        checks["sideBySideCanUseSecondaryPathAtMinimumWidth"] = restored.secondaryActive
+                            && restored.secondaryPane?.qaSubmitFocusedPath(columnFolder) == true
+                            && restored.secondaryPane?.model.location?.path == columnFolder.path
                     }
                     restored.close()
                 }
