@@ -2650,7 +2650,8 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
 
     private nonisolated static func conflictPDFThumbnail(_ data: Data) -> CGImage? {
         guard let provider = CGDataProvider(data: data as CFData),
-              let page = CGPDFDocument(provider)?.page(at: 1) else { return nil }
+              let document = CGPDFDocument(provider), document.isUnlocked,
+              let page = document.page(at: 1) else { return nil }
         let bounds = page.getBoxRect(.cropBox)
         guard bounds.width.isFinite, bounds.height.isFinite, bounds.width > 0, bounds.height > 0 else { return nil }
         let rotated = abs(page.rotationAngle % 180) == 90
@@ -5485,6 +5486,8 @@ extension BrowserWindow {
             let damagedPDF = source.appendingPathComponent("damaged.pdf")
             let damagedImage = source.appendingPathComponent("damaged.png")
             let linkedImage = source.appendingPathComponent("linked.png")
+            let lockedPDF = source.appendingPathComponent("locked.pdf")
+            let oversizedImage = source.appendingPathComponent("oversized.png")
             let damagedContent = Data("qa-damaged-document".utf8)
             for file in [damagedPDF, damagedImage] {
                 try damagedContent.write(to: file)
@@ -5493,7 +5496,25 @@ extension BrowserWindow {
             try fm.createSymbolicLink(at: linkedImage, withDestinationURL: imageFile)
             try fm.createSymbolicLink(at: target.appendingPathComponent(linkedImage.lastPathComponent),
                                       withDestinationURL: target.appendingPathComponent(imageFile.lastPathComponent))
-            controller.prepareCopy(sources: [damagedPDF, damagedImage, linkedImage, imageFile, pdfFile], destination: target)
+            var lockedPage = CGRect(x: 0, y: 0, width: 80, height: 60)
+            guard let lockedContext = CGContext(lockedPDF as CFURL, mediaBox: &lockedPage, [
+                kCGPDFContextOwnerPassword: "fixture-owner",
+                kCGPDFContextUserPassword: "fixture-password"
+            ] as CFDictionary) else { throw CocoaError(.fileWriteUnknown) }
+            lockedContext.beginPDFPage(nil)
+            lockedContext.fill(lockedPage)
+            lockedContext.endPDFPage()
+            lockedContext.closePDF()
+            guard let lockedDocument = CGPDFDocument(lockedPDF as CFURL), lockedDocument.isEncrypted,
+                  !lockedDocument.isUnlocked else { throw CocoaError(.fileReadCorruptFile) }
+            try fm.copyItem(at: lockedPDF, to: target.appendingPathComponent(lockedPDF.lastPathComponent))
+            try fm.copyItem(at: imageFile, to: oversizedImage)
+            let oversizedHandle = try FileHandle(forWritingTo: oversizedImage)
+            try oversizedHandle.truncate(atOffset: 8 * 1024 * 1024 + 1)
+            try oversizedHandle.close()
+            try fm.copyItem(at: oversizedImage, to: target.appendingPathComponent(oversizedImage.lastPathComponent))
+            controller.prepareCopy(sources: [damagedPDF, damagedImage, linkedImage, lockedPDF, oversizedImage, imageFile, pdfFile],
+                                   destination: target)
             if let sheet = window.attachedSheet, let sheetView = sheet.contentView {
                 func attachmentColors(in view: NSView) -> [String] {
                     if let storage = (view as? NSTextView)?.textStorage {
@@ -5535,7 +5556,9 @@ extension BrowserWindow {
                    let storage = text.textStorage {
                     let unavailable = L("미리보기 없음", "Preview unavailable")
                     let lines = text.string.components(separatedBy: .newlines)
-                    for (file, key) in [(damagedPDF, "DamagedPDF"), (damagedImage, "DamagedImage"), (linkedImage, "SymbolicLink")] {
+                    for (file, key) in [(damagedPDF, "DamagedPDF"), (damagedImage, "DamagedImage"),
+                                        (linkedImage, "SymbolicLink"), (lockedPDF, "LockedPDF"),
+                                        (oversizedImage, "OversizedImage")] {
                         let paths = [file.path, target.appendingPathComponent(file.lastPathComponent).path]
                         checks["conflictPreviewRejects" + key] = paths.allSatisfy { path in
                             guard let index = lines.firstIndex(of: path), lines.indices.contains(index + 2) else { return false }
