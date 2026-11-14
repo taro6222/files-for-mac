@@ -8,6 +8,8 @@ M7 출시 검증이 진행 중이다. [유니버설 개발 프리뷰](verificati
 
 ## 이번 구현 단위
 
+최신 프리뷰와 동일한 소스에서 한국어·영어 AppKit 회귀를 실행했다. [AppKit 회귀 기록](verification/m7/INCREMENT_139.md)
+
 최신 프리뷰와 앱 소스가 일치하는 최적화 QA 빌드에서 8시간 전체 부하 시험을 시작했다. [장시간 시험 시작 증거](verification/m7/INCREMENT_138.md)
 
 장시간 시험 결과에 소스·바이너리 식별 정보와 완료 판정을 함께 기록한다. [장시간 결과 검증](verification/m7/INCREMENT_137.md)
