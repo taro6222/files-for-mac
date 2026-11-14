@@ -118,6 +118,7 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
     private let openSystemURL: (URL) -> Bool
     private let undoJournalDirectory: URL
     static private(set) var entryOperationRunning = false
+    private static var pendingMoveRedo: MoveRedoRecord?
     private static var operationJournalDirectory: URL {
         FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
             .appendingPathComponent(Bundle.main.bundleIdentifier ?? "org.taro6222.files-for-mac")
@@ -2025,6 +2026,7 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
             Self.entryOperationRunning = true
             Task {
                 let report = await EntryOperations.undoMove(current, journalDirectory: self.undoJournalDirectory)
+                Self.pendingMoveRedo = report.redo
                 Self.entryOperationRunning = false
                 self.refreshAfterUndo()
                 self.showMoveUndoResult(report)
@@ -2052,9 +2054,43 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
             Self.entryOperationRunning = true
             Task {
                 let report = await CopyEngine.undoCopy(current, journalDirectory: self.undoJournalDirectory)
+                Self.pendingMoveRedo = nil
                 Self.entryOperationRunning = false
                 self.refreshAfterUndo()
                 self.showCopyUndoResult(report)
+            }
+        }
+    }
+    private var availableMoveRedo: MoveRedoRecord? {
+        guard !fileOperationIsRunning, window?.attachedSheet == nil, let record = Self.pendingMoveRedo else { return nil }
+        if let latest = EntryOperations.PendingTransferUndo.latest(in: undoJournalDirectory),
+           latest.completedAt > record.undoneAt {
+            Self.pendingMoveRedo = nil
+            return nil
+        }
+        return record
+    }
+    @objc func redoLastMove(_ sender: Any?) {
+        guard let record = availableMoveRedo, let window else { return }
+        let alert = NSAlert()
+        alert.messageText = L("이동 다시 실행", "Redo Move")
+        alert.informativeText = L("원래 대상으로 다시 이동합니다. 원본이 변경됐거나 대상에 같은 이름이 있는 항목은 건너뜁니다.",
+                                  "Move items to their previous destinations. Changed sources and occupied destinations are skipped.")
+        alert.addButton(withTitle: L("다시 실행", "Redo"))
+        alert.addButton(withTitle: L("취소", "Cancel"))
+        alert.beginSheetModal(for: window) { [weak self] response in
+            guard response == .alertFirstButtonReturn, let self else { return }
+            Task { @MainActor in
+                guard let latest = self.availableMoveRedo, latest.undoneAt == record.undoneAt else { return }
+                Self.pendingMoveRedo = nil
+                Self.entryOperationRunning = true
+                let result = await EntryOperations.redoMove(record, journalDirectory: self.undoJournalDirectory)
+                Self.entryOperationRunning = false
+                self.refreshAfterUndo()
+                let completed = result.filter { $0.state == "completed" }.count
+                let failures = result.filter { $0.state != "completed" }.map { $0.source.path + "\n" + ($0.message ?? "") }
+                let summary = L("다시 이동: \(completed)/\(result.count)", "Moved again: \(completed)/\(result.count)")
+                self.showEntryError(([summary] + failures).joined(separator: "\n\n"))
             }
         }
     }
@@ -2903,6 +2939,7 @@ extension BrowserWindow {
         case #selector(toggleCompactOverlay(_:)):
             menuItem.state = compactOverlayState != nil ? .on : .off; return true
         case #selector(closeSecondaryPane(_:)), #selector(closeActivePane(_:)): return secondaryPane != nil
+        case #selector(redoLastMove(_:)): return availableMoveRedo != nil
         case #selector(undoLastFileTransfer(_:)):
             return !fileOperationIsRunning && window?.attachedSheet == nil &&
                 EntryOperations.PendingTransferUndo.latest(in: undoJournalDirectory) != nil
@@ -4400,6 +4437,33 @@ extension BrowserWindow {
             checks["undoPreservesExisting"] = fm.fileExists(atPath: mergeTarget.appendingPathComponent("keep.txt").path)
                 && !fm.fileExists(atPath: mergeTarget.appendingPathComponent("nested.txt").path)
             try capture("after-undo")
+            let redoSource = source.appendingPathComponent("redo-move.txt")
+            let redoTarget = target.appendingPathComponent("redo-move.txt")
+            try Data("redo".utf8).write(to: redoSource)
+            _ = try await EntryOperations.move([redoSource], to: target, journalDirectory: journals)
+            func confirmAndDismissResult(_ action: () -> Void) async throws -> Bool {
+                action()
+                guard let confirmation = window.attachedSheet else { return false }
+                window.endSheet(confirmation, returnCode: .alertFirstButtonReturn)
+                let wait = ContinuousClock.now
+                while (BrowserWindow.entryOperationRunning || window.attachedSheet == nil || window.attachedSheet === confirmation)
+                    && elapsed(wait) < 5 {
+                    try await Task.sleep(for: .milliseconds(20))
+                }
+                guard let result = window.attachedSheet, result !== confirmation else { return false }
+                window.endSheet(result)
+                let dismissWait = ContinuousClock.now
+                while window.attachedSheet != nil && elapsed(dismissWait) < 3 {
+                    try await Task.sleep(for: .milliseconds(20))
+                }
+                return window.attachedSheet == nil
+            }
+            let movedBack = try await confirmAndDismissResult { controller.undoLastFileTransfer(unifiedUndo) }
+            let replayAvailable = movedBack && fm.fileExists(atPath: redoSource.path) && controller.availableMoveRedo != nil
+            let replayed = try await confirmAndDismissResult { controller.redoLastMove(nil) }
+            checks["redoMoveCommand"] = replayAvailable && replayed && !fm.fileExists(atPath: redoSource.path)
+                && (try? Data(contentsOf: redoTarget)) == Data("redo".utf8)
+                && controller.availableMoveRedo == nil
             let result: [String: Any] = ["checks": checks, "diagnostics": diagnostics,
                 "language": Locale.preferredLanguages.first ?? "unknown", "theme": dark ? "dark" : "light",
                 "os": ProcessInfo.processInfo.operatingSystemVersionString]

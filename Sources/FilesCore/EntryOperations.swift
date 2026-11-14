@@ -111,7 +111,21 @@ public struct MoveUndoItemResult: Sendable {
     public let message: String?
 }
 
+public struct MoveRedoRecord: Sendable {
+    public struct Item: Sendable {
+        public let source: URL
+        public let target: URL
+        fileprivate let identity: String
+        fileprivate let snapshot: [String: String]
+        fileprivate let destinationFolder: ShelfEntry
+    }
+
+    public let items: [Item]
+    public let undoneAt: Date
+}
+
 public struct MoveUndoResult: Sendable {
+    public let redo: MoveRedoRecord?
     public let operationId: String
     public let state: String
     public let items: [MoveUndoItemResult]
@@ -190,6 +204,13 @@ public enum EntryOperations {
     public enum PendingTransferUndo: Sendable {
         case copy(CopyUndoRecord)
         case move(MoveUndoRecord)
+
+        public var completedAt: Date {
+            switch self {
+            case let .copy(record): record.createdAt
+            case let .move(record): record.createdAt
+            }
+        }
 
         public static func latest(in journalDirectory: URL) -> Self? {
             let copy = CopyEngine.latestUndoCopy(journalDirectory: journalDirectory)
@@ -572,10 +593,26 @@ public enum EntryOperations {
                            cancellation: cancellation, progress: progress, flattenPlan: plan)
     }
 
+    public static func redoMove(_ record: MoveRedoRecord, journalDirectory: URL) async -> [MoveItemOperationResult] {
+        var results: [MoveItemOperationResult] = []
+        for item in record.items {
+            do {
+                let report = try await moveImpl([item.source], to: item.target.deletingLastPathComponent(),
+                    conflictPolicy: .skip, journalDirectory: journalDirectory, forceCrossVolume: false,
+                    cancellation: CopyCancellation(), progress: { _ in }, redoItem: item)
+                results += report.items
+            } catch {
+                results.append(MoveItemOperationResult(source: item.source, target: item.target,
+                                                      state: "failed", message: error.localizedDescription))
+            }
+        }
+        return results
+    }
+
     private static func moveImpl(_ sources: [URL], to destination: URL, conflictPolicy: MoveConflictPolicy,
                                  journalDirectory: URL, forceCrossVolume: Bool, cancellation: CopyCancellation,
                                  progress: @escaping @Sendable (MoveProgress) -> Void,
-                                 flattenPlan: FolderFlattenPlan? = nil) async throws -> MoveOperationResult {
+                                 flattenPlan: FolderFlattenPlan? = nil, redoItem: MoveRedoRecord.Item? = nil) async throws -> MoveOperationResult {
         let normalizedSources = sources.map(\.standardizedFileURL)
         guard !normalizedSources.isEmpty else { throw EntryOperationError.noSources }
         return try await Task.detached(priority: .userInitiated) {
@@ -586,6 +623,14 @@ public enum EntryOperations {
             let destinationFD = open(normalizedDestination.path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
             guard destinationFD >= 0 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
             defer { close(destinationFD) }
+            if let redoItem {
+                var opened = stat(), current = stat()
+                guard redoItem.destinationFolder.isCurrent,
+                      fstat(destinationFD, &opened) == 0, lstat(normalizedDestination.path, &current) == 0,
+                      opened.st_dev == current.st_dev, opened.st_ino == current.st_ino else {
+                    throw EntryOperationError.sourceChanged
+                }
+            }
 
             struct MoveItemJournal: Codable {
                 let source: URL
@@ -668,6 +713,14 @@ public enum EntryOperations {
                         }
 
                         do {
+                            if let redoItem {
+                                guard redoItem.target.standardizedFileURL.path == target.path,
+                                      redoItem.destinationFolder.isCurrent,
+                                      try snapshotIdentity(source, fileManager: fm) == redoItem.identity,
+                                      try CopyEngine.verifiedSnapshot(source, cancellation: cancellation) == redoItem.snapshot else {
+                                    throw EntryOperationError.sourceChanged
+                                }
+                            }
                             guard let sourceDevice = (try fm.attributesOfItem(atPath: source.path)[.systemNumber] as? NSNumber)?.uint64Value,
                                   let destinationDevice = (try fm.attributesOfItem(atPath: normalizedDestination.path)[.systemNumber] as? NSNumber)?.uint64Value else {
                                 throw EntryOperationError.sourceChanged
@@ -695,6 +748,7 @@ public enum EntryOperations {
                             }
                             if crossVolume {
                                 let before = try CopyEngine.verifiedSnapshot(source, cancellation: cancellation)
+                                if let redoItem, before != redoItem.snapshot { throw EntryOperationError.sourceChanged }
                                 let contentBefore = try CopyEngine.verifiedContentSnapshot(source, cancellation: cancellation)
                                 let stage = normalizedDestination.appendingPathComponent(".files-move-\(operationId)-\(index)")
                                 try fm.createDirectory(at: stage, withIntermediateDirectories: false)
@@ -714,6 +768,9 @@ public enum EntryOperations {
                                 let stageFD = open(stage.path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
                                 guard stageFD >= 0 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
                                 defer { close(stageFD) }
+                                if let redoItem, !redoItem.destinationFolder.isCurrent {
+                                    throw EntryOperationError.sourceChanged
+                                }
                                 do {
                                     try CopyEngine.publishNoReplace(payload: payload, target: target,
                                         sourceDirectoryFD: stageFD, sourceName: "payload",
@@ -732,10 +789,16 @@ public enum EntryOperations {
                                 }
                             } else {
                                 try cancellation.check(); emit("committing")
-                                if flattenPlan != nil {
+                                if flattenPlan != nil || redoItem != nil {
                                     let sourceFD = open(source.deletingLastPathComponent().path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
                                     guard sourceFD >= 0 else { throw EntryOperationError.sourceChanged }
                                     defer { close(sourceFD) }
+                                    if let redoItem {
+                                        guard redoItem.destinationFolder.isCurrent,
+                                              try snapshotIdentity(source, fileManager: fm) == redoItem.identity else {
+                                            throw EntryOperationError.sourceChanged
+                                        }
+                                    }
                                     do {
                                         try CopyEngine.publishNoReplace(payload: source, target: target,
                                             sourceDirectoryFD: sourceFD, sourceName: source.lastPathComponent,
@@ -807,6 +870,7 @@ public enum EntryOperations {
         await Task.detached(priority: .userInitiated) {
             let fm = FileManager.default
             var results: [MoveUndoItemResult] = []
+            var replay: [MoveRedoRecord.Item] = []
             for item in record.items.reversed() {
                 let result: MoveUndoItemResult
                 do {
@@ -828,7 +892,14 @@ public enum EntryOperations {
                     guard fm.fileExists(atPath: item.source.deletingLastPathComponent().path) else {
                         results.append(MoveUndoItemResult(source: item.source, target: item.target, state: "notFound", message: LString.undoSourceParentMissing)); continue
                     }
+                    let replaySnapshot = item.backup == nil ? try? CopyEngine.verifiedSnapshot(item.target) : nil
+                    let destinationFolder = ShelfEntry(item.target.deletingLastPathComponent())
                     try transferForUndo(item.target, to: item.source, crossVolume: item.crossVolume)
+                    if let replaySnapshot, let destinationFolder,
+                       let identity = try? snapshotIdentity(item.source, fileManager: fm) {
+                        replay.append(.init(source: item.source, target: item.target, identity: identity,
+                                            snapshot: replaySnapshot, destinationFolder: destinationFolder))
+                    }
                     if let backup = item.backup { try fm.moveItem(at: backup, to: item.target) }
                     result = MoveUndoItemResult(source: item.source, target: item.target, state: "completed", message: nil)
                 } catch {
@@ -860,7 +931,9 @@ public enum EntryOperations {
                     try JSONEncoder().encode(retryRecord).write(to: pending, options: .atomic)
                 }
             } catch { journalError = error.localizedDescription }
-            return MoveUndoResult(operationId: record.operationId, state: state, items: results, journalError: journalError)
+            let redo = journalError == nil && state == "completed" && replay.count == results.count && !replay.isEmpty
+                ? MoveRedoRecord(items: Array(replay.reversed()), undoneAt: Date()) : nil
+            return MoveUndoResult(redo: redo, operationId: record.operationId, state: state, items: results, journalError: journalError)
         }.value
     }
 

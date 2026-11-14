@@ -510,3 +510,34 @@ private extension Data {
     #expect(try Data(contentsOf: moved) == Data("move".utf8))
     #expect(EntryOperations.PendingTransferUndo.latest(in: journals) == nil)
 }
+
+@Test func redoMoveRechecksRestoredSourceAndPublishesWithoutReplacing() async throws {
+    let fm = FileManager.default
+    let root = fm.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    defer { try? fm.removeItem(at: root) }
+    let sourceFolder = root.appendingPathComponent("source"), destination = root.appendingPathComponent("destination")
+    let journals = root.appendingPathComponent("journals")
+    try fm.createDirectory(at: sourceFolder, withIntermediateDirectories: true)
+    try fm.createDirectory(at: destination, withIntermediateDirectories: true)
+    let source = sourceFolder.appendingPathComponent("file"), target = destination.appendingPathComponent("file")
+    let payload = Data("original".utf8)
+    try payload.write(to: source)
+    _ = try await EntryOperations.move([source], to: destination, journalDirectory: journals)
+    let undo = try #require(EntryOperations.latestUndoMove(journalDirectory: journals))
+    let undone = await EntryOperations.undoMove(undo, journalDirectory: journals)
+    let redo = try #require(undone.redo)
+    try Data("occupied".utf8).write(to: target)
+    #expect(await EntryOperations.redoMove(redo, journalDirectory: journals).first?.state == "conflict")
+    #expect(try Data(contentsOf: target) == Data("occupied".utf8))
+    try fm.removeItem(at: target)
+    #expect(await EntryOperations.redoMove(redo, journalDirectory: journals).first?.state == "completed")
+    #expect(try Data(contentsOf: target) == payload)
+    #expect(!fm.fileExists(atPath: source.path))
+    let secondUndo = try #require(EntryOperations.latestUndoMove(journalDirectory: journals))
+    let restoredAgain = await EntryOperations.undoMove(secondUndo, journalDirectory: journals)
+    let secondRedo = try #require(restoredAgain.redo)
+    try Data("changed!".utf8).write(to: source)
+    #expect(await EntryOperations.redoMove(secondRedo, journalDirectory: journals).first?.state == "failed")
+    #expect(try Data(contentsOf: source) == Data("changed!".utf8))
+    #expect(!fm.fileExists(atPath: target.path))
+}
