@@ -1032,9 +1032,21 @@ public enum EntryOperations {
             var results: [MoveUndoItemResult] = []
             var replay: [MoveRedoRecord.Item] = []
             var pendingBackupRestorations = Set<Int>()
+            let pending = journalDirectory.appendingPathComponent("undo-move-\(record.operationId).json")
+            func savePending(_ items: [MoveUndoItem]) throws {
+                let retryRecord = MoveUndoRecord(operationId: record.operationId, items: items, createdAt: record.createdAt)
+                try JSONEncoder().encode(retryRecord).write(to: pending, options: .atomic)
+            }
             for (index, item) in record.items.enumerated().reversed() {
                 let result: MoveUndoItemResult
                 do {
+                    if item.backupRestorePending == true, let backup = item.backup, let identity = item.backupIdentity,
+                       !entryExists(backup), entryExists(item.target),
+                       try matchesUndoEntry(item.target, identity: identity, snapshot: item.backupSnapshot, fileManager: fm) {
+                        results.append(MoveUndoItemResult(source: item.source, target: item.target,
+                            state: "completed", message: nil))
+                        continue
+                    }
                     if let backup = item.backup {
                         guard entryExists(backup), let expected = item.backupIdentity,
                               try matchesUndoEntry(backup, identity: expected, snapshot: item.backupSnapshot, fileManager: fm) else {
@@ -1078,6 +1090,13 @@ public enum EntryOperations {
                     }
                     if let backup = item.backup, let identity = item.backupIdentity {
                         pendingBackupRestorations.insert(index)
+                        // Save before publishing the backup, so a restart can resume
+                        // without moving the already-restored source again.
+                        let remaining = record.items.enumerated().compactMap { offset, candidate -> MoveUndoItem? in
+                            if offset > index, results[record.items.count - 1 - offset].state == "completed" { return nil }
+                            return pendingBackupRestorations.contains(offset) ? candidate.awaitingBackupRestore() : candidate
+                        }
+                        try savePending(remaining)
                         beforeBackupRestore(item.target)
                         guard try matchesUndoEntry(backup, identity: identity, snapshot: item.backupSnapshot, fileManager: fm) else {
                             throw MoveFailure(text: LString.undoBackupChanged)
@@ -1105,7 +1124,6 @@ public enum EntryOperations {
                     items: results.map { UndoItem(source: $0.source, target: $0.target, state: $0.state, message: $0.message) })
                 try JSONEncoder().encode(journal).write(
                     to: journalDirectory.appendingPathComponent("undo-result-\(record.operationId).json"), options: .atomic)
-                let pending = journalDirectory.appendingPathComponent("undo-move-\(record.operationId).json")
                 let consumed = journalDirectory.appendingPathComponent("undo-consumed-\(record.operationId).json")
                 if state == "completed" {
                     if fm.fileExists(atPath: pending.path) { try fm.moveItem(at: pending, to: consumed) }
@@ -1115,8 +1133,7 @@ public enum EntryOperations {
                         guard result.state != "completed" else { return nil }
                         return pendingBackupRestorations.contains(index) ? item.awaitingBackupRestore() : item
                     }
-                    let retryRecord = MoveUndoRecord(operationId: record.operationId, items: remaining, createdAt: record.createdAt)
-                    try JSONEncoder().encode(retryRecord).write(to: pending, options: .atomic)
+                    try savePending(remaining)
                 }
             } catch { journalError = error.localizedDescription }
             let redo = journalError == nil && state == "completed" && replay.count == results.count && !replay.isEmpty

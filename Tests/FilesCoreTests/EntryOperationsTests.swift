@@ -414,6 +414,8 @@ func entryMoveUndoPreservesEditsInsideMovedOrBackedUpFolder(crossVolume: Bool, e
     let item = try #require(record.items.first)
     let backup = try #require(item.backup)
     let partial = await EntryOperations.undoMove(record, journalDirectory: journal) { path in
+        let checkpoint = EntryOperations.latestUndoMove(journalDirectory: journal)
+        #expect(checkpoint?.items.first?.backupRestorePending == true)
         do { try Data("external".utf8).write(to: path, options: .withoutOverwriting) }
         catch { Issue.record(error) }
     }
@@ -437,6 +439,37 @@ func entryMoveUndoPreservesEditsInsideMovedOrBackedUpFolder(crossVolume: Bool, e
     #expect(try String(contentsOf: source, encoding: .utf8) == "new")
     #expect(try String(contentsOf: target, encoding: .utf8) == "old")
     #expect(EntryOperations.latestUndoMove(journalDirectory: journal) == nil)
+}
+
+@Test func entryMoveUndoRecognizesBackupPublishedBeforeJournalCompletion() async throws {
+    let root = try entryFixture()
+    let fm = FileManager.default
+    defer { try? fm.removeItem(at: root) }
+    let journal = root.appendingPathComponent("journal")
+    let destination = root.appendingPathComponent("dest")
+    let source = root.appendingPathComponent("move.txt")
+    let target = destination.appendingPathComponent("move.txt")
+    try fm.createDirectory(at: destination, withIntermediateDirectories: true)
+    try Data("new".utf8).write(to: source)
+    try Data("old".utf8).write(to: target)
+    let move = try await EntryOperations.move([source], to: destination, conflictPolicy: .replace, journalDirectory: journal)
+    #expect(move.state == "completed")
+    let record = try #require(EntryOperations.latestUndoMove(journalDirectory: journal))
+    let backup = try #require(record.items.first?.backup)
+
+    let interrupted = await EntryOperations.undoMove(record, journalDirectory: journal) { path in
+        do { try FileManager.default.moveItem(at: backup, to: path) }
+        catch { Issue.record(error) }
+    }
+    #expect(interrupted.state == "partial")
+    let checkpoint = try #require(EntryOperations.latestUndoMove(journalDirectory: journal))
+    #expect(checkpoint.items.first?.backupRestorePending == true)
+    let resumed = await EntryOperations.undoMove(checkpoint, journalDirectory: journal)
+    #expect(resumed.state == "completed")
+    #expect(resumed.journalError == nil)
+    #expect(EntryOperations.latestUndoMove(journalDirectory: journal) == nil)
+    #expect(try String(contentsOf: source, encoding: .utf8) == "new")
+    #expect(try String(contentsOf: target, encoding: .utf8) == "old")
 }
 
 @Test func entryCrossVolumeMoveCopiesVerifiesThenRemovesSource() async throws {
