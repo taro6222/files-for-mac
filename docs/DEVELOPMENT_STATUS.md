@@ -4,6 +4,8 @@
 
 ## 이번 구현 단위
 
+8 MiB 복사 검증 단계에 취소를 주입해 상태 반영·정리 시간을 기록했다. [M7 복사 동작 중 취소](verification/m7/INCREMENT_32.md)
+
 AppKit 복사 취소 액션의 상태 반영을 네 언어·테마 조합에서 측정했다. [M7 취소 피드백](verification/m7/INCREMENT_31.md)
 
 스크롤을 제외한 대조군에서도 캡처 간격 p95가 약 33ms로 나타났다. [M7 캡처 대조군](verification/m7/INCREMENT_30.md)

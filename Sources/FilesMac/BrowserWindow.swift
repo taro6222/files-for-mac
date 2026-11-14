@@ -4642,6 +4642,11 @@ extension BrowserWindow {
                 sources: [source.appendingPathComponent("conflict.txt")], destination: target)
             checks["copyCancellationFeedback"] = cancelSamples?.count == 20
             diagnostics["copyCancellationFeedbackSeconds"] = cancelSamples
+            let cancellationSource = source.appendingPathComponent("cancel-verify.bin")
+            try Data(repeating: 0x5A, count: 8 * 1024 * 1024).write(to: cancellationSource)
+            diagnostics["copyCancellationDuringVerification"] = try await CopyWindow.qaCancellationDuringVerification(
+                source: cancellationSource, destination: target, journals: journals)
+            checks["copyCancellationDuringVerification"] = true
             let result: [String: Any] = ["checks": checks, "diagnostics": diagnostics,
                 "language": Locale.preferredLanguages.first ?? "unknown", "theme": dark ? "dark" : "light",
                 "os": ProcessInfo.processInfo.operatingSystemVersionString]

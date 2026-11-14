@@ -117,6 +117,61 @@ final class CopyWindow: NSWindowController, NSWindowDelegate {
         ])
     }
 #if DEBUG
+    @MainActor
+    private final class CancellationSample {
+        var clickTime: ContinuousClock.Instant?
+        var feedbackTime: Duration?
+    }
+
+    static func qaCancellationDuringVerification(source: URL, destination: URL,
+                                                 journals: URL) async throws -> [String: [Double]] {
+        let fm = FileManager.default
+        let output = destination.appendingPathComponent(source.lastPathComponent)
+        let original = try Data(contentsOf: source)
+        let initialNames = try Set(fm.contentsOfDirectory(atPath: destination.path))
+        var feedback: [Double] = []
+        var settlement: [Double] = []
+        for _ in 0..<10 {
+            let controller = CopyWindow(sources: [source], destination: destination, conflictPolicy: .skip)
+            controller.showWindow(nil)
+            defer { controller.close() }
+            let gate = DispatchSemaphore(value: 0)
+            let clock = ContinuousClock()
+            let sample = CancellationSample()
+            let report = await CopyEngine.run(sources: [source], destination: destination,
+                journalDirectory: journals, cancellation: controller.cancellation) { update in
+                guard update.phase == "verifying" else { return }
+                // Place the click after staging, before the engine can publish the output.
+                Task { @MainActor in
+                    defer { gate.signal() }
+                    controller.update(update)
+                    let started = clock.now
+                    controller.cancel.performClick(nil)
+                    sample.clickTime = started
+                    if controller.cancellation.isCancelled && !controller.cancel.isEnabled
+                        && controller.label.stringValue.hasPrefix(L("취소 요청됨", "Cancellation requested")) {
+                        sample.feedbackTime = started.duration(to: clock.now)
+                    }
+                }
+                _ = gate.wait(timeout: .now() + 5)
+            }
+            let finished = clock.now
+            controller.finish(report)
+            guard let clickTime = sample.clickTime, let feedbackTime = sample.feedbackTime, report.state == "cancelled",
+                  report.items.map(\.state) == ["cancelled"], report.journalError == nil,
+                  !fm.fileExists(atPath: output.path), try Data(contentsOf: source) == original,
+                  try Set(fm.contentsOfDirectory(atPath: destination.path)) == initialNames else {
+                throw CocoaError(.fileWriteUnknown)
+            }
+            func seconds(_ duration: Duration) -> Double {
+                Double(duration.components.seconds) + Double(duration.components.attoseconds) / 1e18
+            }
+            feedback.append(seconds(feedbackTime))
+            settlement.append(seconds(clickTime.duration(to: finished)))
+        }
+        return ["feedbackSeconds": feedback, "settlementSeconds": settlement]
+    }
+
     static func qaCancellationFeedback(sources: [URL], destination: URL) -> [Double]? {
         let clock = ContinuousClock()
         var samples: [Double] = []
