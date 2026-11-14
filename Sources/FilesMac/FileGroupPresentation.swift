@@ -46,8 +46,8 @@ enum DetailDisplayRow {
 }
 
 func detailDisplayRows(items: [FileItem], grouping: FileGroupOptions) -> [DetailDisplayRow] {
-    let groups = FileGrouping.groups(items, options: grouping)
     if grouping.field == .none { return items.map(DetailDisplayRow.item) }
+    let groups = FileGrouping.groups(items, options: grouping)
     return groups.flatMap { group in
         [DetailDisplayRow.header(fileGroupTitle(group.key, field: grouping.field))] + group.items.map(DetailDisplayRow.item)
     }
@@ -59,5 +59,6 @@ func detailItem(at row: Int, in rows: [DetailDisplayRow]) -> FileItem? {
 }
 
 func detailSelectionRows(ids: Set<String>, in rows: [DetailDisplayRow]) -> IndexSet {
-    IndexSet(rows.indices.filter { detailItem(at: $0, in: rows).map { ids.contains($0.id) } == true })
+    guard !ids.isEmpty else { return [] }
+    return IndexSet(rows.indices.filter { detailItem(at: $0, in: rows).map { ids.contains($0.id) } == true })
 }

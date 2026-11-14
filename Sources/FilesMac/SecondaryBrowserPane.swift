@@ -399,14 +399,24 @@ final class SecondaryBrowserPane: NSView, NSTableViewDataSource, NSTableViewDele
         gridView.apply(viewSize: effectiveViewSize)
         listView.apply(viewSize: effectiveViewSize)
         gridView.showsThumbnails = preferences.showThumbnails; listView.showsThumbnails = preferences.showThumbnails
-        gridView.update(items: model.items, selection: model.history.current.selection,
-                        scrollOffset: model.history.current.scrollOffset, grouping: model.grouping)
-        listView.update(items: model.items, selection: model.history.current.selection,
-                        scrollOffset: model.history.current.scrollOffset, grouping: model.grouping)
-        columnView.showHidden = model.showHidden; columnView.sortOrder = model.sortOrder; columnView.showsThumbnails = preferences.showThumbnails
-        columnView.update(baseURL: model.location, items: model.items, selection: model.history.current.selection)
-        if revealEntry && showsGrid { gridView.revealSelection() }
-        if revealEntry && showsList { listView.revealSelection() }
+        let selection = model.history.current.selection
+        let scrollOffset = model.history.current.scrollOffset
+        if showsGrid {
+            gridView.update(items: model.items, selection: selection, scrollOffset: scrollOffset, grouping: model.grouping)
+            if revealEntry { gridView.revealSelection() }
+        }
+        if showsList {
+            listView.update(items: model.items, selection: selection, scrollOffset: scrollOffset, grouping: model.grouping)
+            if revealEntry { listView.revealSelection() }
+        }
+        columnView.showHidden = model.showHidden
+        columnView.sortOrder = model.sortOrder
+        columnView.showsThumbnails = preferences.showThumbnails
+        if showsColumns {
+            columnView.update(baseURL: model.location, items: model.items, selection: selection)
+        } else {
+            columnView.update(baseURL: nil, items: [], selection: [])
+        }
         if !model.isLoading {
             scroll.contentView.scroll(to: NSPoint(x: 0, y: model.history.current.scrollOffset)); scroll.reflectScrolledClipView(scroll.contentView)
             if revealEntry, let row = selected.first { table.scrollRowToVisible(row) }

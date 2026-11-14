@@ -851,14 +851,24 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         gridView.apply(viewSize: effectiveViewSize)
         listView.apply(viewSize: effectiveViewSize)
         gridView.showsThumbnails = preferences.showThumbnails; listView.showsThumbnails = preferences.showThumbnails
-        gridView.update(items: model.items, selection: model.history.current.selection,
-                        scrollOffset: model.history.current.scrollOffset, grouping: model.grouping)
-        listView.update(items: model.items, selection: model.history.current.selection,
-                        scrollOffset: model.history.current.scrollOffset, grouping: model.grouping)
-        columnView.showHidden = model.showHidden; columnView.sortOrder = model.sortOrder; columnView.showsThumbnails = preferences.showThumbnails
-        columnView.update(baseURL: model.location, items: model.items, selection: model.history.current.selection)
-        if revealEntry && showsGrid { gridView.revealSelection() }
-        if revealEntry && showsList { listView.revealSelection() }
+        let selection = model.history.current.selection
+        let scrollOffset = model.history.current.scrollOffset
+        if showsGrid {
+            gridView.update(items: model.items, selection: selection, scrollOffset: scrollOffset, grouping: model.grouping)
+            if revealEntry { gridView.revealSelection() }
+        }
+        if showsList {
+            listView.update(items: model.items, selection: selection, scrollOffset: scrollOffset, grouping: model.grouping)
+            if revealEntry { listView.revealSelection() }
+        }
+        columnView.showHidden = model.showHidden
+        columnView.sortOrder = model.sortOrder
+        columnView.showsThumbnails = preferences.showThumbnails
+        if showsColumns {
+            columnView.update(baseURL: model.location, items: model.items, selection: selection)
+        } else {
+            columnView.update(baseURL: nil, items: [], selection: [])
+        }
         if !model.isLoading {
             scroll.contentView.scroll(to: NSPoint(x: 0, y: model.history.current.scrollOffset))
             scroll.reflectScrolledClipView(scroll.contentView)
@@ -4414,6 +4424,7 @@ extension BrowserWindow {
             secondary.model.setViewMode(.grid)
             content.layoutSubtreeIfNeeded(); content.displayIfNeeded()
             checks["secondaryGridSelection"] = secondary.selectedItems.map(\.id) == [secondaryMerge.id]
+            controller.model.setViewMode(.grid)
             let primaryGridIntegration = (controller.gridView.contextMenu === controller.table.menu,
                                           controller.gridView.qaHasDropHandler,
                                           controller.gridView.qaPasteboardURL(at: 0))
@@ -4464,11 +4475,26 @@ extension BrowserWindow {
             checks["secondaryColumnsHierarchy"] = secondary.qaColumnCount == 2
                 && secondary.selectedItems.map(\.id) == [secondaryColumnFolder.id]
             checks["secondaryColumnsSession"] = secondary.snapshot().viewMode == .columns
+            controller.model.setViewMode(.columns)
             let primaryColumnIntegration = (controller.columnView.qaHasDropHandler, controller.columnView.qaPasteboardURL())
             let secondaryColumnIntegration = secondary.qaColumnIntegration
             checks["columnContextCommands"] = primaryColumnIntegration.0 && secondaryColumnIntegration.ready
             checks["columnDragSources"] = primaryColumnIntegration.1 != nil && secondaryColumnIntegration.source != nil
+            controller.model.setViewMode(.details)
+            let newFile = target.appendingPathComponent("while-hidden.txt")
+            try Data().write(to: newFile)
+            controller.model.reload(); try await settle()
+            controller.model.savePosition(selection: [newFile.path], scrollOffset: 0)
+            controller.model.setViewMode(.grid)
+            checks["gridRefreshesOnActivation"] = controller.gridView.selectedItems.map(\.id) == [newFile.path]
+            controller.model.setViewMode(.details)
+            try fm.removeItem(at: newFile)
+            controller.model.reload(); try await settle()
             secondary.model.setViewMode(.adaptive)
+            let adaptiveStart = ContinuousClock.now
+            while secondary.model.isLoading && elapsed(adaptiveStart) < 10 {
+                try await Task.sleep(for: .milliseconds(10))
+            }
             content.layoutSubtreeIfNeeded(); content.displayIfNeeded()
             checks["secondaryAdaptiveCompactList"] = secondary.snapshot().viewMode == .adaptive
                 && secondary.qaRenderedViewMode == .list

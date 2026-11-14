@@ -129,10 +129,13 @@ final class FileColumnView: NSView {
         replaceSelection(with: Set(column.items.map(\.id)).subtracting(column.selectedItems.map(\.id)))
     }
     func update(baseURL: URL?, items: [FileItem], selection: Set<String>) {
-        guard let baseURL else { reset(); return }
+        guard let baseURL else {
+            if self.baseURL != nil { reset() }
+            return
+        }
         let ids = items.map(\.id)
         if self.baseURL != baseURL || baseIDs != ids {
-            reset(); self.baseURL = baseURL; baseIDs = ids; append(url: baseURL, items: items)
+            reset(); self.baseURL = baseURL; baseIDs = ids; append(url: baseURL, sortedItems: items)
         }
         columns.first?.apply(selection: selection)
         if let first = columns.first, !first.selectedItems.isEmpty { expand(column: first) }
@@ -143,8 +146,8 @@ final class FileColumnView: NSView {
         for column in columns { column.scroll.drawsBackground = !enabled; column.table.backgroundColor = enabled ? .clear : .controlBackgroundColor }
     }
     private func reset() { loadGeneration += 1; columns.removeAll(); stack.arrangedSubviews.forEach { $0.removeFromSuperview() }; baseURL = nil; baseIDs = [] }
-    private func append(url: URL, items: [FileItem]) {
-        let column = Column(owner: self, url: url, items: sortOrder.sorted(items)); column.table.menu = contextMenu
+    private func append(url: URL, sortedItems: [FileItem]) {
+        let column = Column(owner: self, url: url, items: sortedItems); column.table.menu = contextMenu
         column.scroll.drawsBackground = !customBackgroundEnabled
         column.table.backgroundColor = customBackgroundEnabled ? .clear : .controlBackgroundColor
         columns.append(column); stack.addArrangedSubview(column.view)
@@ -170,7 +173,7 @@ final class FileColumnView: NSView {
             do {
                 let loaded = try await LocalFileSystem().contents(of: item.url, showHidden: self?.showHidden ?? false)
                 guard let self, self.loadGeneration == generation, column.selectedItems.first?.id == item.id else { return }
-                self.removeColumns(after: index); self.append(url: item.url, items: loaded)
+                self.removeColumns(after: index); self.append(url: item.url, sortedItems: self.sortOrder.sorted(loaded))
             } catch { }
         }
     }
