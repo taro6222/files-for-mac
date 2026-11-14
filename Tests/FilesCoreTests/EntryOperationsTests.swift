@@ -766,6 +766,51 @@ func crossVolumeMovePreservesSourceWhenResourceForkChanges(_ phase: String) asyn
     }
 }
 
+@Test(arguments: ["staged", "published", "source"])
+func crossVolumeMovePreservesSourceWhenExtendedAttributeChanges(_ location: String) async throws {
+    let root = try entryFixture()
+    let fm = FileManager.default
+    defer { try? fm.removeItem(at: root) }
+    let destination = root.appendingPathComponent("dest", isDirectory: true)
+    let source = root.appendingPathComponent("move.txt")
+    let target = destination.appendingPathComponent(source.lastPathComponent)
+    try fm.createDirectory(at: destination, withIntermediateDirectories: true)
+    let payload = Data("data fork".utf8)
+    try payload.write(to: source)
+    let attribute = "com.filesmac.transfer-test"
+    let before: UInt8 = 1
+    try #require(withUnsafePointer(to: before) { setxattr(source.path, attribute, $0, 1, 0, 0) } == 0)
+
+    let result = try await EntryOperations.moveAcrossVolumeForTesting([source], to: destination,
+        journalDirectory: root.appendingPathComponent("journal")) { progress in
+        let changed: URL
+        if location == "staged" {
+            guard progress.phase == "verifying",
+                  let files = try? FileManager.default.contentsOfDirectory(at: destination, includingPropertiesForKeys: nil),
+                  let stage = files.first(where: { $0.lastPathComponent.hasPrefix(".files-move-") }) else { return }
+            changed = stage.appendingPathComponent("payload")
+        } else {
+            guard progress.phase == "removingSource" else { return }
+            changed = location == "source" ? source : target
+        }
+        let after: UInt8 = 2
+        #expect(withUnsafePointer(to: after) { setxattr(changed.path, attribute, $0, 1, 0, 0) } == 0)
+    }
+
+    #expect(result.items.first?.state == "failed")
+    #expect(try Data(contentsOf: source) == payload)
+    var actual: UInt8 = 0
+    #expect(getxattr(source.path, attribute, &actual, 1, 0, 0) == 1)
+    #expect(actual == (location == "source" ? 2 : 1))
+    if location == "published" {
+        #expect(try Data(contentsOf: target) == payload)
+        #expect(getxattr(target.path, attribute, &actual, 1, 0, 0) == 1)
+        #expect(actual == 2)
+    } else {
+        #expect(!fm.fileExists(atPath: target.path))
+    }
+}
+
 @Test(arguments: [false, true])
 func moveUndoPreservesResourceForkFromLegacyJournal(legacy: Bool) async throws {
     let root = try entryFixture()

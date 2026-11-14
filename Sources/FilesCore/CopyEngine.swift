@@ -219,8 +219,8 @@ public enum CopyEngine {
                     }
                     emit("verifying", stagedTransfer: stagedTransfer)
                     let verifiedPayload = try makeSnapshot(payload, cancellation: cancellation)
-                    guard verifiedPayload.content == before.content,
-                          try snapshot(source, cancellation: cancellation) == before.withPermissions else {
+                    guard verifiedPayload.matchesTransferredContents(of: before),
+                          try makeSnapshot(source, cancellation: cancellation).matchesOriginal(before) else {
                         throw CopyFailure(text: "Source changed or copied contents did not match.")
                     }
                     // Capture the item we verified before publication. A cancellation or an
@@ -398,21 +398,23 @@ public enum CopyEngine {
         try snapshot(root, cancellation: cancellation)
     }
 
-    static func verifiedContentSnapshot(_ root: URL, cancellation: CopyCancellation = CopyCancellation()) throws -> [String: String] {
-        try contentSnapshot(root, cancellation: cancellation)
-    }
-
     private static func snapshot(_ root: URL, cancellation: CopyCancellation) throws -> [String: String] {
-        try makeSnapshot(root, cancellation: cancellation).withPermissions
-    }
-
-    private static func contentSnapshot(_ root: URL, cancellation: CopyCancellation) throws -> [String: String] {
-        try makeSnapshot(root, cancellation: cancellation).content
+        try makeSnapshot(root, cancellation: cancellation, includeExtendedAttributes: false).withPermissions
     }
 
     struct VerificationSnapshot {
         var withPermissions: [String: String] = [:]
         var content: [String: String] = [:]
+        var extendedAttributes: [String: [Data: SHA256.Digest]] = [:]
+
+        func matchesTransferredContents(of source: Self) -> Bool {
+            content == source.content && extendedAttributes == source.extendedAttributes
+        }
+
+        func matchesOriginal(_ original: Self) -> Bool {
+            withPermissions == original.withPermissions && extendedAttributes == original.extendedAttributes
+        }
+
         var legacyPermissionsSnapshot: [String: String] {
             withPermissions.mapValues { value in
                 guard value.hasPrefix("file:"), let suffix = value.range(of: ":resource:") else { return value }
@@ -421,7 +423,8 @@ public enum CopyEngine {
         }
     }
 
-    static func makeSnapshot(_ root: URL, cancellation: CopyCancellation) throws -> VerificationSnapshot {
+    static func makeSnapshot(_ root: URL, cancellation: CopyCancellation,
+                             includeExtendedAttributes: Bool = true) throws -> VerificationSnapshot {
         let fm = FileManager()
         var snapshot = VerificationSnapshot()
         func visit(_ url: URL, relative: String) throws {
@@ -454,9 +457,41 @@ public enum CopyEngine {
                 snapshot.content[relative] = "file:" + digest
             default: throw CopyFailure(text: "Unsupported special file: " + url.path)
             }
+            if includeExtendedAttributes {
+                let attributes = try attributeDigests(url, cancellation: cancellation)
+                if !attributes.isEmpty { snapshot.extendedAttributes[relative] = attributes }
+            }
         }
         try visit(root, relative: "")
         return snapshot
+    }
+
+    private static func attributeDigests(_ url: URL, cancellation: CopyCancellation) throws -> [Data: SHA256.Digest] {
+        let invalidAttributes = CopyFailure(text: "Extended attributes could not be verified: " + url.path)
+        let size = listxattr(url.path, nil, 0, XATTR_NOFOLLOW)
+        if size == 0 || (size == -1 && errno == ENOTSUP) { return [:] }
+        guard size > 0 else { throw invalidAttributes }
+        var names = Data(count: size)
+        let listSize = names.withUnsafeMutableBytes {
+            listxattr(url.path, $0.baseAddress?.assumingMemoryBound(to: CChar.self), size, XATTR_NOFOLLOW)
+        }
+        guard listSize == size, names.last == 0 else { throw invalidAttributes }
+        var digests: [Data: SHA256.Digest] = [:]
+        for nameBytes in names.split(separator: 0) {
+            try cancellation.check()
+            guard let name = String(bytes: nameBytes, encoding: .utf8) else { throw invalidAttributes }
+            // The resource fork is already verified in bounded chunks.
+            if name == "com.apple.ResourceFork" { continue }
+            let valueSize = getxattr(url.path, name, nil, 0, 0, XATTR_NOFOLLOW)
+            guard valueSize >= 0 else { throw invalidAttributes }
+            var value = Data(count: valueSize)
+            let read = value.withUnsafeMutableBytes {
+                getxattr(url.path, name, $0.baseAddress, valueSize, 0, XATTR_NOFOLLOW)
+            }
+            guard read == valueSize else { throw invalidAttributes }
+            digests[Data(nameBytes)] = SHA256.hash(data: value)
+        }
+        return digests
     }
 
     private static func resourceForkDigest(_ url: URL, cancellation: CopyCancellation) throws -> String? {

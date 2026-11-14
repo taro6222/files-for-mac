@@ -162,14 +162,13 @@ public enum CopyMergeExecutor {
                     report.items[index].state = "verified"
                 case .copyMissing:
                     report.items[index].state = "copying"; try save(); try cancellation.check()
-                    let before = try CopyEngine.verifiedSnapshot(action.source, cancellation: cancellation)
-                    let contentBefore = try CopyEngine.verifiedContentSnapshot(action.source, cancellation: cancellation)
+                    let before = try CopyEngine.makeSnapshot(action.source, cancellation: cancellation)
                     let temporary = parent.appendingPathComponent(".files-merge-\(report.id.uuidString)-\(index)")
                     try fm.copyItem(at: action.source, to: temporary)
                     defer { try? fm.removeItem(at: temporary) }
                     try cancellation.check()
-                    guard try CopyEngine.verifiedContentSnapshot(temporary, cancellation: cancellation) == contentBefore,
-                          try CopyEngine.verifiedSnapshot(action.source, cancellation: cancellation) == before else {
+                    guard try CopyEngine.makeSnapshot(temporary, cancellation: cancellation).matchesTransferredContents(of: before),
+                          try CopyEngine.makeSnapshot(action.source, cancellation: cancellation).matchesOriginal(before) else {
                         throw MergeFailure(text: "Source changed or copied contents did not match.")
                     }
                     guard try identity(parent) == action.expectedParentIdentity else {
