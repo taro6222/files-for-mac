@@ -1405,8 +1405,13 @@ private struct ManyBatchLoader: DirectoryStreaming {
     #expect(model.items.isEmpty); #expect(model.wasCancelled)
     model.reload()
     #expect(!model.wasCancelled)
-    try await Task.sleep(for: .milliseconds(200))
-    #expect(model.items.map(\.name) == ["slow"]); #expect(!model.isLoading)
+    let clock = ContinuousClock()
+    let deadline = clock.now + .seconds(5)
+    while model.isLoading && clock.now < deadline {
+        try await clock.sleep(for: .milliseconds(5))
+    }
+    try #require(!model.isLoading, "The reloaded directory did not finish")
+    #expect(model.items.map(\.name) == ["slow"])
     model.cancelLoad() // A completed list must not become cancelled.
     #expect(!model.wasCancelled)
 }

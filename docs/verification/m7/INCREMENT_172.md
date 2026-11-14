@@ -15,3 +15,5 @@ GitHub Actions에서 main 푸시와 main 대상 PR, 수동 실행에 macOS 15의
 중복된 두 번째 실행을 종료하고 로그를 확보했다. 두 러너에서 Swift 6.2.4가 수정된 소스를 컴파일했으며 마지막 로그는 테스트 바이너리 링크였다. CI 빌드는 디버그 심볼 생성을 생략하고, 마운트 시험은 같은 테스트 바이너리를 재사용한다.
 
 [디버그 심볼을 생략한 실행](https://github.com/taro6222/files-for-mac/actions/runs/43633336850)에서 양쪽 빌드를 통과했다. Apple Silicon에서 병렬 Swift 테스트가 5분 제한 시간을 넘겼다. CI 기본 회귀를 순차 실행으로 전환했다. 개별 테스트 내부의 동시 실행 검증은 그대로 실행한다.
+
+[순차 CI 실행](https://github.com/taro6222/files-for-mac/actions/runs/43634140080)의 Apple Silicon Swift 테스트가 끝까지 실행됐다. 200ms 고정 대기 뒤 재탐색 완료를 기대하던 시험에서 실패했다. 재탐색이 끝날 때까지 상태를 확인하고 5초 안에 끝나지 않으면 시험을 실패로 판정하도록 바꿨다.
