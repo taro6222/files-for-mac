@@ -6,4 +6,6 @@
 
 각 실행의 `report.json`은 완료된 사이클 수와 경과 시간, RSS 표본, 실패 이유를 보존한다. `source-sha`, `binary.sha256`, `macos.txt`에서 실행 대상을 확인할 수 있다. GUI 세션에서 진행하며 `caffeinate -i`는 실행 중 유휴 잠자기를 억제한다. 8시간 완료 보고서가 나올 때까지 장시간 검증은 진행 중이다.
 
+출시 후보를 다시 시험할 때는 [고정 소스 빌드](INCREMENT_20.md)를 사용한다.
+
 90초 예비 실행은 93.80초 동안 28사이클을 완료했다. 사이클 종료 시 최대 RSS는 189 MB였다. Swift Testing 201개와 셸 구문 검사도 통과했다. [예비 실행 보고서](release-soak-smoke.json)
