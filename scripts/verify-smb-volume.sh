@@ -50,6 +50,30 @@ if ! /bin/ls -A "$volume" >/dev/null; then
   echo "Could not enumerate SMB directory: $volume" >&2
   exit 74
 fi
+echo "SMB verification: probing create, read, rename, and delete" >&2
+if ! python3 - "$volume" <<'PROBE'
+from pathlib import Path
+import sys
+import tempfile
+
+with tempfile.TemporaryDirectory(prefix=".files-smb-probe-", dir=sys.argv[1]) as directory:
+    folder = Path(directory)
+    source = folder / "probe.txt"
+    destination = folder / "renamed.txt"
+    payload = b"Files for Mac SMB preflight\n"
+    with source.open("xb") as stream:
+        stream.write(payload)
+    if source.read_bytes() != payload:
+        raise OSError("SMB probe read did not match the written bytes")
+    source.rename(destination)
+    if destination.read_bytes() != payload or source.exists():
+        raise OSError("SMB probe rename did not preserve the expected result")
+    destination.unlink()
+PROBE
+then
+  echo "Could not complete file operations on SMB share: $volume" >&2
+  exit 75
+fi
 echo "SMB verification: running file operation tests" >&2
 export FILES_TEST_SMB_VOLUME="$volume"
 export CLANG_MODULE_CACHE_PATH="$PWD/.build/ModuleCache"
