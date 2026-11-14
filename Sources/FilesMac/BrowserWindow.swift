@@ -5440,6 +5440,22 @@ extension BrowserWindow {
                     checks["copyResultKeyboardClose"] = resultWindow.performKeyEquivalent(with: close) && !resultWindow.isVisible
                 } else { checks["copyResultKeyboardClose"] = false }
             } else { checks["copyConflictKeyboardShortcut"] = false }
+            let availableSource = source.appendingPathComponent("available-copy.txt")
+            let missingSource = source.appendingPathComponent("missing-copy.txt")
+            let availablePayload = Data("copy result fixture".utf8)
+            try availablePayload.write(to: availableSource)
+            var mixedCopyFinished = false
+            CopyWindow.start(sources: [availableSource, missingSource], destination: target,
+                             journalDirectory: journals) { mixedCopyFinished = true }
+            let mixedCopyStart = ContinuousClock.now
+            while !mixedCopyFinished && elapsed(mixedCopyStart) < 5 {
+                try await Task.sleep(for: .milliseconds(20))
+            }
+            let mixedCopy = NSApp.windows.filter(\.isVisible).compactMap { $0.windowController as? CopyWindow }.first
+            checks["copyMixedResultShowsFailure"] = mixedCopyFinished && mixedCopy?.qaMixedResult == true
+                && (try? Data(contentsOf: target.appendingPathComponent(availableSource.lastPathComponent))) == availablePayload
+                && !fm.fileExists(atPath: target.appendingPathComponent(missingSource.lastPathComponent).path)
+            mixedCopy?.close()
             let moveSource = source.appendingPathComponent("conflict.txt")
             controller.prepareMove(sources: [moveSource], destination: target)
             checks["moveConflictComparison"] = await waitForConflictComparison(moveSource)

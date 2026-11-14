@@ -88,9 +88,13 @@ final class CopyWindow: NSWindowController, NSWindowDelegate {
         running = false
         let count = report.items.filter { $0.state == "completed" }.count
         let conflicts = report.items.filter { $0.state == "conflict" }.count
+        let failed = report.items.filter { $0.state == "failed" }.count
+        let pending = report.items.filter { $0.state == "queued" }.count
         label.stringValue = (report.state == "cancelled" ? L("취소됨", "Cancelled") : L("작업 종료", "Finished")) +
             L(" · 완료 \(count)/\(report.items.count) · 충돌 \(conflicts)", " · Copied \(count)/\(report.items.count) · Conflicts \(conflicts)")
-        progress.doubleValue = Double(report.items.count)
+        if failed > 0 { label.stringValue += L(" · 실패 \(failed)", " · Failed \(failed)") }
+        if pending > 0 { label.stringValue += L(" · 실행 안 됨 \(pending)", " · Not attempted \(pending)") }
+        progress.isHidden = true
         details.string = report.items.map { item in
             let state: String
             switch item.state {
@@ -199,6 +203,11 @@ final class CopyWindow: NSWindowController, NSWindowDelegate {
             && details.accessibilityLabel() == L("복사 상세 결과", "Copy details")
             && label.stringValue.contains(L("충돌 1", "Conflicts 1"))
             && window?.defaultButtonCell === cancel.cell
+    }
+    var qaMixedResult: Bool {
+        !running && progress.isHidden
+            && label.stringValue.contains(L("완료 1/2", "Copied 1/2"))
+            && label.stringValue.contains(L("실패 1", "Failed 1"))
     }
 #endif
     func windowShouldClose(_ sender: NSWindow) -> Bool {

@@ -131,7 +131,7 @@ final class MoveWindow: NSWindowController, NSWindowDelegate {
         if conflicts > 0 {
             label.stringValue += L(" · 충돌 \(conflicts)", " · Conflicts \(conflicts)")
         }
-        progress.doubleValue = Double(report.items.count)
+        progress.isHidden = true
         details.string = report.items.map { item in
             let status: String
             switch item.state {
@@ -160,6 +160,7 @@ final class MoveWindow: NSWindowController, NSWindowDelegate {
 
     private func fail(_ error: Error) {
         running = false
+        progress.isHidden = true
         label.stringValue = L("이동 실패", "Move failed")
         details.string = error.localizedDescription
         showResult()
