@@ -985,12 +985,8 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
             let status = cloudStateTitle(item.cloudState)
             cell.textField?.stringValue = item.cloudState == nil ? "—" : status
             cell.toolTip = status
-        case "git": cell.textField?.stringValue = gitStatus(for: item)
-        case "gitCommitDate", "gitCommitMessage", "gitCommitAuthor", "gitCommitSHA":
-            requestGitCommit(for: item)
-            let value = gitCommitValue(key, for: item)
-            cell.textField?.stringValue = value
-            cell.toolTip = gitCommits[item.url]?.sha == nil ? nil : (key == "gitCommitSHA" ? gitCommits[item.url]?.sha : value)
+        case "git", "gitCommitDate", "gitCommitMessage", "gitCommitAuthor", "gitCommitSHA":
+            updateGitCell(cell, column: key, item: item)
         case "tag": cell.textField?.stringValue = item.tags.isEmpty ? "—" : item.tags.joined(separator: ", ")
         case "path": cell.textField?.stringValue = item.url.deletingLastPathComponent().standardizedFileURL.path
         case "created": cell.textField?.stringValue = item.created.map(dateFormatter.string) ?? "—"
@@ -1009,7 +1005,7 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
     private func refreshGitStatuses(for location: URL) {
         resetGitCommits()
         gitTask?.cancel(); gitGeneration += 1; let request = gitGeneration
-        gitLocation = location; gitStatuses = [:]; gitChangedPaths = []; reloadGitColumn()
+        gitLocation = location; gitStatuses = [:]; gitChangedPaths = []
         gitTask = Task { [weak self] in
             guard let self else { return }
             defer { if request == gitGeneration { gitTask = nil } }
@@ -1022,11 +1018,11 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
                     statuses[path] = "\(entry.indexStatus)\(entry.workTreeStatus)"; changed.append(path)
                 }
                 gitCommitRoot = snapshot.root
-                gitStatuses = statuses; gitChangedPaths = changed.sorted(); reloadGitColumn()
+                gitStatuses = statuses; gitChangedPaths = changed.sorted(); updateVisibleGitCells()
             } catch is CancellationError { return }
             catch {
                 guard request == gitGeneration, model.location == location else { return }
-                gitStatuses = [:]; gitChangedPaths = []; reloadGitColumn()
+                gitStatuses = [:]; gitChangedPaths = []
             }
         }
     }
@@ -1051,22 +1047,41 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
                       self.gitLocation == self.model.location else { return }
                 if let commit {
                     self.gitCommits[url] = commit
-                    self.reloadGitCommitRow(for: url)
+                    self.updateVisibleGitCells(committedItem: url)
                 }
             }
             if !Task.isCancelled, self?.gitGeneration == generation { self?.gitCommitTask = nil }
         }
     }
-    private func reloadGitCommitRow(for url: URL) {
+    private func updateVisibleGitCells(committedItem: URL? = nil) {
+        guard !scroll.isHidden else { return }
+        let columns = table.tableColumns.enumerated().filter { _, column in
+            let key = column.identifier.rawValue
+            return !column.isHidden && (key.hasPrefix("gitCommit") || (committedItem == nil && key == "git"))
+        }
+        guard !columns.isEmpty else { return }
         let visible = table.rows(in: table.visibleRect)
         guard visible.location != NSNotFound else { return }
         for row in visible.location..<(visible.location + visible.length) {
-            guard detailItem(at: row, in: detailRows)?.url == url else { continue }
-            let columns = IndexSet(table.tableColumns.indices.filter {
-                table.tableColumns[$0].identifier.rawValue.hasPrefix("gitCommit") && !table.tableColumns[$0].isHidden
-            })
-            table.reloadData(forRowIndexes: IndexSet(integer: row), columnIndexes: columns)
+            guard let item = detailItem(at: row, in: detailRows),
+                  committedItem == nil || committedItem == item.url else { continue }
+            for (index, column) in columns {
+                let key = column.identifier.rawValue
+                if let cell = table.view(atColumn: index, row: row, makeIfNecessary: false) as? NSTableCellView {
+                    updateGitCell(cell, column: key, item: item)
+                }
+            }
         }
+    }
+    private func updateGitCell(_ cell: NSTableCellView, column: String, item: FileItem) {
+        if column == "git" {
+            cell.textField?.stringValue = gitStatus(for: item)
+            return
+        }
+        requestGitCommit(for: item)
+        let value = gitCommitValue(column, for: item)
+        cell.textField?.stringValue = value
+        cell.toolTip = gitCommits[item.url].map { column == "gitCommitSHA" ? $0.sha : value }
     }
     private func gitCommitValue(_ column: String, for item: FileItem) -> String {
         guard gitLocation == model.location, let commit = gitCommits[item.url] else { return "—" }
@@ -1076,15 +1091,6 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         case "gitCommitAuthor": return commit.author
         default: return String(commit.sha.prefix(12))
         }
-    }
-    private func reloadGitColumn() {
-        let wasRendering = rendering
-        rendering = true
-        table.reloadData()
-        detailRows = detailDisplayRows(items: model.items, grouping: model.grouping)
-        let selected = detailSelectionRows(ids: model.history.current.selection, in: detailRows)
-        table.selectRowIndexes(selected, byExtendingSelection: false)
-        rendering = wasRendering
     }
     private func gitStatus(for item: FileItem) -> String {
         let path = item.url.standardizedFileURL.path
@@ -3642,9 +3648,15 @@ extension BrowserWindow {
                 while (gitList.model.isLoading || gitList.qaGitLoading) && gitListWait.duration(to: .now) < .seconds(15) { try await Task.sleep(for: .milliseconds(20)) }
                 checks["gitFileColumn"] = gitList.qaGitColumnVisible && gitList.qaGitMarkedRows > 0
                 let commitColumns = ["gitCommitDate", "gitCommitMessage", "gitCommitAuthor", "gitCommitSHA"]
-                if let row = gitList.detailRows.indices.first(where: {
+                let shaIndex = gitList.table.column(withIdentifier: .init("gitCommitSHA"))
+                if shaIndex >= 0, let row = gitList.detailRows.indices.first(where: {
                     detailItem(at: $0, in: gitList.detailRows)?.name == "README.md"
                 }), let tracked = detailItem(at: row, in: gitList.detailRows) {
+                    gitList.table.moveColumn(shaIndex, toColumn: 1)
+                    gitList.table.scrollRowToVisible(row)
+                    gitList.table.layoutSubtreeIfNeeded()
+                    let shaCell = gitList.table.view(atColumn: 1, row: row, makeIfNecessary: true) as? NSTableCellView
+                    gitList.table.selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false)
                     for key in commitColumns {
                         let column = gitList.table.tableColumn(withIdentifier: .init(key))
                         _ = gitList.tableView(gitList.table, viewFor: column, row: row)
@@ -3656,6 +3668,10 @@ extension BrowserWindow {
                     checks["gitCommitColumns"] = commitColumns.allSatisfy {
                         gitList.qaVisibleDetailColumns.contains($0) && gitList.gitCommitValue($0, for: tracked) != "—"
                     } && gitList.gitCommitValue("gitCommitSHA", for: tracked).count == 12
+                    checks["gitCommitUpdatesVisibleCellInPlace"] = shaCell != nil
+                        && gitList.table.view(atColumn: 1, row: row, makeIfNecessary: false) === shaCell
+                        && shaCell?.textField?.stringValue == gitList.gitCommitValue("gitCommitSHA", for: tracked)
+                        && gitList.table.selectedRowIndexes == IndexSet(integer: row)
                 } else { checks["gitCommitColumns"] = false }
                 try capture("git-file-column", view: gitList.window?.contentView); gitList.close(); window.makeKeyAndOrderFront(nil)
                 preferences.setShowGitStatusColumn(false)
@@ -5194,7 +5210,12 @@ extension BrowserWindow {
         while model.isLoading || model.location?.path != location.path
                 || model.items.count != count || watcherStatus != .active {
             if model.failure != nil || ContinuousClock.now >= deadline {
-                throw ReleaseSoakFailure("Expected \(count) rows at \(location.lastPathComponent), got \(model.items.count)")
+                let actualLocation = model.location?.lastPathComponent ?? "none"
+                throw ReleaseSoakFailure(
+                    "Expected \(count) rows at \(location.lastPathComponent) with an active watcher. "
+                    + "Actual: \(model.items.count) rows at \(actualLocation), "
+                    + "loading=\(model.isLoading), watcher=\(watcherStatus), loadFailed=\(model.failure != nil)"
+                )
             }
             try await Task.sleep(for: .milliseconds(20))
         }
