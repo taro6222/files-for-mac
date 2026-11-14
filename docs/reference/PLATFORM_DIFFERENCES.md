@@ -4,6 +4,7 @@
 |---|---|---|
 | UI | AppKit 네이티브 창·NSTableView. 시스템 언어에 따른 한국어/영어 표시 | arm64 실제 창에서 확인 |
 | Windows 재질·창 제어 | macOS sidebar material·traffic lights | 원본 Windows 이미지와의 시각 비교 대기 |
+| 테마 색상·글꼴 토큰 | Windows의 주소 막대·툴바·사이드바·파일 영역·정보 pane별 임의 색상과 앱 글꼴 override를 복제하지 않는다. `NSAppearance`, 의미 기반 `NSColor`, `NSVisualEffectView`, 시스템 글꼴을 사용해 macOS 밝게/어둡게, 대비 증가, 투명도 감소, locale glyph fallback을 함께 보존한다. | M6 `platform-alternative`; 한국어·영어 × 밝게·어둡게 실제 UI와 접근성 재질 정책 검증 |
 | Windows 전용 실행·셸 | INF 드라이버 설치, 관리자/다른 사용자로 실행, PowerShell 실행, 관리자 Terminal은 macOS 파일 관리자 명령으로 제공하지 않는다. 앱 전체 또는 임의 파일을 root로 실행하지 않으며 Terminal에서 사용자가 명시적으로 권한을 올리는 시스템 흐름을 침범하지 않는다. | M6 `platform-excluded`; 명령 UI에 노출하지 않음 |
 | Windows 전용 저장 모델 | NTFS alternate data stream 생성과 Start 메뉴 pin/unpin은 macOS에 동일한 셸 개념이 없어 제공하지 않는다. xattr·Dock/Finder 즐겨찾기를 이름만 같은 기능으로 대체하지 않는다. | M6 `platform-excluded` |
 | Windows 셸 확장 메뉴 | Explorer shell extension verb를 앱 컨텍스트 메뉴의 하위 메뉴로 이동하는 설정은 macOS 앱 메뉴 모델에 적용되지 않는다. FilesMac 명령은 앱이 소유하고 공유 목적지는 `NSSharingServicePicker`가 런타임에 제공하므로 Windows 셸 확장 계층을 복제하지 않는다. | M6 `platform-excluded`; 앱 명령과 네이티브 공유 메뉴 검증 |
