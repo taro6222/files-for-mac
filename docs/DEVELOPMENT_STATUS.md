@@ -4,6 +4,8 @@
 
 ## 이번 구현 단위
 
+정식 DMG 검증에서 이미지와 내부 앱에 같은 팀의 Developer ID Application 서명을 요구한다. [M7 정식 DMG 검증](verification/m7/INCREMENT_21.md)
+
 로컬 임시 경로에서 프리뷰 설치·교체·복원을 재검증하고, RSS와 물리 메모리를 함께 기록하는 후보로 8시간 시험을 시작했다. [M7 로컬 설치와 장시간 시험](verification/m7/INCREMENT_68.md)
 
 장시간 시험에서 사이클별 RSS와 macOS 물리 메모리 사용량을 함께 측정한다. [M7 메모리 계측 검증](verification/m7/INCREMENT_67.md)
