@@ -1977,30 +1977,53 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
             do {
                 switch mode.indexOfSelectedItem {
                 case 1:
-                    let start = Int(second.stringValue) ?? 1
-                    guard start >= 0 else { self.showEntryError(L("시작 번호는 0 이상이어야 합니다.", "The starting number must be zero or greater.")); return }
+                    let number = second.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+                    guard let start = number.isEmpty ? 1 : Int(number),
+                          start >= 0, start <= Int.max - (sources.count - 1) else {
+                        self.showEntryError(L("사용할 수 있는 시작 번호를 입력하세요.", "Enter a valid starting number for this selection."))
+                        return
+                    }
                     requests = BatchRenamePattern.numbered(sources, base: first.stringValue, start: start)
                 case 2:
                     requests = try BatchRenamePattern.regularExpression(sources, pattern: first.stringValue, replacement: second.stringValue)
                 default:
                     requests = BatchRenamePattern.replacing(sources, find: first.stringValue, replacement: second.stringValue)
                 }
-                self.confirmBatchRename(requests)
+                Task { [weak self] in
+                    do {
+                        let plan = try await EntryOperations.previewBatchRename(requests)
+                        self?.confirmBatchRename(requests, plan: plan)
+                    } catch { self?.showEntryError(error.localizedDescription) }
+                }
             } catch {
                 self.showEntryError(L("정규식을 해석할 수 없습니다: ", "Invalid regular expression: ") + error.localizedDescription)
             }
         }
     }
-    private func confirmBatchRename(_ requests: [BatchRenameRequest]) {
-        guard let window else { return }
+    private func confirmBatchRename(_ requests: [BatchRenameRequest], plan: [BatchRenameItemResult]) {
+        guard let window, window.isVisible, window.attachedSheet == nil else { return }
         let alert = NSAlert(); alert.messageText = L("변경될 이름 미리보기", "Preview New Names")
-        let preview = requests.prefix(20).map { $0.source.lastPathComponent + " → " + $0.name }.joined(separator: "\n")
-        let remainder = requests.count > 20 ? L("\n…외 ", "\n…and ") + "\(requests.count - 20)" + L("개", " more") : ""
-        alert.informativeText = L("실행 시 전체 계획의 중복과 기존 항목 충돌을 다시 검사합니다.\n\n",
-                                  "The full plan is checked again for duplicates and existing-item conflicts before applying.\n\n") + preview + remainder
-        alert.addButton(withTitle: L("이름 변경", "Rename")); alert.addButton(withTitle: L("취소", "Cancel"))
+        let problems = plan.filter { $0.state != "planned" }
+        let rows = zip(requests, plan).filter { problems.isEmpty || $0.1.state != "planned" }
+        let preview = rows.prefix(20).map { request, item in
+            let names = item.source.lastPathComponent + " → " + request.name
+            switch item.state {
+            case "invalid": return names + L(" · 잘못된 이름", " · Invalid name")
+            case "conflict": return names + L(" · 이름 충돌", " · Name conflict")
+            case "notFound": return names + L(" · 원본 없음", " · Source missing")
+            default: return names
+            }
+        }.joined(separator: "\n")
+        let rowCount = problems.isEmpty ? plan.count : problems.count
+        let remainder = rowCount > 20 ? L("\n…외 \(rowCount - 20)개", "\n…and \(rowCount - 20) more") : ""
+        alert.informativeText = (problems.isEmpty
+            ? L("실행 시 전체 계획을 다시 검사합니다.", "The full plan is checked again before applying.")
+            : L("문제 \(problems.count)개를 수정한 뒤 다시 시도하세요.", "Correct the \(problems.count) flagged items and try again."))
+            + "\n\n" + preview + remainder
+        if problems.isEmpty { alert.addButton(withTitle: L("이름 변경", "Rename")) }
+        alert.addButton(withTitle: problems.isEmpty ? L("취소", "Cancel") : L("닫기", "Close"))
         alert.beginSheetModal(for: window) { [weak self] response in
-            guard response == .alertFirstButtonReturn else { return }
+            guard problems.isEmpty, response == .alertFirstButtonReturn else { return }
             BatchRenameWindow.start(requests: requests) { [weak self] in self?.refresh(nil) }
         }
     }
@@ -5499,6 +5522,23 @@ extension BrowserWindow {
                     checks["moveResultKeyboardClose"] = resultWindow.performKeyEquivalent(with: close) && !resultWindow.isVisible
                 } else { checks["moveResultKeyboardClose"] = false }
             } else { checks["moveConflictKeyboardShortcut"] = false }
+            let invalidRename = [BatchRenameRequest(source: source.appendingPathComponent("conflict.txt"), name: "bad/name")]
+            let invalidPlan = try await EntryOperations.previewBatchRename(invalidRename)
+            controller.confirmBatchRename(invalidRename, plan: invalidPlan)
+            if let sheet = window.attachedSheet, let sheetView = sheet.contentView {
+                func containsLabel(_ view: NSView, matching predicate: (String) -> Bool) -> Bool {
+                    if let field = view as? NSTextField, predicate(field.stringValue) { return true }
+                    return view.subviews.contains { containsLabel($0, matching: predicate) }
+                }
+                checks["batchRenamePreviewBlocksInvalidPlan"] = containsLabel(sheetView) {
+                    $0.contains("bad/name") && $0.contains(L("잘못된 이름", "Invalid name"))
+                }
+                window.endSheet(sheet, returnCode: .alertFirstButtonReturn)
+                try await Task.sleep(for: .milliseconds(50))
+                checks["batchRenamePreviewBlocksInvalidPlan"] = checks["batchRenamePreviewBlocksInvalidPlan"] == true
+                    && !BatchRenameWindow.isRunning
+                    && (try? Data(contentsOf: source.appendingPathComponent("conflict.txt"))) == Data("source".utf8)
+            } else { checks["batchRenamePreviewBlocksInvalidPlan"] = false }
             let restricted = source.appendingPathComponent("move-retry-source", isDirectory: true)
             try fm.createDirectory(at: restricted, withIntermediateDirectories: false)
             let blockedMove = restricted.appendingPathComponent("retry-move.txt")

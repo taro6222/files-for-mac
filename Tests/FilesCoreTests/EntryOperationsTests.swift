@@ -46,6 +46,26 @@ import Testing
 }
 @testable import FilesCore
 
+@Test func batchRenamePreviewReportsProblemsWithoutWriting() async throws {
+    let root = try entryFixture(); defer { try? FileManager.default.removeItem(at: root) }
+    let a = root.appendingPathComponent("a")
+    let b = root.appendingPathComponent("b")
+    try Data("first".utf8).write(to: a)
+    try Data("second".utf8).write(to: b)
+    let requests = [
+        BatchRenameRequest(source: a, name: "b"),
+        BatchRenameRequest(source: b, name: "a"),
+        BatchRenameRequest(source: a, name: "b"),
+        BatchRenameRequest(source: b, name: "bad/name"),
+        BatchRenameRequest(source: root.appendingPathComponent("missing"), name: "new")
+    ]
+    let plan = try await EntryOperations.previewBatchRename(requests)
+    #expect(plan.map(\.state) == ["planned", "planned", "conflict", "invalid", "notFound"])
+    #expect(Set(try FileManager.default.contentsOfDirectory(atPath: root.path)) == ["a", "b"])
+    #expect(try Data(contentsOf: a) == Data("first".utf8))
+    #expect(try Data(contentsOf: b) == Data("second".utf8))
+}
+
 private func entryFixture() throws -> URL {
     let root = FileManager.default.temporaryDirectory.appendingPathComponent("files-entry-\(UUID())")
     try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)

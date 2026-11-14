@@ -51,15 +51,11 @@ public extension EntryOperations {
         guard !requests.isEmpty else { throw EntryOperationError.noSources }
         return try await Task.detached(priority: .userInitiated) {
             let fm = FileManager.default
-            func exists(_ url: URL) -> Bool { var info = stat(); return lstat(url.path, &info) == 0 }
             let id = UUID().uuidString
             let parents = Set(requests.map { $0.source.deletingLastPathComponent().standardizedFileURL })
             guard parents.count == 1, let parent = parents.first else { throw EntryOperationError.sourceChanged }
             let journalURL = journalDirectory.appendingPathComponent("batch-rename-\(id).json")
-            var results = requests.map {
-                BatchRenameItemResult(source: $0.source.standardizedFileURL,
-                    target: parent.appendingPathComponent($0.name), state: "planned", message: nil)
-            }
+            var results = validateBatchRename(requests, parent: parent)
             var journalError: String?
             struct Item: Encodable { let source: URL; let target: URL; let state: String; let message: String? }
             struct Journal: Encodable { let version = 1; let operation = "batchRename"; let id: String; let state: String; let items: [Item] }
@@ -69,28 +65,11 @@ public extension EntryOperations {
                     Item(source: $0.source, target: $0.target, state: $0.state, message: $0.message)
                 })).write(to: journalURL, options: .atomic)
             }
-            try save("planned")
-
-            let sourcePaths = Set(results.map { $0.source.path })
-            var targetNames = Set<String>()
-            var invalid = false
-            for index in requests.indices {
-                do { try validateName(requests[index].name) } catch {
-                    results[index] = BatchRenameItemResult(source: results[index].source, target: results[index].target,
-                        state: "invalid", message: "유효하지 않은 이름입니다."); invalid = true; continue
-                }
-                if !targetNames.insert(requests[index].name).inserted {
-                    results[index] = BatchRenameItemResult(source: results[index].source, target: results[index].target,
-                        state: "conflict", message: "계획 안에 중복된 이름이 있습니다."); invalid = true
-                } else if exists(results[index].target), !sourcePaths.contains(results[index].target.path) {
-                    results[index] = BatchRenameItemResult(source: results[index].source, target: results[index].target,
-                        state: "conflict", message: "선택하지 않은 기존 항목과 이름이 충돌합니다."); invalid = true
-                } else if !exists(results[index].source) {
-                    results[index] = BatchRenameItemResult(source: results[index].source, target: results[index].target,
-                        state: "notFound", message: "원본 항목이 없습니다."); invalid = true
-                }
+            if results.contains(where: { $0.state != "planned" }) {
+                try save("rejected")
+                return BatchRenameResult(id: id, state: "rejected", items: results, journalError: nil)
             }
-            if invalid { try save("rejected"); return BatchRenameResult(id: id, state: "rejected", items: results, journalError: nil) }
+            try save("planned")
 
             let fd = open(parent.path, O_RDONLY | O_DIRECTORY | O_CLOEXEC)
             guard fd >= 0 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
@@ -138,5 +117,43 @@ public extension EntryOperations {
             do { try save("completed") } catch { journalError = error.localizedDescription }
             return BatchRenameResult(id: id, state: "completed", items: results, journalError: journalError)
         }.value
+    }
+}
+
+extension EntryOperations {
+    public static func previewBatchRename(_ requests: [BatchRenameRequest]) async throws -> [BatchRenameItemResult] {
+        try await Task.detached(priority: .userInitiated) {
+            guard !requests.isEmpty else { throw EntryOperationError.noSources }
+            let parents = Set(requests.map { $0.source.deletingLastPathComponent().standardizedFileURL })
+            guard parents.count == 1, let parent = parents.first else { throw EntryOperationError.sourceChanged }
+            return validateBatchRename(requests, parent: parent)
+        }.value
+    }
+
+    private static func validateBatchRename(_ requests: [BatchRenameRequest], parent: URL) -> [BatchRenameItemResult] {
+        func exists(_ url: URL) -> Bool { var info = stat(); return lstat(url.path, &info) == 0 }
+        var results = requests.map {
+            BatchRenameItemResult(source: $0.source.standardizedFileURL,
+                target: parent.appendingPathComponent($0.name), state: "planned", message: nil)
+        }
+        let sourcePaths = Set(results.map { $0.source.path })
+        var targetNames = Set<String>()
+        for index in requests.indices {
+            do { try validateName(requests[index].name) } catch {
+                results[index] = BatchRenameItemResult(source: results[index].source, target: results[index].target,
+                    state: "invalid", message: "유효하지 않은 이름입니다."); continue
+            }
+            if !targetNames.insert(requests[index].name).inserted {
+                results[index] = BatchRenameItemResult(source: results[index].source, target: results[index].target,
+                    state: "conflict", message: "계획 안에 중복된 이름이 있습니다.")
+            } else if exists(results[index].target), !sourcePaths.contains(results[index].target.path) {
+                results[index] = BatchRenameItemResult(source: results[index].source, target: results[index].target,
+                    state: "conflict", message: "선택하지 않은 기존 항목과 이름이 충돌합니다.")
+            } else if !exists(results[index].source) {
+                results[index] = BatchRenameItemResult(source: results[index].source, target: results[index].target,
+                    state: "notFound", message: "원본 항목이 없습니다.")
+            }
+        }
+        return results
     }
 }
