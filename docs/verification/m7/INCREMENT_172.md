@@ -7,3 +7,7 @@ GitHub Actions에서 main 푸시와 main 대상 PR, 수동 실행에 macOS 15의
 이 워크플로의 범위는 빌드·Swift 동작·로컬 임시 볼륨이다. macOS 14 실행, 서명·공증된 DMG, AppKit 수동 검증과 VoiceOver, SMB·외부 서비스는 출시 검증 현황에서 추적한다.
 
 [첫 CI 실행](https://github.com/taro6222/files-for-mac/actions/runs/43632028805)에서는 두 아키텍처 모두 Swift 6.2.4가 복사·이동·복원 결과 상세 문구의 타입을 제한 시간 안에 검사하지 못했다. 결과 문구를 항목별로 조합하도록 바꾸고 로컬 FilesMac 빌드를 확인했다.
+
+수정된 앱의 AppKit 회귀는 한국어·영어와 밝은·어두운 테마 네 조합에서 각각 269개 통과했다. 같은 FilesCore·테스트 소스의 로컬 Swift Testing 실행 결과는 230개 통과, 통합 fixture 부재로 11개 건너뜀이었다.
+
+[두 번째 CI 실행](https://github.com/taro6222/files-for-mac/actions/runs/43632346070)에서 빌드와 테스트가 한 단계로 실행되어 대기 위치를 구분하기 어려웠다. 파이프라인에서 빌드·테스트·마운트 단계의 제한 시간을 각각 지정했다. 압축 취소 시험도 압축 및 해제의 첫 진행을 최대 10초 기다린 뒤, 진행이 없으면 시험 실패를 기록한다.

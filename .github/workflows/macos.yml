@@ -40,7 +40,12 @@ jobs:
           swift --version
       - name: Audit parity inventories
         run: python3 scripts/audit-parity.py
-      - name: Build and run Swift tests
-        run: swift test --disable-sandbox
+      - name: Build app and test targets
+        timeout-minutes: 12
+        run: swift build --build-tests --disable-sandbox
+      - name: Run Swift tests
+        timeout-minutes: 5
+        run: swift test --skip-build --disable-xctest
       - name: Verify mounted file systems
+        timeout-minutes: 5
         run: bash scripts/verify-volume-matrix.sh

@@ -7,6 +7,16 @@ private final class ProgressRecorder: @unchecked Sendable {
     private var values: [ArchiveProgress] = []
     func append(_ value: ArchiveProgress) { lock.withLock { values.append(value) } }
     var snapshot: [ArchiveProgress] { lock.withLock { values } }
+
+    func waitForBytes() async throws -> Bool {
+        let clock = ContinuousClock()
+        let deadline = clock.now + .seconds(10)
+        while clock.now < deadline {
+            if snapshot.contains(where: { $0.completedBytes > 0 }) { return true }
+            try await Task.sleep(for: .milliseconds(1))
+        }
+        return false
+    }
 }
 
 private func makeZip(source: URL, archive: URL) throws {
@@ -157,7 +167,9 @@ private func makeZip(source: URL, archive: URL) throws {
             if update.completedBytes > 0 { Thread.sleep(forTimeInterval: 0.05) }
         }
     }
-    while createProgress.snapshot.last?.completedBytes ?? 0 == 0 { try await Task.sleep(for: .milliseconds(1)) }
+    defer { createTask.cancel() }
+    let creationReportedBytes = try await createProgress.waitForBytes()
+    try #require(creationReportedBytes, "Archive creation must report written bytes before cancellation")
     let createCancelStart = ContinuousClock.now; createTask.cancel()
     await #expect(throws: CancellationError.self) { try await createTask.value }
     #expect(createCancelStart.duration(to: .now) < .seconds(1)); #expect(!fm.fileExists(atPath: archive.path))
@@ -171,7 +183,9 @@ private func makeZip(source: URL, archive: URL) throws {
             if update.completedBytes > 0 { Thread.sleep(forTimeInterval: 0.05) }
         }
     }
-    while extractProgress.snapshot.last?.completedBytes ?? 0 == 0 { try await Task.sleep(for: .milliseconds(1)) }
+    defer { extractTask.cancel() }
+    let extractionReportedBytes = try await extractProgress.waitForBytes()
+    try #require(extractionReportedBytes, "Archive extraction must report written bytes before cancellation")
     let extractCancelStart = ContinuousClock.now; extractTask.cancel()
     await #expect(throws: CancellationError.self) { try await extractTask.value }
     #expect(extractCancelStart.duration(to: .now) < .seconds(1)); #expect(try fm.contentsOfDirectory(atPath: destination.path).isEmpty)
