@@ -2,9 +2,11 @@ import AppKit
 import FilesCore
 
 @MainActor
-final class SearchWindow: NSWindowController, NSTableViewDataSource, NSTableViewDelegate, NSSearchFieldDelegate {
+final class SearchWindow: NSWindowController, NSTableViewDataSource, NSTableViewDelegate, NSSearchFieldDelegate, NSMenuItemValidation {
     private let model = SearchModel(searcher: SearchRouter(spotlight: SpotlightFileSearch()))
-    private let onOpen: (FileItem) -> Void
+    private var onReveal: ((FileItem) -> Void)?
+    private var onOpen: ((FileItem) -> Void)?
+    private let reveal = NSButton()
     private let search = NSSearchField(), method = NSPopUpButton(), scope = NSPopUpButton(), kind = NSPopUpButton(), hidden = NSButton(checkboxWithTitle: L("숨김 포함", "Include Hidden"), target: nil, action: nil)
     private let tag = NSSearchField(), minimumSize = NSTextField(), maximumSize = NSTextField(), sizeUnit = NSPopUpButton()
     private let afterEnabled = NSButton(checkboxWithTitle: L("수정일 이후", "Modified after"), target: nil, action: nil)
@@ -13,8 +15,7 @@ final class SearchWindow: NSWindowController, NSTableViewDataSource, NSTableView
     private let table = NSTableView(), status = NSTextField(labelWithString: ""), stop = NSButton()
     private var root: URL?
 
-    init(onOpen: @escaping (FileItem) -> Void) {
-        self.onOpen = onOpen
+    init() {
         let panel = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 900, height: 600), styleMask: [.titled, .closable, .resizable, .utilityWindow], backing: .buffered, defer: false)
         super.init(window: panel); panel.title = L("검색", "Search"); panel.isReleasedWhenClosed = false; buildUI()
         model.onChange = { [weak self] in self?.render() }
@@ -43,13 +44,33 @@ final class SearchWindow: NSWindowController, NSTableViewDataSource, NSTableView
         dates.addArrangedSubview(afterEnabled); dates.addArrangedSubview(afterDate); dates.addArrangedSubview(beforeEnabled); dates.addArrangedSubview(beforeDate); dates.addArrangedSubview(NSView()); metadata.addArrangedSubview(dates); stack.addArrangedSubview(metadata)
         for (id, title, width) in [("name", L("이름", "Name"), 240.0), ("path", L("위치", "Location"), 360.0), ("kind", L("종류", "Kind"), 90.0)] { let c = NSTableColumn(identifier: .init(id)); c.title = title; c.width = width; table.addTableColumn(c) }
         table.delegate = self; table.dataSource = self; table.target = self; table.doubleAction = #selector(openSelection(_:)); table.allowsMultipleSelection = false
+        let resultMenu = NSMenu()
+        let parent = resultMenu.addItem(withTitle: L("상위 폴더 열기", "Open Parent Folder"), action: #selector(openParentFolder(_:)), keyEquivalent: "")
+        parent.target = self
+        table.menu = resultMenu
         let scroll = NSScrollView(); scroll.documentView = table; scroll.hasVerticalScroller = true; scroll.setContentCompressionResistancePriority(.defaultLow, for: .vertical); stack.addArrangedSubview(scroll)
         let footer = NSStackView(); footer.orientation = .horizontal; status.textColor = .secondaryLabelColor; footer.addArrangedSubview(status); footer.addArrangedSubview(NSView())
+        reveal.title = L("상위 폴더 열기", "Open Parent Folder")
+        reveal.target = self
+        reveal.action = #selector(openParentFolder(_:))
+        footer.addArrangedSubview(reveal)
         stop.title = L("중단", "Stop"); stop.target = self; stop.action = #selector(cancel(_:)); footer.addArrangedSubview(stop); stack.addArrangedSubview(footer)
     }
-    func present(root: URL, showHidden: Bool) { self.root = root; hidden.state = showHidden ? .on : .off; render(); window?.center(); showWindow(nil); window?.makeKeyAndOrderFront(nil); window?.makeFirstResponder(search) }
-    func presentTagSearch(tag value: String, root: URL, showHidden: Bool) {
-        present(root: root, showHidden: showHidden)
+    func present(root: URL, showHidden: Bool, onReveal: @escaping (FileItem) -> Void, onOpen: ((FileItem) -> Void)? = nil) {
+        if self.root != root { model.reset() }
+        self.root = root
+        self.onReveal = onReveal
+        self.onOpen = onOpen
+        hidden.state = showHidden ? .on : .off
+        render()
+        window?.center()
+        showWindow(nil)
+        window?.makeKeyAndOrderFront(nil)
+        window?.makeFirstResponder(search)
+    }
+    func presentTagSearch(tag value: String, root: URL, showHidden: Bool,
+                          onReveal: @escaping (FileItem) -> Void, onOpen: @escaping (FileItem) -> Void) {
+        present(root: root, showHidden: showHidden, onReveal: onReveal, onOpen: onOpen)
         method.selectItem(at: 0); methodChanged(nil); search.stringValue = ""; tag.stringValue = value
         scope.selectItem(at: 0); kind.selectItem(at: 0); minimumSize.stringValue = ""; maximumSize.stringValue = ""
         start(nil)
@@ -80,9 +101,27 @@ final class SearchWindow: NSWindowController, NSTableViewDataSource, NSTableView
         return .some(parsed)
     }
     @objc private func cancel(_ sender: Any?) { model.cancel() }
-    @objc private func openSelection(_ sender: Any?) { guard model.results.indices.contains(table.selectedRow) else { return }; onOpen(model.results[table.selectedRow]); close() }
+    private func result(at row: Int) -> FileItem? {
+        model.results.indices.contains(row) ? model.results[row] : nil
+    }
+    @objc private func openSelection(_ sender: Any?) {
+        guard let item = result(at: table.clickedRow) else { return }
+        model.cancel()
+        close()
+        (onOpen ?? onReveal)?(item)
+    }
+    @objc private func openParentFolder(_ sender: Any?) {
+        let row = sender is NSMenuItem ? table.clickedRow : table.selectedRow
+        guard let item = result(at: row) else { return }
+        model.cancel()
+        close()
+        onReveal?(item)
+    }
+    func validateMenuItem(_ menuItem: NSMenuItem) -> Bool { result(at: table.clickedRow) != nil }
+    func tableViewSelectionDidChange(_ notification: Notification) { reveal.isEnabled = result(at: table.selectedRow) != nil }
     private func render() {
         table.reloadData(); stop.isEnabled = model.isSearching
+        reveal.isEnabled = result(at: table.selectedRow) != nil
         let usesSpotlight = model.query?.method == .spotlightContent
         if model.isSearching { status.stringValue = usesSpotlight ? L("Spotlight 인덱스 검색 중… \(model.results.count)개", "Searching Spotlight index… \(model.results.count)") : L("직접 열거로 검색 중… \(model.results.count)개", "Searching by direct enumeration… \(model.results.count)") }
         else if model.wasCancelled { status.stringValue = L("검색 중단 · 부분 결과 \(model.results.count)개", "Search stopped · \(model.results.count) partial results") }
@@ -110,5 +149,12 @@ final class SearchWindow: NSWindowController, NSTableViewDataSource, NSTableView
     var qaShowsDirectEnumeration: Bool { status.stringValue.contains(L("직접 열거", "direct enumeration")) }
     var qaShowsSpotlight: Bool { status.stringValue.contains("Spotlight") }
     func qaContainsResult(named name: String) -> Bool { model.results.contains { $0.name == name } }
+    func qaRevealResult(named name: String) -> Bool {
+        guard let row = model.results.firstIndex(where: { $0.name == name }) else { return false }
+        table.selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false)
+        guard reveal.isEnabled else { return false }
+        reveal.performClick(nil)
+        return true
+    }
 #endif
 }

@@ -75,6 +75,13 @@ final class SecondaryBrowserPane: NSView, NSTableViewDataSource, NSTableViewDele
     }
     func refresh() { activate(); savePosition(); model.reload() }
     func openLocation(_ url: URL) { activate(); navigate(url) }
+    func revealSearchResult(_ url: URL, isHidden: Bool) {
+        activate()
+        model.setNameFilter("")
+        if isHidden { model.showHidden = true }
+        pendingEntrySelection = url
+        navigate(url.deletingLastPathComponent())
+    }
     func focusPath() { activate(); window?.makeFirstResponder(pathField); pathField.selectText(nil) }
     func updateSort(field: SortField? = nil, ascending: Bool? = nil,
                     placement: SortDirectoryPlacement? = nil, toggleDirection: Bool = false) {
@@ -335,7 +342,8 @@ final class SecondaryBrowserPane: NSView, NSTableViewDataSource, NSTableViewDele
         var revealEntry = false
         if let target = pendingEntrySelection, !model.isLoading {
             pendingEntrySelection = nil
-            if target.deletingLastPathComponent().standardizedFileURL == model.location {
+            if target.deletingLastPathComponent().standardizedFileURL == model.location,
+               model.items.contains(where: { $0.id == target.path }) {
                 revealEntry = true; model.savePosition(selection: [target.path], scrollOffset: model.history.current.scrollOffset)
             }
         }
@@ -368,6 +376,8 @@ final class SecondaryBrowserPane: NSView, NSTableViewDataSource, NSTableViewDele
                         scrollOffset: model.history.current.scrollOffset, grouping: model.grouping)
         columnView.showHidden = model.showHidden; columnView.sortOrder = model.sortOrder; columnView.showsThumbnails = preferences.showThumbnails
         columnView.update(baseURL: model.location, items: model.items, selection: model.history.current.selection)
+        if revealEntry && showsGrid { gridView.revealSelection() }
+        if revealEntry && showsList { listView.revealSelection() }
         if !model.isLoading {
             scroll.contentView.scroll(to: NSPoint(x: 0, y: model.history.current.scrollOffset)); scroll.reflectScrolledClipView(scroll.contentView)
             if revealEntry, let row = selected.first { table.scrollRowToVisible(row) }

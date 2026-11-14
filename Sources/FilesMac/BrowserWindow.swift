@@ -772,7 +772,8 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         var revealEntry = false
         if let target = pendingEntrySelection, !model.isLoading {
             pendingEntrySelection = nil
-            if target.deletingLastPathComponent().standardizedFileURL == model.location {
+            if target.deletingLastPathComponent().standardizedFileURL == model.location,
+               model.items.contains(where: { $0.id == target.path }) {
                 revealEntry = true
                 model.savePosition(selection: [target.path], scrollOffset: model.history.current.scrollOffset)
             }
@@ -794,6 +795,8 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
                         scrollOffset: model.history.current.scrollOffset, grouping: model.grouping)
         columnView.showHidden = model.showHidden; columnView.sortOrder = model.sortOrder; columnView.showsThumbnails = preferences.showThumbnails
         columnView.update(baseURL: model.location, items: model.items, selection: model.history.current.selection)
+        if revealEntry && showsGrid { gridView.revealSelection() }
+        if revealEntry && showsList { listView.revealSelection() }
         if !model.isLoading {
             scroll.contentView.scroll(to: NSPoint(x: 0, y: model.history.current.scrollOffset))
             scroll.reflectScrolledClipView(scroll.contentView)
@@ -1046,15 +1049,26 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
     }
     @objc func showSearch(_ sender: Any?) {
         guard let root = activeModel.location else { return }
-        if searchWindow == nil {
-            searchWindow = SearchWindow { [weak self] item in
-                guard let self else { return }
-                self.setSecondaryActive(false); self.pendingEntrySelection = item.url
-                self.navigate(item.url.deletingLastPathComponent())
-                self.window?.makeKeyAndOrderFront(nil)
+        let panel = searchWindow ?? SearchWindow()
+        searchWindow = panel
+        panel.present(root: root, showHidden: activeModel.showHidden, onReveal: searchResultRevealer())
+    }
+    private func searchResultRevealer() -> (FileItem) -> Void {
+        let sourcePane = secondaryActive ? secondaryPane : nil
+        return { [weak self, weak sourcePane] item in
+            guard let self else { return }
+            let target = item.url.standardizedFileURL
+            self.window?.makeKeyAndOrderFront(nil)
+            if let sourcePane, sourcePane === self.secondaryPane {
+                sourcePane.revealSearchResult(target, isHidden: item.isHidden)
+            } else {
+                self.setSecondaryActive(false)
+                self.model.setNameFilter("")
+                if item.isHidden { self.model.showHidden = true }
+                self.pendingEntrySelection = target
+                self.navigate(target.deletingLastPathComponent())
             }
         }
-        searchWindow?.present(root: root, showHidden: activeModel.showHidden)
     }
     @objc func showInfo(_ sender: Any?) {
         let items = activeSelectedItems
@@ -1257,6 +1271,7 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
     @objc func openAllTagged(_ sender: Any?) {
         let urls = activeSelectedItems.map(\.url), root = activeModel.location, showHidden = activeModel.showHidden
         guard !urls.isEmpty, let root else { return }
+        let revealResult = searchResultRevealer()
         Task { [weak self] in
             let tag = await Task.detached { () -> String? in
                 for url in urls {
@@ -1266,8 +1281,11 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
                 return nil
             }.value
             guard let self, let tag else { return }
-            if self.searchWindow == nil { self.searchWindow = SearchWindow { [weak self] item in self?.openItem(item) } }
-            self.searchWindow?.presentTagSearch(tag: tag, root: root, showHidden: showHidden)
+            let panel = self.searchWindow ?? SearchWindow()
+            self.searchWindow = panel
+            panel.presentTagSearch(tag: tag, root: root, showHidden: showHidden, onReveal: revealResult) { [weak self] item in
+                self?.openItem(item)
+            }
         }
     }
     @objc func removeTags(_ sender: Any?) {
@@ -3069,11 +3087,15 @@ extension BrowserWindow {
             checks["searchResults"] = controller.searchWindow?.qaResultCount == 1
             checks["searchCapability"] = controller.searchWindow?.qaShowsDirectEnumeration == true
             try capture("search", view: controller.searchWindow?.window?.contentView)
-            controller.searchWindow?.close(); window.makeKeyAndOrderFront(nil)
+            let searchHit = fixture.appendingPathComponent("00000-한글-é-📁-long-file-name.txt")
+            let revealedSearchHit = controller.searchWindow?.qaRevealResult(named: searchHit.lastPathComponent) == true
             let postSearchRefresh = ContinuousClock.now
             while controller.model.isLoading && postSearchRefresh.duration(to: .now) < .seconds(30) {
                 try await Task.sleep(for: .milliseconds(10))
             }
+            checks["searchParentFolderRevealsItem"] = revealedSearchHit && controller.model.location == fixture.standardizedFileURL
+                && controller.primarySelectedItems.map(\.id) == [searchHit.path]
+                && controller.searchWindow?.window?.isVisible == false
             controller.table.selectRowIndexes([1], byExtendingSelection: false)
             controller.showInfo(nil)
             let infoStart = ContinuousClock.now
@@ -3139,7 +3161,7 @@ extension BrowserWindow {
             checks["spotlightSearchCapability"] = controller.searchWindow?.qaShowsSpotlight == true && controller.searchWindow?.qaIsSearching == false
             try capture("search-spotlight", view: controller.searchWindow?.window?.contentView)
             let projectRoot = URL(fileURLWithPath: FileManager.default.currentDirectoryPath, isDirectory: true)
-            controller.searchWindow?.present(root: projectRoot, showHidden: false)
+            controller.searchWindow?.present(root: projectRoot, showHidden: false, onReveal: controller.searchResultRevealer())
             controller.searchWindow?.qaSearchSpotlight("SearchRouter", scope: .descendants)
             let spotlightHit = ContinuousClock.now
             while controller.searchWindow?.qaIsSearching == true && spotlightHit.duration(to: .now) < .seconds(15) { try await Task.sleep(for: .milliseconds(20)) }

@@ -15,6 +15,19 @@ public final class SearchModel {
     private var task: Task<Void, Never>?
 
     public init(searcher: any FileSearching = LocalFileSearch()) { self.searcher = searcher }
+    public func reset() {
+        generation += 1
+        task?.cancel()
+        task = nil
+        root = nil
+        query = nil
+        results = []
+        isSearching = false
+        wasCancelled = false
+        skippedLocations = 0
+        error = nil
+        onChange?()
+    }
     public func search(in root: URL, query: FileSearchQuery) {
         generation += 1; let request = generation
         task?.cancel(); self.root = root.standardizedFileURL; self.query = query

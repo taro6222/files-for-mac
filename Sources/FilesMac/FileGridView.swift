@@ -167,6 +167,9 @@ final class FileGridView: NSView, NSCollectionViewDataSource, NSCollectionViewDe
         layout.invalidateLayout(); collection.reloadData()
     }
     func focus() { window?.makeFirstResponder(collection) }
+    func revealSelection() {
+        collection.scrollToItems(at: collection.selectionIndexPaths, scrollPosition: .nearestVerticalEdge)
+    }
     func applyBackground(enabled: Bool) {
         scroll.drawsBackground = !enabled
         collection.backgroundColors = enabled ? [.clear] : []

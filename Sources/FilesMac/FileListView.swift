@@ -96,6 +96,9 @@ final class FileListView: NSView, NSTableViewDataSource, NSTableViewDelegate {
         table.reloadData()
     }
     func focus() { window?.makeFirstResponder(table) }
+    func revealSelection() {
+        if table.selectedRow >= 0 { table.scrollRowToVisible(table.selectedRow) }
+    }
     func applyBackground(enabled: Bool) { scroll.drawsBackground = !enabled; table.backgroundColor = enabled ? .clear : .controlBackgroundColor }
     func currentScrollOffset() -> Double { scroll.contentView.bounds.origin.y }
     func numberOfRows(in tableView: NSTableView) -> Int { rows.count }
