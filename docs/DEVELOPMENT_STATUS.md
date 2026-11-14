@@ -8,6 +8,8 @@ M7 출시 검증이 진행 중이다. [유니버설 개발 프리뷰](verificati
 
 ## 이번 구현 단위
 
+파일 권한 시트에서 macOS 확장 ACL 항목을 추가·수정·삭제한다. [확장 ACL 검증](verification/m7/INCREMENT_154.md)
+
 파일 속성에서 단일 항목의 POSIX 모드를 편집하고 확장 ACL을 조회한다. [파일 권한 검증](verification/m7/INCREMENT_153.md)
 
 파일 속성 창에서 여섯 해시 알고리즘을 선택하고 해시값 또는 다른 파일과 비교한다. [파일 해시 검증](verification/m7/INCREMENT_152.md)

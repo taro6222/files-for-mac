@@ -1505,3 +1505,30 @@ private struct ManyBatchLoader: DirectoryStreaming {
     let updatedFolder = try await inspector.setPermissions(0o750, at: root, expected: folder)
     #expect(updatedFolder.mode == 0o1750)
 }
+
+@Test func extendedACLCanBeEditedAndClearedWithoutChangingPOSIXMode() async throws {
+    let root = try fixture()
+    defer { try? FileManager.default.removeItem(at: root) }
+    let inspector = FilePropertiesInspector()
+    let initial = try await inspector.permissions(root)
+    let entries = """
+        group::everyone::deny,file_inherit:delete
+        group::everyone::allow,directory_inherit:read
+        """
+    let withACL = try await inspector.setAccessControlList(entries, at: root, expected: initial)
+    #expect(withACL.mode == initial.mode)
+    let lines = try #require(withACL.accessControlList).split(separator: "\n")
+    try #require(lines.count == 2)
+    #expect(lines[0].hasSuffix(":deny,file_inherit:delete"))
+    #expect(lines[1].hasSuffix(":allow,directory_inherit:read"))
+    await #expect(throws: FilePermissionError.invalidAccessControlList) {
+        try await inspector.setAccessControlList("invalid entry", at: root, expected: withACL)
+    }
+    #expect(try await inspector.permissions(root).accessControlList == withACL.accessControlList)
+    await #expect(throws: FilePermissionError.changedPermissions) {
+        try await inspector.setAccessControlList("", at: root, expected: initial)
+    }
+    let cleared = try await inspector.setAccessControlList("", at: root, expected: withACL)
+    #expect(cleared.accessControlList == nil)
+    #expect(cleared.mode == initial.mode)
+}

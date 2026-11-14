@@ -270,11 +270,11 @@ final class FileInfoWindow: NSWindowController, NSTextFieldDelegate {
     private func cancelTasks() { inspectTask?.cancel(); inspectTask = nil; hashTask?.cancel(); hashTask = nil; signatureTask?.cancel(); signatureTask = nil }
 #if DEBUG
     var qaLoaded: Bool { properties != nil }
-    func qaChangePermissions(to mode: Int) async throws -> Bool {
+    func qaChangePermissions(to mode: Int, acl: String? = nil) async throws -> Bool {
         guard let sheet = openPermissions() else { return false }
         let deadline = ContinuousClock.now + .seconds(5)
         while !sheet.qaReady && ContinuousClock.now < deadline { try await Task.sleep(for: .milliseconds(20)) }
-        guard sheet.qaSetMode(mode) else { return false }
+        guard acl.map({ sheet.qaSetACL($0) }) ?? sheet.qaSetMode(mode) else { return false }
         while window?.attachedSheet != nil && ContinuousClock.now < deadline { try await Task.sleep(for: .milliseconds(20)) }
         while properties?.posixPermissions != mode && ContinuousClock.now < deadline { try await Task.sleep(for: .milliseconds(20)) }
         return window?.attachedSheet == nil && properties?.posixPermissions == mode
@@ -318,7 +318,7 @@ final class FileInfoWindow: NSWindowController, NSTextFieldDelegate {
 }
 
 @MainActor
-private final class FilePermissionsSheet {
+private final class FilePermissionsSheet: NSObject, NSTextViewDelegate {
     private let inspector = FilePropertiesInspector()
     private let url: URL
     private let onSave: () -> Void
@@ -326,6 +326,7 @@ private final class FilePermissionsSheet {
     private var initial: FilePermissionSnapshot?
     private var checks: [NSButton] = []
     private let aclText = NSTextView()
+    private let editACL = NSButton()
     private let status = NSTextField(wrappingLabelWithString: "")
     private let save: NSButton
 
@@ -335,6 +336,7 @@ private final class FilePermissionsSheet {
         alert.messageText = L("파일 권한", "File Permissions")
         alert.informativeText = url.lastPathComponent
         save = alert.addButton(withTitle: L("저장", "Save"))
+        super.init()
         save.isEnabled = false
         alert.addButton(withTitle: L("닫기", "Close"))
         save.target = self
@@ -377,16 +379,22 @@ private final class FilePermissionsSheet {
         grid.columnSpacing = 10
 
         let aclLabel = NSTextField(labelWithString: L("확장 ACL", "Extended ACL"))
+        editACL.title = L("ACL 편집", "Edit ACL")
+        editACL.target = self; editACL.action = #selector(beginACLEdit(_:))
+        editACL.isEnabled = false
+        let aclHeader = NSStackView(views: [aclLabel, editACL])
+        aclHeader.spacing = 8
         let scroll = NSScrollView()
         scroll.hasVerticalScroller = true
         aclText.isEditable = false
+        aclText.delegate = self
         aclText.font = .monospacedSystemFont(ofSize: 11, weight: .regular)
         aclText.setAccessibilityLabel(aclLabel.stringValue)
         aclText.isVerticallyResizable = true
         aclText.autoresizingMask = [.width]
         scroll.documentView = aclText
 
-        let stack = NSStackView(views: [grid, aclLabel, scroll, status])
+        let stack = NSStackView(views: [grid, aclHeader, scroll, status])
         stack.orientation = .vertical
         stack.alignment = .leading
         stack.spacing = 8
@@ -412,6 +420,7 @@ private final class FilePermissionsSheet {
         }
         aclText.string = snapshot.accessControlList ?? L("확장 ACL 항목이 없습니다.", "No extended ACL entries.")
         status.stringValue = String(format: "%04o", snapshot.mode)
+        editACL.isEnabled = true
     }
 
     @objc private func permissionChanged(_ sender: Any?) {
@@ -419,24 +428,54 @@ private final class FilePermissionsSheet {
         let requested = (initial.mode & 0o7000) | selectedMode
         status.stringValue = String(format: "%04o → %04o", initial.mode, requested)
         save.isEnabled = requested != initial.mode
+        editACL.isEnabled = !save.isEnabled
+    }
+
+    @objc private func beginACLEdit(_ sender: Any?) {
+        guard let initial, editACL.isEnabled else { return }
+        checks.forEach { $0.isEnabled = false }
+        editACL.isEnabled = false
+        aclText.string = initial.accessControlList ?? ""
+        aclText.isEditable = true
+        aclText.isAutomaticQuoteSubstitutionEnabled = false
+        aclText.isAutomaticDashSubstitutionEnabled = false
+        status.stringValue = L("한 줄에 ACL 항목 하나를 입력하세요. 예: group::everyone::allow:read",
+                               "Enter one ACL entry per line. Example: group::everyone::allow:read")
+        alert.window.makeFirstResponder(aclText)
+    }
+
+    func textDidChange(_ notification: Notification) {
+        guard aclText.isEditable, let initial else { return }
+        save.isEnabled = aclText.string.trimmingCharacters(in: .whitespacesAndNewlines) != (initial.accessControlList ?? "")
     }
 
     @objc private func savePermissions(_ sender: Any?) {
         guard let initial, save.isEnabled else { return }
         let requested = selectedMode
+        let aclEntries = aclText.isEditable ? aclText.string : nil
         save.isEnabled = false
+        editACL.isEnabled = false
+        aclText.isEditable = false
         alert.buttons[1].isEnabled = false
         checks.forEach { $0.isEnabled = false }
         Task {
             defer { alert.buttons[1].isEnabled = true }
             do {
-                _ = try await inspector.setPermissions(requested, at: url, expected: initial)
+                if let aclEntries {
+                    _ = try await inspector.setAccessControlList(aclEntries, at: url, expected: initial)
+                } else {
+                    _ = try await inspector.setPermissions(requested, at: url, expected: initial)
+                }
                 if let parent = alert.window.sheetParent { parent.endSheet(alert.window, returnCode: .alertFirstButtonReturn) }
                 onSave()
             } catch FilePermissionError.changedItem {
                 status.stringValue = L("항목이 바뀌었습니다. 속성 창에서 권한을 다시 여세요.", "The item changed. Reopen File Permissions.")
             } catch FilePermissionError.changedPermissions {
                 status.stringValue = L("권한이 외부에서 변경되었습니다. 권한을 다시 여세요.", "Permissions changed externally. Reopen File Permissions.")
+            } catch FilePermissionError.invalidAccessControlList {
+                status.stringValue = L("ACL 형식을 확인하세요.", "Check the ACL entry format.")
+                aclText.isEditable = true
+                save.isEnabled = true
             } catch {
                 status.stringValue = L("권한을 변경하지 못했습니다. ", "Unable to change permissions. ") + error.localizedDescription
             }
@@ -444,6 +483,15 @@ private final class FilePermissionsSheet {
     }
 #if DEBUG
     var qaReady: Bool { initial != nil }
+    func qaSetACL(_ entries: String) -> Bool {
+        editACL.performClick(nil)
+        guard aclText.isEditable else { return false }
+        aclText.string = entries
+        textDidChange(Notification(name: NSText.didChangeNotification, object: aclText))
+        guard save.isEnabled else { return false }
+        save.performClick(nil)
+        return true
+    }
     func qaSetMode(_ mode: Int) -> Bool {
         guard qaReady, checks.allSatisfy({ $0.isEnabled && $0.accessibilityLabel()?.isEmpty == false }) else { return false }
         for (index, button) in checks.enumerated() {

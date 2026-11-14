@@ -4578,10 +4578,15 @@ extension BrowserWindow {
                 let editedPermissions = try await info.qaChangePermissions(to: 0o640)
                 let savedPermissions = try await FilePropertiesInspector().permissions(inputFile)
                 checks["fileInfoPermissionEditing"] = editedPermissions && savedPermissions.mode == 0o640
+                let editedACL = try await info.qaChangePermissions(to: 0o640, acl: "group::everyone::allow:read")
+                let savedACL = try await FilePropertiesInspector().permissions(inputFile)
+                checks["fileInfoACLEditing"] = editedACL && savedACL.mode == 0o640
+                    && savedACL.accessControlList?.hasSuffix(":allow:read") == true
             } else {
                 checks["fileInfoHashComparison"] = false
                 checks["fileInfoHashFileComparison"] = false
                 checks["fileInfoPermissionEditing"] = false
+                checks["fileInfoACLEditing"] = false
             }
             controller.infoWindow?.close(); window.makeKeyAndOrderFront(nil)
             let taggedURL = controller.activeSelectedItems.first?.url
