@@ -118,6 +118,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         return controller
     }
     @objc func newWindow(_ sender: Any?) { makeBrowser() }
+    @objc func showFileOperations(_ sender: Any?) { FileOperationCenter.present() }
     @objc func newTab(_ sender: Any?) {
         let controller = makeBrowser(tabbedTo: currentBrowser)
         if BrowserPreferences.shared.alwaysOpenDualPaneInNewTab { controller.toggleDualPane(nil) }
@@ -417,6 +418,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         file.addItem(withTitle: L("휴지통에서 복원…", "Restore From Trash…"), action: #selector(BrowserWindow.restoreSelection(_:)), keyEquivalent: "")
         file.addItem(withTitle: L("Finder에서 휴지통 열기", "Open Trash in Finder"), action: #selector(BrowserWindow.openFinderTrash(_:)), keyEquivalent: "")
         file.addItem(withTitle: L("영구 삭제…", "Delete Permanently…"), action: #selector(BrowserWindow.permanentlyDeleteSelection(_:)), keyEquivalent: "")
+        file.addItem(withTitle: L("파일 작업…", "File Operations…"), action: #selector(showFileOperations(_:)), keyEquivalent: "").target = self
         file.addItem(withTitle: L("창 닫기", "Close Window"), action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w")
         let editItem = NSMenuItem(); editItem.title = L("편집", "Edit"); menu.addItem(editItem)
         let edit = NSMenu(title: editItem.title); editItem.submenu = edit

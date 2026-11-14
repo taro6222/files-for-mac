@@ -7,6 +7,7 @@ import FilesCore
 final class FolderMergeWindow: NSWindowController, NSWindowDelegate {
     private static var operations: [FolderMergeWindow] = []
     static var isRunning: Bool { operations.contains { $0.running } }
+    static var activities: [FileOperationActivity] { operations.map(\.activity) }
     private var running = true
     private let cancellation = CopyCancellation()
     private let label = NSTextField(wrappingLabelWithString: L("병합 계획 준비 중…", "Preparing merge plan…"))
@@ -18,6 +19,7 @@ final class FolderMergeWindow: NSWindowController, NSWindowDelegate {
         guard !isRunning else { return }
         let controller = FolderMergeWindow(sources: sources, destination: destination)
         operations.append(controller); controller.showWindow(nil); controller.window?.makeKeyAndOrderFront(nil)
+        FileOperationCenter.activityChanged()
         let journals = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
             .appendingPathComponent(Bundle.main.bundleIdentifier ?? "org.taro6222.files-for-mac")
             .appendingPathComponent("operations")
@@ -65,6 +67,7 @@ final class FolderMergeWindow: NSWindowController, NSWindowDelegate {
         guard running else { return }
         progress.doubleValue = Double(update.index + 1)
         label.stringValue = "\(update.index + 1)/\(update.total) · \(update.state) · \(update.source.lastPathComponent)"
+        FileOperationCenter.activityChanged()
     }
 
     private func finish(_ report: CopyMergeBatchReport) {
@@ -81,11 +84,20 @@ final class FolderMergeWindow: NSWindowController, NSWindowDelegate {
         }.joined(separator: "\n\n")
         if let error = report.journalError { details.string += "\n\n" + L("저널 오류: ", "Journal error: ") + error }
         cancel.title = L("닫기", "Close"); cancel.isEnabled = true
+        FileOperationCenter.activityChanged()
     }
     @objc private func cancelMerge(_ sender: Any?) {
         if !running { close(); return }
         cancellation.cancel(); cancel.isEnabled = false; label.stringValue = L("안전 지점에서 취소 중…", "Cancelling at a safe point…")
+        FileOperationCenter.activityChanged()
+    }
+    private var activity: FileOperationActivity {
+        fileOperationActivity(status: label.stringValue, progress: progress, running: running,
+                              cancel: running && cancel.isEnabled ? { [weak self] in self?.cancelMerge(nil) } : nil)
     }
     func windowShouldClose(_ sender: NSWindow) -> Bool { if running { NSSound.beep(); return false }; return true }
-    func windowWillClose(_ notification: Notification) { Self.operations.removeAll { $0 === self } }
+    func windowWillClose(_ notification: Notification) {
+        Self.operations.removeAll { $0 === self }
+        FileOperationCenter.activityChanged()
+    }
 }

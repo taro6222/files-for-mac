@@ -7,6 +7,7 @@ import FilesCore
 final class MoveWindow: NSWindowController, NSWindowDelegate {
     private static var operations: [MoveWindow] = []
     static var isRunning: Bool { operations.contains { $0.running } }
+    static var activities: [FileOperationActivity] { operations.map(\.activity) }
     private var running = true
     private let cancellation = CopyCancellation()
     private let label = NSTextField(wrappingLabelWithString: "")
@@ -31,6 +32,7 @@ final class MoveWindow: NSWindowController, NSWindowDelegate {
         operations.append(controller)
         controller.showWindow(nil)
         controller.window?.makeKeyAndOrderFront(nil)
+        FileOperationCenter.activityChanged()
         Task { [controller] in
             do {
                 let progress: @Sendable (MoveProgress) -> Void = { [weak controller] update in
@@ -143,6 +145,7 @@ final class MoveWindow: NSWindowController, NSWindowDelegate {
         qaLastProgress = label.stringValue
 #endif
         progress.doubleValue = Double(update.index)
+        FileOperationCenter.activityChanged()
     }
 
     private func finish(_ report: MoveOperationResult) {
@@ -207,6 +210,7 @@ final class MoveWindow: NSWindowController, NSWindowDelegate {
         label.stringValue = L("취소 요청됨 — 현재 파일 작업이 안전 지점에 도달하면 중단합니다.",
                               "Cancellation requested — stopping when the current file operation reaches a safe point.")
         announceStatus()
+        FileOperationCenter.activityChanged()
     }
 
     private func showResult(announcementDetail: String? = nil) {
@@ -214,6 +218,11 @@ final class MoveWindow: NSWindowController, NSWindowDelegate {
         close.isEnabled = true
         window?.defaultButtonCell = close.cell as? NSButtonCell
         announceStatus(detail: announcementDetail)
+        FileOperationCenter.activityChanged()
+    }
+    private var activity: FileOperationActivity {
+        fileOperationActivity(status: label.stringValue, progress: progress, running: running,
+                              cancel: running && close.isEnabled ? { [weak self] in self?.cancelMove(nil) } : nil)
     }
 
     @objc private func retryFailedItems(_ sender: Any?) {
@@ -248,5 +257,8 @@ final class MoveWindow: NSWindowController, NSWindowDelegate {
     }
 #endif
     func windowShouldClose(_ sender: NSWindow) -> Bool { !running }
-    func windowWillClose(_ notification: Notification) { Self.operations.removeAll { $0 === self } }
+    func windowWillClose(_ notification: Notification) {
+        Self.operations.removeAll { $0 === self }
+        FileOperationCenter.activityChanged()
+    }
 }

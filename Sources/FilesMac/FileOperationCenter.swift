@@ -1,0 +1,175 @@
+import AppKit
+
+@MainActor
+struct FileOperationActivity {
+    let id: ObjectIdentifier
+    let title: String
+    let status: String
+    let progress: (processed: Int, total: Int)?
+    let showDetails: () -> Void
+    let cancel: (() -> Void)?
+}
+
+extension NSWindowController {
+    func fileOperationActivity(status: String, progress: NSProgressIndicator, running: Bool,
+                               cancel: (() -> Void)?) -> FileOperationActivity {
+        FileOperationActivity(
+            id: ObjectIdentifier(self), title: window?.title ?? "", status: status,
+            progress: running ? (Int(progress.doubleValue), Int(progress.maxValue)) : nil,
+            showDetails: { [weak self] in
+                self?.showWindow(nil)
+                self?.window?.makeKeyAndOrderFront(nil)
+            }, cancel: cancel
+        )
+    }
+}
+
+@MainActor
+final class FileOperationCenter: NSWindowController, NSTableViewDataSource, NSTableViewDelegate {
+    private static var center: FileOperationCenter?
+    private var activities: [FileOperationActivity] = []
+    private let table = NSTableView()
+    private let summary = NSTextField(labelWithString: "")
+    private let details = NSButton()
+    private let cancel = NSButton()
+
+    @discardableResult
+    static func present() -> FileOperationCenter {
+        let controller = center ?? FileOperationCenter()
+        center = controller
+        controller.refresh()
+        controller.showWindow(nil)
+        controller.window?.makeKeyAndOrderFront(nil)
+        return controller
+    }
+
+    static func activityChanged() {
+        if let center, center.window?.isVisible == true { center.refresh() }
+    }
+
+    private init() {
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 760, height: 330),
+                              styleMask: [.titled, .closable, .miniaturizable, .resizable],
+                              backing: .buffered, defer: false)
+        super.init(window: window)
+        window.title = L("파일 작업", "File Operations")
+        window.minSize = NSSize(width: 580, height: 240)
+        window.isReleasedWhenClosed = false
+        window.center()
+
+        for (id, title, width) in [
+            ("operation", L("작업", "Operation"), 125.0),
+            ("status", L("상태", "Status"), 475.0),
+            ("progress", L("처리 항목", "Items Processed"), 120.0)
+        ] {
+            let column = NSTableColumn(identifier: .init(id))
+            column.title = title
+            column.width = width
+            table.addTableColumn(column)
+        }
+        table.dataSource = self
+        table.delegate = self
+        table.target = self
+        table.doubleAction = #selector(openDetails(_:))
+        table.columnAutoresizingStyle = .uniformColumnAutoresizingStyle
+        table.usesAlternatingRowBackgroundColors = true
+        table.setAccessibilityLabel(L("파일 작업 목록", "File operations list"))
+
+        let scroll = NSScrollView()
+        scroll.documentView = table
+        scroll.hasVerticalScroller = true
+        scroll.borderType = .bezelBorder
+        details.title = L("세부 정보 열기", "Open Details")
+        details.target = self
+        details.action = #selector(openDetails(_:))
+        cancel.title = L("작업 취소", "Cancel Operation")
+        cancel.target = self
+        cancel.action = #selector(cancelSelectedOperation(_:))
+
+        let actions = NSStackView(views: [details, cancel])
+        let stack = NSStackView(views: [summary, scroll, actions])
+        stack.orientation = .vertical
+        stack.alignment = .leading
+        stack.spacing = 12
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        guard let content = window.contentView else { return }
+        content.addSubview(stack)
+        NSLayoutConstraint.activate([
+            stack.topAnchor.constraint(equalTo: content.topAnchor, constant: 16),
+            stack.bottomAnchor.constraint(equalTo: content.bottomAnchor, constant: -16),
+            stack.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: 16),
+            stack.trailingAnchor.constraint(equalTo: content.trailingAnchor, constant: -16),
+            scroll.widthAnchor.constraint(equalTo: stack.widthAnchor),
+            scroll.heightAnchor.constraint(greaterThanOrEqualToConstant: 120)
+        ])
+    }
+
+    required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
+
+    private var selected: FileOperationActivity? {
+        activities.indices.contains(table.selectedRow) ? activities[table.selectedRow] : nil
+    }
+
+    private func refresh() {
+        let selectedID = selected?.id
+        activities = CopyWindow.activities + MoveWindow.activities + FolderMergeWindow.activities
+        let running = activities.filter { $0.progress != nil }.count
+        summary.stringValue = activities.isEmpty
+            ? L("열린 파일 작업이 없습니다.", "No open file operations.")
+            : L("진행 중 \(running)개 · 결과 \(activities.count - running)개",
+                "\(running) in progress · \(activities.count - running) with results")
+        table.reloadData()
+        if let row = activities.firstIndex(where: { $0.id == selectedID }) {
+            table.selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false)
+        } else if !activities.isEmpty {
+            table.selectRowIndexes(IndexSet(integer: 0), byExtendingSelection: false)
+        }
+        updateButtons()
+    }
+
+    private func updateButtons() {
+        details.isEnabled = selected != nil
+        cancel.isEnabled = selected?.cancel != nil
+    }
+
+    @objc private func openDetails(_ sender: Any?) {
+        let row = sender is NSTableView ? table.clickedRow : table.selectedRow
+        if activities.indices.contains(row) { activities[row].showDetails() }
+    }
+
+    @objc private func cancelSelectedOperation(_ sender: Any?) { selected?.cancel?() }
+
+    func tableViewSelectionDidChange(_ notification: Notification) { updateButtons() }
+    func numberOfRows(in tableView: NSTableView) -> Int { activities.count }
+
+    func tableView(_ tableView: NSTableView, viewFor column: NSTableColumn?, row: Int) -> NSView? {
+        guard let column, activities.indices.contains(row) else { return nil }
+        let activity = activities[row]
+        let text: String
+        switch column.identifier.rawValue {
+        case "operation": text = activity.title
+        case "status": text = activity.status
+        default: text = activity.progress.map { "\($0.processed)/\($0.total)" } ?? ""
+        }
+        let field = (tableView.makeView(withIdentifier: column.identifier, owner: nil) as? NSTextField)
+            ?? NSTextField(labelWithString: "")
+        field.identifier = column.identifier
+        field.stringValue = text
+        field.toolTip = text
+        return field
+    }
+
+#if DEBUG
+    func qaStatus(for operation: NSWindowController) -> FileOperationActivity? {
+        activities.first { $0.id == ObjectIdentifier(operation) }
+    }
+
+    func qaCancel(_ operation: NSWindowController) -> Bool {
+        guard let row = activities.firstIndex(where: { $0.id == ObjectIdentifier(operation) }) else { return false }
+        table.selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false)
+        guard cancel.isEnabled else { return false }
+        cancel.performClick(nil)
+        return true
+    }
+#endif
+}

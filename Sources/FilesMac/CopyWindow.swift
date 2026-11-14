@@ -7,6 +7,7 @@ import FilesCore
 final class CopyWindow: NSWindowController, NSWindowDelegate {
     private static var operations: [CopyWindow] = []
     static var isRunning: Bool { operations.contains { $0.running } }
+    static var activities: [FileOperationActivity] { operations.map(\.activity) }
     private var running = true
     private let cancellation = CopyCancellation()
     private let label = NSTextField(wrappingLabelWithString: "")
@@ -30,6 +31,7 @@ final class CopyWindow: NSWindowController, NSWindowDelegate {
         operations.append(controller)
         controller.showWindow(nil)
         controller.window?.makeKeyAndOrderFront(nil)
+        FileOperationCenter.activityChanged()
         Task { [controller] in
             let report = await CopyEngine.run(sources: sources, destination: destination, journalDirectory: journalDirectory,
                                               cancellation: controller.cancellation, conflictPolicy: conflictPolicy,
@@ -102,12 +104,14 @@ final class CopyWindow: NSWindowController, NSWindowDelegate {
         qaLastProgress = label.stringValue
 #endif
         progress.doubleValue = Double(update.index)
+        FileOperationCenter.activityChanged()
     }
     @objc private func cancelCopy(_ sender: Any?) {
         if !running { close(); return }
         cancellation.cancel(); cancel.isEnabled = false
         label.stringValue = L("취소 요청됨 — 현재 파일의 복사 호출이 끝나면 임시 출력을 정리합니다.", "Cancellation requested — cleaning up after the current file copy returns.")
         announceStatus()
+        FileOperationCenter.activityChanged()
     }
     @objc private func retryFailedItems(_ sender: Any?) {
         guard let retryAction, !Self.isRunning, !MoveWindow.isRunning, !FolderMergeWindow.isRunning,
@@ -150,6 +154,11 @@ final class CopyWindow: NSWindowController, NSWindowDelegate {
         cancel.title = L("닫기", "Close"); cancel.isEnabled = true
         window?.defaultButtonCell = cancel.cell as? NSButtonCell
         announceStatus(journalError: report.journalError)
+        FileOperationCenter.activityChanged()
+    }
+    private var activity: FileOperationActivity {
+        fileOperationActivity(status: label.stringValue, progress: progress, running: running,
+                              cancel: running && cancel.isEnabled ? { [weak self] in self?.cancelCopy(nil) } : nil)
     }
     private func announceStatus(journalError: String? = nil) {
         guard let window else { return }
@@ -263,7 +272,10 @@ final class CopyWindow: NSWindowController, NSWindowDelegate {
         if running { NSSound.beep(); return false }
         return true
     }
-    func windowWillClose(_ notification: Notification) { Self.operations.removeAll { $0 === self } }
+    func windowWillClose(_ notification: Notification) {
+        Self.operations.removeAll { $0 === self }
+        FileOperationCenter.activityChanged()
+    }
 }
 
 @MainActor

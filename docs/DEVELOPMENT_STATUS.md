@@ -8,6 +8,8 @@ M7 출시 검증이 진행 중이다. [유니버설 개발 프리뷰](verificati
 
 ## 이번 구현 단위
 
+파일 메뉴의 작업 센터에서 복사·이동·폴더 병합 상태와 열려 있는 결과를 확인하고 작업을 취소한다. [파일 작업 센터](verification/m7/INCREMENT_188.md)
+
 홈에서 네트워크 위치의 표시·펼침을 드라이브와 별도로 제어한다. [홈 네트워크 위젯](verification/m7/INCREMENT_184.md)
 
 고정 Windows 원본을 CI에서 설치·실행하고 홈 화면을 캡처하는 작업을 추가했다. [원본 실행 화면 수집](verification/m7/INCREMENT_183.md)
