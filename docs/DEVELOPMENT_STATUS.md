@@ -4,6 +4,8 @@
 
 ## 이번 구현 단위
 
+손상된 분할 세션이 시작을 막지 않도록 검사하고, 구형 탭 또는 시작 폴더로 복구되는지 실제 앱에서 확인했다. [M7 세션 복구](verification/m7/INCREMENT_70.md)
+
 파일 선택부터 홈 탐색·붙여넣기·충돌 건너뛰기까지 이어지는 AppKit 회귀를 네 언어·테마 조합에서 통과했다. [M7 복사 동선 검증](verification/m7/INCREMENT_69.md)
 
 다운로드한 정식 DMG와 앱 서명을 배포자가 별도로 제공한 Team ID와 대조할 수 있다. [M7 출시 팀 검증](verification/m7/INCREMENT_21.md)

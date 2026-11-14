@@ -254,6 +254,25 @@ private func fixture() throws -> URL {
     #expect(store.load() == [workspace])
     defaults.set(Data("broken".utf8), forKey: "workspaceSessionV2")
     #expect(store.load().isEmpty)
+
+    let data = try JSONEncoder().encode(workspace)
+    let original = try #require(JSONSerialization.jsonObject(with: data) as? [String: Any])
+    let panes = try #require(original["panes"] as? [[String: Any]])
+    for invalidPanes in [[], [panes[0], panes[0]], [panes[0], panes[1], panes[0]]] {
+        var malformed = original
+        malformed["panes"] = invalidPanes
+        defaults.set(try JSONSerialization.data(withJSONObject: [malformed]), forKey: "workspaceSessionV2")
+        #expect(store.load().isEmpty)
+    }
+
+    var stale = original
+    stale["activePaneID"] = UUID().uuidString
+    stale["ratio"] = 9
+    defaults.set(try JSONSerialization.data(withJSONObject: [stale]), forKey: "workspaceSessionV2")
+    let repaired = try #require(store.load().first)
+    #expect(repaired.panes == workspace.panes)
+    #expect(repaired.activePaneID == primary.id)
+    #expect(repaired.ratio == 0.8)
 }
 
 @Test func fileDropIntentUsesExplicitSafeModifiers() {

@@ -31,6 +31,21 @@ public struct SplitTabState: Codable, Equatable, Sendable {
         self.activePaneID = requested ?? primary.id
     }
 
+    private enum CodingKeys: String, CodingKey { case panes, axis, ratio, activePaneID }
+
+    public init(from decoder: any Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        let panes = try values.decode([PaneSnapshot].self, forKey: .panes)
+        guard (1...2).contains(panes.count), Set(panes.map(\.id)).count == panes.count else {
+            throw DecodingError.dataCorruptedError(forKey: .panes, in: values,
+                debugDescription: "Expected one or two panes with distinct identifiers")
+        }
+        self.init(primary: panes[0], secondary: panes.dropFirst().first,
+            axis: try values.decode(SplitAxis.self, forKey: .axis),
+            ratio: try values.decode(Double.self, forKey: .ratio),
+            activePaneID: try values.decode(UUID.self, forKey: .activePaneID))
+    }
+
     public var activePane: PaneSnapshot {
         panes.first { $0.id == activePaneID } ?? panes[0]
     }
