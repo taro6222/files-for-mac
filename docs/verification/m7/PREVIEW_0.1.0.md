@@ -2,22 +2,22 @@
 
 ## 설치 이미지
 
-- 앱 소스 `6f876ed9e525aadabad383d12d8c44864e368fd9`, Apple Silicon·Intel 슬라이스, macOS 14.0 배포 대상.
-- 로컬 경로 `build/Files-macOS-preview.dmg`. SHA-256 `cc0069b5cfa391f9f1d67dbf6a01e155d6bfb886eaf28452dc65ba6e400df3d1`.
-- DMG 내부 체크섬, SHA-256, 읽기 전용 마운트, 모든 슬라이스의 ad-hoc 서명을 검사했다. Apple Silicon에서 마운트한 이미지를 복사해 격리 경로에서 실행했다. 손상된 교체본은 거부했다. 네 단계에서 지정된 시작 폴더와 다른 저장 탭을 열었다. 교체한 앱을 정상 종료하면 구형 탭이 workspaceSessionV2에 저장됐다. 시험에서 구형 탭 키를 제거한 뒤 이전 프리뷰로 복원해 새 형식의 탭이 열리고 데이터가 유지되는 것을 확인했다. 시작 폴더, 세션 복원 설정, 즐겨찾기, 확장자 표시 설정과 사용자 파일 내용도 각 단계에서 대조했다. 두 앱의 버전 표기는 0.1.0 (1)로 같아서 실행 파일 해시를 대조했다. [설치 검증 결과](preview-install-6f876ed.json) · [이전 프리뷰 기록](preview-install-1f48470.json)
+- 앱 소스 `bc35fd0e58fd4fabf96d7b9fc362ef9a95068ecf`, Apple Silicon·Intel 슬라이스, macOS 14.0 배포 대상.
+- 로컬 경로 `build/Files-macOS-preview.dmg`. SHA-256 `3b07264d51ff5ea487aa8c5976a153171bdd8bfa9a05ccf104584e5795a0d387`.
+- DMG 내부 체크섬, SHA-256, 읽기 전용 마운트, 모든 슬라이스의 ad-hoc 서명을 검사했다. Apple Silicon에서 마운트한 이미지를 복사해 격리 경로에서 실행했다. 손상된 교체본은 거부했다. 네 단계에서 지정된 시작 폴더와 다른 저장 탭을 열었다. 교체한 앱을 정상 종료하면 구형 탭이 workspaceSessionV2에 저장됐다. 시험에서 구형 탭 키를 제거한 뒤 이전 프리뷰로 복원해 새 형식의 탭이 열리고 데이터가 유지되는 것을 확인했다. 시작 폴더, 세션 복원 설정, 즐겨찾기, 확장자 표시 설정과 사용자 파일 내용도 각 단계에서 대조했다. 두 앱의 버전 표기는 0.1.0 (1)로 같아서 실행 파일 해시를 대조했다. [설치 검증 결과](preview-install-bc35fd0.json) · [이전 프리뷰 기록](preview-install-6f876ed.json)
 
 소스 커밋의 스냅샷을 로컬 임시 경로에서 빌드하고, 같은 환경에서 설치 검증과 읽기 전용 마운트를 수행했다. 검증된 DMG와 체크섬을 프로젝트의 프리뷰 경로에 반영하고 SHA-256을 다시 대조했다.
 
 ## 검증
 
-- Apple Silicon macOS 27.2에서 arm64로 20회 실행했다. 공유 OS 캐시에서 창 표시 p95는 349 ms, 최대 595 ms였다. [기동 검증](preview-startup-6f876ed.json)
-- 같은 소스의 AppKit 검사 248개가 한국어·영어와 밝은·어두운 테마의 네 조합에서 각각 통과했다. [창 종료 및 분할 보기 검증](INCREMENT_95.md)
+- Apple Silicon macOS 27.2에서 arm64로 20회 실행했다. 공유 OS 캐시에서 창 표시 p95는 227 ms, 최대 506 ms였다. [기동 검증](preview-startup-bc35fd0.json)
+- 같은 소스의 AppKit 회귀 검사 253개가 한국어·영어와 밝은·어두운 테마의 네 조합에서 각각 통과했다. 테스트용 디버그 앱으로 실행했다.
 - 파일 작업은 템플릿, 이동 실행 취소·재실행, 복사 취소, 교체 파일 보호 및 재생성된 APFS 폴더 감시 복구를 포함한다.
 - APFS·대소문자 구분 APFS·exFAT, 시스템 휴지통, 루프백 FTP/FTPS/SFTP 증거는 출시 검증 현황에서 추적한다. 이번 소스에는 테스트 프로세스를 강제 종료한 뒤 교차 볼륨의 교체 이동 실행 취소를 재개한 검증이 포함된다. [강제 종료 복구](INCREMENT_54.md)
 
 이전 최적화 QA에서 10,000항목 전체 표시 p95 1.350초, 100,000항목 최대 샘플 RSS 275 MB를 기록했다. [Release 실측](INCREMENT_12.md)
 
-이 후보에는 [상세 목록 분리](INCREMENT_76.md), [전체 Spotlight 인덱스 검색](INCREMENT_78.md), [정보 패널의 다중 항목 미리보기](INCREMENT_79.md) 및 [분할 비율 복원](INCREMENT_83.md)이 들어 있다. 이전 이미지 이후의 [충돌 미리보기](INCREMENT_91.md), [최근 위치만 갱신하는 홈 화면](INCREMENT_93.md), [닫힌 창 콘텐츠 해제](INCREMENT_95.md)도 포함한다. 장시간 시험은 별도 QA 바이너리로 진행 중이다.
+이 후보에는 [상세 목록 분리](INCREMENT_76.md), [전체 Spotlight 인덱스 검색](INCREMENT_78.md), [정보 패널의 다중 항목 미리보기](INCREMENT_79.md) 및 [분할 비율 복원](INCREMENT_83.md)이 들어 있다. 이전 이미지 이후의 [충돌 미리보기](INCREMENT_91.md), [최근 위치만 갱신하는 홈 화면](INCREMENT_93.md), [닫힌 창 콘텐츠 해제](INCREMENT_95.md)도 포함한다. [복사](INCREMENT_101.md)와 [같은 볼륨 이동](INCREMENT_102.md)의 실패 항목 재시도, [일괄 이름 변경의 사전 검사](INCREMENT_103.md), [유휴 뒤 사용자 탐색 처리](INCREMENT_98.md)도 포함한다. 장시간 시험은 별도 QA 바이너리로 진행 중이다.
 
 ## 포함 기능
 
