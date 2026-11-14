@@ -83,12 +83,13 @@ public enum CopyEngine {
     public static func run(sources: [URL], destination: URL, journalDirectory: URL,
                            cancellation: CopyCancellation, conflictPolicy: CopyConflictPolicy = .skip,
                            recordUndo: Bool = true,
+                           expectedDestination: ShelfEntry? = nil,
                            progress: @escaping @Sendable (CopyProgress) -> Void = { _ in }) async -> CopyReport {
         await withTaskCancellationHandler {
             await Task.detached(priority: .userInitiated) {
                 execute(sources: sources, destination: destination, journalDirectory: journalDirectory,
                         cancellation: cancellation, conflictPolicy: conflictPolicy,
-                        recordUndo: recordUndo, progress: progress)
+                        recordUndo: recordUndo, expectedDestination: expectedDestination, progress: progress)
             }.value
         } onCancel: { cancellation.cancel() }
     }
@@ -148,7 +149,7 @@ public enum CopyEngine {
             }
             do {
                 guard destinationFD >= 0, matches(destination, descriptor: destinationFD),
-                      expectedDestination?.isCurrent != false else {
+                      expectedDestination.map({ $0.url.path == destination.path && $0.isCurrent }) != false else {
                     throw CopyFailure(text: "Destination is unavailable or has changed.")
                 }
                 report.items[index].state = "planning"; try save(); emit("planning")

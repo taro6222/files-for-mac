@@ -13,20 +13,35 @@ final class CopyWindow: NSWindowController, NSWindowDelegate {
     private let progress = NSProgressIndicator()
     private let details = NSTextView()
     private let cancel = NSButton(title: L("취소", "Cancel"), target: nil, action: #selector(cancelCopy(_:)))
+    private let retry = NSButton(title: L("실패 항목 다시 시도", "Retry Failed Items"), target: nil,
+                                 action: #selector(retryFailedItems(_:)))
+    private var retryAction: (() -> Void)?
 
     static func start(sources: [URL], destination: URL, conflictPolicy: CopyConflictPolicy = .skip,
+                      expectedDestination: ShelfEntry? = nil,
                       journalDirectory: URL, completion: @escaping @MainActor () -> Void) {
-        guard !isRunning else { return }
+        guard !isRunning, !MoveWindow.isRunning, !FolderMergeWindow.isRunning,
+              !BrowserWindow.entryOperationRunning else { return }
+        let destinationIdentity = expectedDestination ?? ShelfEntry(destination.resolvingSymlinksInPath())
         let controller = CopyWindow(sources: sources, destination: destination, conflictPolicy: conflictPolicy)
         operations.append(controller)
         controller.showWindow(nil)
         controller.window?.makeKeyAndOrderFront(nil)
         Task { [controller] in
             let report = await CopyEngine.run(sources: sources, destination: destination, journalDirectory: journalDirectory,
-                                              cancellation: controller.cancellation, conflictPolicy: conflictPolicy) { [weak controller] update in
+                                              cancellation: controller.cancellation, conflictPolicy: conflictPolicy,
+                                              expectedDestination: destinationIdentity) { [weak controller] update in
                 Task { @MainActor in controller?.update(update) }
             }
             controller.finish(report)
+            let retrySources = report.items.filter { $0.state == "failed" && $0.temporary == nil }.map(\.source)
+            if report.journalError == nil, let destinationIdentity, !retrySources.isEmpty {
+                controller.retryAction = {
+                    start(sources: retrySources, destination: destinationIdentity.url,
+                          expectedDestination: destinationIdentity, journalDirectory: journalDirectory, completion: completion)
+                }
+                controller.retry.isHidden = false
+            }
             completion()
         }
     }
@@ -59,6 +74,7 @@ final class CopyWindow: NSWindowController, NSWindowDelegate {
         details.string = (conflictPolicy == .keepBoth ? L("같은 이름은 번호를 붙여 양쪽을 유지합니다.\n", "Conflicting names receive a number; both items are kept.\n") : "") + L("완료된 복사는 취소해도 유지됩니다.\n\n", "Completed copies remain when cancelled.\n\n") + sources.map(\.path).joined(separator: "\n")
         scroll.documentView = details; stack.addArrangedSubview(scroll)
         cancel.target = self; cancel.keyEquivalent = "\u{1b}"; stack.addArrangedSubview(cancel)
+        retry.target = self; retry.isHidden = true; stack.addArrangedSubview(retry)
         for view in [target, label, progress, scroll] {
             view.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
         }
@@ -83,6 +99,13 @@ final class CopyWindow: NSWindowController, NSWindowDelegate {
         cancellation.cancel(); cancel.isEnabled = false
         label.stringValue = L("취소 요청됨 — 현재 파일의 복사 호출이 끝나면 임시 출력을 정리합니다.", "Cancellation requested — cleaning up after the current file copy returns.")
         announceStatus()
+    }
+    @objc private func retryFailedItems(_ sender: Any?) {
+        guard let retryAction, !Self.isRunning, !MoveWindow.isRunning, !FolderMergeWindow.isRunning,
+              !BrowserWindow.entryOperationRunning else { NSSound.beep(); return }
+        self.retryAction = nil
+        retry.isHidden = true
+        retryAction()
     }
     private func finish(_ report: CopyReport) {
         running = false
@@ -209,6 +232,8 @@ final class CopyWindow: NSWindowController, NSWindowDelegate {
             && label.stringValue.contains(L("완료 1/2", "Copied 1/2"))
             && label.stringValue.contains(L("실패 1", "Failed 1"))
     }
+    var qaCanRetry: Bool { !retry.isHidden }
+    func qaRetry() { retry.performClick(nil) }
 #endif
     func windowShouldClose(_ sender: NSWindow) -> Bool {
         if running { NSSound.beep(); return false }

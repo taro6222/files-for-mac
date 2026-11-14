@@ -5455,6 +5455,25 @@ extension BrowserWindow {
             checks["copyMixedResultShowsFailure"] = mixedCopyFinished && mixedCopy?.qaMixedResult == true
                 && (try? Data(contentsOf: target.appendingPathComponent(availableSource.lastPathComponent))) == availablePayload
                 && !fm.fileExists(atPath: target.appendingPathComponent(missingSource.lastPathComponent).path)
+            let copiedTarget = target.appendingPathComponent(availableSource.lastPathComponent)
+            let retryPayload = Data("recovered source".utf8)
+            try retryPayload.write(to: missingSource)
+            try Data("changed after first copy".utf8).write(to: availableSource)
+            let offeredRetry = mixedCopy?.qaCanRetry == true
+            mixedCopyFinished = false
+            mixedCopy?.qaRetry()
+            let retryStart = ContinuousClock.now
+            while !mixedCopyFinished && elapsed(retryStart) < 5 {
+                try await Task.sleep(for: .milliseconds(20))
+            }
+            let retryOutput = target.appendingPathComponent(missingSource.lastPathComponent)
+            checks["copyRetriesOnlyFailedItems"] = offeredRetry && mixedCopyFinished
+                && mixedCopy?.qaCanRetry == false
+                && (try? Data(contentsOf: retryOutput)) == retryPayload
+                && (try? Data(contentsOf: copiedTarget)) == availablePayload
+                && !fm.fileExists(atPath: target.appendingPathComponent("available-copy (2).txt").path)
+            NSApp.windows.compactMap { $0.windowController as? CopyWindow }
+                .filter { $0 !== mixedCopy }.forEach { $0.close() }
             mixedCopy?.close()
             let moveSource = source.appendingPathComponent("conflict.txt")
             controller.prepareMove(sources: [moveSource], destination: target)

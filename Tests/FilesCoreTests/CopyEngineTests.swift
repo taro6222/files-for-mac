@@ -70,6 +70,24 @@ private struct CopyFixture {
     #expect(try FileManager.default.contentsOfDirectory(atPath: child.path).isEmpty)
 }
 
+@Test func copyRetryRejectsReplacedDestination() async throws {
+    let f = try CopyFixture(); defer { f.clean() }
+    let source = try f.file("retry.txt")
+    let identity = try #require(ShelfEntry(f.destination.resolvingSymlinksInPath()))
+    let oldDestination = f.root.appendingPathComponent("old-destination")
+    try FileManager.default.moveItem(at: f.destination, to: oldDestination)
+    try FileManager.default.createDirectory(at: f.destination, withIntermediateDirectories: false)
+
+    let report = await CopyEngine.run(sources: [source], destination: f.destination,
+                                      journalDirectory: f.journal, cancellation: CopyCancellation(),
+                                      expectedDestination: identity)
+
+    #expect(report.items.map(\.state) == ["failed"])
+    #expect(try FileManager.default.contentsOfDirectory(atPath: f.destination.path).isEmpty)
+    #expect(try FileManager.default.contentsOfDirectory(atPath: oldDestination.path).isEmpty)
+    #expect(try String(contentsOf: source, encoding: .utf8) == "original")
+}
+
 @Test func copyCancellationRetainsCompletedAndRemovesCurrentStaging() async throws {
     let f = try CopyFixture(); defer { f.clean() }
     let a = try f.file("a"), b = try f.file("b"), c = try f.file("c")
