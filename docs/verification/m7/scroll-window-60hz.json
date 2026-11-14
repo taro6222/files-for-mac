@@ -1,0 +1,8 @@
+{
+  "capturedFrames" : 331,
+  "displayRefreshHz" : 60,
+  "intervalsOver25ms" : 44,
+  "maximumIntervalMilliseconds" : 35.01337498892099,
+  "p95IntervalMilliseconds" : 33.411541022360325,
+  "scrollDurationSeconds" : 6.39642275008373
+}

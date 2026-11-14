@@ -4776,7 +4776,10 @@ extension BrowserWindow {
             guard clip.bounds.minY > 0 else { return }
             samples["scrollSteps"] = 360
             samples["scrollDistancePoints"] = Double(clip.bounds.minY)
-            samples["scrollDurationSeconds"] = Double(DispatchTime.now().uptimeNanoseconds - scrollStart) / 1e9
+            let scrollEnd = DispatchTime.now().uptimeNanoseconds
+            samples["scrollStartedUptimeSeconds"] = Double(scrollStart) / 1e9
+            samples["scrollEndedUptimeSeconds"] = Double(scrollEnd) / 1e9
+            samples["scrollDurationSeconds"] = Double(scrollEnd - scrollStart) / 1e9
             try? await Task.sleep(for: .seconds(1))
         }
         do {
