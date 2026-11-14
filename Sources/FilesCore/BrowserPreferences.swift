@@ -42,6 +42,8 @@ public struct BrowserPreferencesArchive: Codable, Equatable, Sendable {
     public let showTypeColumn: Bool?
     public let showSizeColumn: Bool?
     public let showGitStatusColumn: Bool?
+    public let showFileTagColumn: Bool?
+    public let showPathColumn: Bool?
     public let showCompressionOptions: Bool?
     public let showOpenTerminal: Bool?
     public let showCreateFolderWithSelection: Bool?
@@ -101,6 +103,8 @@ public final class BrowserPreferences {
     public private(set) var showTypeColumn: Bool
     public private(set) var showSizeColumn: Bool
     public private(set) var showGitStatusColumn: Bool
+    public private(set) var showFileTagColumn: Bool
+    public private(set) var showPathColumn: Bool
     public private(set) var showCompressionOptions: Bool
     public private(set) var showOpenTerminal: Bool
     public private(set) var showCreateFolderWithSelection: Bool
@@ -154,6 +158,8 @@ public final class BrowserPreferences {
         showTypeColumn = defaults.object(forKey: "showTypeColumn") as? Bool ?? true
         showSizeColumn = defaults.object(forKey: "showSizeColumn") as? Bool ?? true
         showGitStatusColumn = defaults.object(forKey: "showGitStatusColumn") as? Bool ?? false
+        showFileTagColumn = defaults.object(forKey: "showFileTagColumn") as? Bool ?? false
+        showPathColumn = defaults.object(forKey: "showPathColumn") as? Bool ?? false
         showCompressionOptions = defaults.object(forKey: "showCompressionOptions") as? Bool ?? true
         showOpenTerminal = defaults.object(forKey: "showOpenTerminal") as? Bool ?? true
         showCreateFolderWithSelection = defaults.object(forKey: "showCreateFolderWithSelection") as? Bool ?? true
@@ -247,6 +253,8 @@ public final class BrowserPreferences {
     public func setShowTypeColumn(_ value: Bool) { guard showTypeColumn != value else { return }; showTypeColumn = value; defaults.set(value, forKey: "showTypeColumn"); changed() }
     public func setShowSizeColumn(_ value: Bool) { guard showSizeColumn != value else { return }; showSizeColumn = value; defaults.set(value, forKey: "showSizeColumn"); changed() }
     public func setShowGitStatusColumn(_ value: Bool) { guard showGitStatusColumn != value else { return }; showGitStatusColumn = value; defaults.set(value, forKey: "showGitStatusColumn"); changed() }
+    public func setShowFileTagColumn(_ value: Bool) { guard showFileTagColumn != value else { return }; showFileTagColumn = value; defaults.set(value, forKey: "showFileTagColumn"); changed() }
+    public func setShowPathColumn(_ value: Bool) { guard showPathColumn != value else { return }; showPathColumn = value; defaults.set(value, forKey: "showPathColumn"); changed() }
     public func setShowCompressionOptions(_ value: Bool) { guard showCompressionOptions != value else { return }; showCompressionOptions = value; defaults.set(value, forKey: "showCompressionOptions"); changed() }
     public func setShowOpenTerminal(_ value: Bool) { guard showOpenTerminal != value else { return }; showOpenTerminal = value; defaults.set(value, forKey: "showOpenTerminal"); changed() }
     public func setShowCreateFolderWithSelection(_ value: Bool) { guard showCreateFolderWithSelection != value else { return }; showCreateFolderWithSelection = value; defaults.set(value, forKey: "showCreateFolderWithSelection"); changed() }
@@ -314,6 +322,7 @@ public final class BrowserPreferences {
             collapsedSidebar: collapsedSidebar.map(\.rawValue).sorted(), favorites: favorites.map(\.path), recent: recent.map(\.path),
             showHidden: showHidden, showExtensions: showExtensions, showToolbar: showToolbar, showStatusBar: showStatusBar, showSidebar: showSidebar,
             showCreatedColumn: showCreatedColumn, showDateColumn: showDateColumn, showTypeColumn: showTypeColumn, showSizeColumn: showSizeColumn, showGitStatusColumn: showGitStatusColumn,
+            showFileTagColumn: showFileTagColumn, showPathColumn: showPathColumn,
             showCompressionOptions: showCompressionOptions, showOpenTerminal: showOpenTerminal, showCreateFolderWithSelection: showCreateFolderWithSelection,
             showPinToSidebar: showPinToSidebar,
             showSendToMenu: showSendToMenu,
@@ -365,6 +374,7 @@ public final class BrowserPreferences {
         showHidden = archive.showHidden; showExtensions = archive.showExtensions; showToolbar = archive.showToolbar; showStatusBar = archive.showStatusBar; showSidebar = archive.showSidebar ?? true
         showCreatedColumn = archive.showCreatedColumn ?? false; showDateColumn = archive.showDateColumn ?? true; showTypeColumn = archive.showTypeColumn ?? true
         showSizeColumn = archive.showSizeColumn ?? true; showGitStatusColumn = archive.showGitStatusColumn ?? false
+        showFileTagColumn = archive.showFileTagColumn ?? false; showPathColumn = archive.showPathColumn ?? false
         showCompressionOptions = archive.showCompressionOptions ?? true; showOpenTerminal = archive.showOpenTerminal ?? true
         showCreateFolderWithSelection = archive.showCreateFolderWithSelection ?? true
         showPinToSidebar = archive.showPinToSidebar ?? true
@@ -386,6 +396,7 @@ public final class BrowserPreferences {
         defaults.set(showToolbar, forKey: "showToolbar"); defaults.set(showStatusBar, forKey: "showStatusBar"); defaults.set(showSidebar, forKey: "showSidebar")
         defaults.set(showCreatedColumn, forKey: "showCreatedColumn"); defaults.set(showDateColumn, forKey: "showDateColumn"); defaults.set(showTypeColumn, forKey: "showTypeColumn")
         defaults.set(showSizeColumn, forKey: "showSizeColumn"); defaults.set(showGitStatusColumn, forKey: "showGitStatusColumn")
+        defaults.set(showFileTagColumn, forKey: "showFileTagColumn"); defaults.set(showPathColumn, forKey: "showPathColumn")
         defaults.set(showCompressionOptions, forKey: "showCompressionOptions"); defaults.set(showOpenTerminal, forKey: "showOpenTerminal")
         defaults.set(showCreateFolderWithSelection, forKey: "showCreateFolderWithSelection")
         defaults.set(showPinToSidebar, forKey: "showPinToSidebar")

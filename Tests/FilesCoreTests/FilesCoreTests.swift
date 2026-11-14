@@ -505,14 +505,16 @@ private struct DelayedLoader: DirectoryLoading {
     defer { defaults.removePersistentDomain(forName: suite) }
     let preferences = BrowserPreferences(defaults: defaults, initialFavorites: [])
     #expect(!preferences.showCreatedColumn && preferences.showDateColumn && preferences.showTypeColumn && preferences.showSizeColumn)
-    #expect(!preferences.showGitStatusColumn)
+    #expect(!preferences.showGitStatusColumn && !preferences.showFileTagColumn && !preferences.showPathColumn)
     var notifications = 0; let token = preferences.observe { notifications += 1 }
     preferences.setShowCreatedColumn(true); preferences.setShowDateColumn(false); preferences.setShowTypeColumn(false)
     preferences.setShowSizeColumn(false); preferences.setShowGitStatusColumn(true)
+    preferences.setShowFileTagColumn(true); preferences.setShowPathColumn(true)
     preferences.setShowDateColumn(false); preferences.setShowGitStatusColumn(true)
     let restored = BrowserPreferences(defaults: defaults, initialFavorites: [])
     #expect(restored.showCreatedColumn && !restored.showDateColumn && !restored.showTypeColumn && !restored.showSizeColumn && restored.showGitStatusColumn)
-    #expect(notifications == 5)
+    #expect(restored.showFileTagColumn && restored.showPathColumn)
+    #expect(notifications == 7)
     preferences.removeObserver(token)
 }
 
@@ -584,6 +586,7 @@ private struct DelayedLoader: DirectoryLoading {
     source.setScrollToPreviousFolderOnUp(false)
     source.setShowFileExtensionWarning(false)
     source.setShowCreatedColumn(true); source.setShowDateColumn(false); source.setShowTypeColumn(false); source.setShowSizeColumn(false); source.setShowGitStatusColumn(true)
+    source.setShowFileTagColumn(true); source.setShowPathColumn(true)
     source.setShowCompressionOptions(false); source.setShowOpenTerminal(false); source.setShowCreateFolderWithSelection(false)
     source.setShowPinToSidebar(false)
     source.setShowSendToMenu(false)
@@ -602,6 +605,7 @@ private struct DelayedLoader: DirectoryLoading {
     #expect(!destination.scrollToPreviousFolderOnUp)
     #expect(!destination.showFileExtensionWarning)
     #expect(destination.showCreatedColumn && !destination.showDateColumn && !destination.showTypeColumn && !destination.showSizeColumn && destination.showGitStatusColumn)
+    #expect(destination.showFileTagColumn && destination.showPathColumn)
     #expect(!destination.showCompressionOptions && !destination.showOpenTerminal && !destination.showCreateFolderWithSelection)
     #expect(!destination.showPinToSidebar)
     #expect(!destination.showSendToMenu)

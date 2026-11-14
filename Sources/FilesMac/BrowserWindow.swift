@@ -353,7 +353,10 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         table.setDraggingSourceOperationMask([.copy, .move], forLocal: true)
         table.setDraggingSourceOperationMask(.copy, forLocal: false)
         table.setAccessibilityLabel(L("파일 목록", "File list"))
-        let specs: [(String, String, CGFloat)] = [("name", L("이름", "Name"), 340), ("git", "Git", 72), ("created", L("생성일", "Date Created"), 200), ("modified", L("수정일", "Date Modified"), 185), ("kind", L("종류", "Kind"), 140), ("size", L("크기", "Size"), 100)]
+        let specs: [(String, String, CGFloat)] = [("name", L("이름", "Name"), 340), ("git", "Git", 72),
+            ("tag", L("Finder 태그", "Finder Tags"), 150), ("path", L("폴더 경로", "Folder Path"), 260),
+            ("created", L("생성일", "Date Created"), 200), ("modified", L("수정일", "Date Modified"), 185),
+            ("kind", L("종류", "Kind"), 140), ("size", L("크기", "Size"), 100)]
         for (key, label, width) in specs {
             let column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier(key))
             column.title = label; column.width = width; column.minWidth = 70
@@ -832,6 +835,8 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
             if iconCache[cacheKey] == nil { iconCache[cacheKey] = NSWorkspace.shared.icon(forFile: item.url.path) }
             cell.imageView?.image = iconCache[cacheKey]
         case "git": cell.textField?.stringValue = gitStatus(for: item)
+        case "tag": cell.textField?.stringValue = item.tags.isEmpty ? "—" : item.tags.joined(separator: ", ")
+        case "path": cell.textField?.stringValue = item.url.deletingLastPathComponent().standardizedFileURL.path
         case "created": cell.textField?.stringValue = item.created.map(dateFormatter.string) ?? "—"
         case "modified": cell.textField?.stringValue = item.modified.map(dateFormatter.string) ?? "—"
         case "kind": cell.textField?.stringValue = item.kind == "Folder" ? L("폴더", "Folder") : (item.kind == "File" ? L("파일", "File") : item.kind)
@@ -2132,6 +2137,8 @@ extension BrowserWindow {
             (L("종류 열 표시", "Show Kind Column"), #selector(toggleTypeColumn(_:)), preferences.showTypeColumn),
             (L("크기 열 표시", "Show Size Column"), #selector(toggleSizeColumn(_:)), preferences.showSizeColumn),
             (L("Git 상태 열 표시", "Show Git Status Column"), #selector(toggleGitColumn(_:)), preferences.showGitStatusColumn),
+            (L("Finder 태그 열 표시", "Show Finder Tags Column"), #selector(toggleTagColumn(_:)), preferences.showFileTagColumn),
+            (L("폴더 경로 열 표시", "Show Folder Path Column"), #selector(togglePathColumn(_:)), preferences.showPathColumn),
             (L("홈: 빠른 접근", "Home: Quick Access"), #selector(toggleHomeFavorites(_:)), preferences.showHomeFavorites),
             (L("홈: 드라이브", "Home: Drives"), #selector(toggleHomeVolumes(_:)), preferences.showHomeVolumes),
             (L("홈: 최근 위치", "Home: Recent Locations"), #selector(toggleHomeRecent(_:)), preferences.showHomeRecent)
@@ -2169,12 +2176,16 @@ extension BrowserWindow {
     @objc private func toggleTypeColumn(_ sender: Any?) { preferences.setShowTypeColumn(!preferences.showTypeColumn) }
     @objc private func toggleSizeColumn(_ sender: Any?) { preferences.setShowSizeColumn(!preferences.showSizeColumn) }
     @objc private func toggleGitColumn(_ sender: Any?) { preferences.setShowGitStatusColumn(!preferences.showGitStatusColumn) }
+    @objc private func toggleTagColumn(_ sender: Any?) { preferences.setShowFileTagColumn(!preferences.showFileTagColumn) }
+    @objc private func togglePathColumn(_ sender: Any?) { preferences.setShowPathColumn(!preferences.showPathColumn) }
     private func applyColumnVisibility() {
         table.tableColumn(withIdentifier: .init("created"))?.isHidden = !preferences.showCreatedColumn
         table.tableColumn(withIdentifier: .init("modified"))?.isHidden = !preferences.showDateColumn
         table.tableColumn(withIdentifier: .init("kind"))?.isHidden = !preferences.showTypeColumn
         table.tableColumn(withIdentifier: .init("size"))?.isHidden = !preferences.showSizeColumn
         table.tableColumn(withIdentifier: .init("git"))?.isHidden = !preferences.showGitStatusColumn
+        table.tableColumn(withIdentifier: .init("tag"))?.isHidden = !preferences.showFileTagColumn
+        table.tableColumn(withIdentifier: .init("path"))?.isHidden = !preferences.showPathColumn
     }
     private func applyContextMenuVisibility() {
         compressionMenuItems.forEach { $0.isHidden = !preferences.showCompressionOptions }
@@ -2836,11 +2847,15 @@ extension BrowserWindow {
             preferences.setShowToolbar(true); preferences.setShowStatusBar(true); preferences.setShowSidebar(true)
             checks["browserChromeVisibilityRestored"] = !controller.toolbar.isHidden && !controller.bottom.isHidden && controller.qaSidebarVisible
             preferences.setShowCreatedColumn(true); preferences.setShowDateColumn(false); preferences.setShowTypeColumn(false); preferences.setShowSizeColumn(false); preferences.setShowGitStatusColumn(true)
+            preferences.setShowFileTagColumn(true); preferences.setShowPathColumn(true)
             checks["createdDateColumn"] = controller.qaVisibleDetailColumns.contains("created")
                 && (controller.qaCreatedColumnWidth ?? 0) >= 70
-            checks["detailColumnVisibilityPreference"] = controller.qaVisibleDetailColumns.isSuperset(of: ["name", "created", "git"])
+            checks["detailColumnVisibilityPreference"] = controller.qaVisibleDetailColumns.isSuperset(of: ["name", "created", "git", "tag", "path"])
                 && controller.qaVisibleDetailColumns.isDisjoint(with: ["modified", "kind", "size"])
+            checks["tagAndPathColumnMetrics"] = (controller.table.tableColumn(withIdentifier: .init("tag"))?.width ?? 0) >= 70
+                && (controller.table.tableColumn(withIdentifier: .init("path"))?.width ?? 0) >= 70
             preferences.setShowCreatedColumn(false); preferences.setShowDateColumn(true); preferences.setShowTypeColumn(true); preferences.setShowSizeColumn(true); preferences.setShowGitStatusColumn(false)
+            preferences.setShowFileTagColumn(false); preferences.setShowPathColumn(false)
             preferences.setHomeSectionExpanded(.favorites, expanded: false)
             preferences.setHomeSectionExpanded(.volumes, expanded: false)
             preferences.setHomeSectionExpanded(.recent, expanded: false)
