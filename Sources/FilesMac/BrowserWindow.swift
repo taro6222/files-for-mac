@@ -6037,6 +6037,8 @@ extension BrowserWindow {
         let location = URL(fileURLWithPath: path, isDirectory: true)
         var firstModelRows: UInt64?
         var modelLoadFinished: UInt64?
+        var firstDisplay: UInt64?
+        var listingFinished: UInt64?
         var renderNanoseconds: UInt64 = 0
         var renderCount = 0
         let render = controller.model.onChange
@@ -6051,30 +6053,34 @@ extension BrowserWindow {
             render?()
             renderNanoseconds += DispatchTime.now().uptimeNanoseconds - now
             renderCount += 1
+            let shouldMeasureFirst = firstDisplay == nil && firstModelRows != nil
+            let shouldMeasureLast = modelLoadFinished != nil && controller.model.failure == nil
+            if shouldMeasureFirst || shouldMeasureLast {
+                content.layoutSubtreeIfNeeded()
+                content.displayIfNeeded()
+                let displayed = DispatchTime.now().uptimeNanoseconds
+                if shouldMeasureFirst, controller.table.numberOfRows >= 100,
+                   controller.table.rows(in: controller.table.visibleRect).length > 0 {
+                    firstDisplay = displayed
+                }
+                if shouldMeasureLast, controller.table.numberOfRows == expected {
+                    listingFinished = displayed
+                }
+            }
         }
         let started = DispatchTime.now().uptimeNanoseconds
         // The QA activity comparison varies the external activity independently.
         let usesProductNavigation = environment["FILES_PERFORMANCE_PRODUCT_NAVIGATION"] != "0"
         controller.navigate(location, userInitiated: usesProductNavigation)
-        var firstDisplay: UInt64?
         var peakRSS = idleRSS
-        while true {
-            content.layoutSubtreeIfNeeded()
-            content.displayIfNeeded()
-            let now = DispatchTime.now().uptimeNanoseconds
-            if firstDisplay == nil, controller.table.numberOfRows >= 100,
-               controller.table.rows(in: controller.table.visibleRect).length > 0 {
-                firstDisplay = now
-            }
+        while controller.model.isLoading {
             peakRSS = max(peakRSS, currentResidentBytes())
-            if !controller.model.isLoading { break }
-            guard now - started < 90_000_000_000 else { return }
+            guard DispatchTime.now().uptimeNanoseconds - started < 90_000_000_000 else { return }
             try? await Task.sleep(for: .milliseconds(5))
         }
-        let finished = DispatchTime.now().uptimeNanoseconds
-        guard let firstDisplay, let firstModelRows, let modelLoadFinished,
-              controller.model.failure == nil, idleRSS > 0,
-              controller.table.numberOfRows == expected else { return }
+        peakRSS = max(peakRSS, currentResidentBytes())
+        guard let firstDisplay, let firstModelRows, let modelLoadFinished, let listingFinished,
+              idleRSS > 0 else { return }
         var samples: [String: Double] = [
             "startupSeconds": Double(ready - processStart) / 1e9,
             "firstDisplaySeconds": Double(firstDisplay - started) / 1e9,
@@ -6082,7 +6088,7 @@ extension BrowserWindow {
             "modelLoadFinishedSeconds": Double(modelLoadFinished - started) / 1e9,
             "browserRenderSeconds": Double(renderNanoseconds) / 1e9,
             "browserRenderCount": Double(renderCount),
-            "listingSeconds": Double(finished - started) / 1e9,
+            "listingSeconds": Double(listingFinished - started) / 1e9,
             "idleRSSBytes": Double(idleRSS),
             "peakSampledRSSBytes": Double(peakRSS)
         ]
