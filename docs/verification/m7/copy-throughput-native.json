@@ -1,0 +1,32 @@
+{
+  "macOS": "27.2",
+  "macOSBuild": "26B123",
+  "architecture": "arm64",
+  "filesystem": "APFS",
+  "fixtureBytes": 536870912,
+  "fixtureSHA256": "80f2fa890a092ca62522a3d78a5e2f99765ea6dc4248fc4feedafcc132c1288f",
+  "baselineCommit": "bef5272ecaf17a809001fe181b5cd6bf784a1ad3",
+  "candidateCommit": "56e95533f5675243cd679b59292599e26a371638",
+  "baselineAppSeconds": [
+    0.995460791,
+    0.965299459,
+    0.932578541,
+    0.920253708,
+    0.932899459
+  ],
+  "candidateAppSeconds": [
+    0.573341042,
+    0.560154667,
+    0.557766583,
+    0.558596791,
+    0.560191833
+  ],
+  "nativeReferenceSeconds": [
+    0.602147542,
+    0.576694958,
+    0.573149166,
+    0.563055125,
+    0.590062333
+  ],
+  "candidateToNativeThroughputRatio": 1.029528078536923
+}

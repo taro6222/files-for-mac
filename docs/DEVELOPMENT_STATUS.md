@@ -4,6 +4,8 @@
 
 ## 이번 구현 단위
 
+512 MiB 단일 파일에서 검증을 포함한 네이티브 복사 기준 처리량의 102.95%를 기록했다. [M7 네이티브 복사 비교](verification/m7/INCREMENT_25.md)
+
 512 MiB 검증 복사 시간 중앙값이 0.964초에서 0.586초로 줄었다. [M7 복사 처리량](verification/m7/INCREMENT_24.md)
 
 복사 검증의 중복 해시 읽기를 줄이고 게시 전에 실행 취소 정보를 확보한다. [M7 복사 검증](verification/m7/INCREMENT_23.md)
