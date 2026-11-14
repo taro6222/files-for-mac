@@ -116,6 +116,7 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
     private var folderSizeTask: Task<Void, Never>?
     private let cloudProvider: CloudLocationProvider
     private let openSystemURL: (URL) -> Bool
+    private let undoJournalDirectory: URL
     static private(set) var entryOperationRunning = false
     private static var operationJournalDirectory: URL {
         FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
@@ -159,13 +160,15 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
          loader: any DirectoryLoading = LocalFileSystem(),
          cloudProvider: CloudLocationProvider = CloudLocationProvider(),
          makeWatcher: @escaping @Sendable (URL) -> DirectoryWatcher? = { DirectoryWatcher(url: $0) },
-         openSystemURL: @escaping (URL) -> Bool = { NSWorkspace.shared.open($0) }) {
+         openSystemURL: @escaping (URL) -> Bool = { NSWorkspace.shared.open($0) },
+         undoJournalDirectory: URL? = nil) {
         self.model = BrowserModel(loader: loader)
         self.preferences = preferences
         FileIconCache.shared.configure(enabled: preferences.enableThumbnailCache, limitMiB: preferences.thumbnailCacheLimitMiB)
         self.cloudProvider = cloudProvider
         self.makeWatcher = makeWatcher
         self.openSystemURL = openSystemURL
+        self.undoJournalDirectory = undoJournalDirectory ?? Self.operationJournalDirectory
         let w = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1280, height: 820),
             styleMask: [.titled, .closable, .miniaturizable, .resizable], backing: .buffered, defer: false)
         super.init(window: w)
@@ -1993,10 +1996,21 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
             self?.prepareMove(sources: selected, destination: destination)
         }
     }
+    @objc func undoLastFileTransfer(_ sender: Any?) {
+        guard !fileOperationIsRunning, window?.attachedSheet == nil,
+              let pending = EntryOperations.PendingTransferUndo.latest(in: undoJournalDirectory) else { return }
+        switch pending {
+        case let .copy(record): confirmUndoCopy(record)
+        case let .move(record): confirmUndoMove(record)
+        }
+    }
     @objc func undoLastMove(_ sender: Any?) {
-        guard !Self.entryOperationRunning, !MoveWindow.isRunning,
-              let record = EntryOperations.latestUndoMove(journalDirectory: Self.operationJournalDirectory),
-              let window else { return }
+        guard !fileOperationIsRunning, window?.attachedSheet == nil,
+              let record = EntryOperations.latestUndoMove(journalDirectory: undoJournalDirectory) else { return }
+        confirmUndoMove(record)
+    }
+    private func confirmUndoMove(_ record: MoveUndoRecord) {
+        guard let window else { return }
         let alert = NSAlert()
         alert.messageText = L("마지막 이동 실행 취소", "Undo Last Move")
         alert.informativeText = L("이동한 항목을 원래 위치로 되돌립니다. 이동 후 변경됐거나 원래 위치에 충돌이 있는 항목은 건너뜁니다.",
@@ -2005,20 +2019,25 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         alert.addButton(withTitle: L("실행 취소", "Undo"))
         alert.addButton(withTitle: L("취소", "Cancel"))
         alert.beginSheetModal(for: window) { [weak self] response in
-            guard response == .alertFirstButtonReturn, let self else { return }
+            guard response == .alertFirstButtonReturn, let self, !self.fileOperationIsRunning,
+                  let current = EntryOperations.latestUndoMove(journalDirectory: self.undoJournalDirectory),
+                  current.operationId == record.operationId else { return }
             Self.entryOperationRunning = true
             Task {
-                let report = await EntryOperations.undoMove(record, journalDirectory: Self.operationJournalDirectory)
+                let report = await EntryOperations.undoMove(current, journalDirectory: self.undoJournalDirectory)
                 Self.entryOperationRunning = false
-                self.refresh(nil)
+                self.refreshAfterUndo()
                 self.showMoveUndoResult(report)
             }
         }
     }
     @objc func undoLastCopy(_ sender: Any?) {
-        guard !Self.entryOperationRunning, !CopyWindow.isRunning,
-              let record = CopyEngine.latestUndoCopy(journalDirectory: Self.operationJournalDirectory),
-              let window else { return }
+        guard !fileOperationIsRunning, window?.attachedSheet == nil,
+              let record = CopyEngine.latestUndoCopy(journalDirectory: undoJournalDirectory) else { return }
+        confirmUndoCopy(record)
+    }
+    private func confirmUndoCopy(_ record: CopyUndoRecord) {
+        guard let window else { return }
         let alert = NSAlert()
         alert.messageText = L("마지막 복사 실행 취소", "Undo Last Copy")
         alert.informativeText = L("이 앱이 마지막 복사 작업에서 만든 항목을 삭제합니다. 복사 후 변경되거나 다른 항목으로 교체된 결과는 보존합니다.",
@@ -2027,16 +2046,22 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         alert.addButton(withTitle: L("실행 취소", "Undo"))
         alert.addButton(withTitle: L("취소", "Cancel"))
         alert.beginSheetModal(for: window) { [weak self] response in
-            guard response == .alertFirstButtonReturn, let self else { return }
+            guard response == .alertFirstButtonReturn, let self, !self.fileOperationIsRunning,
+                  let current = CopyEngine.latestUndoCopy(journalDirectory: self.undoJournalDirectory),
+                  current.operationId == record.operationId else { return }
             Self.entryOperationRunning = true
             Task {
-                let report = await CopyEngine.undoCopy(record, journalDirectory: Self.operationJournalDirectory)
+                let report = await CopyEngine.undoCopy(current, journalDirectory: self.undoJournalDirectory)
                 Self.entryOperationRunning = false
-                self.refresh(nil)
-                self.secondaryPane?.refresh()
+                self.refreshAfterUndo()
                 self.showCopyUndoResult(report)
             }
         }
+    }
+    private func refreshAfterUndo() {
+        savePosition()
+        model.reload()
+        secondaryPane?.model.reload()
     }
     private func showCopyUndoResult(_ report: CopyUndoResult) {
         guard let window, window.isVisible else { return }
@@ -2878,11 +2903,14 @@ extension BrowserWindow {
         case #selector(toggleCompactOverlay(_:)):
             menuItem.state = compactOverlayState != nil ? .on : .off; return true
         case #selector(closeSecondaryPane(_:)), #selector(closeActivePane(_:)): return secondaryPane != nil
+        case #selector(undoLastFileTransfer(_:)):
+            return !fileOperationIsRunning && window?.attachedSheet == nil &&
+                EntryOperations.PendingTransferUndo.latest(in: undoJournalDirectory) != nil
         case #selector(undoLastMove(_:)):
-            return !Self.entryOperationRunning && !MoveWindow.isRunning &&
-                EntryOperations.latestUndoMove(journalDirectory: Self.operationJournalDirectory) != nil
+            return !fileOperationIsRunning && window?.attachedSheet == nil &&
+                EntryOperations.latestUndoMove(journalDirectory: undoJournalDirectory) != nil
         case #selector(undoLastCopy(_:)):
-            return canUndoCopy(journalDirectory: Self.operationJournalDirectory)
+            return canUndoCopy(journalDirectory: undoJournalDirectory)
         case #selector(deleteSelection(_:)): return canDeleteSelection
         case #selector(restoreSelection(_:)): return canRestoreSelection
         case #selector(permanentlyDeleteSelection(_:)): return canPermanentDeleteSelection
@@ -2958,7 +2986,7 @@ extension BrowserWindow {
         }
     }
     private func canUndoCopy(journalDirectory: URL) -> Bool {
-        !Self.entryOperationRunning && !CopyWindow.isRunning && !FolderMergeWindow.isRunning &&
+        !fileOperationIsRunning && window?.attachedSheet == nil &&
             CopyEngine.latestUndoCopy(journalDirectory: journalDirectory) != nil
     }
 }
@@ -4250,7 +4278,7 @@ extension BrowserWindow {
             let preferences = BrowserPreferences(defaults: defaults, initialFavorites: [target])
             let dark = ProcessInfo.processInfo.environment["FILES_UI_QA_THEME"] == "dark"
             NSApp.appearance = NSAppearance(named: dark ? .darkAqua : .aqua)
-            let controller = BrowserWindow(preferences: preferences, restoresFrame: false)
+            let controller = BrowserWindow(preferences: preferences, restoresFrame: false, undoJournalDirectory: journals)
             guard let window = controller.window, let content = window.contentView else { throw CocoaError(.coderInvalidValue) }
             window.appearance = NSAppearance(named: dark ? .darkAqua : .aqua)
             window.setFrame(NSRect(x: 80, y: 80, width: 900, height: 600), display: true)
@@ -4353,10 +4381,21 @@ extension BrowserWindow {
             checks["undoMenuAction"] = undoMenu.action == #selector(undoLastCopy(_:))
             checks["undoMenuEnabled"] = controller.canUndoCopy(journalDirectory: journals)
             try capture("merged-split")
-            guard let undo = CopyEngine.latestUndoCopy(journalDirectory: journals) else { throw CocoaError(.fileNoSuchFile) }
-            let undoResult = await CopyEngine.undoCopy(undo, journalDirectory: journals)
+            let unifiedUndo = NSMenuItem(title: "", action: #selector(undoLastFileTransfer(_:)), keyEquivalent: "z")
+            checks["unifiedUndoRoutesToCopy"] = controller.validateMenuItem(unifiedUndo)
+            controller.undoLastFileTransfer(unifiedUndo)
+            guard let confirmation = window.attachedSheet else { throw CocoaError(.validationMissingMandatoryProperty) }
+            window.endSheet(confirmation, returnCode: .alertFirstButtonReturn)
+            let undoWait = ContinuousClock.now
+            while (BrowserWindow.entryOperationRunning || window.attachedSheet == nil || window.attachedSheet === confirmation)
+                && elapsed(undoWait) < 5 {
+                try await Task.sleep(for: .milliseconds(20))
+            }
+            let resultSheet = window.attachedSheet
+            checks["undoCompleted"] = !BrowserWindow.entryOperationRunning && resultSheet != nil && resultSheet !== confirmation
+                && CopyEngine.latestUndoCopy(journalDirectory: journals) == nil
+            if let resultSheet { window.endSheet(resultSheet) }
             controller.closeSecondaryPane(nil); controller.refresh(nil); try await settle()
-            checks["undoCompleted"] = undoResult.state == "completed"
             checks["undoUpdatesList"] = !controller.model.items.contains { $0.name == "new.txt" }
             checks["undoPreservesExisting"] = fm.fileExists(atPath: mergeTarget.appendingPathComponent("keep.txt").path)
                 && !fm.fileExists(atPath: mergeTarget.appendingPathComponent("nested.txt").path)

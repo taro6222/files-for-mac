@@ -176,15 +176,29 @@ public enum EntryOperations {
     public static func latestUndoMove(journalDirectory: URL) -> MoveUndoRecord? {
         let fm = FileManager.default
         guard let candidates = try? fm.contentsOfDirectory(at: journalDirectory,
-            includingPropertiesForKeys: [.contentModificationDateKey], options: [.skipsHiddenFiles]) else { return nil }
+            includingPropertiesForKeys: nil, options: [.skipsHiddenFiles]) else { return nil }
         return candidates
             .filter { $0.lastPathComponent.hasPrefix("undo-move-") && $0.pathExtension == "json" }
-            .sorted {
-                let lhs = (try? $0.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
-                let rhs = (try? $1.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
-                return lhs > rhs
+            .compactMap { try? JSONDecoder().decode(MoveUndoRecord.self, from: Data(contentsOf: $0)) }
+            .filter { !$0.items.isEmpty }
+            .max {
+                if $0.createdAt == $1.createdAt { return $0.operationId < $1.operationId }
+                return $0.createdAt < $1.createdAt
             }
-            .lazy.compactMap { try? JSONDecoder().decode(MoveUndoRecord.self, from: Data(contentsOf: $0)) }.first
+    }
+
+    public enum PendingTransferUndo: Sendable {
+        case copy(CopyUndoRecord)
+        case move(MoveUndoRecord)
+
+        public static func latest(in journalDirectory: URL) -> Self? {
+            let copy = CopyEngine.latestUndoCopy(journalDirectory: journalDirectory)
+            let move = EntryOperations.latestUndoMove(journalDirectory: journalDirectory)
+            if let move, copy.map({ move.createdAt >= $0.createdAt }) ?? true {
+                return .move(move)
+            }
+            return copy.map(Self.copy)
+        }
     }
 
     public static func validateName(_ name: String) throws {

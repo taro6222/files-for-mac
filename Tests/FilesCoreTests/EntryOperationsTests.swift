@@ -479,3 +479,34 @@ private extension Data {
         try BatchRenamePattern.regularExpression(sources, pattern: "(", replacement: "x")
     }
 }
+
+@Test func latestTransferUndoUsesOperationOrderAcrossCopyAndMove() async throws {
+    let fm = FileManager.default
+    let root = fm.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    defer { try? fm.removeItem(at: root) }
+    let sources = root.appendingPathComponent("sources"), destination = root.appendingPathComponent("target")
+    let journals = root.appendingPathComponent("journals")
+    try fm.createDirectory(at: sources, withIntermediateDirectories: true)
+    try fm.createDirectory(at: destination, withIntermediateDirectories: true)
+    let moved = sources.appendingPathComponent("move.txt"), copied = sources.appendingPathComponent("copy.txt")
+    try Data("move".utf8).write(to: moved)
+    try Data("copy".utf8).write(to: copied)
+    let move = try await EntryOperations.move([moved], to: destination, journalDirectory: journals)
+    let copy = await CopyEngine.run(sources: [copied], destination: destination, journalDirectory: journals, cancellation: CopyCancellation())
+    guard case let .copy(first)? = EntryOperations.PendingTransferUndo.latest(in: journals) else {
+        Issue.record("The newer copy should be selected first.")
+        return
+    }
+    #expect(first.operationId == copy.id)
+    let revertedCopy = await CopyEngine.undoCopy(first, journalDirectory: journals)
+    #expect(revertedCopy.state == "completed")
+    guard case let .move(second)? = EntryOperations.PendingTransferUndo.latest(in: journals) else {
+        Issue.record("The earlier move should remain available.")
+        return
+    }
+    #expect(second.operationId == move.id)
+    let revertedMove = await EntryOperations.undoMove(second, journalDirectory: journals)
+    #expect(revertedMove.state == "completed")
+    #expect(try Data(contentsOf: moved) == Data("move".utf8))
+    #expect(EntryOperations.PendingTransferUndo.latest(in: journals) == nil)
+}
