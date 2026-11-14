@@ -103,6 +103,8 @@ public struct BrowserPreferencesArchive: Codable, Equatable, Sendable {
     public let alwaysOpenDualPaneInNewTab: Bool?
     public let alwaysSwitchToNewlyOpenedTab: Bool?
     public let calculateFolderSizes: Bool?
+    public let enableThumbnailCache: Bool?
+    public let thumbnailCacheLimitMiB: Int?
     public let showThumbnails: Bool?
     public let doubleClickToGoUp: Bool?
     public let reverseTabScrollDirection: Bool?
@@ -191,6 +193,10 @@ public final class BrowserPreferences {
     public private(set) var alwaysOpenDualPaneInNewTab: Bool
     public private(set) var alwaysSwitchToNewlyOpenedTab: Bool
     public private(set) var calculateFolderSizes: Bool
+    public static let thumbnailCacheLimits = [8, 16, 32, 64, 128, 256, 512]
+    public static let defaultThumbnailCacheLimitMiB = 32
+    public private(set) var enableThumbnailCache: Bool
+    public private(set) var thumbnailCacheLimitMiB: Int
     public private(set) var showThumbnails: Bool
     public private(set) var doubleClickToGoUp: Bool
     public private(set) var reverseTabScrollDirection: Bool
@@ -276,6 +282,9 @@ public final class BrowserPreferences {
         alwaysOpenDualPaneInNewTab = defaults.object(forKey: "alwaysOpenDualPaneInNewTab") as? Bool ?? false
         alwaysSwitchToNewlyOpenedTab = defaults.object(forKey: "alwaysSwitchToNewlyOpenedTab") as? Bool ?? false
         calculateFolderSizes = defaults.object(forKey: "calculateFolderSizes") as? Bool ?? false
+        enableThumbnailCache = defaults.object(forKey: "enableThumbnailCache") as? Bool ?? true
+        let cacheLimit = defaults.integer(forKey: "thumbnailCacheLimitMiB")
+        thumbnailCacheLimitMiB = Self.thumbnailCacheLimits.contains(cacheLimit) ? cacheLimit : Self.defaultThumbnailCacheLimitMiB
         showThumbnails = defaults.object(forKey: "showThumbnails") as? Bool ?? true
         doubleClickToGoUp = defaults.object(forKey: "doubleClickToGoUp") as? Bool ?? true
         reverseTabScrollDirection = defaults.object(forKey: "reverseTabScrollDirection") as? Bool ?? false
@@ -495,6 +504,18 @@ public final class BrowserPreferences {
         guard calculateFolderSizes != value else { return }
         calculateFolderSizes = value; defaults.set(value, forKey: "calculateFolderSizes"); changed()
     }
+    public func setEnableThumbnailCache(_ value: Bool) {
+        guard enableThumbnailCache != value else { return }
+        enableThumbnailCache = value
+        defaults.set(value, forKey: "enableThumbnailCache")
+        changed()
+    }
+    public func setThumbnailCacheLimitMiB(_ value: Int) {
+        guard Self.thumbnailCacheLimits.contains(value), thumbnailCacheLimitMiB != value else { return }
+        thumbnailCacheLimitMiB = value
+        defaults.set(value, forKey: "thumbnailCacheLimitMiB")
+        changed()
+    }
     public func setShowThumbnails(_ value: Bool) {
         guard showThumbnails != value else { return }
         showThumbnails = value; defaults.set(value, forKey: "showThumbnails"); changed()
@@ -612,6 +633,7 @@ public final class BrowserPreferences {
             alwaysOpenDualPaneInNewTab: alwaysOpenDualPaneInNewTab,
             alwaysSwitchToNewlyOpenedTab: alwaysSwitchToNewlyOpenedTab,
             calculateFolderSizes: calculateFolderSizes,
+            enableThumbnailCache: enableThumbnailCache, thumbnailCacheLimitMiB: thumbnailCacheLimitMiB,
             showThumbnails: showThumbnails,
             doubleClickToGoUp: doubleClickToGoUp,
             reverseTabScrollDirection: reverseTabScrollDirection,
@@ -704,6 +726,9 @@ public final class BrowserPreferences {
         alwaysOpenDualPaneInNewTab = archive.alwaysOpenDualPaneInNewTab ?? false
         alwaysSwitchToNewlyOpenedTab = archive.alwaysSwitchToNewlyOpenedTab ?? false
         calculateFolderSizes = archive.calculateFolderSizes ?? false
+        enableThumbnailCache = archive.enableThumbnailCache ?? true
+        let cacheLimit = archive.thumbnailCacheLimitMiB ?? Self.defaultThumbnailCacheLimitMiB
+        thumbnailCacheLimitMiB = Self.thumbnailCacheLimits.contains(cacheLimit) ? cacheLimit : Self.defaultThumbnailCacheLimitMiB
         showThumbnails = archive.showThumbnails ?? true
         doubleClickToGoUp = archive.doubleClickToGoUp ?? true
         reverseTabScrollDirection = archive.reverseTabScrollDirection ?? false
@@ -746,6 +771,8 @@ public final class BrowserPreferences {
         defaults.set(alwaysOpenDualPaneInNewTab, forKey: "alwaysOpenDualPaneInNewTab")
         defaults.set(alwaysSwitchToNewlyOpenedTab, forKey: "alwaysSwitchToNewlyOpenedTab")
         defaults.set(calculateFolderSizes, forKey: "calculateFolderSizes")
+        defaults.set(enableThumbnailCache, forKey: "enableThumbnailCache")
+        defaults.set(thumbnailCacheLimitMiB, forKey: "thumbnailCacheLimitMiB")
         defaults.set(showThumbnails, forKey: "showThumbnails")
         defaults.set(doubleClickToGoUp, forKey: "doubleClickToGoUp")
         defaults.set(reverseTabScrollDirection, forKey: "reverseTabScrollDirection")

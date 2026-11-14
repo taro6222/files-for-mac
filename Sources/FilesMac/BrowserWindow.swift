@@ -132,7 +132,6 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
     private var watchedURL: URL?
     private var pendingRefresh = false
     private var observerTokens: [NSObjectProtocol] = []
-    private var iconCache: [String: NSImage] = [:]
     private var compactOverlayState: (frame: NSRect, minSize: NSSize, level: NSWindow.Level, behavior: NSWindow.CollectionBehavior)?
     private let dateFormatter: DateFormatter = {
         let d = DateFormatter(); d.dateStyle = .medium; d.timeStyle = .short; return d
@@ -163,6 +162,7 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
          openSystemURL: @escaping (URL) -> Bool = { NSWorkspace.shared.open($0) }) {
         self.model = BrowserModel(loader: loader)
         self.preferences = preferences
+        FileIconCache.shared.configure(enabled: preferences.enableThumbnailCache, limitMiB: preferences.thumbnailCacheLimitMiB)
         self.cloudProvider = cloudProvider
         self.makeWatcher = makeWatcher
         self.openSystemURL = openSystemURL
@@ -925,9 +925,7 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         case "name":
             cell.textField?.stringValue = item.displayName(showExtensions: preferences.showExtensions)
             cell.toolTip = item.name
-            let cacheKey = preferences.showThumbnails ? "preview:\(item.url.path)" : "type:\(item.isDirectory ? (item.isPackage ? "bundle" : "folder") : item.url.pathExtension.lowercased())"
-            if iconCache[cacheKey] == nil { iconCache[cacheKey] = fileIcon(for: item, showsThumbnails: preferences.showThumbnails) }
-            cell.imageView?.image = iconCache[cacheKey]
+            cell.imageView?.image = fileIcon(for: item, showsThumbnails: preferences.showThumbnails)
         case "syncStatus":
             let status = cloudStateTitle(item.cloudState)
             cell.textField?.stringValue = item.cloudState == nil ? "—" : status
@@ -1103,7 +1101,10 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         guard preferences.doubleClickToGoUp else { return }
         goUp(nil)
     }
-    @objc func refresh(_ sender: Any?) { if secondaryActive { secondaryPane?.refresh() } else { savePosition(); model.reload() } }
+    @objc func refresh(_ sender: Any?) {
+        FileIconCache.shared.removeAll()
+        if secondaryActive { secondaryPane?.refresh() } else { savePosition(); model.reload() }
+    }
     @objc func refreshOrStop(_ sender: Any?) {
         if activeModel.isLoading { stopLoading(sender) } else { refresh(sender) }
     }
@@ -2442,6 +2443,7 @@ extension BrowserWindow {
         content.layer?.borderColor = NSColor.controlAccentColor.cgColor
     }
     private func preferencesChanged() {
+        FileIconCache.shared.configure(enabled: preferences.enableThumbnailCache, limitMiB: preferences.thumbnailCacheLimitMiB)
         updateInfoPane()
         if preferences.syncFolderLayouts || appliedSharedFolderLayout {
             appliedSharedFolderLayout = preferences.syncFolderLayouts
@@ -3234,6 +3236,32 @@ extension BrowserWindow {
                 delegate.qaShortcutContentView?.window?.close(); window.makeKeyAndOrderFront(nil)
                 delegate.showAdvancedSettings(nil); try await Task.sleep(for: .milliseconds(50))
                 checks["advancedSettingsWindow"] = delegate.qaAdvancedSettingsVisible
+                let cache = FileIconCache()
+                let cacheFile = FileItem(url: fixture.appendingPathComponent("cache-check"), name: "cache-check",
+                                         isDirectory: false, identity: "qa-identity", size: 1)
+                var reads = 0
+                let iconLoader: (String) -> NSImage = { _ in
+                    reads += 1
+                    let image = NSImage(size: NSSize(width: 16, height: 16))
+                    if let bitmap = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: 16, pixelsHigh: 16,
+                                                    bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
+                                                    colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0) {
+                        image.addRepresentation(bitmap)
+                    }
+                    return image
+                }
+                cache.configure(enabled: true, limitMiB: 8)
+                _ = cache.icon(for: cacheFile, load: iconLoader)
+                _ = cache.icon(for: cacheFile, load: iconLoader)
+                let reuses = reads == 1
+                _ = cache.icon(for: cacheFile.replacingSize(2), load: iconLoader)
+                let invalidates = reads == 2
+                cache.removeAll()
+                _ = cache.icon(for: cacheFile, load: iconLoader)
+                cache.configure(enabled: false, limitMiB: 8)
+                _ = cache.icon(for: cacheFile, load: iconLoader)
+                _ = cache.icon(for: cacheFile, load: iconLoader)
+                checks["previewCacheLifecycle"] = reuses && invalidates && reads == 5
                 try capture("advanced-settings", view: delegate.qaAdvancedSettingsContentView)
                 delegate.qaAdvancedSettingsContentView?.window?.close(); window.makeKeyAndOrderFront(nil)
                 delegate.showGeneralSettings(nil); try await Task.sleep(for: .milliseconds(50)); let widgetsBefore = delegate.qaGeneralWidgetStates
