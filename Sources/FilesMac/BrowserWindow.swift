@@ -4471,15 +4471,18 @@ extension BrowserWindow {
         let fm = FileManager.default
         let destination = URL(fileURLWithPath: output, isDirectory: true)
         let root = destination.appendingPathComponent("m2-fixture", isDirectory: true)
-        let source = root.appendingPathComponent("source", isDirectory: true)
-        let target = root.appendingPathComponent("target", isDirectory: true)
-        let journals = root.appendingPathComponent("journals", isDirectory: true)
         let suite = "FilesMac.M2UIVerification.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suite)!
         defer { defaults.removePersistentDomain(forName: suite); try? fm.removeItem(at: root) }
         var checks: [String: Bool] = [:]
         var diagnostics: [String: Any] = [:]
         do {
+            try fm.createDirectory(at: root, withIntermediateDirectories: true)
+            // Use the same path spelling as the model when the fixture is under /private/tmp.
+            let fixture = root.standardizedFileURL
+            let source = fixture.appendingPathComponent("source", isDirectory: true)
+            let target = fixture.appendingPathComponent("target", isDirectory: true)
+            let journals = fixture.appendingPathComponent("journals", isDirectory: true)
             try fm.createDirectory(at: source, withIntermediateDirectories: true)
             try fm.createDirectory(at: target, withIntermediateDirectories: true)
             let mergeSource = source.appendingPathComponent("merge", isDirectory: true)

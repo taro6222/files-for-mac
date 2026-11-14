@@ -4,6 +4,8 @@
 
 ## 이번 구현 단위
 
+임시 경로에서 AppKit 회귀를 다시 실행해 그리드 선택 복원과 템플릿 파일 생성을 포함한 53개 검사가 네 언어·테마 조합에서 모두 통과했다. [M7 AppKit 재검증](verification/m7/INCREMENT_61.md)
+
 최근 위치·환경설정·볼륨 목록이 바뀌지 않으면 홈 화면의 기존 뷰를 재사용한다. [M7 홈 화면 회귀](verification/m7/INCREMENT_60.md)
 
 최신 후보를 로컬 임시 경로에서 빌드해 8시간 탐색·복사·탭 시험을 시작했다. [M7 로컬 장시간 시험](verification/m7/INCREMENT_59.md)
