@@ -10,6 +10,11 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
     var onClose: (() -> Void)?
     private let model: BrowserModel
     private let table = BrowserFileTable()
+#if RELEASE_PERFORMANCE_QA
+    // Sampling must leave the table cells free to deallocate between cycles.
+    private let soakDetailCells = NSHashTable<NSTableCellView>.weakObjects()
+    private var countsSoakDetailCells = false
+#endif
     private let scroll = NSScrollView()
     private let gridView = FileGridView()
     private let listView = FileListView()
@@ -1141,6 +1146,9 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
     }
     private func makeCell(_ id: NSUserInterfaceItemIdentifier, icon: Bool) -> NSTableCellView {
         let cell = NSTableCellView(); cell.identifier = id
+#if RELEASE_PERFORMANCE_QA
+        if countsSoakDetailCells { soakDetailCells.add(cell) }
+#endif
         let label = NSTextField(labelWithString: ""); label.font = .systemFont(ofSize: 13)
         label.lineBreakMode = .byTruncatingMiddle; label.translatesAutoresizingMaskIntoConstraints = false
         cell.addSubview(label); cell.textField = label
@@ -5064,6 +5072,7 @@ private struct ReleaseSoakSample: Encodable {
     let cycle: Int
     let rssBytes: UInt64
     let physicalFootprintBytes: UInt64
+    let retainedPrimaryDetailCells: Int
     let elapsedSeconds: Double
 }
 
@@ -5224,6 +5233,8 @@ extension BrowserWindow {
         let transferSource = source.appendingPathComponent("payload.bin")
         let journals = root.appendingPathComponent("journals")
         let payload = Data(repeating: 0x5A, count: 1_048_576)
+        let browser = BrowserWindow(preferences: preferences, restoresFrame: false)
+        browser.countsSoakDetailCells = true
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         let clock = ContinuousClock()
@@ -5266,7 +5277,9 @@ extension BrowserWindow {
             peakPhysicalFootprint = max(peakPhysicalFootprint, info.phys_footprint)
             if recordSample {
                 samples.append(.init(cycle: cycles, rssBytes: info.resident_size,
-                    physicalFootprintBytes: info.phys_footprint, elapsedSeconds: elapsedSeconds()))
+                    physicalFootprintBytes: info.phys_footprint,
+                    retainedPrimaryDetailCells: autoreleasepool { browser.soakDetailCells.allObjects.count },
+                    elapsedSeconds: elapsedSeconds()))
                 lastSample = clock.now
             }
         }
@@ -5315,7 +5328,6 @@ extension BrowserWindow {
             try fm.removeItem(at: journals)
         }
 
-        let browser = BrowserWindow(preferences: preferences, restoresFrame: false)
         var exitCode: Int32 = 1
         defer {
             browser.close()
