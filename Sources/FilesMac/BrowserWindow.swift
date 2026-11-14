@@ -119,6 +119,7 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
     private var pendingRefresh = false
     private var observerTokens: [NSObjectProtocol] = []
     private var iconCache: [String: NSImage] = [:]
+    private var compactOverlayState: (frame: NSRect, minSize: NSSize, level: NSWindow.Level, behavior: NSWindow.CollectionBehavior)?
     private let dateFormatter: DateFormatter = {
         let d = DateFormatter(); d.dateStyle = .medium; d.timeStyle = .short; return d
     }()
@@ -2202,11 +2203,36 @@ extension BrowserWindow {
     }
     @objc func showCommandPalette(_ sender: Any?) { commandPalette.present(relativeTo: window) }
     @objc func toggleFullScreen(_ sender: Any?) { window?.toggleFullScreen(sender) }
+    @objc func enterCompactOverlay(_ sender: Any?) {
+        guard compactOverlayState == nil, let window else { return }
+        compactOverlayState = (window.frame, window.minSize, window.level, window.collectionBehavior)
+        window.minSize = NSSize(width: 360, height: 420)
+        window.level = .floating
+        window.collectionBehavior.formUnion([.canJoinAllSpaces, .fullScreenAuxiliary])
+        let visible = window.screen?.visibleFrame ?? NSScreen.main?.visibleFrame ?? window.frame
+        let size = NSSize(width: min(460, visible.width), height: min(620, visible.height))
+        window.setFrame(NSRect(x: visible.maxX - size.width - 20, y: visible.maxY - size.height - 20,
+                               width: size.width, height: size.height), display: true, animate: false)
+    }
+    @objc func exitCompactOverlay(_ sender: Any?) {
+        guard let state = compactOverlayState, let window else { return }
+        compactOverlayState = nil
+        window.level = state.level; window.collectionBehavior = state.behavior; window.minSize = state.minSize
+        window.setFrame(state.frame, display: true, animate: false)
+    }
+    @objc func toggleCompactOverlay(_ sender: Any?) {
+        compactOverlayState == nil ? enterCompactOverlay(sender) : exitCompactOverlay(sender)
+    }
     func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
         switch menuItem.action {
         case #selector(splitVertically(_:)), #selector(splitHorizontally(_:)): return true
         case #selector(arrangePanesVertically(_:)), #selector(arrangePanesHorizontally(_:)), #selector(focusOtherPane(_:)), #selector(openCurrentFolderInOtherPane(_:)): return secondaryPane != nil
         case #selector(toggleDualPane(_:)): return true
+        case #selector(enterCompactOverlay(_:)):
+            menuItem.state = compactOverlayState != nil ? .on : .off; return compactOverlayState == nil
+        case #selector(exitCompactOverlay(_:)): return compactOverlayState != nil
+        case #selector(toggleCompactOverlay(_:)):
+            menuItem.state = compactOverlayState != nil ? .on : .off; return true
         case #selector(closeSecondaryPane(_:)): return secondaryPane != nil
         case #selector(undoLastMove(_:)):
             return !Self.entryOperationRunning && !MoveWindow.isRunning &&
@@ -2346,6 +2372,7 @@ extension BrowserWindow {
     var qaGitColumnVisible: Bool { table.tableColumns.contains { $0.identifier.rawValue == "git" && !$0.isHidden } }
     var qaVisibleDetailColumns: Set<String> { Set(table.tableColumns.filter { !$0.isHidden }.map { $0.identifier.rawValue }) }
     var qaCreatedColumnWidth: CGFloat? { table.tableColumn(withIdentifier: .init("created"))?.width }
+    var qaIsCompactOverlay: Bool { compactOverlayState != nil }
     var qaDetailGroupTitles: [String] { detailRows.compactMap { if case let .header(title) = $0 { return title }; return nil } }
     var qaVisibleContextActions: Set<String> { Set((table.menu?.items ?? []).filter { !$0.isHidden }.compactMap { $0.action.map(NSStringFromSelector) }) }
 #endif
@@ -2441,6 +2468,15 @@ extension BrowserWindow {
             checks["createShortcutFromDialogCommand"] = paletteEntries.contains { $0.item.action == #selector(createSymbolicLinkFromDialog(_:)) }
             checks["createFileCommand"] = paletteEntries.contains { $0.item.action == #selector(createFile(_:)) }
             checks["toggleFullScreenCommand"] = paletteEntries.contains { $0.item.action == #selector(toggleFullScreen(_:)) }
+            let preCompactFrame = window.frame, preCompactMinimum = window.minSize
+            controller.enterCompactOverlay(nil)
+            checks["compactOverlayEntered"] = controller.qaIsCompactOverlay && window.level == .floating
+                && window.collectionBehavior.contains(.canJoinAllSpaces) && window.frame.width <= 460
+            controller.toggleCompactOverlay(nil)
+            checks["compactOverlayRestored"] = !controller.qaIsCompactOverlay && window.level == .normal
+                && window.frame == preCompactFrame && window.minSize == preCompactMinimum
+            checks["compactOverlayCommands"] = [#selector(enterCompactOverlay(_:)), #selector(exitCompactOverlay(_:)),
+                #selector(toggleCompactOverlay(_:))].allSatisfy { action in paletteEntries.contains { $0.item.action == action } }
             checks["themeCommands"] = [#selector(AppDelegate.setDarkTheme(_:)), #selector(AppDelegate.setLightTheme(_:)), #selector(AppDelegate.setDefaultTheme(_:)), #selector(AppDelegate.toggleAppTheme(_:))].allSatisfy { action in
                 paletteEntries.contains { $0.item.action == action }
             }

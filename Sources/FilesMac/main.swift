@@ -433,6 +433,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         go.addItem(.separator())
         let fullScreen = go.addItem(withTitle: L("전체 화면 전환", "Toggle Full Screen"), action: #selector(BrowserWindow.toggleFullScreen(_:)), keyEquivalent: "f")
         fullScreen.keyEquivalentModifierMask = [.command, .control]
+        go.addItem(withTitle: L("컴팩트 오버레이 시작", "Enter Compact Overlay"), action: #selector(BrowserWindow.enterCompactOverlay(_:)), keyEquivalent: "")
+        go.addItem(withTitle: L("컴팩트 오버레이 종료", "Exit Compact Overlay"), action: #selector(BrowserWindow.exitCompactOverlay(_:)), keyEquivalent: "")
+        go.addItem(withTitle: L("컴팩트 오버레이 전환", "Toggle Compact Overlay"), action: #selector(BrowserWindow.toggleCompactOverlay(_:)), keyEquivalent: "")
         NSApp.mainMenu = menu
     }
 #if DEBUG
