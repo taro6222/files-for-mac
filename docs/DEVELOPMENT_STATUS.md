@@ -8,6 +8,8 @@ M7 출시 검증이 진행 중이다. [유니버설 개발 프리뷰](verificati
 
 ## 이번 구현 단위
 
+AppKit 검증 스크립트가 실행별 시험 폴더를 만들고 결과 경로를 출력한다. [검증 폴더 격리](verification/m7/INCREMENT_151.md)
+
 현재 소스에서 한국어·영어와 두 테마의 AppKit 검사가 조합별로 258개 통과했다. [AppKit 회귀 기록](verification/m7/INCREMENT_150.md)
 
 백업 없는 교차 볼륨 이동도 복원본 게시 후 중단된 실행 취소를 재개할 수 있다. [일반 이동 실행 취소 복구](verification/m7/INCREMENT_149.md)

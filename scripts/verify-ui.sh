@@ -6,17 +6,20 @@ export CLANG_MODULE_CACHE_PATH="$PWD/.build/ModuleCache"
 swift build --disable-sandbox -Xswiftc -gnone
 languages=(ko en)
 themes=(light dark)
-outputRoot="$PWD/build/ui-verification"
+runName=files-ui-verification
 case "${1:-}" in
   "") export FILES_UI_QA_REPETITIONS=5 ;;
   --performance)
     languages=(ko); themes=(dark)
-    outputRoot="$PWD/build/ui-performance"
+    runName=files-ui-performance
     export FILES_UI_QA_REPETITIONS=20
     ;;
   *) echo "Usage: $0 [--performance]" >&2; exit 2 ;;
 esac
-# Each process gets an isolated preferences suite; global language/theme are untouched.
+outputRoot=$(mktemp -d "${TMPDIR:-/tmp}/$runName.XXXXXX")
+outputRoot=$(cd "$outputRoot" && pwd -P)
+printf 'UI verification results: %s\n' "$outputRoot"
+# Each process gets an isolated preferences suite and a fresh fixture directory.
 for language in "${languages[@]}"; do
   for theme in "${themes[@]}"; do
     output="$outputRoot/$language-$theme"
@@ -24,8 +27,6 @@ for language in "${languages[@]}"; do
     python3 - "$output" "$language" "$theme" <<'PY'
 import os, pathlib, subprocess, sys
 output, language, theme = sys.argv[1:]
-report = pathlib.Path(output) / 'report.json'
-report.unlink(missing_ok=True)
 env = dict(os.environ, FILES_UI_QA_OUTPUT=output, FILES_UI_QA_THEME=theme)
 with open(pathlib.Path(output) / 'run.log', 'w') as log:
     try:
