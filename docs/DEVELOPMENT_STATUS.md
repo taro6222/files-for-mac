@@ -8,6 +8,8 @@ M7 출시 검증이 진행 중이다. [유니버설 개발 프리뷰](verificati
 
 ## 이번 구현 단위
 
+FAT32·HFS+ 전송의 생성 시간을 보존하고 실제 마운트 검사에 두 형식을 추가했다. [FAT32·HFS+ 생성 시간 검증](verification/m7/INCREMENT_133.md)
+
 검색 회귀 시험이 고정 대기 시간 대신 검색 스트림과 완료 상태로 결과를 검증한다. [검색 시험 안정화](verification/m7/INCREMENT_132.md)
 
 APFS와 exFAT 사이의 전송에서 파일과 폴더 생성 시간을 보존하고 검증한다. [exFAT 생성 시간 검증](verification/m7/INCREMENT_131.md)

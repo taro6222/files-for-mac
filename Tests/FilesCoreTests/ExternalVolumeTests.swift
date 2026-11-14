@@ -94,8 +94,13 @@ import Testing
     #expect(!fm.fileExists(atPath: target.path))
 }
 
-@Test(arguments: ["FILES_TEST_APFSX_VOLUME", "FILES_TEST_EXFAT_VOLUME"])
-func mountedVolumePreservesNestedCreationTimes(volumeKey: String) async throws {
+@Test(arguments: [
+    ("FILES_TEST_APFSX_VOLUME", 0.000001),
+    ("FILES_TEST_EXFAT_VOLUME", 1.0),
+    ("FILES_TEST_FAT32_VOLUME", 2.0),
+    ("FILES_TEST_HFS_VOLUME", 1.0)
+])
+func mountedVolumePreservesNestedCreationTimes(volumeKey: String, tolerance: TimeInterval) async throws {
     guard let path = ProcessInfo.processInfo.environment[volumeKey] else { return }
     let fm = FileManager.default
     let root = fm.temporaryDirectory.appendingPathComponent("FilesMac-FolderDates-\(UUID())", isDirectory: true)
@@ -122,7 +127,6 @@ func mountedVolumePreservesNestedCreationTimes(volumeKey: String) async throws {
     }
     func verify(_ folder: URL) throws -> [Date] {
         let actual = try dates(in: folder)
-        let tolerance = volumeKey == "FILES_TEST_EXFAT_VOLUME" ? 1.0 : 0.000001
         for (date, expected) in zip(actual, [rootDate, nestedDate, fileDate]) {
             #expect(abs(date.timeIntervalSince(expected)) < tolerance)
         }

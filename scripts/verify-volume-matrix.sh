@@ -22,20 +22,24 @@ create_volume() {
   printf -v "$variable" '%s' "$mount"
   export "$variable"
 }
-create_exfat_volume() {
-  local raw="$root/exfat.raw" output device mount label="FM2$$"
+create_raw_volume() {
+  local name=$1 filesystem=$2 variable=$3
+  local raw="$root/$name.raw" output device mount label="$name$$"
   /usr/sbin/mkfile 256m "$raw"
   output=$(/usr/bin/hdiutil attach -nomount -imagekey diskimage-class=CRawDiskImage "$raw")
   device=$(printf '%s\n' "$output" | /usr/bin/awk 'NR == 1 { print $1 }')
   devices+=("$device")
-  /usr/sbin/diskutil eraseVolume ExFAT "$label" "$device" >/dev/null
+  /usr/sbin/diskutil eraseVolume "$filesystem" "$label" "$device" >/dev/null
   mount=$(/usr/sbin/diskutil info "$device" | /usr/bin/awk -F ': *' '/Mount Point/ { print $2; exit }')
   test -n "$mount" -a -d "$mount"
-  export FILES_TEST_EXFAT_VOLUME="$mount"
+  printf -v "$variable" '%s' "$mount"
+  export "$variable"
 }
 create_volume apfs APFS FILES_TEST_APFS_VOLUME
 create_volume apfsx "Case-sensitive APFS" FILES_TEST_APFSX_VOLUME
-create_exfat_volume
+create_raw_volume EXFAT ExFAT FILES_TEST_EXFAT_VOLUME
+create_raw_volume FAT32 'MS-DOS FAT32' FILES_TEST_FAT32_VOLUME
+create_raw_volume HFS JHFS+ FILES_TEST_HFS_VOLUME
 export CLANG_MODULE_CACHE_PATH="$PWD/.build/ModuleCache"
 export SWIFT_TMPDIR=/tmp
 swift test --filter mountedVolume \

@@ -442,6 +442,8 @@ public enum CopyEngine {
             case "apfs": return 0.000001
             // macOS exposes whole-second creation times through stat on exFAT.
             case "exfat": return 1
+            case "hfs": return 1
+            case "msdos": return 2
             default: return nil
             }
         }
