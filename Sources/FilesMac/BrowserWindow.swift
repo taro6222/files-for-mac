@@ -5422,37 +5422,54 @@ extension BrowserWindow {
             let canvas = CGContext(data: nil, width: 16, height: 12, bitsPerComponent: 8,
                 bytesPerRow: 0, space: CGColorSpaceCreateDeviceRGB(),
                 bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue)!
-            canvas.setFillColor(red: 1, green: 0, blue: 0, alpha: 1)
-            canvas.fill(CGRect(x: 0, y: 0, width: 16, height: 12))
-            let png = NSBitmapImageRep(cgImage: canvas.makeImage()!).representation(using: .png, properties: [:])!
-            try png.write(to: imageFile)
-            try png.write(to: target.appendingPathComponent(imageFile.lastPathComponent))
-            var page = CGRect(x: 0, y: 0, width: 80, height: 60)
-            let pdf = CGContext(pdfFile as CFURL, mediaBox: &page, nil)!
-            pdf.beginPDFPage(nil)
-            pdf.setFillColor(red: 0, green: 0, blue: 1, alpha: 1)
-            pdf.fill(page)
-            pdf.endPDFPage()
-            pdf.closePDF()
-            try fm.copyItem(at: pdfFile, to: target.appendingPathComponent(pdfFile.lastPathComponent))
+            for (url, color) in [(imageFile, NSColor.red), (target.appendingPathComponent(imageFile.lastPathComponent), .green)] {
+                canvas.setFillColor(color.cgColor)
+                canvas.fill(CGRect(x: 0, y: 0, width: 16, height: 12))
+                let png = NSBitmapImageRep(cgImage: canvas.makeImage()!).representation(using: .png, properties: [:])!
+                try png.write(to: url)
+            }
+            for (url, color) in [(pdfFile, NSColor.blue), (target.appendingPathComponent(pdfFile.lastPathComponent), .yellow)] {
+                var page = CGRect(x: 0, y: 0, width: 80, height: 60)
+                let pdf = CGContext(url as CFURL, mediaBox: &page, nil)!
+                pdf.beginPDFPage(nil)
+                pdf.setFillColor(color.cgColor)
+                pdf.fill(page)
+                pdf.endPDFPage()
+                pdf.closePDF()
+            }
             controller.prepareCopy(sources: [imageFile, pdfFile], destination: target)
-            if let sheet = window.attachedSheet {
-                func thumbnailCount(in view: NSView) -> Int {
+            if let sheet = window.attachedSheet, let sheetView = sheet.contentView {
+                func attachmentColors(in view: NSView) -> [String] {
                     if let storage = (view as? NSTextView)?.textStorage {
-                        var count = 0
+                        var colors: [String] = []
                         storage.enumerateAttribute(.attachment, in: NSRange(location: 0, length: storage.length)) { value, _, _ in
-                            if let attachment = value as? NSTextAttachment,
-                               let cell = attachment.attachmentCell as? NSTextAttachmentCell, cell.image != nil { count += 1 }
+                            guard let attachment = value as? NSTextAttachment,
+                                  let cell = attachment.attachmentCell as? NSTextAttachmentCell,
+                                  let image = cell.image?.cgImage(forProposedRect: nil, context: nil, hints: nil) else { return }
+                            let pixels = NSBitmapImageRep(cgImage: image)
+                            guard let color = pixels.colorAt(x: image.width / 2, y: image.height / 2)?
+                                .usingColorSpace(.deviceRGB) else { return }
+                            let (red, green, blue) = (color.redComponent, color.greenComponent, color.blueComponent)
+                            switch (red > 0.7, green > 0.7, blue > 0.7) {
+                            case (true, false, false): colors.append("red")
+                            case (false, true, false): colors.append("green")
+                            case (false, false, true): colors.append("blue")
+                            case (true, true, false): colors.append("yellow")
+                            default: colors.append("unknown")
+                            }
                         }
-                        return count
+                        return colors
                     }
-                    return view.subviews.reduce(0) { $0 + thumbnailCount(in: $1) }
+                    return view.subviews.flatMap { attachmentColors(in: $0) }
                 }
                 let start = ContinuousClock.now
-                while sheet.contentView.map({ thumbnailCount(in: $0) }) != 4 && elapsed(start) < 4 {
+                var colors = attachmentColors(in: sheetView)
+                while colors.count < 4 && elapsed(start) < 4 {
                     try await Task.sleep(for: .milliseconds(20))
+                    colors = attachmentColors(in: sheetView)
                 }
-                checks["conflictImageAndPDFThumbnails"] = sheet.contentView.map { thumbnailCount(in: $0) } == 4
+                diagnostics["conflictThumbnailColors"] = colors
+                checks["conflictImageAndPDFThumbnails"] = colors == ["red", "green", "blue", "yellow"]
                 window.endSheet(sheet, returnCode: .alertThirdButtonReturn)
             } else { checks["conflictImageAndPDFThumbnails"] = false }
             let iconCache = FileIconCache()
