@@ -1333,6 +1333,33 @@ private struct ManyBatchLoader: DirectoryStreaming {
     #expect(changes == 3); preferences.removeObserver(token)
 }
 
+@Test @MainActor func homeNetworkWidgetMigratesAndPersistsIndependently() throws {
+    let suite = "files-home-network-\(UUID())", defaults = UserDefaults(suiteName: suite)!
+    defer { defaults.removePersistentDomain(forName: suite) }
+    let fresh = BrowserPreferences(defaults: defaults, initialFavorites: [])
+    #expect(fresh.showHomeNetwork && !fresh.homeNetworkExpanded)
+    fresh.setHomeSectionExpanded(.volumes, expanded: false)
+    fresh.setHomeSectionExpanded(.volumes, expanded: true)
+    fresh.setSection(.volumes, visible: false)
+    let reloaded = BrowserPreferences(defaults: defaults, initialFavorites: [])
+    #expect(reloaded.showHomeNetwork && !reloaded.homeNetworkExpanded)
+    #expect(!reloaded.showHomeVolumes && reloaded.homeVolumesExpanded)
+
+    let exported = try reloaded.exportData()
+    var legacy = try #require(JSONSerialization.jsonObject(with: exported) as? [String: Any])
+    legacy.removeValue(forKey: "showHomeNetwork")
+    legacy.removeValue(forKey: "homeNetworkExpanded")
+    try fresh.importData(JSONSerialization.data(withJSONObject: legacy))
+    #expect(!fresh.showHomeNetwork && fresh.homeNetworkExpanded)
+    try fresh.importData(exported)
+    #expect(fresh.showHomeNetwork && !fresh.homeNetworkExpanded)
+
+    defaults.removeObject(forKey: "showHomeNetwork")
+    defaults.removeObject(forKey: "homeNetworkExpanded")
+    let migratedDefaults = BrowserPreferences(defaults: defaults, initialFavorites: [])
+    #expect(!migratedDefaults.showHomeNetwork && migratedDefaults.homeNetworkExpanded)
+}
+
 @Test @MainActor func sidebarOrderRepairsUnknownAndDuplicateSavedValues() {
     let suite = "files-sidebar-invalid-\(UUID())", defaults: UserDefaults
     defaults = UserDefaults(suiteName: suite)!

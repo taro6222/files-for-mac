@@ -788,9 +788,17 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
                     card.addArrangedSubview(meter); meter.widthAnchor.constraint(equalTo: card.widthAnchor, constant: -28).isActive = true
                 }
             } }
-            let networkVolumes = volumes.filter { $0.isLocal == false }
-            if preferences.homeVolumesExpanded && !networkVolumes.isEmpty {
-                section(L("네트워크 위치", "Network Locations"), in: homeView)
+        }
+        if preferences.showHomeNetwork {
+            homeSection(L("네트워크 위치", "Network Locations"), expanded: preferences.homeNetworkExpanded,
+                        action: #selector(toggleHomeNetworkExpanded(_:)))
+            if preferences.homeNetworkExpanded {
+                let networkVolumes = volumes.filter { $0.isLocal == false }
+                if networkVolumes.isEmpty {
+                    let message = NSTextField(labelWithString: L("마운트된 네트워크 위치가 없습니다.", "No network locations are mounted."))
+                    message.textColor = .secondaryLabelColor
+                    homeView.addArrangedSubview(message)
+                }
                 for volume in networkVolumes {
                     locationButton(volume.name, symbol: "network", url: volume.url, in: homeView)
                 }
@@ -3250,6 +3258,7 @@ extension BrowserWindow {
             (L("폴더 경로 열 표시", "Show Folder Path Column"), #selector(togglePathColumn(_:)), preferences.showPathColumn),
             (L("홈: 빠른 접근", "Home: Quick Access"), #selector(toggleHomeFavorites(_:)), preferences.showHomeFavorites),
             (L("홈: 드라이브", "Home: Drives"), #selector(toggleHomeVolumes(_:)), preferences.showHomeVolumes),
+            (L("홈: 네트워크 위치", "Home: Network Locations"), #selector(toggleHomeNetwork(_:)), preferences.showHomeNetwork),
             (L("홈: 최근 위치", "Home: Recent Locations"), #selector(toggleHomeRecent(_:)), preferences.showHomeRecent)
         ]
         for (label, action, selected) in entries {
@@ -3372,9 +3381,11 @@ extension BrowserWindow {
     }
     @objc private func toggleHomeFavorites(_ sender: Any?) { preferences.toggleSection(.favorites) }
     @objc private func toggleHomeVolumes(_ sender: Any?) { preferences.toggleSection(.volumes) }
+    @objc private func toggleHomeNetwork(_ sender: Any?) { preferences.toggleSection(.network) }
     @objc private func toggleHomeRecent(_ sender: Any?) { preferences.toggleSection(.recent) }
     @objc private func toggleHomeFavoritesExpanded(_ sender: Any?) { preferences.toggleHomeSectionExpanded(.favorites) }
     @objc private func toggleHomeVolumesExpanded(_ sender: Any?) { preferences.toggleHomeSectionExpanded(.volumes) }
+    @objc private func toggleHomeNetworkExpanded(_ sender: Any?) { preferences.toggleHomeSectionExpanded(.network) }
     @objc private func toggleHomeRecentExpanded(_ sender: Any?) { preferences.toggleHomeSectionExpanded(.recent) }
 
     func controlTextDidChange(_ notification: Notification) {
@@ -4061,7 +4072,8 @@ extension BrowserWindow {
                     && zip(contextMenuBefore ?? [], contextMenuAfter ?? []).allSatisfy { $0 != $1 }
                 checks["generalSettingsScrollReachable"] = delegate.qaGeneralSettingsScrollReachable
                 checks["generalSettingsWindow"] = delegate.qaGeneralSettingsVisible && widgetsBefore != nil && widgetsAfter != nil
-                    && widgetsAfter!.0 != widgetsBefore!.0 && widgetsAfter!.1 != widgetsBefore!.1 && widgetsAfter!.2 != widgetsBefore!.2
+                    && widgetsAfter!.0 != widgetsBefore!.0 && widgetsAfter!.1 != widgetsBefore!.1
+                    && widgetsAfter!.2 != widgetsBefore!.2 && widgetsAfter!.3 != widgetsBefore!.3
                     && delegate.qaGeneralSizeUnit != sizeUnitBefore
                     && delegate.qaGeneralDefaultSortDirectoryPlacement != defaultSortBefore
                     && delegate.qaGeneralAutoSizeColumnsInDetailsLayout != autoSizeColumnsBefore
@@ -4461,9 +4473,10 @@ extension BrowserWindow {
             preferences.setShowFileTagColumn(false); preferences.setShowPathColumn(false)
             preferences.setHomeSectionExpanded(.favorites, expanded: false)
             preferences.setHomeSectionExpanded(.volumes, expanded: false)
+            preferences.setHomeSectionExpanded(.network, expanded: false)
             preferences.setHomeSectionExpanded(.recent, expanded: false)
             controller.buildHome()
-            checks["homeWidgetExpansion"] = controller.qaCollapsedHomeSectionCount == 3
+            checks["homeWidgetExpansion"] = controller.qaCollapsedHomeSectionCount == 4
             preferences.setHomeSectionExpanded(.favorites, expanded: true)
             preferences.setHomeSectionExpanded(.volumes, expanded: true)
             preferences.setHomeSectionExpanded(.recent, expanded: true)
@@ -5990,6 +6003,7 @@ extension BrowserWindow {
             let network = MountedVolume(url: recoveryFolder, name: shareName, isLocal: false)
             let local = MountedVolume(url: target, name: "QA Local Disk", isLocal: true)
             controller.volumes = [network, local]
+            preferences.setHomeSectionExpanded(.network, expanded: true)
             controller.invalidateHome()
             controller.goHome(nil)
             let networkButton = controller.homeView.arrangedSubviews.compactMap { $0 as? LocationButton }
@@ -6021,13 +6035,16 @@ extension BrowserWindow {
             sendHomeKey(125, characters: "\u{f701}")
             let reachesLocal = (window.firstResponder as? LocationButton)?.title == local.name
             sendHomeKey(125, characters: "\u{f701}")
+            let networkAction = #selector(toggleHomeNetworkExpanded(_:))
+            let reachesNetworkHeader = (window.firstResponder as? NSButton)?.action == networkAction
+            sendHomeKey(125, characters: "\u{f701}")
             let reachesNetwork = (window.firstResponder as? LocationButton)?.title == shareName
             sendHomeKey(126, characters: "\u{f700}")
-            let returnsToLocal = (window.firstResponder as? LocationButton)?.title == local.name
+            let returnsToNetworkHeader = (window.firstResponder as? NSButton)?.action == networkAction
             sendHomeKey(125, characters: "\u{f701}")
             sendHomeKey(36, characters: "\r")
             checks["homeKeyboardReachesNetworkAndFocusesFiles"] = startsOnHome && reachesFavorite && reachesDrives
-                && retainsFocus && reachesLocal && reachesNetwork && returnsToLocal
+                && retainsFocus && reachesLocal && reachesNetworkHeader && reachesNetwork && returnsToNetworkHeader
                 && window.firstResponder === controller.table
             checks["homeNetworkLocationOpensMountedPath"] = checks["homeNetworkLocationOpensMountedPath"] == true
                 && controller.model.location == network.url
@@ -6052,18 +6069,23 @@ extension BrowserWindow {
             let recentFocusRestored = (window.firstResponder as? LocationButton)?.url?.path == recentPath
             diagnostics["homeRecentRefresh"] = [recentOrderUpdated, otherHomeViewsReused, recentFocusRestored]
             checks["homeRecentRefresh"] = recentOrderUpdated && otherHomeViewsReused && recentFocusRestored
-            func showsHomeVolumeEntries() -> Bool {
-                controller.homeView.arrangedSubviews.contains {
-                    ($0 as? LocationButton)?.title == shareName || $0 is VolumeCardView
-                }
+            func showsNetworkEntry() -> Bool {
+                controller.homeView.arrangedSubviews.contains { ($0 as? LocationButton)?.title == shareName }
             }
+            func showsLocalCard() -> Bool { controller.homeView.arrangedSubviews.contains { $0 is VolumeCardView } }
             preferences.setHomeSectionExpanded(.volumes, expanded: false)
-            let hidesWhenCollapsed = !showsHomeVolumeEntries()
+            let drivesCollapseIndependently = !showsLocalCard() && showsNetworkEntry()
             preferences.setHomeSectionExpanded(.volumes, expanded: true)
-            let restoresWhenExpanded = showsHomeVolumeEntries()
             preferences.setSection(.volumes, visible: false)
-            checks["homeVolumesSettingHidesNetworkLocations"] = hidesWhenCollapsed
-                && restoresWhenExpanded && !showsHomeVolumeEntries()
+            let drivesHideIndependently = !showsLocalCard() && showsNetworkEntry()
+            preferences.setSection(.volumes, visible: true)
+            preferences.setHomeSectionExpanded(.network, expanded: false)
+            let networkCollapsesIndependently = showsLocalCard() && !showsNetworkEntry()
+            preferences.setHomeSectionExpanded(.network, expanded: true)
+            let networkRestored = showsLocalCard() && showsNetworkEntry()
+            preferences.setSection(.network, visible: false)
+            checks["homeNetworkAndDrivesHaveIndependentSettings"] = drivesCollapseIndependently && drivesHideIndependently
+                && networkCollapsesIndependently && networkRestored && showsLocalCard() && !showsNetworkEntry()
             let palette = controller.commandPalette
             func pathEditorIsFocused() -> Bool {
                 guard let editor = controller.pathField.currentEditor() else { return false }

@@ -10,7 +10,8 @@ final class GeneralSettingsWindow: NSWindowController {
     private let alwaysOpenDualPaneInNewTab = NSButton(checkboxWithTitle: L("새 탭을 dual pane으로 열기", "Open New Tabs with Dual Pane"), target: nil, action: nil)
     private let alwaysSwitchToNewlyOpenedTab = NSButton(checkboxWithTitle: L("새 탭으로 즉시 전환", "Switch to Newly Opened Tabs"), target: nil, action: nil)
     private let favorites = NSButton(checkboxWithTitle: L("홈에 빠른 접근 표시", "Show Quick Access on Home"), target: nil, action: nil)
-    private let volumes = NSButton(checkboxWithTitle: L("홈에 드라이브 및 네트워크 위치 표시", "Show Drives and Network Locations on Home"), target: nil, action: nil)
+    private let volumes = NSButton(checkboxWithTitle: L("홈에 드라이브 표시", "Show Drives on Home"), target: nil, action: nil)
+    private let network = NSButton(checkboxWithTitle: L("홈에 네트워크 위치 표시", "Show Network Locations on Home"), target: nil, action: nil)
     private let recent = NSButton(checkboxWithTitle: L("홈에 최근 위치 표시", "Show Recent Locations on Home"), target: nil, action: nil)
     private let startupLocation = NSTextField(wrappingLabelWithString: "")
     private let sizeUnit = NSPopUpButton()
@@ -84,7 +85,9 @@ final class GeneralSettingsWindow: NSWindowController {
         configure(showCreateShortcut, action: #selector(changeShowCreateShortcut(_:))); stack.addArrangedSubview(showCreateShortcut)
         let homeTitle = NSTextField(labelWithString: L("홈 위젯", "Home Widgets")); homeTitle.font = .systemFont(ofSize: 14, weight: .semibold); stack.addArrangedSubview(homeTitle)
         configure(favorites, action: #selector(changeFavorites(_:))); configure(volumes, action: #selector(changeVolumes(_:))); configure(recent, action: #selector(changeRecent(_:)))
-        stack.addArrangedSubview(favorites); stack.addArrangedSubview(volumes); stack.addArrangedSubview(recent)
+        configure(network, action: #selector(changeNetwork(_:)))
+        stack.addArrangedSubview(favorites); stack.addArrangedSubview(volumes)
+        stack.addArrangedSubview(network); stack.addArrangedSubview(recent)
         scroll.hasVerticalScroller = true
         scroll.autohidesScrollers = true
         scroll.drawsBackground = false
@@ -140,6 +143,7 @@ final class GeneralSettingsWindow: NSWindowController {
         showEditTagsMenu.state = preferences.showEditTagsMenu ? .on : .off
         showCreateShortcut.state = preferences.showCreateShortcut ? .on : .off
         favorites.state = preferences.showHomeFavorites ? .on : .off; volumes.state = preferences.showHomeVolumes ? .on : .off; recent.state = preferences.showHomeRecent ? .on : .off
+        network.state = preferences.showHomeNetwork ? .on : .off
     }
     @objc private func changeContinueSession(_ sender: Any?) { preferences.setContinueLastSession(continueSession.state == .on) }
     @objc private func changeOpenNewTabOnStartup(_ sender: Any?) { preferences.setOpenNewTabOnStartup(openNewTabOnStartup.state == .on) }
@@ -178,6 +182,7 @@ final class GeneralSettingsWindow: NSWindowController {
     @objc private func changeShowCreateShortcut(_ sender: Any?) { preferences.setShowCreateShortcut(showCreateShortcut.state == .on) }
     @objc private func changeFavorites(_ sender: Any?) { preferences.setSection(.favorites, visible: favorites.state == .on) }
     @objc private func changeVolumes(_ sender: Any?) { preferences.setSection(.volumes, visible: volumes.state == .on) }
+    @objc private func changeNetwork(_ sender: Any?) { preferences.setSection(.network, visible: network.state == .on) }
     @objc private func changeRecent(_ sender: Any?) { preferences.setSection(.recent, visible: recent.state == .on) }
 #if DEBUG
     var qaVisible: Bool { window?.isVisible == true }
@@ -195,7 +200,9 @@ final class GeneralSettingsWindow: NSWindowController {
         return wasBelow && visible
     }
 
-    var qaWidgetStates: (Bool, Bool, Bool) { (preferences.showHomeFavorites, preferences.showHomeVolumes, preferences.showHomeRecent) }
+    var qaWidgetStates: (Bool, Bool, Bool, Bool) {
+        (preferences.showHomeFavorites, preferences.showHomeVolumes, preferences.showHomeNetwork, preferences.showHomeRecent)
+    }
     var qaOpenNewTabOnStartup: Bool { preferences.openNewTabOnStartup }
     var qaNewTabPolicies: (Bool, Bool) { (preferences.alwaysOpenDualPaneInNewTab, preferences.alwaysSwitchToNewlyOpenedTab) }
     var qaSizeUnit: BrowserSizeUnit { preferences.sizeUnit }
@@ -209,7 +216,7 @@ final class GeneralSettingsWindow: NSWindowController {
     var qaScrollToPreviousFolderOnUp: Bool { preferences.scrollToPreviousFolderOnUp }
     var qaShowFileExtensionWarning: Bool { preferences.showFileExtensionWarning }
     var qaContextMenuStates: [Bool] { [preferences.showCompressionOptions, preferences.showOpenTerminal, preferences.showCreateFolderWithSelection, preferences.showPinToSidebar, preferences.showSendToMenu, preferences.showCopyPath, preferences.showOpenInNewTab, preferences.showOpenInNewWindow, preferences.showOpenInNewPane, preferences.showEditTagsMenu, preferences.showCreateShortcut] }
-    func qaToggleWidgets() { favorites.performClick(nil); volumes.performClick(nil); recent.performClick(nil) }
+    func qaToggleWidgets() { favorites.performClick(nil); volumes.performClick(nil); network.performClick(nil); recent.performClick(nil) }
     func qaToggleOpenNewTabOnStartup() { openNewTabOnStartup.performClick(nil) }
     func qaToggleNewTabPolicies() { alwaysOpenDualPaneInNewTab.performClick(nil); alwaysSwitchToNewlyOpenedTab.performClick(nil) }
     func qaToggleSizeUnit() { sizeUnit.selectItem(at: sizeUnit.indexOfSelectedItem == 0 ? 1 : 0); changeSizeUnit(nil) }

@@ -81,9 +81,11 @@ public struct BrowserPreferencesArchive: Codable, Equatable, Sendable {
     public let showCreateShortcut: Bool?
     public let showHomeFavorites: Bool
     public let showHomeVolumes: Bool
+    public let showHomeNetwork: Bool?
     public let showHomeRecent: Bool
     public let homeFavoritesExpanded: Bool?
     public let homeVolumesExpanded: Bool?
+    public let homeNetworkExpanded: Bool?
     public let homeRecentExpanded: Bool?
     public let viewSize: String
     public let syncFolderLayouts: Bool?
@@ -172,9 +174,11 @@ public final class BrowserPreferences {
     public private(set) var showCreateShortcut: Bool
     public private(set) var showHomeFavorites: Bool
     public private(set) var showHomeVolumes: Bool
+    public private(set) var showHomeNetwork: Bool
     public private(set) var showHomeRecent: Bool
     public private(set) var homeFavoritesExpanded: Bool
     public private(set) var homeVolumesExpanded: Bool
+    public private(set) var homeNetworkExpanded: Bool
     public private(set) var homeRecentExpanded: Bool
     public private(set) var viewSize: BrowserViewSize
     public private(set) var syncFolderLayouts: Bool
@@ -259,9 +263,12 @@ public final class BrowserPreferences {
         showCreateShortcut = defaults.object(forKey: "showCreateShortcut") as? Bool ?? true
         showHomeFavorites = defaults.object(forKey: "showHomeFavorites") as? Bool ?? true
         showHomeVolumes = defaults.object(forKey: "showHomeVolumes") as? Bool ?? true
+        showHomeNetwork = defaults.object(forKey: "showHomeNetwork") as? Bool ?? showHomeVolumes
         showHomeRecent = defaults.object(forKey: "showHomeRecent") as? Bool ?? true
         homeFavoritesExpanded = defaults.object(forKey: "homeFavoritesExpanded") as? Bool ?? true
         homeVolumesExpanded = defaults.object(forKey: "homeVolumesExpanded") as? Bool ?? true
+        homeNetworkExpanded = (defaults.object(forKey: "homeNetworkExpanded") as? Bool)
+            ?? (defaults.object(forKey: "homeVolumesExpanded") as? Bool) ?? false
         homeRecentExpanded = defaults.object(forKey: "homeRecentExpanded") as? Bool ?? true
         viewSize = defaults.string(forKey: "viewSize").flatMap(BrowserViewSize.init(rawValue:)) ?? .medium
         sharedFolderLayout = defaults.data(forKey: "sharedFolderLayout").flatMap {
@@ -639,8 +646,8 @@ public final class BrowserPreferences {
             showOpenInNewTab: showOpenInNewTab, showOpenInNewWindow: showOpenInNewWindow, showOpenInNewPane: showOpenInNewPane,
             showEditTagsMenu: showEditTagsMenu,
             showCreateShortcut: showCreateShortcut,
-            showHomeFavorites: showHomeFavorites, showHomeVolumes: showHomeVolumes, showHomeRecent: showHomeRecent,
-            homeFavoritesExpanded: homeFavoritesExpanded, homeVolumesExpanded: homeVolumesExpanded, homeRecentExpanded: homeRecentExpanded,
+            showHomeFavorites: showHomeFavorites, showHomeVolumes: showHomeVolumes, showHomeNetwork: showHomeNetwork, showHomeRecent: showHomeRecent,
+            homeFavoritesExpanded: homeFavoritesExpanded, homeVolumesExpanded: homeVolumesExpanded, homeNetworkExpanded: homeNetworkExpanded, homeRecentExpanded: homeRecentExpanded,
             viewSize: viewSize.rawValue, syncFolderLayouts: syncFolderLayouts, showInfoPane: showInfoPane,
             infoPaneTab: infoPaneTab.rawValue, sharedFolderLayout: sharedFolderLayout,
             appearance: appearance.rawValue, continueLastSession: continueLastSession, sizeUnit: sizeUnit.rawValue,
@@ -732,7 +739,9 @@ public final class BrowserPreferences {
         showEditTagsMenu = archive.showEditTagsMenu ?? true
         showCreateShortcut = archive.showCreateShortcut ?? true
         showHomeFavorites = archive.showHomeFavorites; showHomeVolumes = archive.showHomeVolumes; showHomeRecent = archive.showHomeRecent
+        showHomeNetwork = archive.showHomeNetwork ?? archive.showHomeVolumes
         homeFavoritesExpanded = archive.homeFavoritesExpanded ?? true; homeVolumesExpanded = archive.homeVolumesExpanded ?? true; homeRecentExpanded = archive.homeRecentExpanded ?? true
+        homeNetworkExpanded = archive.homeNetworkExpanded ?? homeVolumesExpanded
         viewSize = size; appearance = importedAppearance; continueLastSession = archive.continueLastSession; sizeUnit = importedSizeUnit
         sharedFolderLayout = archive.sharedFolderLayout
         syncFolderLayouts = archive.syncFolderLayouts == true && sharedFolderLayout != nil
@@ -785,7 +794,9 @@ public final class BrowserPreferences {
         defaults.set(showEditTagsMenu, forKey: "showEditTagsMenu")
         defaults.set(showCreateShortcut, forKey: "showCreateShortcut")
         defaults.set(showHomeFavorites, forKey: "showHomeFavorites"); defaults.set(showHomeVolumes, forKey: "showHomeVolumes"); defaults.set(showHomeRecent, forKey: "showHomeRecent")
+        defaults.set(showHomeNetwork, forKey: "showHomeNetwork")
         defaults.set(homeFavoritesExpanded, forKey: "homeFavoritesExpanded"); defaults.set(homeVolumesExpanded, forKey: "homeVolumesExpanded"); defaults.set(homeRecentExpanded, forKey: "homeRecentExpanded")
+        defaults.set(homeNetworkExpanded, forKey: "homeNetworkExpanded")
         defaults.set(viewSize.rawValue, forKey: "viewSize"); defaults.set(appearance.rawValue, forKey: "appearance"); defaults.set(continueLastSession, forKey: "continueLastSession"); defaults.set(sizeUnit.rawValue, forKey: "sizeUnit")
         defaults.set(openFoldersInNewTab, forKey: "openFoldersInNewTab"); defaults.set(scrollToPreviousFolderOnUp, forKey: "scrollToPreviousFolderOnUp"); defaults.set(showFileExtensionWarning, forKey: "showFileExtensionWarning")
         defaults.set(defaultSortDirectoryPlacement.rawValue, forKey: "defaultSortDirectoryPlacement")
@@ -841,18 +852,23 @@ public final class BrowserPreferences {
         toolbarOrder = BrowserToolbarItem.allCases; hiddenToolbarItems = []
         defaults.removeObject(forKey: "toolbarOrder"); defaults.removeObject(forKey: "hiddenToolbarItems"); changed()
     }
-    public enum HomeSection { case favorites, volumes, recent }
+    public enum HomeSection { case favorites, volumes, network, recent }
     public func setHomeSectionExpanded(_ section: HomeSection, expanded: Bool) {
         let current: Bool
         switch section {
         case .favorites: current = homeFavoritesExpanded
         case .volumes: current = homeVolumesExpanded
+        case .network: current = homeNetworkExpanded
         case .recent: current = homeRecentExpanded
         }
         guard current != expanded else { return }
         switch section {
         case .favorites: homeFavoritesExpanded = expanded; defaults.set(expanded, forKey: "homeFavoritesExpanded")
-        case .volumes: homeVolumesExpanded = expanded; defaults.set(expanded, forKey: "homeVolumesExpanded")
+        case .volumes:
+            // Preserve the network value when the old shared preference changes.
+            defaults.set(homeNetworkExpanded, forKey: "homeNetworkExpanded")
+            homeVolumesExpanded = expanded; defaults.set(expanded, forKey: "homeVolumesExpanded")
+        case .network: homeNetworkExpanded = expanded; defaults.set(expanded, forKey: "homeNetworkExpanded")
         case .recent: homeRecentExpanded = expanded; defaults.set(expanded, forKey: "homeRecentExpanded")
         }
         changed()
@@ -861,6 +877,7 @@ public final class BrowserPreferences {
         switch section {
         case .favorites: setHomeSectionExpanded(section, expanded: !homeFavoritesExpanded)
         case .volumes: setHomeSectionExpanded(section, expanded: !homeVolumesExpanded)
+        case .network: setHomeSectionExpanded(section, expanded: !homeNetworkExpanded)
         case .recent: setHomeSectionExpanded(section, expanded: !homeRecentExpanded)
         }
     }
@@ -869,6 +886,7 @@ public final class BrowserPreferences {
         switch section {
         case .favorites: current = showHomeFavorites
         case .volumes: current = showHomeVolumes
+        case .network: current = showHomeNetwork
         case .recent: current = showHomeRecent
         }
         guard current != visible else { return }
@@ -877,7 +895,10 @@ public final class BrowserPreferences {
     public func toggleSection(_ section: HomeSection) {
         switch section {
         case .favorites: showHomeFavorites.toggle(); defaults.set(showHomeFavorites, forKey: "showHomeFavorites")
-        case .volumes: showHomeVolumes.toggle(); defaults.set(showHomeVolumes, forKey: "showHomeVolumes")
+        case .volumes:
+            defaults.set(showHomeNetwork, forKey: "showHomeNetwork")
+            showHomeVolumes.toggle(); defaults.set(showHomeVolumes, forKey: "showHomeVolumes")
+        case .network: showHomeNetwork.toggle(); defaults.set(showHomeNetwork, forKey: "showHomeNetwork")
         case .recent: showHomeRecent.toggle(); defaults.set(showHomeRecent, forKey: "showHomeRecent")
         }
         changed()
