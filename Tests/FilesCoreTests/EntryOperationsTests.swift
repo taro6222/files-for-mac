@@ -441,6 +441,44 @@ func entryMoveUndoPreservesEditsInsideMovedOrBackedUpFolder(crossVolume: Bool, e
     #expect(EntryOperations.latestUndoMove(journalDirectory: journal) == nil)
 }
 
+@Test(arguments: [false, true])
+func entryMoveUndoRecoversSameVolumeRenameBeforeCheckpoint(occupied: Bool) async throws {
+    let root = try entryFixture()
+    let fm = FileManager.default
+    defer { try? fm.removeItem(at: root) }
+    let journal = root.appendingPathComponent("journal")
+    let destination = root.appendingPathComponent("dest")
+    let source = root.appendingPathComponent("move.txt")
+    let target = destination.appendingPathComponent("move.txt")
+    try fm.createDirectory(at: destination, withIntermediateDirectories: true)
+    try Data("new".utf8).write(to: source)
+    try Data("old".utf8).write(to: target)
+    let move = try await EntryOperations.move([source], to: destination, conflictPolicy: .replace, journalDirectory: journal)
+    #expect(move.state == "completed")
+    let record = try #require(EntryOperations.latestUndoMove(journalDirectory: journal))
+    let item = try #require(record.items.first)
+    #expect(item.backupRestorePending == nil && !item.crossVolume)
+    let backup = try #require(item.backup)
+
+    // Reproduce the filesystem state left by the first rename with the original journal.
+    try fm.moveItem(at: target, to: source)
+    if occupied {
+        try Data("external".utf8).write(to: target)
+        let partial = await EntryOperations.undoMove(record, journalDirectory: journal)
+        #expect(partial.items.map(\.state) == ["conflict"])
+        #expect(try String(contentsOf: target, encoding: .utf8) == "external")
+        #expect(try String(contentsOf: backup, encoding: .utf8) == "old")
+        try fm.removeItem(at: target)
+    }
+    let retry = try #require(EntryOperations.latestUndoMove(journalDirectory: journal))
+    let result = await EntryOperations.undoMove(retry, journalDirectory: journal)
+    #expect(result.state == "completed")
+    #expect(result.journalError == nil)
+    #expect(try String(contentsOf: source, encoding: .utf8) == "new")
+    #expect(try String(contentsOf: target, encoding: .utf8) == "old")
+    #expect(EntryOperations.latestUndoMove(journalDirectory: journal) == nil)
+}
+
 @Test func entryMoveUndoRecognizesBackupPublishedBeforeJournalCompletion() async throws {
     let root = try entryFixture()
     let fm = FileManager.default

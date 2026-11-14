@@ -1040,7 +1040,15 @@ public enum EntryOperations {
             for (index, item) in record.items.enumerated().reversed() {
                 let result: MoveUndoItemResult
                 do {
-                    if item.backupRestorePending == true, let backup = item.backup, let identity = item.backupIdentity,
+                    // A same-volume rename preserves the item's identity. If the
+                    // process stopped before saving the checkpoint, the original
+                    // location can prove that the first half of Undo already ran.
+                    let sourceAlreadyRestored = item.backupRestorePending != true && !item.crossVolume
+                        && item.backup != nil && entryExists(item.source)
+                        && (try? matchesUndoEntry(item.source, identity: item.targetIdentity,
+                                                  snapshot: item.targetSnapshot, fileManager: fm)) == true
+                    if item.backupRestorePending == true || sourceAlreadyRestored,
+                       let backup = item.backup, let identity = item.backupIdentity,
                        !entryExists(backup), entryExists(item.target),
                        try matchesUndoEntry(item.target, identity: identity, snapshot: item.backupSnapshot, fileManager: fm) {
                         results.append(MoveUndoItemResult(source: item.source, target: item.target,
@@ -1053,7 +1061,8 @@ public enum EntryOperations {
                             results.append(MoveUndoItemResult(source: item.source, target: item.target, state: "changed", message: LString.undoBackupChanged)); continue
                         }
                     }
-                    if item.backupRestorePending == true {
+                    if item.backupRestorePending == true || sourceAlreadyRestored {
+                        if sourceAlreadyRestored { pendingBackupRestorations.insert(index) }
                         guard let backup = item.backup, item.backupIdentity != nil else {
                             throw MoveFailure(text: LString.undoBackupChanged)
                         }
