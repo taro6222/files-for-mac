@@ -42,6 +42,11 @@ create_raw_volume FAT32 'MS-DOS FAT32' FILES_TEST_FAT32_VOLUME
 create_raw_volume HFS JHFS+ FILES_TEST_HFS_VOLUME
 export CLANG_MODULE_CACHE_PATH="$PWD/.build/ModuleCache"
 export SWIFT_TMPDIR=/tmp
-swift test --filter mountedVolume \
-  -Xswiftc -load-plugin-library \
-  -Xswiftc /Library/Developer/CommandLineTools/usr/lib/swift/host/plugins/testing/libTestingMacros.dylib
+test_args=(--disable-sandbox --filter mountedVolume)
+if [[ "$(xcode-select -p)" == /Library/Developer/CommandLineTools ]]; then
+  testing_plugin=/Library/Developer/CommandLineTools/usr/lib/swift/host/plugins/testing/libTestingMacros.dylib
+  if [[ -f "$testing_plugin" ]]; then
+    test_args+=(-Xswiftc -load-plugin-library -Xswiftc "$testing_plugin")
+  fi
+fi
+swift test "${test_args[@]}"

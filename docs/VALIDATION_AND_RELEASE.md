@@ -97,7 +97,7 @@ fixture 생성 스크립트는 반복 실행 가능하게 만들고 사용자의
 
 ## 6. CI와 증거 저장
 
-- 변경별: Swift 빌드, Domain·Operations 단위 테스트, 임시 파일 시스템 통합 테스트.
+- 변경별: [macOS CI](verification/m7/INCREMENT_172.md)에서 arm64·x86_64 Swift 빌드와 단위·임시 파일 시스템 통합 테스트.
 - UI 변경: macOS UI 자동화와 스냅샷, 실제 창 수동 검토.
 - provider 변경: capability별 계약 테스트와 오류 주입.
 - 릴리스 후보: 지원 환경 전체 회귀, 교차 볼륨, 네트워크, 성능, 장시간 시험.

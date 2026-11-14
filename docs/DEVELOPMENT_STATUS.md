@@ -8,6 +8,8 @@ M7 출시 검증이 진행 중이다. [유니버설 개발 프리뷰](verificati
 
 ## 이번 구현 단위
 
+macOS 15의 Apple Silicon·Intel에서 단위·볼륨 회귀를 실행하는 GitHub Actions를 구성했다. [macOS CI](verification/m7/INCREMENT_172.md)
+
 외부 환경이 없는 통합 시험을 Swift Testing이 건너뜀으로 표시한다. [통합 시험 상태](verification/m7/INCREMENT_171.md)
 
 폴더 권한 작업 중단을 포함한 유니버설 프리뷰를 갱신하고 설치·교체·복원 및 기동을 확인했다. [프리뷰 검증](verification/m7/PREVIEW_0.1.0.md)
