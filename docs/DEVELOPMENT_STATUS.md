@@ -8,6 +8,8 @@ M7 출시 검증이 진행 중이다. [유니버설 개발 프리뷰](verificati
 
 ## 이번 구현 단위
 
+SMB 사전 검사에서 중단된 단계와 시험 폴더의 경로를 확인할 수 있다. [SMB 중단 진단](verification/m7/INCREMENT_168.md)
+
 SMB 통합 시험 전에 공유의 파일 생성·읽기·이름 변경·삭제 응답을 확인한다. [SMB 사전 검사](verification/m7/INCREMENT_167.md)
 
 권한 시트에서 30,000개 파일 변경을 중단하고 표시 건수와 실제 변경을 대조했다. [AppKit 중간 중단](verification/m7/INCREMENT_166.md)

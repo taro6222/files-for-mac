@@ -9,8 +9,10 @@ import os
 import signal
 import subprocess
 import sys
+import uuid
 
 volume = os.path.abspath(sys.argv[1])
+probe = os.path.join(volume, f".files-smb-probe-{uuid.uuid4()}")
 try:
     timeout = int(os.environ.get("FILES_SMB_TIMEOUT_SECONDS", "180"))
     if timeout <= 0:
@@ -22,6 +24,7 @@ except ValueError:
 # Keep the deadline outside the processes making filesystem calls.
 command = r'''
 volume=$1
+probe=$2
 echo "SMB verification: inspecting mount" >&2
 if [[ ! -d "$volume" ]]; then
   echo "SMB path is not a directory: $volume" >&2
@@ -51,24 +54,32 @@ if ! /bin/ls -A "$volume" >/dev/null; then
   exit 74
 fi
 echo "SMB verification: probing create, read, rename, and delete" >&2
-if ! python3 - "$volume" <<'PROBE'
+if ! python3 - "$probe" <<'PROBE'
 from pathlib import Path
 import sys
-import tempfile
 
-with tempfile.TemporaryDirectory(prefix=".files-smb-probe-", dir=sys.argv[1]) as directory:
-    folder = Path(directory)
-    source = folder / "probe.txt"
-    destination = folder / "renamed.txt"
-    payload = b"Files for Mac SMB preflight\n"
+folder = Path(sys.argv[1])
+source = folder / "probe.txt"
+destination = folder / "renamed.txt"
+payload = b"Files for Mac SMB preflight\n"
+print(f"SMB verification: creating probe directory {str(folder)!r}", file=sys.stderr, flush=True)
+folder.mkdir(mode=0o700)
+try:
+    print("SMB verification: writing probe", file=sys.stderr, flush=True)
     with source.open("xb") as stream:
         stream.write(payload)
+    print("SMB verification: reading probe", file=sys.stderr, flush=True)
     if source.read_bytes() != payload:
         raise OSError("SMB probe read did not match the written bytes")
+    print("SMB verification: renaming probe", file=sys.stderr, flush=True)
     source.rename(destination)
     if destination.read_bytes() != payload or source.exists():
         raise OSError("SMB probe rename did not preserve the expected result")
-    destination.unlink()
+finally:
+    print("SMB verification: removing probe", file=sys.stderr, flush=True)
+    source.unlink(missing_ok=True)
+    destination.unlink(missing_ok=True)
+    folder.rmdir()
 PROBE
 then
   echo "Could not complete file operations on SMB share: $volume" >&2
@@ -84,7 +95,7 @@ exec swift test --filter mountedSMBCopyMoveUndoRoundTrip \
 '''
 
 process = subprocess.Popen(
-    ["/bin/bash", "-euo", "pipefail", "-c", command, "verify-smb-volume", volume],
+    ["/bin/bash", "-euo", "pipefail", "-c", command, "verify-smb-volume", volume, probe],
     cwd=sys.argv[2],
     start_new_session=True,
 )
