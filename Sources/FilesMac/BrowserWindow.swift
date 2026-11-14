@@ -259,7 +259,12 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         split.setHoldingPriority(.defaultLow, forSubviewAt: 1)
         split.setPosition(220, ofDividerAt: 0)
 
-        let header = NSStackView(); header.orientation = .horizontal; header.spacing = 10
+        let header = TabScrollStackView(); header.orientation = .horizontal; header.spacing = 10
+        header.onTabScroll = { [weak self] deltaX, deltaY in
+            guard let self, let direction = TabScrollDirection.resolve(deltaX: deltaX, deltaY: deltaY, reversed: self.preferences.reverseTabScrollDirection),
+                  let delegate = NSApp.delegate as? AppDelegate else { return }
+            direction == .next ? delegate.nextTab(nil) : delegate.previousTab(nil)
+        }
         header.edgeInsets = NSEdgeInsets(top: 12, left: 18, bottom: 10, right: 18)
         let brand = NSImageView(image: NSImage(systemSymbolName: "folder.fill", accessibilityDescription: nil)!)
         brand.contentTintColor = .systemBlue; brand.widthAnchor.constraint(equalToConstant: 22).isActive = true
@@ -2011,6 +2016,14 @@ private final class BrowserFileTable: NSTableView, NSMenuItemValidation {
     }
 }
 
+private final class TabScrollStackView: NSStackView {
+    var onTabScroll: ((Double, Double) -> Void)?
+    override func scrollWheel(with event: NSEvent) {
+        guard event.phase == .began || event.phase.isEmpty else { return }
+        onTabScroll?(event.scrollingDeltaX, event.scrollingDeltaY)
+    }
+}
+
 private func capacityDescription(_ volume: MountedVolume) -> String {
     guard let total = volume.totalCapacity, let available = volume.availableCapacity else { return L("용량 정보 없음", "Capacity unavailable") }
     var text = ByteCountFormatter.string(fromByteCount: available, countStyle: .file) + L(" 사용 가능 / ", " free of ") + ByteCountFormatter.string(fromByteCount: total, countStyle: .file)
@@ -2763,12 +2776,13 @@ extension BrowserWindow {
                 let calculateFolderSizesBefore = delegate.qaGeneralCalculateFolderSizes
                 let showThumbnailsBefore = delegate.qaGeneralShowThumbnails
                 let doubleClickToGoUpBefore = delegate.qaGeneralDoubleClickToGoUp
+                let reverseTabScrollBefore = delegate.qaGeneralReverseTabScrollDirection
                 let startupTabBefore = delegate.qaGeneralOpenNewTabOnStartup
                 let newTabPoliciesBefore = delegate.qaGeneralNewTabPolicies
                 let revealBefore = delegate.qaGeneralScrollToPreviousFolderOnUp
                 let extensionWarningBefore = delegate.qaGeneralShowFileExtensionWarning
                 let contextMenuBefore = delegate.qaGeneralContextMenuStates
-                delegate.qaToggleGeneralWidgets(); delegate.qaToggleGeneralOpenNewTabOnStartup(); delegate.qaToggleGeneralNewTabPolicies(); delegate.qaToggleGeneralSizeUnit(); delegate.qaCycleGeneralDefaultSortDirectoryPlacement(); delegate.qaToggleGeneralAutoSizeColumnsInDetailsLayout(); delegate.qaToggleGeneralCalculateFolderSizes(); delegate.qaToggleGeneralShowThumbnails(); delegate.qaToggleGeneralDoubleClickToGoUp(); delegate.qaToggleGeneralOpenFoldersInNewTab(); delegate.qaToggleGeneralScrollToPreviousFolderOnUp(); delegate.qaToggleGeneralShowFileExtensionWarning(); delegate.qaToggleGeneralContextMenuItems(); let widgetsAfter = delegate.qaGeneralWidgetStates
+                delegate.qaToggleGeneralWidgets(); delegate.qaToggleGeneralOpenNewTabOnStartup(); delegate.qaToggleGeneralNewTabPolicies(); delegate.qaToggleGeneralSizeUnit(); delegate.qaCycleGeneralDefaultSortDirectoryPlacement(); delegate.qaToggleGeneralAutoSizeColumnsInDetailsLayout(); delegate.qaToggleGeneralCalculateFolderSizes(); delegate.qaToggleGeneralShowThumbnails(); delegate.qaToggleGeneralDoubleClickToGoUp(); delegate.qaToggleGeneralReverseTabScrollDirection(); delegate.qaToggleGeneralOpenFoldersInNewTab(); delegate.qaToggleGeneralScrollToPreviousFolderOnUp(); delegate.qaToggleGeneralShowFileExtensionWarning(); delegate.qaToggleGeneralContextMenuItems(); let widgetsAfter = delegate.qaGeneralWidgetStates
                 let contextMenuAfter = delegate.qaGeneralContextMenuStates
                 let contextMenusToggled = contextMenuBefore?.count == contextMenuAfter?.count
                     && zip(contextMenuBefore ?? [], contextMenuAfter ?? []).allSatisfy { $0 != $1 }
@@ -2780,6 +2794,7 @@ extension BrowserWindow {
                     && delegate.qaGeneralCalculateFolderSizes != calculateFolderSizesBefore
                     && delegate.qaGeneralShowThumbnails != showThumbnailsBefore
                     && delegate.qaGeneralDoubleClickToGoUp != doubleClickToGoUpBefore
+                    && delegate.qaGeneralReverseTabScrollDirection != reverseTabScrollBefore
                     && delegate.qaGeneralOpenNewTabOnStartup != startupTabBefore
                     && delegate.qaGeneralNewTabPolicies?.0 != newTabPoliciesBefore?.0
                     && delegate.qaGeneralNewTabPolicies?.1 != newTabPoliciesBefore?.1
@@ -2831,7 +2846,7 @@ extension BrowserWindow {
                 controller.toggleDualPane(nil); checks["toggleDualPaneOpens"] = controller.workspaceSnapshot().isSplit
                 controller.closeSecondaryPane(nil)
                 try capture("general-settings", view: delegate.qaGeneralSettingsContentView)
-                delegate.qaToggleGeneralWidgets(); delegate.qaToggleGeneralOpenNewTabOnStartup(); delegate.qaToggleGeneralNewTabPolicies(); delegate.qaToggleGeneralSizeUnit(); delegate.qaCycleGeneralDefaultSortDirectoryPlacement(); delegate.qaToggleGeneralAutoSizeColumnsInDetailsLayout(); delegate.qaToggleGeneralCalculateFolderSizes(); delegate.qaToggleGeneralShowThumbnails(); delegate.qaToggleGeneralDoubleClickToGoUp(); delegate.qaToggleGeneralOpenFoldersInNewTab(); delegate.qaToggleGeneralScrollToPreviousFolderOnUp(); delegate.qaToggleGeneralShowFileExtensionWarning(); delegate.qaToggleGeneralContextMenuItems(); delegate.qaGeneralSettingsContentView?.window?.close(); window.makeKeyAndOrderFront(nil)
+                delegate.qaToggleGeneralWidgets(); delegate.qaToggleGeneralOpenNewTabOnStartup(); delegate.qaToggleGeneralNewTabPolicies(); delegate.qaToggleGeneralSizeUnit(); delegate.qaCycleGeneralDefaultSortDirectoryPlacement(); delegate.qaToggleGeneralAutoSizeColumnsInDetailsLayout(); delegate.qaToggleGeneralCalculateFolderSizes(); delegate.qaToggleGeneralShowThumbnails(); delegate.qaToggleGeneralDoubleClickToGoUp(); delegate.qaToggleGeneralReverseTabScrollDirection(); delegate.qaToggleGeneralOpenFoldersInNewTab(); delegate.qaToggleGeneralScrollToPreviousFolderOnUp(); delegate.qaToggleGeneralShowFileExtensionWarning(); delegate.qaToggleGeneralContextMenuItems(); delegate.qaGeneralSettingsContentView?.window?.close(); window.makeKeyAndOrderFront(nil)
                 delegate.showArchiveCapabilities(nil); try await Task.sleep(for: .milliseconds(50))
                 checks["archiveCapabilitiesWindow"] = delegate.qaArchiveCapabilitiesVisible
                 try capture("archive-capabilities", view: delegate.qaArchiveCapabilitiesContentView)

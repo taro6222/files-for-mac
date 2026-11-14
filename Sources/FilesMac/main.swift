@@ -552,6 +552,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     func qaToggleGeneralShowThumbnails() { generalSettingsWindow?.qaToggleShowThumbnails() }
     var qaGeneralDoubleClickToGoUp: Bool? { generalSettingsWindow?.qaDoubleClickToGoUp }
     func qaToggleGeneralDoubleClickToGoUp() { generalSettingsWindow?.qaToggleDoubleClickToGoUp() }
+    var qaGeneralReverseTabScrollDirection: Bool? { generalSettingsWindow?.qaReverseTabScrollDirection }
+    func qaToggleGeneralReverseTabScrollDirection() { generalSettingsWindow?.qaToggleReverseTabScrollDirection() }
     var qaGeneralOpenFoldersInNewTab: Bool? { generalSettingsWindow?.qaOpenFoldersInNewTab }
     func qaToggleGeneralOpenFoldersInNewTab() { generalSettingsWindow?.qaToggleOpenFoldersInNewTab() }
     var qaGeneralScrollToPreviousFolderOnUp: Bool? { generalSettingsWindow?.qaScrollToPreviousFolderOnUp }

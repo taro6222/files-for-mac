@@ -18,6 +18,7 @@ final class GeneralSettingsWindow: NSWindowController {
     private let calculateFolderSizes = NSButton(checkboxWithTitle: L("폴더 크기 계산", "Calculate Folder Sizes"), target: nil, action: nil)
     private let showThumbnails = NSButton(checkboxWithTitle: L("썸네일 표시", "Show Thumbnails"), target: nil, action: nil)
     private let doubleClickToGoUp = NSButton(checkboxWithTitle: L("빈 공간을 이중 클릭하여 상위 폴더로 이동", "Double-click Empty Space to Go Up"), target: nil, action: nil)
+    private let reverseTabScrollDirection = NSButton(checkboxWithTitle: L("탭 스크롤 방향 반전", "Reverse Tab Scroll Direction"), target: nil, action: nil)
     private let openFoldersInNewTab = NSButton(checkboxWithTitle: L("폴더를 새 탭에서 열기", "Open Folders in New Tabs"), target: nil, action: nil)
     private let scrollToPreviousFolderOnUp = NSButton(checkboxWithTitle: L("상위 이동 시 이전 폴더 표시", "Reveal Previous Folder When Going Up"), target: nil, action: nil)
     private let showFileExtensionWarning = NSButton(checkboxWithTitle: L("파일 확장자 변경 경고", "Warn When Changing File Extensions"), target: nil, action: nil)
@@ -60,6 +61,7 @@ final class GeneralSettingsWindow: NSWindowController {
         configure(calculateFolderSizes, action: #selector(changeCalculateFolderSizes(_:))); stack.addArrangedSubview(calculateFolderSizes)
         configure(showThumbnails, action: #selector(changeShowThumbnails(_:))); stack.addArrangedSubview(showThumbnails)
         configure(doubleClickToGoUp, action: #selector(changeDoubleClickToGoUp(_:))); stack.addArrangedSubview(doubleClickToGoUp)
+        configure(reverseTabScrollDirection, action: #selector(changeReverseTabScrollDirection(_:))); stack.addArrangedSubview(reverseTabScrollDirection)
         configure(openFoldersInNewTab, action: #selector(changeOpenFoldersInNewTab(_:))); stack.addArrangedSubview(openFoldersInNewTab)
         configure(scrollToPreviousFolderOnUp, action: #selector(changeScrollToPreviousFolderOnUp(_:))); stack.addArrangedSubview(scrollToPreviousFolderOnUp)
         configure(showFileExtensionWarning, action: #selector(changeShowFileExtensionWarning(_:))); stack.addArrangedSubview(showFileExtensionWarning)
@@ -95,6 +97,7 @@ final class GeneralSettingsWindow: NSWindowController {
         calculateFolderSizes.state = preferences.calculateFolderSizes ? .on : .off
         showThumbnails.state = preferences.showThumbnails ? .on : .off
         doubleClickToGoUp.state = preferences.doubleClickToGoUp ? .on : .off
+        reverseTabScrollDirection.state = preferences.reverseTabScrollDirection ? .on : .off
         calculateFolderSizes.state = preferences.calculateFolderSizes ? .on : .off
         openFoldersInNewTab.state = preferences.openFoldersInNewTab ? .on : .off
         scrollToPreviousFolderOnUp.state = preferences.scrollToPreviousFolderOnUp ? .on : .off
@@ -131,6 +134,7 @@ final class GeneralSettingsWindow: NSWindowController {
     @objc private func changeCalculateFolderSizes(_ sender: Any?) { preferences.setCalculateFolderSizes(calculateFolderSizes.state == .on) }
     @objc private func changeShowThumbnails(_ sender: Any?) { preferences.setShowThumbnails(showThumbnails.state == .on) }
     @objc private func changeDoubleClickToGoUp(_ sender: Any?) { preferences.setDoubleClickToGoUp(doubleClickToGoUp.state == .on) }
+    @objc private func changeReverseTabScrollDirection(_ sender: Any?) { preferences.setReverseTabScrollDirection(reverseTabScrollDirection.state == .on) }
     @objc private func changeOpenFoldersInNewTab(_ sender: Any?) { preferences.setOpenFoldersInNewTab(openFoldersInNewTab.state == .on) }
     @objc private func changeScrollToPreviousFolderOnUp(_ sender: Any?) { preferences.setScrollToPreviousFolderOnUp(scrollToPreviousFolderOnUp.state == .on) }
     @objc private func changeShowFileExtensionWarning(_ sender: Any?) { preferences.setShowFileExtensionWarning(showFileExtensionWarning.state == .on) }
@@ -159,6 +163,7 @@ final class GeneralSettingsWindow: NSWindowController {
     var qaCalculateFolderSizes: Bool { preferences.calculateFolderSizes }
     var qaShowThumbnails: Bool { preferences.showThumbnails }
     var qaDoubleClickToGoUp: Bool { preferences.doubleClickToGoUp }
+    var qaReverseTabScrollDirection: Bool { preferences.reverseTabScrollDirection }
     var qaOpenFoldersInNewTab: Bool { preferences.openFoldersInNewTab }
     var qaScrollToPreviousFolderOnUp: Bool { preferences.scrollToPreviousFolderOnUp }
     var qaShowFileExtensionWarning: Bool { preferences.showFileExtensionWarning }
@@ -175,6 +180,7 @@ final class GeneralSettingsWindow: NSWindowController {
     func qaToggleCalculateFolderSizes() { calculateFolderSizes.performClick(nil) }
     func qaToggleShowThumbnails() { showThumbnails.performClick(nil) }
     func qaToggleDoubleClickToGoUp() { doubleClickToGoUp.performClick(nil) }
+    func qaToggleReverseTabScrollDirection() { reverseTabScrollDirection.performClick(nil) }
     func qaToggleOpenFoldersInNewTab() { openFoldersInNewTab.performClick(nil) }
     func qaToggleScrollToPreviousFolderOnUp() { scrollToPreviousFolderOnUp.performClick(nil) }
     func qaToggleShowFileExtensionWarning() { showFileExtensionWarning.performClick(nil) }

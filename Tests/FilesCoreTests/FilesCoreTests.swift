@@ -622,6 +622,18 @@ private struct DelayedLoader: DirectoryLoading {
     #expect(notifications == 1); preferences.removeObserver(token)
 }
 
+@Test @MainActor func reverseTabScrollDirectionPersistsAndPolicyInverts() {
+    let suite = "tab-scroll-preference-tests-\(UUID())", defaults = UserDefaults(suiteName: suite)!
+    defer { defaults.removePersistentDomain(forName: suite) }
+    let preferences = BrowserPreferences(defaults: defaults, initialFavorites: [])
+    #expect(!preferences.reverseTabScrollDirection)
+    #expect(TabScrollDirection.resolve(deltaX: -4, deltaY: 1, reversed: false) == .next)
+    #expect(TabScrollDirection.resolve(deltaX: -4, deltaY: 1, reversed: true) == .previous)
+    #expect(TabScrollDirection.resolve(deltaX: 0.1, deltaY: 0.1, reversed: false) == nil)
+    preferences.setReverseTabScrollDirection(true)
+    #expect(BrowserPreferences(defaults: defaults, initialFavorites: []).reverseTabScrollDirection)
+}
+
 @Test func folderSizeCalculatorCountsNestedRegularFilesAndSkipsSymbolicLinks() throws {
     let root = FileManager.default.temporaryDirectory.appendingPathComponent("folder-size-\(UUID())", isDirectory: true)
     defer { try? FileManager.default.removeItem(at: root) }
@@ -708,6 +720,7 @@ private struct DelayedLoader: DirectoryLoading {
     source.setCalculateFolderSizes(true)
     source.setShowThumbnails(false)
     source.setDoubleClickToGoUp(false)
+    source.setReverseTabScrollDirection(true)
     source.setShowCreatedColumn(true); source.setShowDateColumn(false); source.setShowTypeColumn(false); source.setShowSizeColumn(false); source.setShowGitStatusColumn(true)
     source.setShowFileTagColumn(true); source.setShowPathColumn(true)
     source.setShowCompressionOptions(false); source.setShowOpenTerminal(false); source.setShowCreateFolderWithSelection(false)
@@ -736,6 +749,7 @@ private struct DelayedLoader: DirectoryLoading {
     #expect(destination.calculateFolderSizes)
     #expect(!destination.showThumbnails)
     #expect(!destination.doubleClickToGoUp)
+    #expect(destination.reverseTabScrollDirection)
     #expect(destination.showCreatedColumn && !destination.showDateColumn && !destination.showTypeColumn && !destination.showSizeColumn && destination.showGitStatusColumn)
     #expect(destination.showFileTagColumn && destination.showPathColumn)
     #expect(!destination.showCompressionOptions && !destination.showOpenTerminal && !destination.showCreateFolderWithSelection)
