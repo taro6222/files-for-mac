@@ -23,6 +23,7 @@ final class GeneralSettingsWindow: NSWindowController {
     private let scrollToPreviousFolderOnUp = NSButton(checkboxWithTitle: L("상위 이동 시 이전 폴더 표시", "Reveal Previous Folder When Going Up"), target: nil, action: nil)
     private let showFileExtensionWarning = NSButton(checkboxWithTitle: L("파일 확장자 변경 경고", "Warn When Changing File Extensions"), target: nil, action: nil)
     private let showCompressionOptions = NSButton(checkboxWithTitle: L("컨텍스트 메뉴에 압축 옵션 표시", "Show Compression Options in Context Menu"), target: nil, action: nil)
+    private let showFlattenOptions = NSButton(checkboxWithTitle: L("폴더 펼치기 옵션 표시", "Show Flatten Folder Option"), target: nil, action: nil)
     private let showOpenTerminal = NSButton(checkboxWithTitle: L("컨텍스트 메뉴에 터미널 열기 표시", "Show Open in Terminal in Context Menu"), target: nil, action: nil)
     private let showCreateFolderWithSelection = NSButton(checkboxWithTitle: L("컨텍스트 메뉴에 선택 항목으로 폴더 만들기 표시", "Show New Folder with Selection in Context Menu"), target: nil, action: nil)
     private let showPinToSidebar = NSButton(checkboxWithTitle: L("컨텍스트 메뉴에 사이드바 고정 표시", "Show Pin to Sidebar in Context Menu"), target: nil, action: nil)
@@ -67,6 +68,8 @@ final class GeneralSettingsWindow: NSWindowController {
         configure(showFileExtensionWarning, action: #selector(changeShowFileExtensionWarning(_:))); stack.addArrangedSubview(showFileExtensionWarning)
         let contextTitle = NSTextField(labelWithString: L("컨텍스트 메뉴", "Context Menu")); contextTitle.font = .systemFont(ofSize: 14, weight: .semibold); stack.addArrangedSubview(contextTitle)
         configure(showCompressionOptions, action: #selector(changeShowCompressionOptions(_:))); stack.addArrangedSubview(showCompressionOptions)
+        configure(showFlattenOptions, action: #selector(changeShowFlattenOptions(_:)))
+        stack.addArrangedSubview(showFlattenOptions)
         configure(showOpenTerminal, action: #selector(changeShowOpenTerminal(_:))); stack.addArrangedSubview(showOpenTerminal)
         configure(showCreateFolderWithSelection, action: #selector(changeShowCreateFolderWithSelection(_:))); stack.addArrangedSubview(showCreateFolderWithSelection)
         configure(showPinToSidebar, action: #selector(changeShowPinToSidebar(_:))); stack.addArrangedSubview(showPinToSidebar)
@@ -103,6 +106,7 @@ final class GeneralSettingsWindow: NSWindowController {
         scrollToPreviousFolderOnUp.state = preferences.scrollToPreviousFolderOnUp ? .on : .off
         showFileExtensionWarning.state = preferences.showFileExtensionWarning ? .on : .off
         showCompressionOptions.state = preferences.showCompressionOptions ? .on : .off
+        showFlattenOptions.state = preferences.showFlattenOptions ? .on : .off
         showOpenTerminal.state = preferences.showOpenTerminal ? .on : .off
         showCreateFolderWithSelection.state = preferences.showCreateFolderWithSelection ? .on : .off
         showPinToSidebar.state = preferences.showPinToSidebar ? .on : .off
@@ -139,6 +143,7 @@ final class GeneralSettingsWindow: NSWindowController {
     @objc private func changeScrollToPreviousFolderOnUp(_ sender: Any?) { preferences.setScrollToPreviousFolderOnUp(scrollToPreviousFolderOnUp.state == .on) }
     @objc private func changeShowFileExtensionWarning(_ sender: Any?) { preferences.setShowFileExtensionWarning(showFileExtensionWarning.state == .on) }
     @objc private func changeShowCompressionOptions(_ sender: Any?) { preferences.setShowCompressionOptions(showCompressionOptions.state == .on) }
+    @objc private func changeShowFlattenOptions(_ sender: Any?) { preferences.setShowFlattenOptions(showFlattenOptions.state == .on) }
     @objc private func changeShowOpenTerminal(_ sender: Any?) { preferences.setShowOpenTerminal(showOpenTerminal.state == .on) }
     @objc private func changeShowCreateFolderWithSelection(_ sender: Any?) { preferences.setShowCreateFolderWithSelection(showCreateFolderWithSelection.state == .on) }
     @objc private func changeShowPinToSidebar(_ sender: Any?) { preferences.setShowPinToSidebar(showPinToSidebar.state == .on) }

@@ -408,6 +408,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         let filter = edit.addItem(withTitle: L("현재 폴더 필터", "Filter Current Folder"), action: #selector(BrowserWindow.toggleFilterHeader(_:)), keyEquivalent: "f")
         filter.keyEquivalentModifierMask = [.command, .shift]
         edit.addItem(withTitle: L("선택 항목을 임시 모음에 추가", "Add Selection to Shelf"), action: #selector(BrowserWindow.addSelectionToShelf(_:)), keyEquivalent: "")
+        file.addItem(withTitle: L("폴더 펼치기…", "Flatten Folder…"), action: #selector(BrowserWindow.flattenFolder(_:)), keyEquivalent: "")
         let goItem = NSMenuItem(); goItem.title = L("이동", "Go"); menu.addItem(goItem)
         let go = NSMenu(title: goItem.title); goItem.submenu = go
         go.addItem(withTitle: L("시스템 저장 공간 설정 열기", "Open System Storage Settings"),

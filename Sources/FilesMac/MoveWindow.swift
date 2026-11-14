@@ -15,6 +15,7 @@ final class MoveWindow: NSWindowController, NSWindowDelegate {
     private let close = NSButton(title: L("취소", "Cancel"), target: nil, action: #selector(cancelMove(_:)))
 
     static func start(sources: [URL], destination: URL, conflictPolicy: MoveConflictPolicy = .skip,
+                      flattenPlan: FolderFlattenPlan? = nil,
                       completion: @escaping @MainActor () -> Void) {
         guard !isRunning else { return }
         let controller = MoveWindow(sources: sources, destination: destination, conflictPolicy: conflictPolicy)
@@ -26,9 +27,16 @@ final class MoveWindow: NSWindowController, NSWindowDelegate {
             .appendingPathComponent("operations")
         Task { [controller] in
             do {
-                let report = try await EntryOperations.move(sources, to: destination, conflictPolicy: conflictPolicy,
-                    journalDirectory: journals, cancellation: controller.cancellation) { [weak controller] update in
+                let progress: @Sendable (MoveProgress) -> Void = { [weak controller] update in
                     Task { @MainActor in controller?.update(update) }
+                }
+                let report: MoveOperationResult
+                if let flattenPlan {
+                    report = try await EntryOperations.flatten(flattenPlan, journalDirectory: journals,
+                        cancellation: controller.cancellation, progress: progress)
+                } else {
+                    report = try await EntryOperations.move(sources, to: destination, conflictPolicy: conflictPolicy,
+                        journalDirectory: journals, cancellation: controller.cancellation, progress: progress)
                 }
                 await MainActor.run { controller.finish(report) }
             } catch {

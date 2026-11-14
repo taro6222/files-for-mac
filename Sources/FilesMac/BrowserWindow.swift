@@ -503,6 +503,8 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         systemStorage.target = self
         let copy = menu.addItem(withTitle: L("선택 항목 복사…", "Copy Selection To…"), action: #selector(copySelection(_:)), keyEquivalent: ""); copy.target = self
         let move = menu.addItem(withTitle: L("선택 항목 이동…", "Move Selection To…"), action: #selector(moveSelection(_:)), keyEquivalent: ""); move.target = self
+        let flatten = menu.addItem(withTitle: L("폴더 펼치기…", "Flatten Folder…"), action: #selector(flattenFolder(_:)), keyEquivalent: "")
+        flatten.target = self
         let copyItemPath = menu.addItem(withTitle: L("선택 항목 경로 복사", "Copy Selected Paths"), action: #selector(copyItemPath(_:)), keyEquivalent: ""); copyItemPath.target = self
         let copyItemPathQuoted = menu.addItem(withTitle: L("선택 항목 경로 따옴표로 복사", "Copy Selected Paths with Quotes"), action: #selector(copyItemPathWithQuotes(_:)), keyEquivalent: ""); copyItemPathQuoted.target = self
         let copyCurrentPath = menu.addItem(withTitle: L("현재 폴더 경로 복사", "Copy Current Folder Path"), action: #selector(copyCurrentPath(_:)), keyEquivalent: ""); copyCurrentPath.target = self
@@ -1883,6 +1885,42 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
             self?.prepareCopy(sources: sources, destination: destination)
         }
     }
+    private var flattenCandidate: FileItem? {
+        guard preferences.showFlattenOptions, !activeModel.isLoading, !fileOperationIsRunning,
+              activeSelectedItems.count == 1, let item = activeSelectedItems.first,
+              item.isBrowsable, !item.isSymbolicLink else { return nil }
+        return item
+    }
+    @objc func flattenFolder(_ sender: Any?) {
+        guard let item = flattenCandidate, let window else { return }
+        let targetModel = activeModel
+        Task { [weak self] in
+            guard let self else { return }
+            do {
+                let plan = try await FolderFlattenPlan.make(for: item.url)
+                guard self.window?.isVisible == true, !self.fileOperationIsRunning else { return }
+                guard !plan.sources.isEmpty else {
+                    self.showEntryError(L("상위로 옮길 하위 항목이 없습니다.", "There are no nested items to move."))
+                    return
+                }
+                let alert = NSAlert()
+                alert.messageText = L("폴더 펼치기", "Flatten Folder")
+                alert.informativeText = L("하위 항목 \(plan.sources.count)개를 아래 폴더로 옮깁니다. 이름이 겹치는 항목은 건너뛰며 폴더 구조는 유지합니다.",
+                                          "Move \(plan.sources.count) nested items into the folder below. Name conflicts are skipped and the folder structure is retained.")
+                    + "\n\n" + plan.destination.path
+                alert.addButton(withTitle: L("펼치기", "Flatten"))
+                alert.addButton(withTitle: L("취소", "Cancel"))
+                alert.beginSheetModal(for: window) { [weak self] response in
+                    guard response == .alertFirstButtonReturn, let self, !self.fileOperationIsRunning else { return }
+                    MoveWindow.start(sources: plan.sources, destination: plan.destination, flattenPlan: plan) {
+                        targetModel.reload()
+                    }
+                }
+            } catch {
+                self.showEntryError(error.localizedDescription)
+            }
+        }
+    }
     @objc func moveSelection(_ sender: Any?) {
         guard canMoveSelection else { return }
         guard let window else { return }
@@ -2514,6 +2552,7 @@ extension BrowserWindow {
         table.tableColumn(withIdentifier: .init("path"))?.isHidden = !preferences.showPathColumn
     }
     private func applyContextMenuVisibility() {
+        table.menu?.items.first { $0.action == #selector(flattenFolder(_:)) }?.isHidden = !preferences.showFlattenOptions
         compressionMenuItems.forEach { $0.isHidden = !preferences.showCompressionOptions }
         openTerminalMenuItem?.isHidden = !preferences.showOpenTerminal
         createFolderWithSelectionMenuItem?.isHidden = !preferences.showCreateFolderWithSelection
@@ -2780,6 +2819,7 @@ extension BrowserWindow {
         case #selector(restoreSelection(_:)): return canRestoreSelection
         case #selector(permanentlyDeleteSelection(_:)): return canPermanentDeleteSelection
         case #selector(moveSelection(_:)): return canMoveSelection
+        case #selector(flattenFolder(_:)): return flattenCandidate != nil
         case #selector(createFolder(_:)): return activeModel.location != nil && !activeModel.isLoading && !Self.entryOperationRunning && !CopyWindow.isRunning
         case #selector(createFile(_:)): return activeModel.location != nil && !activeModel.isLoading && !Self.entryOperationRunning
         case #selector(createFolderFromSelection(_:)): return activeModel.location != nil && !activeModel.isLoading && !activeSelectedItems.isEmpty && !Self.entryOperationRunning && !MoveWindow.isRunning
@@ -3659,6 +3699,19 @@ extension BrowserWindow {
                 #selector(sortMixed(_:))].allSatisfy { action in paletteEntries.contains { $0.item.action == action } }
             controller.sortByName(nil); controller.sortFoldersFirst(nil)
             try capture("files-top")
+            if let folderRow = controller.detailRows.indices.first(where: {
+                detailItem(at: $0, in: controller.detailRows)?.url.path == gridFolder.path
+            }) {
+                let menu = NSMenuItem(title: "", action: #selector(flattenFolder(_:)), keyEquivalent: "")
+                controller.table.selectRowIndexes(IndexSet(integer: folderRow), byExtendingSelection: false)
+                let hiddenByDefault = !controller.validateMenuItem(menu)
+                preferences.setShowFlattenOptions(true)
+                let folderEnabled = controller.validateMenuItem(menu)
+                controller.table.selectRowIndexes(IndexSet(integer: 9_999), byExtendingSelection: false)
+                checks["flattenFolderMenu"] = hiddenByDefault && folderEnabled && !controller.validateMenuItem(menu)
+                    && paletteEntries.contains { $0.item.action == #selector(flattenFolder(_:)) }
+                preferences.setShowFlattenOptions(false)
+            } else { checks["flattenFolderMenu"] = false }
             controller.table.selectRowIndexes(IndexSet(integer: 9_999), byExtendingSelection: false)
             let scrollStart = ContinuousClock.now
             controller.table.scrollRowToVisible(9_999)

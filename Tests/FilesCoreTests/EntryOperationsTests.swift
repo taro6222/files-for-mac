@@ -1,5 +1,48 @@
 import Foundation
 import Testing
+
+@Test func flattenMovesNestedEntriesWithoutReplacingAndSupportsUndo() async throws {
+    let fm = FileManager.default
+    let temporary = fm.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    defer { try? fm.removeItem(at: temporary) }
+    let root = temporary.appendingPathComponent("root")
+    let child = root.appendingPathComponent("child")
+    let journals = temporary.appendingPathComponent("journals")
+    try fm.createDirectory(at: child, withIntermediateDirectories: true)
+    try Data("keep".utf8).write(to: root.appendingPathComponent("conflict.txt"))
+    try Data("nested".utf8).write(to: child.appendingPathComponent("conflict.txt"))
+    try Data("move".utf8).write(to: child.appendingPathComponent("unique.txt"))
+    try fm.createSymbolicLink(at: child.appendingPathComponent("loop"), withDestinationURL: root)
+    let plan = try await FolderFlattenPlan.make(for: root)
+    #expect(plan.sources.map(\.lastPathComponent) == ["conflict.txt", "loop", "unique.txt"])
+    let report = try await EntryOperations.flatten(plan, journalDirectory: journals)
+    #expect(report.items.map(\.state) == ["conflict", "completed", "completed"])
+    #expect(try Data(contentsOf: root.appendingPathComponent("conflict.txt")) == Data("keep".utf8))
+    #expect(try Data(contentsOf: child.appendingPathComponent("conflict.txt")) == Data("nested".utf8))
+    #expect(fm.fileExists(atPath: root.appendingPathComponent("unique.txt").path))
+    let record = try #require(EntryOperations.latestUndoMove(journalDirectory: journals))
+    let undo = await EntryOperations.undoMove(record, journalDirectory: journals)
+    #expect(undo.state == "completed")
+    #expect(fm.fileExists(atPath: child.appendingPathComponent("unique.txt").path))
+}
+
+@Test func flattenRejectsReplacedSources() async throws {
+    let fm = FileManager.default
+    let temporary = fm.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    defer { try? fm.removeItem(at: temporary) }
+    let root = temporary.appendingPathComponent("root")
+    let child = root.appendingPathComponent("child")
+    try fm.createDirectory(at: child, withIntermediateDirectories: true)
+    let file = child.appendingPathComponent("file")
+    try Data("original".utf8).write(to: file)
+    let plan = try await FolderFlattenPlan.make(for: root)
+    try fm.moveItem(at: file, to: temporary.appendingPathComponent("original"))
+    try Data("replacement".utf8).write(to: file)
+    let report = try await EntryOperations.flatten(plan, journalDirectory: temporary.appendingPathComponent("journals"))
+    #expect(report.items.first?.state == "failed")
+    #expect(try Data(contentsOf: file) == Data("replacement".utf8))
+    #expect(!fm.fileExists(atPath: root.appendingPathComponent("file").path))
+}
 @testable import FilesCore
 
 private func entryFixture() throws -> URL {

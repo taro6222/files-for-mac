@@ -774,6 +774,7 @@ private struct DelayedLoader: DirectoryLoading {
     source.setReverseTabScrollDirection(true)
     source.setShowFilterHeader(true)
     source.setShowShelfPane(true)
+    source.setShowFlattenOptions(true)
     source.setShowInfoPane(true)
     source.setInfoPaneTab(.preview)
     let sharedLayout = SharedFolderLayout(mode: .list, size: .large, sort: SortOrder(field: .size, ascending: false),
@@ -815,6 +816,7 @@ private struct DelayedLoader: DirectoryLoading {
     #expect(destination.reverseTabScrollDirection)
     #expect(destination.showFilterHeader)
     #expect(destination.showShelfPane && destination.showShelfToggle)
+    #expect(destination.showFlattenOptions)
     #expect(destination.showInfoPane && destination.infoPaneTab == .preview)
     #expect(destination.synchronizedFolderLayout == sharedLayout)
     #expect(BrowserPreferences(defaults: secondDefaults, initialFavorites: []).synchronizedFolderLayout == sharedLayout)

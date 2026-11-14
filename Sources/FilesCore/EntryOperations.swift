@@ -550,9 +550,18 @@ public enum EntryOperations {
                            cancellation: cancellation, progress: progress)
     }
 
+    public static func flatten(_ plan: FolderFlattenPlan, journalDirectory: URL,
+                               cancellation: CopyCancellation = CopyCancellation(),
+                               progress: @escaping @Sendable (MoveProgress) -> Void = { _ in }) async throws -> MoveOperationResult {
+        try await moveImpl(plan.sources, to: plan.destination, conflictPolicy: .skip,
+                           journalDirectory: journalDirectory, forceCrossVolume: false,
+                           cancellation: cancellation, progress: progress, flattenPlan: plan)
+    }
+
     private static func moveImpl(_ sources: [URL], to destination: URL, conflictPolicy: MoveConflictPolicy,
                                  journalDirectory: URL, forceCrossVolume: Bool, cancellation: CopyCancellation,
-                                 progress: @escaping @Sendable (MoveProgress) -> Void) async throws -> MoveOperationResult {
+                                 progress: @escaping @Sendable (MoveProgress) -> Void,
+                                 flattenPlan: FolderFlattenPlan? = nil) async throws -> MoveOperationResult {
         let normalizedSources = sources.map(\.standardizedFileURL)
         guard !normalizedSources.isEmpty else { throw EntryOperationError.noSources }
         return try await Task.detached(priority: .userInitiated) {
@@ -624,6 +633,19 @@ public enum EntryOperations {
                     }
                     do {
                         try cancellation.check(); emit("planning")
+                        if let flattenPlan {
+                            let parent = source.deletingLastPathComponent()
+                            guard flattenPlan.root.isCurrent, flattenPlan.entries[index].isCurrent,
+                                  FolderFlattenPlan.isDirectoryWithoutLink(parent),
+                                  let base = FolderFlattenPlan.canonicalPath(flattenPlan.destination),
+                                  FolderFlattenPlan.canonicalPath(parent)?.hasPrefix(base + "/") == true else {
+                                itemStates[index] = MoveItemOperationResult(source: source, target: target, state: "failed",
+                                    message: "Source changed after the flatten plan was created.")
+                                finalState = "partial"
+                                try save(state: finalState)
+                                continue
+                            }
+                        }
                         guard entryExists(source) else {
                             itemStates[index] = MoveItemOperationResult(source: source, target: target, state: "notFound", message: LString.fileMissing)
                             finalState = "partial"
@@ -696,7 +718,18 @@ public enum EntryOperations {
                                 }
                             } else {
                                 try cancellation.check(); emit("committing")
-                                try fm.moveItem(at: source, to: target)
+                                if flattenPlan != nil {
+                                    let sourceFD = open(source.deletingLastPathComponent().path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
+                                    guard sourceFD >= 0 else { throw EntryOperationError.sourceChanged }
+                                    defer { close(sourceFD) }
+                                    do {
+                                        try CopyEngine.publishNoReplace(payload: source, target: target,
+                                            sourceDirectoryFD: sourceFD, sourceName: source.lastPathComponent,
+                                            destinationDirectoryFD: destinationFD, destinationName: target.lastPathComponent)
+                                    } catch CopyPublicationError.conflict { throw EntryOperationError.conflict }
+                                } else {
+                                    try fm.moveItem(at: source, to: target)
+                                }
                             }
                             undoEligible[index] = true
                             itemStates[index] = MoveItemOperationResult(source: source, target: target, state: "completed", message: nil)
