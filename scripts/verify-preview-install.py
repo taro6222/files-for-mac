@@ -269,9 +269,11 @@ def exercise(previous, candidate, root, bundle_id):
     if previous_hash == candidate_hash:
         raise ValueError("Expected two distinct preview images")
 
-    mountpoint, home, fixture = (root / name for name in ("mount", "home", "Install Fixture"))
+    mountpoint, home, fixture, session_folder = (
+        root / name for name in ("mount", "home", "Install Fixture", "Saved Tab Fixture")
+    )
     applications = home / "Applications"
-    for folder in (mountpoint, fixture, applications):
+    for folder in (mountpoint, fixture, session_folder, applications):
         folder.mkdir(parents=True)
     user_file = fixture / "keep.txt"
     user_file.write_text("Preview upgrade fixture\n")
@@ -289,11 +291,22 @@ def exercise(previous, candidate, root, bundle_id):
     isolate(app, bundle_id)
     installed_binary = app / "Contents/MacOS/FilesMac"
     prior_binary = sha256(installed_binary)
+    # Legacy sessions predate workspaceSessionV2 and the tab view/grouping fields.
+    legacy_session = [{
+        "history": {
+            "current": {"url": session_folder.resolve().as_uri() + "/", "selection": [], "scrollOffset": 0},
+            "back": [],
+            "forward": [],
+        },
+        "sortOrder": {"field": "name", "ascending": True, "foldersFirst": True},
+        "showHidden": False,
+    }]
     expected_preferences = {
         "startupLocationPath": str(fixture),
-        "continueLastSession": False,
+        "continueLastSession": True,
         "favorites": [str(fixture)],
         "showExtensions": False,
+        "tabSession": json.dumps(legacy_session).encode(),
     }
     prefs = root / "initial-preferences.plist"
     prefs.write_bytes(plistlib.dumps(expected_preferences))
@@ -310,7 +323,7 @@ def exercise(previous, candidate, root, bundle_id):
             raise RuntimeError(f"{stage}: user file changed")
         verified_stages.append(stage)
 
-    initial_time = launch(app, probe, fixture, home, launch_log)
+    initial_time = launch(app, probe, session_folder, home, launch_log)
     verify_user_state("firstInstall")
 
     with mounted(candidate, mountpoint) as mounted_app:
@@ -325,7 +338,7 @@ def exercise(previous, candidate, root, bundle_id):
         except subprocess.CalledProcessError:
             if sha256(installed_binary) != prior_binary:
                 raise RuntimeError("Staging modified the installed executable")
-            failure_time = launch(app, probe, fixture, home, launch_log)
+            failure_time = launch(app, probe, session_folder, home, launch_log)
             verify_user_state("afterStagedSignatureFailure")
         else:
             raise RuntimeError("The damaged staging bundle passed code-signature validation")
@@ -337,13 +350,13 @@ def exercise(previous, candidate, root, bundle_id):
         raise ValueError("Expected two distinct preview executables")
     app.rename(backup)
     staged.rename(app)
-    upgrade_time = launch(app, probe, fixture, home, launch_log)
+    upgrade_time = launch(app, probe, session_folder, home, launch_log)
     if version(app) != next_version or sha256(installed_binary) != next_binary:
         raise RuntimeError("The installed bundle does not match the candidate")
     verify_user_state("afterReplacement")
     app.rename(staged)
     backup.rename(app)
-    rollback_time = launch(app, probe, fixture, home, launch_log)
+    rollback_time = launch(app, probe, session_folder, home, launch_log)
     if version(app) != prior_version or sha256(installed_binary) != prior_binary:
         raise RuntimeError("Rollback failed to restore the original bundle")
     verify_user_state("afterRollback")
@@ -358,6 +371,7 @@ def exercise(previous, candidate, root, bundle_id):
         "preservedUserState": {
             "preferenceKeys": list(expected_preferences),
             "verifiedStages": verified_stages,
+            "restoredSessionFormat": "tabSession",
         },
         "windowVisibleSeconds": {
             "firstInstall": initial_time,
