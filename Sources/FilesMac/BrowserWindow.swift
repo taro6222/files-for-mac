@@ -5990,6 +5990,23 @@ extension BrowserWindow {
         defer { if let activity { ProcessInfo.processInfo.endActivity(activity) } }
         let idleRSS = currentResidentBytes()
         let location = URL(fileURLWithPath: path, isDirectory: true)
+        var firstModelRows: UInt64?
+        var modelLoadFinished: UInt64?
+        var renderNanoseconds: UInt64 = 0
+        var renderCount = 0
+        let render = controller.model.onChange
+        controller.model.onChange = { [weak controller] in
+            guard let controller else { return }
+            let now = DispatchTime.now().uptimeNanoseconds
+            guard modelLoadFinished == nil else { render?(); return }
+            if firstModelRows == nil, controller.model.items.count >= 100 {
+                firstModelRows = now
+            }
+            if !controller.model.isLoading { modelLoadFinished = now }
+            render?()
+            renderNanoseconds += DispatchTime.now().uptimeNanoseconds - now
+            renderCount += 1
+        }
         let started = DispatchTime.now().uptimeNanoseconds
         controller.navigate(location)
         var firstDisplay: UInt64?
@@ -6008,11 +6025,16 @@ extension BrowserWindow {
             try? await Task.sleep(for: .milliseconds(5))
         }
         let finished = DispatchTime.now().uptimeNanoseconds
-        guard let firstDisplay, controller.model.failure == nil, idleRSS > 0,
+        guard let firstDisplay, let firstModelRows, let modelLoadFinished,
+              controller.model.failure == nil, idleRSS > 0,
               controller.table.numberOfRows == expected else { return }
         var samples: [String: Double] = [
             "startupSeconds": Double(ready - processStart) / 1e9,
             "firstDisplaySeconds": Double(firstDisplay - started) / 1e9,
+            "firstModelRowsSeconds": Double(firstModelRows - started) / 1e9,
+            "modelLoadFinishedSeconds": Double(modelLoadFinished - started) / 1e9,
+            "browserRenderSeconds": Double(renderNanoseconds) / 1e9,
+            "browserRenderCount": Double(renderCount),
             "listingSeconds": Double(finished - started) / 1e9,
             "idleRSSBytes": Double(idleRSS),
             "peakSampledRSSBytes": Double(peakRSS)
