@@ -1107,7 +1107,7 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
                 var statuses: [String: String] = [:], changed: [String] = []
                 for entry in snapshot.entries {
                     let path = snapshot.root.appendingPathComponent(entry.path).standardizedFileURL.path
-                    statuses[path] = "\(entry.indexStatus)\(entry.workTreeStatus)"; changed.append(path)
+                    statuses[path] = entry.statusCode; changed.append(path)
                 }
                 gitCommitRoot = snapshot.root
                 gitStatuses = statuses; gitChangedPaths = changed.sorted(); updateVisibleGitCells()
@@ -4325,6 +4325,32 @@ extension BrowserWindow {
                 preferences.setShowGitCommitSHAColumn(false)
                 checks["hiddenGitColumnsSkipMetadata"] = skippedHiddenGit && gitList.gitLocation == nil
                     && gitList.gitCommitTask == nil && !gitList.qaGitLoading && gitList.qaGitMarkedRows == 0
+                let conflictPath = qaGitFile.lastPathComponent
+                let index = Process()
+                index.executableURL = URL(fileURLWithPath: "/usr/bin/git")
+                index.currentDirectoryURL = cloneDestination
+                index.arguments = ["update-index", "--index-info"]
+                let input = Pipe()
+                index.standardInput = input
+                try index.run()
+                // Git's built-in empty blob is available without adding a new object.
+                let emptyBlob = "e69de29bb2d1d6434b8b29ae775ad8c2e48c5391"
+                let stages = [2, 3].map { "100644 \(emptyBlob) \($0)\t\(conflictPath)\n" }.joined()
+                try input.fileHandleForWriting.write(contentsOf: Data(stages.utf8))
+                try input.fileHandleForWriting.close()
+                index.waitUntilExit()
+                let conflictPanel = GitWindow()
+                conflictPanel.present(location: cloneDestination)
+                preferences.setShowGitStatusColumn(true)
+                let conflictWait = ContinuousClock.now
+                while (!conflictPanel.qaLoaded || gitList.qaGitLoading) && elapsed(conflictWait) < 10 {
+                    try await Task.sleep(for: .milliseconds(20))
+                }
+                checks["gitConflictPresentation"] = index.terminationStatus == 0 && conflictPanel.qaShowsConflict(code: "AA")
+                    && gitList.gitStatuses[qaGitFile.path] == "AA"
+                try capture("git-conflict", view: conflictPanel.window?.contentView)
+                conflictPanel.close()
+                preferences.setShowGitStatusColumn(false)
                 gitList.close(); window.makeKeyAndOrderFront(nil)
             } else { checks["shortcutSettingsWindow"] = false }
             controller.showToolbarSettings(nil); try await Task.sleep(for: .milliseconds(50))

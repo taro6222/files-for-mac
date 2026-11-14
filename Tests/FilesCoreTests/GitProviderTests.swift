@@ -27,6 +27,41 @@ import Testing
     #expect(snapshot.entries.contains { $0.path == "한글 file.txt" && $0.kind == .untracked })
 }
 
+@Test func gitProviderReadsAnUnmergedWorkTreeWithoutChangingIt() async throws {
+    let fm = FileManager.default
+    let root = fm.temporaryDirectory.appendingPathComponent("files-git-unmerged-\(UUID())", isDirectory: true)
+    try fm.createDirectory(at: root, withIntermediateDirectories: true)
+    defer { try? fm.removeItem(at: root) }
+    try runGit(["init", "-b", "main"], at: root)
+    try configureIdentity(root)
+    let name = " 한글 conflict.txt"
+    let file = root.appendingPathComponent(name)
+    try Data("base\n".utf8).write(to: file)
+    try runGit(["add", "--", name], at: root)
+    try runGit(["commit", "-m", "Base"], at: root)
+    try runGit(["switch", "-c", "side"], at: root)
+    try Data("side\n".utf8).write(to: file)
+    try runGit(["commit", "-am", "Side"], at: root)
+    try runGit(["switch", "main"], at: root)
+    try Data("main\n".utf8).write(to: file)
+    try runGit(["commit", "-am", "Main"], at: root)
+    #expect(throws: CocoaError.self) { try runGit(["merge", "side"], at: root) }
+    let unmergedIndex = try gitOutput(["ls-files", "--unmerged"], at: root)
+    #expect(!unmergedIndex.isEmpty)
+    let head = try gitOutput(["rev-parse", "HEAD"], at: root)
+    let contents = try Data(contentsOf: file)
+    try Data().write(to: root.appendingPathComponent("untracked.txt"))
+
+    let snapshot = try await GitProvider().snapshot(at: root)
+    let conflict = try #require(snapshot.entries.first(where: { $0.kind == .unmerged }))
+    #expect(conflict.path == name)
+    #expect(conflict.statusCode == "UU")
+    #expect(snapshot.entries.contains { $0.path == "untracked.txt" && $0.kind == .untracked })
+    #expect(try gitOutput(["rev-parse", "HEAD"], at: root) == head)
+    #expect(try gitOutput(["ls-files", "--unmerged"], at: root) == unmergedIndex)
+    #expect(try Data(contentsOf: file) == contents)
+}
+
 @Test func gitLastCommitUsesLiteralPathAndCurrentHead() async throws {
     let fm = FileManager.default
     let root = fm.temporaryDirectory.appendingPathComponent("files-git-history-\(UUID())", isDirectory: true)

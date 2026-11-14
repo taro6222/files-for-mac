@@ -72,7 +72,13 @@ final class GitWindow: NSWindowController, NSTableViewDataSource, NSTableViewDel
                 async let branches = provider.branches(at: loaded.root)
                 async let remotes = provider.remotes(at: loaded.root)
                 self.snapshot = loaded; self.branches = try await branches; self.remotes = try await remotes
-                stateLabel.stringValue = loaded.entries.isEmpty ? L("변경 없음", "Working tree clean") : L("변경 \(loaded.entries.count)개", "\(loaded.entries.count) changes")
+                let conflictCount = loaded.entries.count(where: { $0.kind == .unmerged })
+                if conflictCount > 0 {
+                    stateLabel.stringValue = L("변경 \(loaded.entries.count)개 · 병합 충돌 \(conflictCount)개",
+                                               "\(loaded.entries.count) changes · \(conflictCount) unmerged")
+                } else {
+                    stateLabel.stringValue = loaded.entries.isEmpty ? L("변경 없음", "Working tree clean") : L("변경 \(loaded.entries.count)개", "\(loaded.entries.count) changes")
+                }
             } catch is CancellationError { stateLabel.stringValue = L("작업이 중단되었습니다.", "Operation cancelled.") }
             catch { snapshot = nil; branches = []; remotes = []; stateLabel.stringValue = errorText(error) }
             task = nil; render(); updateControls()
@@ -119,13 +125,22 @@ final class GitWindow: NSWindowController, NSTableViewDataSource, NSTableViewDel
     func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
         guard let entry = snapshot?.entries[row], let identifier = tableColumn?.identifier else { return nil }
         let cell = tableView.makeView(withIdentifier: identifier, owner: self) as? NSTableCellView ?? { let value = NSTableCellView(); value.identifier = identifier; let text = NSTextField(labelWithString: ""); text.translatesAutoresizingMaskIntoConstraints = false; value.addSubview(text); value.textField = text; NSLayoutConstraint.activate([text.leadingAnchor.constraint(equalTo: value.leadingAnchor, constant: 6), text.trailingAnchor.constraint(equalTo: value.trailingAnchor, constant: -6), text.centerYAnchor.constraint(equalTo: value.centerYAnchor)]); return value }()
-        cell.textField?.stringValue = identifier.rawValue == "status" ? "\(entry.indexStatus)\(entry.workTreeStatus)" : entry.path
+        cell.textField?.stringValue = identifier.rawValue == "status" ? entry.statusCode : entry.path
+        cell.textField?.setAccessibilityLabel(identifier.rawValue == "status" && entry.kind == .unmerged
+            ? L("병합 충돌: \(entry.statusCode)", "Unmerged: \(entry.statusCode)") : nil)
         return cell
     }
 #if DEBUG
     var qaLoaded: Bool { task == nil && snapshot != nil }
     var qaRowCount: Int { snapshot?.entries.count ?? 0 }
     var qaBranch: String? { snapshot?.branch }
+    func qaShowsConflict(code: String) -> Bool {
+        guard let row = snapshot?.entries.firstIndex(where: { $0.kind == .unmerged }),
+              let cell = tableView(table, viewFor: table.tableColumns[0], row: row) as? NSTableCellView else { return false }
+        return stateLabel.stringValue.contains(L("병합 충돌 1개", "1 unmerged"))
+            && cell.textField?.stringValue == code
+            && cell.textField?.accessibilityLabel() == L("병합 충돌: \(code)", "Unmerged: \(code)")
+    }
     var qaSupportBoundaryVisible: Bool { !supportLabel.stringValue.isEmpty && supportLabel.superview != nil }
     var qaAccessibilityReady: Bool { table.accessibilityLabel() != nil && repositoryLabel.accessibilityLabel() != nil && supportLabel.accessibilityLabel() != nil }
 #endif

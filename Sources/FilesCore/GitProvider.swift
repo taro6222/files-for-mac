@@ -21,13 +21,14 @@ public enum GitBackendError: Error, Sendable, Equatable {
 }
 
 public struct GitStatusEntry: Sendable, Equatable, Identifiable {
-    public enum Kind: String, Sendable { case ordinary, renamed, untracked }
+    public enum Kind: String, Sendable { case ordinary, renamed, unmerged, untracked }
     public let path: String
     public let originalPath: String?
     public let indexStatus: Character
     public let workTreeStatus: Character
     public let kind: Kind
     public var id: String { path }
+    public var statusCode: String { String([indexStatus, workTreeStatus]) }
 }
 
 public struct GitRepositorySnapshot: Sendable, Equatable {
@@ -78,6 +79,10 @@ public struct GitStatusParser: Sendable {
                 let fields = record.split(separator: " ", maxSplits: 9, omittingEmptySubsequences: true)
                 guard fields.count == 10, index + 1 < records.count else { throw GitBackendError.invalidOutput }
                 entries.append(try entry(path: String(fields[9]), originalPath: records[index + 1], xy: fields[1], kind: .renamed)); index += 1
+            } else if record.hasPrefix("u ") {
+                let fields = record.split(separator: " ", maxSplits: 10, omittingEmptySubsequences: false)
+                guard fields.count == 11 else { throw GitBackendError.invalidOutput }
+                entries.append(try entry(path: String(fields[10]), originalPath: nil, xy: fields[1], kind: .unmerged))
             } else if record.hasPrefix("? ") {
                 let path = String(record.dropFirst(2)); try validate(path)
                 entries.append(.init(path: path, originalPath: nil, indexStatus: "?", workTreeStatus: "?", kind: .untracked))
