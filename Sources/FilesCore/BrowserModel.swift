@@ -129,10 +129,14 @@ public final class BrowserModel {
                 let result: [FileItem]
                 if let streaming = loader as? any DirectoryStreaming {
                     var collected: [FileItem] = []
+                    var nextPreviewCount = 1
                     for try await batch in streaming.batches(of: url, showHidden: hidden) {
                         guard let self, self.generation == request, !Task.isCancelled else { return }
                         collected.append(contentsOf: batch)
-                        if previousItems.isEmpty {
+                        if previousItems.isEmpty && collected.count >= nextPreviewCount {
+                            // Keep the first batch immediate and bound cumulative sorting
+                            // and view updates as the directory grows.
+                            nextPreviewCount = collected.count * 2
                             self.folderItems = self.sortOrder.sorted(collected)
                             self.onChange?()
                         }

@@ -106,6 +106,7 @@ public enum SelectionRestoration {
     /// Preserve a directory entry first; follow a renamed identity only when it is
     /// unambiguous on both sides (hard links must not acquire each other's selection).
     public static func restore(_ selected: Set<String>, from old: [FileItem], to new: [FileItem]) -> Set<String> {
+        guard !selected.isEmpty else { return [] }
         let oldByPath = Dictionary(uniqueKeysWithValues: old.map { ($0.id, $0) })
         let newByPath = Dictionary(uniqueKeysWithValues: new.map { ($0.id, $0) })
         let oldByIdentity = Dictionary(grouping: old.filter { $0.identity != nil }, by: { $0.identity! })

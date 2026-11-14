@@ -1115,6 +1115,37 @@ private struct ChunkedLoader: DirectoryStreaming {
     #expect(model.items.isEmpty); #expect(!model.isLoading)
 }
 
+private struct ManyBatchLoader: DirectoryStreaming {
+    func contents(of url: URL, showHidden: Bool) async throws -> [FileItem] { [] }
+
+    func batches(of url: URL, showHidden: Bool) -> AsyncThrowingStream<[FileItem], Error> {
+        AsyncThrowingStream { continuation in
+            for index in (0..<17).reversed() {
+                let name = "item-\(index)"
+                continuation.yield([FileItem(url: url.appendingPathComponent(name), name: name, isDirectory: false)])
+            }
+            continuation.finish()
+        }
+    }
+}
+
+@Test @MainActor func modelCoalescesLargeDirectoryPreviewsAndPublishesCompleteSortedResults() async throws {
+    let model = BrowserModel(loader: ManyBatchLoader())
+    var previewCounts: [Int] = []
+    model.onChange = {
+        if model.isLoading, !model.items.isEmpty { previewCounts.append(model.items.count) }
+    }
+    defer { model.onChange = nil }
+    model.navigate(URL(fileURLWithPath: "/many-batches"))
+    for _ in 0..<50 {
+        if !model.isLoading { break }
+        try await Task.sleep(for: .milliseconds(5))
+    }
+    #expect(previewCounts == [1, 2, 4, 8, 16])
+    #expect(!model.isLoading)
+    #expect(model.items.map(\.name) == (0..<17).map { "item-\($0)" })
+}
+
 @Test @MainActor func sidebarSectionsPersistCollapseAndOrderWithoutChangingHome() {
     let suite = "files-sidebar-tests-\(UUID())"
     let defaults = UserDefaults(suiteName: suite)!
