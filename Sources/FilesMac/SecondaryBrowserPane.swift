@@ -7,6 +7,7 @@ final class SecondaryBrowserPane: NSView, NSTableViewDataSource, NSTableViewDele
     private let preferences: BrowserPreferences
     var onActivate: (() -> Void)?
     var onLocationChange: (() -> Void)?
+    var onSelectionChange: (() -> Void)?
     var onFileDrop: (([URL], URL, FileDropIntent) -> Bool)?
     var onOpenFolderInNewTab: ((URL) -> Void)?
     private let pathField = NSTextField()
@@ -358,7 +359,11 @@ final class SecondaryBrowserPane: NSView, NSTableViewDataSource, NSTableViewDele
         }
     }
     private func render() {
-        rendering = true; defer { rendering = false }
+        rendering = true
+        defer {
+            rendering = false
+            onSelectionChange?()
+        }
         folderFilter.synchronize(with: model, visible: preferences.showFilterHeader)
         pathField.stringValue = model.location?.path ?? ""
         var revealEntry = false
@@ -435,7 +440,12 @@ final class SecondaryBrowserPane: NSView, NSTableViewDataSource, NSTableViewDele
         guard detailRows.indices.contains(row) else { return false }; if case .header = detailRows[row] { return true }; return false
     }
     func tableView(_ tableView: NSTableView, shouldSelectRow row: Int) -> Bool { detailItem(at: row, in: detailRows) != nil }
-    func tableViewSelectionDidChange(_ notification: Notification) { activate(); savePosition() }
+    func tableViewSelectionDidChange(_ notification: Notification) {
+        guard !rendering else { return }
+        activate()
+        savePosition()
+        onSelectionChange?()
+    }
     func tableView(_ tableView: NSTableView, pasteboardWriterForRow row: Int) -> (any NSPasteboardWriting)? {
         guard let item = detailItem(at: row, in: detailRows) else { return nil }
         return item.url as NSURL

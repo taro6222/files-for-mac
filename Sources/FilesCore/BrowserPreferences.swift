@@ -42,6 +42,8 @@ public struct SharedFolderLayout: Codable, Equatable, Sendable {
         self.grouping = grouping
     }
 }
+public enum InfoPaneTab: String, Codable, Sendable { case details, preview }
+
 public struct BrowserPreferencesArchive: Codable, Equatable, Sendable {
     public let version: Int
     public let sidebarOrder: [String]
@@ -83,6 +85,8 @@ public struct BrowserPreferencesArchive: Codable, Equatable, Sendable {
     public let homeRecentExpanded: Bool?
     public let viewSize: String
     public let syncFolderLayouts: Bool?
+    public let showInfoPane: Bool?
+    public let infoPaneTab: String?
     public let sharedFolderLayout: SharedFolderLayout?
     public let appearance: String
     public let continueLastSession: Bool
@@ -167,6 +171,8 @@ public final class BrowserPreferences {
     public private(set) var homeRecentExpanded: Bool
     public private(set) var viewSize: BrowserViewSize
     public private(set) var syncFolderLayouts: Bool
+    public private(set) var showInfoPane: Bool
+    public private(set) var infoPaneTab: InfoPaneTab
     public private(set) var sharedFolderLayout: SharedFolderLayout?
     public private(set) var appearance: BrowserAppearance
     public private(set) var continueLastSession: Bool
@@ -249,6 +255,8 @@ public final class BrowserPreferences {
             try? JSONDecoder().decode(SharedFolderLayout.self, from: $0)
         }
         syncFolderLayouts = defaults.bool(forKey: "syncFolderLayouts") && sharedFolderLayout != nil
+        showInfoPane = defaults.bool(forKey: "showInfoPane")
+        infoPaneTab = defaults.string(forKey: "infoPaneTab").flatMap(InfoPaneTab.init(rawValue:)) ?? .details
         appearance = defaults.string(forKey: "appearance").flatMap(BrowserAppearance.init(rawValue:)) ?? .system
         continueLastSession = defaults.object(forKey: "continueLastSession") as? Bool ?? true
         sizeUnit = defaults.string(forKey: "sizeUnit").flatMap(BrowserSizeUnit.init(rawValue:)) ?? .binary
@@ -384,6 +392,18 @@ public final class BrowserPreferences {
     }
     public var synchronizedFolderLayout: SharedFolderLayout? {
         syncFolderLayouts ? sharedFolderLayout : nil
+    }
+    public func setShowInfoPane(_ value: Bool) {
+        guard showInfoPane != value else { return }
+        showInfoPane = value
+        defaults.set(value, forKey: "showInfoPane")
+        changed()
+    }
+    public func setInfoPaneTab(_ tab: InfoPaneTab) {
+        guard infoPaneTab != tab else { return }
+        infoPaneTab = tab
+        defaults.set(tab.rawValue, forKey: "infoPaneTab")
+        changed()
     }
     public func setFolderLayoutSynchronization(_ enabled: Bool, initial: SharedFolderLayout) {
         guard syncFolderLayouts != enabled else { return }
@@ -560,7 +580,8 @@ public final class BrowserPreferences {
             showCreateShortcut: showCreateShortcut,
             showHomeFavorites: showHomeFavorites, showHomeVolumes: showHomeVolumes, showHomeRecent: showHomeRecent,
             homeFavoritesExpanded: homeFavoritesExpanded, homeVolumesExpanded: homeVolumesExpanded, homeRecentExpanded: homeRecentExpanded,
-            viewSize: viewSize.rawValue, syncFolderLayouts: syncFolderLayouts, sharedFolderLayout: sharedFolderLayout,
+            viewSize: viewSize.rawValue, syncFolderLayouts: syncFolderLayouts, showInfoPane: showInfoPane,
+            infoPaneTab: infoPaneTab.rawValue, sharedFolderLayout: sharedFolderLayout,
             appearance: appearance.rawValue, continueLastSession: continueLastSession, sizeUnit: sizeUnit.rawValue,
             openFoldersInNewTab: openFoldersInNewTab, scrollToPreviousFolderOnUp: scrollToPreviousFolderOnUp,
             showFileExtensionWarning: showFileExtensionWarning,
@@ -647,6 +668,10 @@ public final class BrowserPreferences {
         viewSize = size; appearance = importedAppearance; continueLastSession = archive.continueLastSession; sizeUnit = importedSizeUnit
         sharedFolderLayout = archive.sharedFolderLayout
         syncFolderLayouts = archive.syncFolderLayouts == true && sharedFolderLayout != nil
+        showInfoPane = archive.showInfoPane ?? false
+        infoPaneTab = archive.infoPaneTab.flatMap(InfoPaneTab.init(rawValue:)) ?? .details
+        defaults.set(showInfoPane, forKey: "showInfoPane")
+        defaults.set(infoPaneTab.rawValue, forKey: "infoPaneTab")
         persistSharedFolderLayout()
         openFoldersInNewTab = archive.openFoldersInNewTab ?? false; scrollToPreviousFolderOnUp = archive.scrollToPreviousFolderOnUp ?? true
         showFileExtensionWarning = archive.showFileExtensionWarning ?? true; startupLocationPath = archive.startupLocationPath

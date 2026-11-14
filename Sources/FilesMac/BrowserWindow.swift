@@ -41,6 +41,8 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
     private let bottom = NSStackView()
     private let toolbarOverflow = NSPopUpButton()
     private let rootSplit = NSSplitView()
+    private let inspector = BrowserInfoPane()
+    private var inspectorWidth: NSLayoutConstraint?
     private let sidebarContainer = NSVisualEffectView()
     private var toolbarViews: [BrowserToolbarItem: NSView] = [:]
     private var toolbarCompact: Bool?
@@ -203,6 +205,7 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
                 self.model.onChange = nil; self.model.cancelLoad()
                 self.completionTask?.cancel(); self.volumeTask?.cancel(); self.cloudTask?.cancel(); self.gitTask?.cancel(); self.folderSizeTask?.cancel()
                 self.resetGitCommits()
+                self.inspector.clear()
                 self.secondaryPane?.shutdown()
                 if let token = self.preferencesToken { self.preferences.removeObserver(token) }
                 for token in self.observerTokens {
@@ -265,6 +268,11 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         workspaceSplit.isVertical = true; workspaceSplit.dividerStyle = .thin
         workspaceSplit.translatesAutoresizingMaskIntoConstraints = false
         split.addArrangedSubview(workspaceSplit)
+        inspector.isHidden = true
+        inspector.onTabChange = { [weak self] tab in self?.preferences.setInfoPaneTab(tab) }
+        split.addArrangedSubview(inspector)
+        inspectorWidth = inspector.widthAnchor.constraint(equalToConstant: 240)
+        split.setHoldingPriority(.defaultHigh, forSubviewAt: 2)
         workspaceSplit.addArrangedSubview(main)
         split.setHoldingPriority(.defaultHigh, forSubviewAt: 0)
         split.setHoldingPriority(.defaultLow, forSubviewAt: 1)
@@ -867,6 +875,7 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         }
     }
     private func updateStatus() {
+        updateInfoPane()
         if model.location == nil { status.stringValue = L("준비됨", "Ready"); return }
         status.stringValue = "\(model.items.count) " + L("개 항목", "items")
         let selectedItems = primarySelectedItems
@@ -1029,6 +1038,7 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         return cell
     }
     func tableViewSelectionDidChange(_ notification: Notification) {
+        guard !rendering else { return }
         setSecondaryActive(false); savePosition(allowWhileLoading: true); updateStatus()
     }
     func tableView(_ tableView: NSTableView, pasteboardWriterForRow row: Int) -> (any NSPasteboardWriting)? {
@@ -1213,6 +1223,23 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         guard !items.isEmpty else { return }
         if infoWindow == nil { infoWindow = FileInfoWindow() }
         infoWindow?.present(items: items)
+    }
+    @objc func toggleInfoPane(_ sender: Any?) { preferences.setShowInfoPane(!preferences.showInfoPane) }
+    @objc func showInfoPaneDetails(_ sender: Any?) { preferences.setInfoPaneTab(.details) }
+    @objc func showInfoPanePreview(_ sender: Any?) { preferences.setInfoPaneTab(.preview) }
+    private func updateInfoPane() {
+        let visible = preferences.showInfoPane && compactOverlayState == nil
+        if inspector.isHidden == visible {
+            if !visible { inspectorWidth?.isActive = false }
+            inspector.isHidden = !visible
+            if visible { inspectorWidth?.isActive = true }
+            rootSplit.adjustSubviews()
+        }
+        if visible {
+            inspector.update(items: activeSelectedItems, tab: preferences.infoPaneTab, sizeUnit: preferences.sizeUnit)
+        } else {
+            inspector.clear()
+        }
     }
     @objc func showQuickLook(_ sender: Any?) {
         let items = activeSelectedItems
@@ -2254,6 +2281,7 @@ extension BrowserWindow {
         secondaryPane.shutdown(); secondaryPane.removeFromSuperview()
         self.secondaryPane = nil; secondaryPaneID = nil; secondaryActive = false
         updateShelf()
+        updateInfoPane()
         content.wantsLayer = true; content.layer?.borderWidth = 0
         window?.makeFirstResponder(table)
     }
@@ -2274,6 +2302,7 @@ extension BrowserWindow {
             let pane = SecondaryBrowserPane(snapshot: paneSnapshot, preferences: preferences)
             pane.onActivate = { [weak self] in self?.setSecondaryActive(true) }
             pane.onLocationChange = { [weak self] in self?.updateShelf() }
+            pane.onSelectionChange = { [weak self] in self?.updateInfoPane() }
             pane.onOpenFolderInNewTab = { (NSApp.delegate as? AppDelegate)?.openFolderInNewTab($0) }
             pane.onFileDrop = { [weak self] sources, destination, intent in
                 guard let self else { return false }
@@ -2301,12 +2330,14 @@ extension BrowserWindow {
     private func setSecondaryActive(_ active: Bool) {
         secondaryActive = active && secondaryPane != nil
         updateShelf()
+        updateInfoPane()
         secondaryPane?.setActive(secondaryActive)
         content.wantsLayer = true
         content.layer?.borderWidth = secondaryActive ? 0 : (secondaryPane == nil ? 0 : 2)
         content.layer?.borderColor = NSColor.controlAccentColor.cgColor
     }
     private func preferencesChanged() {
+        updateInfoPane()
         if preferences.syncFolderLayouts || appliedSharedFolderLayout {
             appliedSharedFolderLayout = preferences.syncFolderLayouts
             applyFolderViewPreference()
@@ -2385,6 +2416,7 @@ extension BrowserWindow {
         guard menu === optionsMenu else { return }
         menu.removeAllItems()
         let entries: [(String, Selector, Bool)] = [
+            (L("정보 pane 표시", "Show Information Pane"), #selector(toggleInfoPane(_:)), preferences.showInfoPane),
             (L("모든 폴더에서 같은 보기 사용", "Use the Same View in All Folders"),
              #selector(toggleFolderLayoutSynchronization(_:)), preferences.syncFolderLayouts),
             (L("임시 파일 모음", "Shelf"), #selector(toggleShelfPane(_:)), preferences.showShelfPane),
@@ -2648,6 +2680,7 @@ extension BrowserWindow {
     @objc func enterCompactOverlay(_ sender: Any?) {
         guard compactOverlayState == nil, let window else { return }
         compactOverlayState = (window.frame, window.minSize, window.level, window.collectionBehavior)
+        updateInfoPane()
         window.minSize = NSSize(width: 360, height: 420)
         window.level = .floating
         window.collectionBehavior.formUnion([.canJoinAllSpaces, .fullScreenAuxiliary])
@@ -2659,6 +2692,7 @@ extension BrowserWindow {
     @objc func exitCompactOverlay(_ sender: Any?) {
         guard let state = compactOverlayState, let window else { return }
         compactOverlayState = nil
+        updateInfoPane()
         window.level = state.level; window.collectionBehavior = state.behavior; window.minSize = state.minSize
         window.setFrame(state.frame, display: true, animate: false)
     }
@@ -2676,6 +2710,13 @@ extension BrowserWindow {
         case #selector(toggleFolderLayoutSynchronization(_:)):
             menuItem.state = preferences.syncFolderLayouts ? .on : .off
             return activeModel.location != nil
+        case #selector(toggleInfoPane(_:)):
+            menuItem.state = preferences.showInfoPane ? .on : .off
+            return true
+        case #selector(showInfoPaneDetails(_:)), #selector(showInfoPanePreview(_:)):
+            let tab: InfoPaneTab = menuItem.action == #selector(showInfoPaneDetails(_:)) ? .details : .preview
+            menuItem.state = preferences.infoPaneTab == tab ? .on : .off
+            return !inspector.isHidden
         case #selector(addSelectionToShelf(_:)): return !activeSelectedItems.isEmpty
         case #selector(toggleFilterHeader(_:)):
             menuItem.state = preferences.showFilterHeader ? .on : .off
@@ -3328,6 +3369,22 @@ extension BrowserWindow {
             checks["shelfRemovalPreservesOriginal"] = preferences.shelfEntries.isEmpty && fm.fileExists(atPath: searchHit.path)
             controller.toggleShelfPane(nil)
             checks["shelfToggleHidesPane"] = controller.shelf.isHidden
+            controller.toggleInfoPane(nil)
+            let inspectorStart = ContinuousClock.now
+            while !controller.inspector.qaDetails.contains(searchHit.path) && elapsed(inspectorStart) < 5 {
+                try await Task.sleep(for: .milliseconds(20))
+            }
+            checks["infoPaneDetails"] = !controller.inspector.isHidden
+                && controller.inspector.qaTitle == searchHit.lastPathComponent
+                && controller.inspector.qaDetails.contains(searchHit.path)
+            root.layoutSubtreeIfNeeded()
+            checks["infoPaneReadableWidth"] = controller.inspector.frame.width >= 220
+            controller.showInfoPanePreview(nil)
+            checks["infoPanePreview"] = controller.inspector.qaPreviewURL?.path == searchHit.path
+            try capture("info-pane-preview")
+            controller.toggleInfoPane(nil)
+            checks["infoPaneReleasesPreview"] = controller.inspector.isHidden && controller.inspector.qaPreviewURL == nil
+            controller.showInfoPaneDetails(nil)
             controller.table.selectRowIndexes([1], byExtendingSelection: false)
             controller.showInfo(nil)
             let infoStart = ContinuousClock.now
