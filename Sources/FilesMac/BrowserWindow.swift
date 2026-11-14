@@ -864,13 +864,13 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         }
         model.savePosition(selection: ids, scrollOffset: offset)
     }
-    private func navigate(_ url: URL?) {
+    private func navigate(_ url: URL?, userInitiated: Bool = true) {
         folderSizeTask?.cancel(); folderSizeTask = nil
         completionTask?.cancel(); completionGeneration += 1
         suggestions = []; pathField.removeAllItems()
         pathField.stringValue = url?.path ?? ""
         window?.makeFirstResponder(nil)
-        savePosition(); model.navigate(url); applyFolderViewPreference()
+        savePosition(); model.navigate(url, userInitiated: userInitiated); applyFolderViewPreference()
     }
     private var effectiveViewSize: BrowserViewSize {
         preferences.synchronizedFolderLayout?.size
@@ -1272,7 +1272,7 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         else {
             if model.failure != nil || watcherStatus == .unavailable { updateWatcher(force: true) }
             savePosition()
-            model.reload()
+            model.reload(userInitiated: true)
         }
     }
     @objc func refreshOrStop(_ sender: Any?) {
@@ -6048,7 +6048,9 @@ extension BrowserWindow {
             renderCount += 1
         }
         let started = DispatchTime.now().uptimeNanoseconds
-        controller.navigate(location)
+        // The QA activity comparison varies the external activity independently.
+        let usesProductNavigation = environment["FILES_PERFORMANCE_PRODUCT_NAVIGATION"] != "0"
+        controller.navigate(location, userInitiated: usesProductNavigation)
         var firstDisplay: UInt64?
         var peakRSS = idleRSS
         while true {
@@ -6083,6 +6085,7 @@ extension BrowserWindow {
             samples["activeBeforeIdle"] = activeBeforeIdle ? 1 : 0
             samples["activeAfterIdle"] = activeAfterIdle ? 1 : 0
             samples["userInitiatedLoad"] = userInitiatedLoad ? 1 : 0
+            samples["productNavigationActivity"] = usesProductNavigation ? 1 : 0
         }
         if environment["FILES_PERFORMANCE_SCROLL"] == "1" {
             // Let Instruments settle before scrolling a populated window.

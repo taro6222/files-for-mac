@@ -50,7 +50,8 @@ def measure(folder, count, name, idle=0, user_initiated_load=False):
     env = dict(os.environ, FILES_PERFORMANCE_FIXTURE=str(folder),
                FILES_PERFORMANCE_REPORT=str(sample), FILES_PERFORMANCE_COUNT=str(count),
                FILES_PERFORMANCE_IDLE_SECONDS=str(idle),
-               FILES_PERFORMANCE_USER_INITIATED_LOAD="1" if user_initiated_load else "0")
+               FILES_PERFORMANCE_USER_INITIATED_LOAD="1" if user_initiated_load else "0",
+               FILES_PERFORMANCE_PRODUCT_NAVIGATION="0" if mode == "idle-activity" else "1")
     with (output_dir / f"{name}.log").open("w") as log:
         env["FILES_PERFORMANCE_START_NS"] = str(time.monotonic_ns())
         subprocess.run([binary, "-AppleLanguages", "(en)", "-AppleLocale", "en"],

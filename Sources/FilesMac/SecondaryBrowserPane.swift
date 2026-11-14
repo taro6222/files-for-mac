@@ -85,7 +85,7 @@ final class SecondaryBrowserPane: NSView, NSTableViewDataSource, NSTableViewDele
         activate()
         if model.failure != nil || watcher == nil { updateWatcher(force: true) }
         savePosition()
-        model.reload()
+        model.reload(userInitiated: true)
     }
     func openLocation(_ url: URL) { activate(); navigate(url) }
     func revealSearchResult(_ url: URL, isHidden: Bool) {

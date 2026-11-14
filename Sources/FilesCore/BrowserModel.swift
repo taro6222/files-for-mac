@@ -99,11 +99,11 @@ public final class BrowserModel {
             $0.name.localizedStandardContains(nameFilter)
         }
     }
-    public func navigate(_ url: URL?) {
-        history.visit(url?.standardizedFileURL); reload()
+    public func navigate(_ url: URL?, userInitiated: Bool = true) {
+        history.visit(url?.standardizedFileURL); reload(userInitiated: userInitiated)
     }
-    public func back() { history.goBack(); reload() }
-    public func forward() { history.goForward(); reload() }
+    public func back() { history.goBack(); reload(userInitiated: true) }
+    public func forward() { history.goForward(); reload(userInitiated: true) }
     public func cancelLoad() {
         guard isLoading else { return }
         generation += 1
@@ -111,7 +111,7 @@ public final class BrowserModel {
         isLoading = false; wasCancelled = true
         onChange?()
     }
-    public func reload() {
+    public func reload(userInitiated: Bool = false) {
         generation += 1
         let request = generation
         task?.cancel(); error = nil; failure = nil; wasCancelled = false
@@ -125,6 +125,12 @@ public final class BrowserModel {
         isLoading = true; onChange?()
         let hidden = showHidden
         task = Task { [weak self, loader] in
+            guard self?.generation == request, !Task.isCancelled else { return }
+            let process = ProcessInfo.processInfo
+            let activity = userInitiated ? process.beginActivity(
+                options: .userInitiatedAllowingIdleSystemSleep, reason: "Load folder requested by user"
+            ) : nil
+            defer { if let activity { process.endActivity(activity) } }
             do {
                 let result: [FileItem]
                 if let streaming = loader as? any DirectoryStreaming {
