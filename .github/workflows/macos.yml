@@ -45,7 +45,7 @@ jobs:
         run: swift build --build-tests --disable-sandbox -Xswiftc -gnone
       - name: Run Swift tests
         timeout-minutes: 5
-        run: swift test --skip-build --disable-xctest
+        run: swift test --skip-build --disable-xctest --no-parallel
       - name: Verify mounted file systems
         timeout-minutes: 5
         run: bash scripts/verify-volume-matrix.sh --skip-build
