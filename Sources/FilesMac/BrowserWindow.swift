@@ -3407,6 +3407,7 @@ extension BrowserWindow {
                 let contextMenuAfter = delegate.qaGeneralContextMenuStates
                 let contextMenusToggled = contextMenuBefore?.count == contextMenuAfter?.count
                     && zip(contextMenuBefore ?? [], contextMenuAfter ?? []).allSatisfy { $0 != $1 }
+                checks["generalSettingsScrollReachable"] = delegate.qaGeneralSettingsScrollReachable
                 checks["generalSettingsWindow"] = delegate.qaGeneralSettingsVisible && widgetsBefore != nil && widgetsAfter != nil
                     && widgetsAfter!.0 != widgetsBefore!.0 && widgetsAfter!.1 != widgetsBefore!.1 && widgetsAfter!.2 != widgetsBefore!.2
                     && delegate.qaGeneralSizeUnit != sizeUnitBefore

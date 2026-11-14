@@ -12,6 +12,8 @@ M7 첫 개발 단위로 로컬 프리뷰 DMG를 빌드하고 마운트·실행�
 
 Apple Silicon과 Intel 슬라이스를 포함한 새 프리뷰 DMG를 생성했다. Apple Silicon에서 마운트·실행을 확인했다. [M7 유니버설 DMG](verification/m7/INCREMENT_04.md) · [남은 출시 검증](verification/m7/RELEASE_GATES.md)
 
+일반 설정 창에서 세로 스크롤을 적용하고 마지막 옵션까지 도달하는 동작을 확인했다. [M7 일반 설정 검증](verification/m7/INCREMENT_05.md)
+
 M6 103번째 개발 단위로 사용자가 선택한 파일을 템플릿으로 재사용하는 기능을 추가했다. 명령·설정·화면 인벤토리에서 검토 대기 항목은 0개다. 대응 범위 밖의 동작과 실환경 검증은 계속 추적한다.
 
 | 영역 | 상태 | 내용 |

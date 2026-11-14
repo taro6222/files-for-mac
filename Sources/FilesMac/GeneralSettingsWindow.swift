@@ -4,6 +4,7 @@ import FilesCore
 @MainActor
 final class GeneralSettingsWindow: NSWindowController {
     private let preferences: BrowserPreferences
+    private let scroll = NSScrollView()
     private let continueSession = NSButton(checkboxWithTitle: L("마지막 세션 계속", "Continue Last Session"), target: nil, action: nil)
     private let openNewTabOnStartup = NSButton(checkboxWithTitle: L("시작할 때 새 탭 추가", "Add a New Tab on Startup"), target: nil, action: nil)
     private let alwaysOpenDualPaneInNewTab = NSButton(checkboxWithTitle: L("새 탭을 dual pane으로 열기", "Open New Tabs with Dual Pane"), target: nil, action: nil)
@@ -37,8 +38,9 @@ final class GeneralSettingsWindow: NSWindowController {
 
     init(preferences: BrowserPreferences) {
         self.preferences = preferences
-        let panel = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 560, height: 720), styleMask: [.titled, .closable, .utilityWindow], backing: .buffered, defer: false)
+        let panel = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 560, height: 720), styleMask: [.titled, .closable, .resizable, .utilityWindow], backing: .buffered, defer: false)
         super.init(window: panel); panel.title = L("일반 설정", "General Settings"); panel.isReleasedWhenClosed = false
+        panel.contentMinSize = NSSize(width: 480, height: 360)
         guard let content = panel.contentView else { return }
         let stack = NSStackView(); stack.orientation = .vertical; stack.alignment = .leading; stack.spacing = 10
         stack.edgeInsets = NSEdgeInsets(top: 20, left: 20, bottom: 20, right: 20); stack.translatesAutoresizingMaskIntoConstraints = false
@@ -83,7 +85,27 @@ final class GeneralSettingsWindow: NSWindowController {
         let homeTitle = NSTextField(labelWithString: L("홈 위젯", "Home Widgets")); homeTitle.font = .systemFont(ofSize: 14, weight: .semibold); stack.addArrangedSubview(homeTitle)
         configure(favorites, action: #selector(changeFavorites(_:))); configure(volumes, action: #selector(changeVolumes(_:))); configure(recent, action: #selector(changeRecent(_:)))
         stack.addArrangedSubview(favorites); stack.addArrangedSubview(volumes); stack.addArrangedSubview(recent)
-        content.addSubview(stack); NSLayoutConstraint.activate([stack.leadingAnchor.constraint(equalTo: content.leadingAnchor), stack.trailingAnchor.constraint(equalTo: content.trailingAnchor), stack.topAnchor.constraint(equalTo: content.topAnchor), stack.bottomAnchor.constraint(equalTo: content.bottomAnchor)])
+        scroll.hasVerticalScroller = true
+        scroll.autohidesScrollers = true
+        scroll.drawsBackground = false
+        scroll.translatesAutoresizingMaskIntoConstraints = false
+        content.addSubview(scroll)
+
+        let document = FlippedView()
+        document.translatesAutoresizingMaskIntoConstraints = false
+        scroll.documentView = document
+        document.addSubview(stack)
+        NSLayoutConstraint.activate([
+            scroll.leadingAnchor.constraint(equalTo: content.leadingAnchor),
+            scroll.trailingAnchor.constraint(equalTo: content.trailingAnchor),
+            scroll.topAnchor.constraint(equalTo: content.topAnchor),
+            scroll.bottomAnchor.constraint(equalTo: content.bottomAnchor),
+            document.widthAnchor.constraint(equalTo: scroll.contentView.widthAnchor),
+            stack.leadingAnchor.constraint(equalTo: document.leadingAnchor),
+            stack.trailingAnchor.constraint(equalTo: document.trailingAnchor),
+            stack.topAnchor.constraint(equalTo: document.topAnchor),
+            stack.bottomAnchor.constraint(equalTo: document.bottomAnchor)
+        ])
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
     private func configure(_ button: NSButton, action: Selector) { button.target = self; button.action = action }
@@ -159,6 +181,20 @@ final class GeneralSettingsWindow: NSWindowController {
     @objc private func changeRecent(_ sender: Any?) { preferences.setSection(.recent, visible: recent.state == .on) }
 #if DEBUG
     var qaVisible: Bool { window?.isVisible == true }
+    func qaCanReachLastSetting() -> Bool {
+        window?.contentView?.layoutSubtreeIfNeeded()
+        guard let document = scroll.documentView, document.bounds.height > scroll.contentView.bounds.height else { return false }
+        let clip = scroll.contentView
+        let previous = clip.bounds.origin
+        let frame = recent.convert(recent.bounds, to: document)
+        let wasBelow = frame.minY >= scroll.documentVisibleRect.maxY
+        recent.scrollToVisible(recent.bounds)
+        let visible = scroll.documentVisibleRect.contains(frame)
+        clip.scroll(to: previous)
+        scroll.reflectScrolledClipView(clip)
+        return wasBelow && visible
+    }
+
     var qaWidgetStates: (Bool, Bool, Bool) { (preferences.showHomeFavorites, preferences.showHomeVolumes, preferences.showHomeRecent) }
     var qaOpenNewTabOnStartup: Bool { preferences.openNewTabOnStartup }
     var qaNewTabPolicies: (Bool, Bool) { (preferences.alwaysOpenDualPaneInNewTab, preferences.alwaysSwitchToNewlyOpenedTab) }

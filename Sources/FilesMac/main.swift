@@ -553,6 +553,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     var qaAdvancedSettingsVisible: Bool { advancedSettingsWindow?.qaVisible == true }
     var qaAdvancedSettingsContentView: NSView? { advancedSettingsWindow?.window?.contentView }
     var qaGeneralSettingsVisible: Bool { generalSettingsWindow?.qaVisible == true }
+    var qaGeneralSettingsScrollReachable: Bool { generalSettingsWindow?.qaCanReachLastSetting() == true }
     var qaGeneralSettingsContentView: NSView? { generalSettingsWindow?.window?.contentView }
     var qaGeneralWidgetStates: (Bool, Bool, Bool)? { generalSettingsWindow?.qaWidgetStates }
     var qaGeneralOpenNewTabOnStartup: Bool? { generalSettingsWindow?.qaOpenNewTabOnStartup }
