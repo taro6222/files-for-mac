@@ -969,8 +969,17 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         if table.sortDescriptors.first != sortDescriptor { table.sortDescriptors = [sortDescriptor] }
         let rows = detailDisplayRows(items: model.items, grouping: model.grouping)
         if detailPresentationNeedsReload || (detailsWereHidden && !scroll.isHidden) || detailRows != rows {
+            let previousCount = detailRows.count
             detailRows = rows
-            table.reloadData()
+            // Keep AppKit's row views reusable when navigation clears or fills the table.
+            // Repeated full reloads across the empty state retain AppKit dependencies.
+            if previousCount == 0 && !rows.isEmpty {
+                table.insertRows(at: IndexSet(integersIn: 0..<rows.count), withAnimation: [])
+            } else if previousCount > 0 && rows.isEmpty {
+                table.removeRows(at: IndexSet(integersIn: 0..<previousCount), withAnimation: [])
+            } else if !rows.isEmpty {
+                table.reloadData()
+            }
             detailPresentationNeedsReload = false
         } else if gitLoadCompleted {
             updateVisibleGitCells()
