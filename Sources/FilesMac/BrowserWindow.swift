@@ -5995,6 +5995,7 @@ extension BrowserWindow {
             var tab: BrowserWindow? = BrowserWindow(preferences: preferences,
                 restoresFrame: false, initialLocation: destination)
             weak let releasedTab = tab
+            weak let releasedWindow = tab?.window
             weak var releasedWatcher: DirectoryWatcher?
             var didClose = false
             do {
@@ -6034,8 +6035,11 @@ extension BrowserWindow {
             }
             tab = nil
             let cleanupDeadline = clock.now.advanced(by: .seconds(10))
-            while releasedTab != nil || releasedWatcher != nil {
-                guard clock.now < cleanupDeadline else { throw ReleaseSoakFailure("Closed tab retained: \(releasedTab != nil); watcher retained: \(releasedWatcher != nil)") }
+            while releasedTab != nil || releasedWatcher != nil || releasedWindow != nil {
+                guard clock.now < cleanupDeadline else {
+                    throw ReleaseSoakFailure("Closed browser retained: \(releasedTab != nil); "
+                        + "watcher retained: \(releasedWatcher != nil); window retained: \(releasedWindow != nil)")
+                }
                 try await Task.sleep(for: .milliseconds(20))
             }
             guard (window.tabbedWindows?.count ?? 1) == 1 else { throw ReleaseSoakFailure("Closed tab remained in the window group") }
