@@ -74,6 +74,8 @@ import Testing
         #expect(try String(contentsOf: replaceSource, encoding: .utf8) == "new")
         #expect(try String(contentsOf: replaceTarget, encoding: .utf8) == "old")
 
+        try await verifyMountedVolumeReplacementCancellation(local: local, destination: destination, journal: journal)
+
         let entries = try await LocalFileSystem().contents(of: destination, showHidden: true)
         let identity = try #require(entries.first { $0.name == replaceTarget.lastPathComponent }?.identity)
         let occupied = destination.appendingPathComponent("occupied.txt")
@@ -172,8 +174,8 @@ import Testing
 
     let root = volume.appendingPathComponent("FilesM2-SMB-\(UUID().uuidString)", isDirectory: true)
     let destination = root.appendingPathComponent("destination", isDirectory: true)
-    let journal = root.appendingPathComponent("journal", isDirectory: true)
     let local = fm.temporaryDirectory.appendingPathComponent("FilesM2-SMB-source-\(UUID().uuidString)", isDirectory: true)
+    let journal = local.appendingPathComponent("journal", isDirectory: true)
     defer { try? fm.removeItem(at: root); try? fm.removeItem(at: local) }
     try fm.createDirectory(at: destination, withIntermediateDirectories: true)
     try fm.createDirectory(at: local, withIntermediateDirectories: true)
@@ -209,4 +211,28 @@ import Testing
     #expect(await EntryOperations.undoMove(replaceUndo, journalDirectory: journal).state == "completed")
     #expect(try String(contentsOf: replacement, encoding: .utf8) == "new")
     #expect(try String(contentsOf: existing, encoding: .utf8) == "old")
+    try await verifyMountedVolumeReplacementCancellation(local: local, destination: destination, journal: journal)
+}
+
+private func verifyMountedVolumeReplacementCancellation(local: URL, destination: URL, journal: URL) async throws {
+    let source = local.appendingPathComponent("cancel-replace.txt")
+    let target = destination.appendingPathComponent(source.lastPathComponent)
+    let original = Data(repeating: 0x41, count: 1024 * 1024)
+    let existing = Data("existing destination".utf8)
+    try original.write(to: source)
+    try existing.write(to: target)
+    let namesBefore = try Set(FileManager.default.contentsOfDirectory(atPath: destination.path))
+    let cancellation = CopyCancellation()
+
+    let report = try await EntryOperations.move([source], to: destination, conflictPolicy: .replace,
+        journalDirectory: journal, cancellation: cancellation) { progress in
+        if progress.phase == "verifying" { cancellation.cancel() }
+    }
+    #expect(cancellation.isCancelled, "The transfer did not reach cross-volume verification")
+    #expect(report.state == "cancelled")
+    #expect(report.items.map(\.state) == ["cancelled"])
+    #expect(report.journalError == nil)
+    #expect(try Data(contentsOf: source) == original)
+    #expect(try Data(contentsOf: target) == existing)
+    #expect(try Set(FileManager.default.contentsOfDirectory(atPath: destination.path)) == namesBefore)
 }
