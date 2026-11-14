@@ -1,12 +1,14 @@
 # 개발 현황
 
-갱신: 2026-11-14
+갱신: 2026-11-15
 
 ## 현재 단계
 
 M7 출시 검증이 진행 중이다. [유니버설 개발 프리뷰](verification/m7/PREVIEW_0.1.0.md)의 Apple Silicon 설치·교체·복원은 통과했다. 정식 서명·공증, Intel과 최소 macOS, 실제 서버, Windows 실행 화면, VoiceOver와 장시간 검증은 [출시 검증 현황](verification/m7/RELEASE_GATES.md)에서 추적한다.
 
 ## 이번 구현 단위
+
+Git 병합 충돌 표시와 보조 패널 읽기 중단·재시도를 담은 유니버설 개발 프리뷰를 갱신했다. 설치·교체·복원을 확인했고 arm64 기동 20회의 정보 창 표시 p95는 575 ms였다. [프리뷰 설치·기동](verification/m7/PREVIEW_0.1.0.md)
 
 분할 보기에서 보조 패널 폴더 읽기 중단과 재시도를 검증했다. [M7 보조 패널 읽기 복구](verification/m7/INCREMENT_111.md)
 
