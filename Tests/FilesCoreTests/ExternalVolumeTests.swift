@@ -74,6 +74,19 @@ import Testing
         #expect(try String(contentsOf: replaceSource, encoding: .utf8) == "new")
         #expect(try String(contentsOf: replaceTarget, encoding: .utf8) == "old")
 
+        let entries = try await LocalFileSystem().contents(of: destination, showHidden: true)
+        let identity = try #require(entries.first { $0.name == replaceTarget.lastPathComponent }?.identity)
+        let occupied = destination.appendingPathComponent("occupied.txt")
+        try Data("keep".utf8).write(to: occupied)
+        await #expect(throws: EntryOperationError.self) {
+            try await EntryOperations.rename(replaceTarget, to: occupied.lastPathComponent,
+                expectedIdentity: identity, journalDirectory: journal)
+        }
+        #expect(try String(contentsOf: occupied, encoding: .utf8) == "keep")
+        let renamed = try await EntryOperations.rename(replaceTarget, to: "renamed.txt",
+            expectedIdentity: identity, journalDirectory: journal)
+        #expect(try String(contentsOf: renamed.target, encoding: .utf8) == "old")
+
         let first = root.appendingPathComponent("CaseProbe")
         let second = root.appendingPathComponent("caseprobe")
         let firstFD = open(first.path, O_WRONLY | O_CREAT | O_EXCL, 0o600)

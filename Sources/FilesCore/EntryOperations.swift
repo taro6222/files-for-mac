@@ -969,19 +969,20 @@ public enum EntryOperations {
                     throw EntryOperationError.sourceChanged
                 }
                 if let source {
-                    let attrs = try fm.attributesOfItem(atPath: source.path)
                     if let expectedIdentity {
-                        guard let device = attrs[.systemNumber] as? NSNumber,
-                              let inode = attrs[.systemFileNumber] as? NSNumber,
-                              let birth = attrs[.creationDate] as? Date,
-                              "\(device):\(inode):\(birth.timeIntervalSince1970)" == expectedIdentity else {
+                        guard LocalEntryIdentity.read(source, fileManager: fm) == expectedIdentity else {
                             throw EntryOperationError.sourceChanged
                         }
+                    } else {
+                        _ = try fm.attributesOfItem(atPath: source.path)
                     }
                     if source.lastPathComponent != name {
-                        guard renameatx_np(fd, source.lastPathComponent, fd, name, UInt32(RENAME_EXCL)) == 0 else {
-                            if errno == EEXIST { throw EntryOperationError.conflict }
-                            throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
+                        do {
+                            try CopyEngine.publishNoReplace(payload: source, target: target,
+                                sourceDirectoryFD: fd, sourceName: source.lastPathComponent,
+                                destinationDirectoryFD: fd, destinationName: name)
+                        } catch CopyPublicationError.conflict {
+                            throw EntryOperationError.conflict
                         }
                     }
                 } else {

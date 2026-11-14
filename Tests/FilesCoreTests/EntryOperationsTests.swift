@@ -135,10 +135,12 @@ private func entryFixture() throws -> URL {
     let journal = root.appendingPathComponent("journal")
     let link = root.appendingPathComponent("link")
     try FileManager.default.createSymbolicLink(atPath: link.path, withDestinationPath: "missing")
+    let items = try await LocalFileSystem().contents(of: root, showHidden: true)
+    let linkIdentity = try #require(items.first(where: { $0.url == link })?.identity)
     await #expect(throws: EntryOperationError.self) {
         try await EntryOperations.rename(link, to: "new", expectedIdentity: "stale", journalDirectory: journal)
     }
-    let result = try await EntryOperations.rename(link, to: "new", journalDirectory: journal)
+    let result = try await EntryOperations.rename(link, to: "new", expectedIdentity: linkIdentity, journalDirectory: journal)
     #expect(try FileManager.default.destinationOfSymbolicLink(atPath: result.target.path) == "missing")
 }
 

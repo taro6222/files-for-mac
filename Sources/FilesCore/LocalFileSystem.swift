@@ -1,4 +1,24 @@
 import Foundation
+import Darwin
+
+enum LocalEntryIdentity {
+    static func read(_ url: URL, fileManager: FileManager = .default) -> String? {
+        let path = url.path
+        var info = stat()
+        guard lstat(path, &info) == 0 else { return nil }
+        let birth = info.st_birthtimespec
+        if birth.tv_sec != 0 || birth.tv_nsec != 0 {
+            let timestamp = Date(timeIntervalSince1970: Double(birth.tv_sec) + Double(birth.tv_nsec) / 1e9)
+            return "\(info.st_dev):\(info.st_ino):\(timestamp.timeIntervalSince1970)"
+        }
+        // Some volumes do not expose a birth time through stat.
+        guard let attributes = try? fileManager.attributesOfItem(atPath: path),
+              let device = attributes[.systemNumber] as? NSNumber,
+              let inode = attributes[.systemFileNumber] as? NSNumber,
+              let created = attributes[.creationDate] as? Date else { return nil }
+        return "\(device):\(inode):\(created.timeIntervalSince1970)"
+    }
+}
 
 public protocol DirectoryLoading: Sendable {
     func contents(of url: URL, showHidden: Bool) async throws -> [FileItem]
@@ -48,15 +68,9 @@ public struct LocalFileSystem: DirectoryStreaming {
                                 // Use the resource values prefetched by the directory enumerator.
                                 // Keep a fresh URL in the model for later operations and refreshes.
                                 let v = try enumerated.resourceValues(forKeys: keys)
-                                let attributes = try? FileManager.default.attributesOfItem(atPath: child.path)
-                                let identity: String?
-                                if let device = attributes?[.systemNumber] as? NSNumber,
-                                   let inode = attributes?[.systemFileNumber] as? NSNumber,
-                                   let birth = attributes?[.creationDate] as? Date {
-                                    identity = "\(device):\(inode):\(birth.timeIntervalSince1970)"
-                                } else { identity = nil }
                                 return FileItem(url: child, name: child.lastPathComponent,
-                                    isDirectory: v.isDirectory ?? false, identity: identity, isPackage: v.isPackage ?? false,
+                                    isDirectory: v.isDirectory ?? false, identity: LocalEntryIdentity.read(child),
+                                    isPackage: v.isPackage ?? false,
                                     isSymbolicLink: v.isSymbolicLink ?? false, isHidden: v.isHidden ?? false,
                                     size: v.fileSize.map(Int64.init), created: v.creationDate, modified: v.contentModificationDate,
                                     kind: v.isDirectory == true ? "Folder" : (child.pathExtension.isEmpty ? "File" : child.pathExtension.uppercased()),
