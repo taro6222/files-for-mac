@@ -1,0 +1,18 @@
+{
+  "control": {
+    "capturedFrames": 313,
+    "displayRefreshHz": 60,
+    "intervalsOver25ms": 42,
+    "maximumIntervalMilliseconds": 34.63629202451557,
+    "p95IntervalMilliseconds": 33.30358304083347,
+    "scrollDurationSeconds": 6.009197707986459
+  },
+  "scroll": {
+    "capturedFrames": 322,
+    "displayRefreshHz": 60,
+    "intervalsOver25ms": 28,
+    "maximumIntervalMilliseconds": 35.23100004531443,
+    "p95IntervalMilliseconds": 33.02420803811401,
+    "scrollDurationSeconds": 6.0035537499934435
+  }
+}

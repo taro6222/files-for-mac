@@ -4,6 +4,8 @@
 
 ## 이번 구현 단위
 
+스크롤을 제외한 대조군에서도 캡처 간격 p95가 약 33ms로 나타났다. [M7 캡처 대조군](verification/m7/INCREMENT_30.md)
+
 일반 파일 아이콘에서 확장자 타입 조회를 재사용한다. [M7 일반 아이콘 캐시](verification/m7/INCREMENT_29.md)
 
 60Hz 화면 갱신에 맞춘 스크롤에서도 창 갱신 간격 p95는 약 33ms였다. [M7 스크롤 입력 비교](verification/m7/INCREMENT_28.md)

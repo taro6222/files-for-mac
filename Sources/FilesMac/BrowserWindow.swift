@@ -4812,13 +4812,27 @@ extension BrowserWindow {
             let clip = controller.scroll.contentView
             let maxOffset = max(0, controller.table.bounds.height - clip.bounds.height)
             guard maxOffset > 0 else { return }
+            let control = environment["FILES_PERFORMANCE_SCROLL_PACING"] == "control"
+            let marker = NSView(frame: NSRect(x: 24, y: 24, width: 64, height: 64))
+            if control {
+                marker.wantsLayer = true
+                marker.layer?.backgroundColor = NSColor.systemBlue.cgColor
+                content.addSubview(marker, positioned: .above, relativeTo: nil)
+            }
             let scrollStart = DispatchTime.now().uptimeNanoseconds
             func scrollStep(_ tick: Int) {
+                if control {
+                    CATransaction.begin()
+                    CATransaction.setDisableActions(true)
+                    marker.layer?.backgroundColor = (tick.isMultiple(of: 2) ? NSColor.systemBlue : .systemOrange).cgColor
+                    CATransaction.commit()
+                    return
+                }
                 let offset = min(maxOffset, CGFloat(tick * 12))
                 clip.scroll(to: NSPoint(x: 0, y: offset))
                 controller.scroll.reflectScrolledClipView(clip)
             }
-            if environment["FILES_PERFORMANCE_SCROLL_PACING"] == "display" {
+            if control || environment["FILES_PERFORMANCE_SCROLL_PACING"] == "display" {
                 guard await ReleaseScrollDriver().run(in: clip, step: scrollStep) else { return }
             } else {
                 for tick in 1...360 {
@@ -4826,9 +4840,13 @@ extension BrowserWindow {
                     try? await Task.sleep(for: .milliseconds(16))
                 }
             }
-            guard clip.bounds.minY > 0 else { return }
-            samples["scrollSteps"] = 360
-            samples["scrollDistancePoints"] = Double(clip.bounds.minY)
+            if control {
+                samples["controlSteps"] = 360
+            } else {
+                guard clip.bounds.minY > 0 else { return }
+                samples["scrollSteps"] = 360
+                samples["scrollDistancePoints"] = Double(clip.bounds.minY)
+            }
             let scrollEnd = DispatchTime.now().uptimeNanoseconds
             samples["scrollStartedUptimeSeconds"] = Double(scrollStart) / 1e9
             samples["scrollEndedUptimeSeconds"] = Double(scrollEnd) / 1e9

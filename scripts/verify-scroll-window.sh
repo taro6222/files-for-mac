@@ -3,8 +3,8 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 pacing=${1:-display}
 case "$pacing" in
-  display|timer) ;;
-  *) echo "Usage: $0 [display|timer]" >&2; exit 64 ;;
+  display|timer|control) ;;
+  *) echo "Usage: $0 [display|timer|control]" >&2; exit 64 ;;
 esac
 mkdir -p build
 run_dir=$(mktemp -d "$PWD/build/scroll-window.XXXXXX")
