@@ -649,8 +649,12 @@ public final class BrowserPreferences {
         return try encoder.encode(archive)
     }
     public func importData(_ data: Data) throws {
-        let archive = try JSONDecoder().decode(BrowserPreferencesArchive.self, from: data)
-        guard archive.version == 1 else { throw BrowserPreferencesArchiveError.unsupportedVersion }
+        struct ArchiveHeader: Decodable { let version: Int }
+        let decoder = JSONDecoder()
+        guard try decoder.decode(ArchiveHeader.self, from: data).version == 1 else {
+            throw BrowserPreferencesArchiveError.unsupportedVersion
+        }
+        let archive = try decoder.decode(BrowserPreferencesArchive.self, from: data)
         guard let size = BrowserViewSize(rawValue: archive.viewSize), let importedAppearance = BrowserAppearance(rawValue: archive.appearance) else { throw BrowserPreferencesArchiveError.invalidValue }
         let importedSizeUnit: BrowserSizeUnit
         if let raw = archive.sizeUnit {

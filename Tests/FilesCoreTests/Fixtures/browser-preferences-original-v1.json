@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "sidebarOrder": ["locations", "favorites"],
+  "collapsedSidebar": ["locations"],
+  "favorites": ["/tmp/FilesMigration/Favorite"],
+  "recent": ["/tmp/FilesMigration/Recent"],
+  "showHidden": true,
+  "showExtensions": false,
+  "showToolbar": true,
+  "showStatusBar": false,
+  "showHomeFavorites": false,
+  "showHomeVolumes": true,
+  "showHomeRecent": true,
+  "viewSize": "large",
+  "appearance": "dark",
+  "continueLastSession": false,
+  "toolbarOrder": ["path", "back", "forward", "up", "refresh", "hidden", "viewMode", "favorite", "options"],
+  "hiddenToolbarItems": ["hidden"],
+  "folderViewPreferences": {"/tmp/FilesMigration/Favorite": {"mode": "grid", "size": "medium"}}
+}

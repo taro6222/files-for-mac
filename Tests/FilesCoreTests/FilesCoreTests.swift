@@ -862,6 +862,34 @@ private struct DelayedLoader: DirectoryLoading {
     #expect(try destination.exportData() == before)
 }
 
+@Test @MainActor func preferencesImportOriginalArchiveAndRejectFutureSchema() throws {
+    let suite = "legacy-preferences-tests-\(UUID())"
+    let defaults = try #require(UserDefaults(suiteName: suite))
+    defer { defaults.removePersistentDomain(forName: suite) }
+    let preferences = BrowserPreferences(defaults: defaults, initialFavorites: [])
+    let fixture = try #require(Bundle.module.url(forResource: "browser-preferences-original-v1",
+        withExtension: "json", subdirectory: "Fixtures"))
+    try preferences.importData(Data(contentsOf: fixture))
+
+    let restored = BrowserPreferences(defaults: defaults, initialFavorites: [])
+    #expect(restored.sidebarOrder == [.locations, .favorites])
+    #expect(restored.collapsedSidebar == [.locations])
+    #expect(restored.favorites.map(\.path) == ["/tmp/FilesMigration/Favorite"])
+    #expect(restored.recent.map(\.path) == ["/tmp/FilesMigration/Recent"])
+    #expect(restored.showHidden && !restored.showExtensions && !restored.showStatusBar)
+    #expect(restored.appearance == .dark && !restored.continueLastSession)
+    #expect(restored.viewSize == .large && restored.showSidebar && restored.showThumbnails)
+    #expect(restored.toolbarOrder.first == .path && restored.hiddenToolbarItems == [.hidden])
+    #expect(restored.folderViewPreference(for: URL(fileURLWithPath: "/tmp/FilesMigration/Favorite"))
+        == FolderViewPreference(mode: .grid, size: .medium))
+    let before = try restored.exportData()
+    #expect(throws: BrowserPreferencesArchiveError.unsupportedVersion) {
+        try restored.importData(Data(#"{"version":2,"settings":{}}"#.utf8))
+    }
+    #expect(try restored.exportData() == before)
+    #expect(try BrowserPreferences(defaults: defaults, initialFavorites: []).exportData() == before)
+}
+
 @Test @MainActor func folderViewPreferencesPersistStandardizeRemoveAndRecoverCorruption() {
     let suite = "folder-view-preferences-tests-\(UUID())", defaults = UserDefaults(suiteName: suite)!
     defer { defaults.removePersistentDomain(forName: suite) }

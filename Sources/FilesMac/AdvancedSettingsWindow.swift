@@ -88,7 +88,11 @@ final class AdvancedSettingsWindow: NSWindowController {
         panel.beginSheetModal(for: window) { [weak self] response in
             guard response == .OK, let url = panel.url, let self else { return }
             do { try self.preferences.importData(Data(contentsOf: url)); self.syncCacheControls(); self.status.stringValue = L("설정을 가져왔습니다.", "Settings imported.") }
-            catch { self.status.stringValue = L("설정 파일이 유효하지 않아 변경하지 않았습니다.", "The settings file is invalid; no settings were changed.") }
+            catch BrowserPreferencesArchiveError.unsupportedVersion {
+                self.status.stringValue = L("이 버전에서 읽을 수 없는 설정 파일입니다.", "This app version cannot read this settings file.")
+            } catch {
+                self.status.stringValue = L("설정 파일이 유효하지 않아 변경하지 않았습니다.", "The settings file is invalid; no settings were changed.")
+            }
         }
     }
 #if DEBUG
