@@ -1,0 +1,41 @@
+{
+  "previousImageSHA256": "9a928bce89a6224acb8b8ffd8743acad535e23b507d68cd7149d6cc875087914",
+  "candidateImageSHA256": "0484581442faa2c4514b521246b2db4100417fa7bfe05aac5fca6ebdf65831c7",
+  "previousVersion": [
+    "0.1.0",
+    "1"
+  ],
+  "candidateVersion": [
+    "0.1.0",
+    "1"
+  ],
+  "previousTestExecutableSHA256": "b5ebad53310601f415feb561532aaa0aeacecd60b012e3b883b53d50cad2a2c1",
+  "candidateTestExecutableSHA256": "a611aa6085de6156b0d3e50ca0040c59c04bc85fa49e55756ca67f8806a54991",
+  "macOS": "27.2",
+  "macOSBuild": "26B123",
+  "architecture": "arm64",
+  "preservedUserState": {
+    "preferenceKeys": [
+      "startupLocationPath",
+      "continueLastSession",
+      "favorites",
+      "showExtensions"
+    ],
+    "verifiedStages": [
+      "firstInstall",
+      "afterStagedSignatureFailure",
+      "afterReplacement",
+      "afterRollback"
+    ],
+    "restoredSessionFormats": [
+      "tabSession",
+      "workspaceSessionV2"
+    ]
+  },
+  "windowVisibleSeconds": {
+    "firstInstall": 0.728,
+    "afterStagedSignatureFailure": 0.196,
+    "afterReplacement": 0.674,
+    "afterRollback": 0.384
+  }
+}
