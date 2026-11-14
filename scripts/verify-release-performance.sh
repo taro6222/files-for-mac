@@ -3,8 +3,8 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 name=${1:-release-performance}
 mode=${2:-full}
-if [[ $# -gt 2 || ( "$mode" != full && "$mode" != idle-comparison ) ]]; then
-  echo "Usage: $0 [report-name [full|idle-comparison]]" >&2
+if [[ $# -gt 2 || ( "$mode" != full && "$mode" != idle-comparison && "$mode" != idle-activity ) ]]; then
+  echo "Usage: $0 [report-name [full|idle-comparison|idle-activity]]" >&2
   exit 2
 fi
 case "$name" in
@@ -44,12 +44,13 @@ storage = subprocess.check_output(["df", "-P", str(output_dir)], text=True).spli
 filesystem = plistlib.loads(subprocess.check_output(["diskutil", "info", "-plist", storage]))
 
 
-def measure(folder, count, name, idle=0):
+def measure(folder, count, name, idle=0, user_initiated_load=False):
     sample = output_dir / f"{name}.json"
     sample.unlink(missing_ok=True)
     env = dict(os.environ, FILES_PERFORMANCE_FIXTURE=str(folder),
                FILES_PERFORMANCE_REPORT=str(sample), FILES_PERFORMANCE_COUNT=str(count),
-               FILES_PERFORMANCE_IDLE_SECONDS=str(idle))
+               FILES_PERFORMANCE_IDLE_SECONDS=str(idle),
+               FILES_PERFORMANCE_USER_INITIATED_LOAD="1" if user_initiated_load else "0")
     with (output_dir / f"{name}.log").open("w") as log:
         env["FILES_PERFORMANCE_START_NS"] = str(time.monotonic_ns())
         subprocess.run([binary, "-AppleLanguages", "(en)", "-AppleLocale", "en"],
@@ -96,7 +97,7 @@ with tempfile.TemporaryDirectory(prefix="fixture-", dir=output_dir) as temporary
         report["samples"] = samples
         report["summary"] = {count: summarize(group) for count, group in samples.items()}
         report["idle300Seconds"] = measure(folder, 10000, "idle", idle=300)
-    else:
+    elif mode == "idle-comparison":
         pairs = []
         for trial in range(1, 4):
             immediate = measure(folder, 10000, f"pair-{trial}-immediate")
@@ -104,6 +105,12 @@ with tempfile.TemporaryDirectory(prefix="fixture-", dir=output_dir) as temporary
             pairs.append({"immediate": immediate, "idle300Seconds": idle})
             print(f"Idle comparison {trial}/3 complete", flush=True)
         report["idleComparison"] = pairs
+    else:
+        baseline = measure(folder, 10000, "idle-baseline", idle=300)
+        activity = measure(folder, 10000, "idle-activity", idle=300, user_initiated_load=True)
+        if baseline.get("userInitiatedLoad") != 0 or activity.get("userInitiatedLoad") != 1:
+            raise RuntimeError("Idle measurements did not report the configured activity")
+        report["idleActivityComparison"] = {"baseline": baseline, "userInitiated": activity}
     report_path.write_text(json.dumps(report, indent=2) + "\n")
     print(report_path)
 PY

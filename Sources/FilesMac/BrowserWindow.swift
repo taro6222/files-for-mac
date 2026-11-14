@@ -5974,9 +5974,16 @@ extension BrowserWindow {
         let ready = DispatchTime.now().uptimeNanoseconds
         guard ready >= processStart else { return }
 
+        let activeBeforeIdle = NSApp.isActive
         if idle > 0 {
             try? await Task.sleep(for: .seconds(idle))
         }
+        let activeAfterIdle = NSApp.isActive
+        let userInitiatedLoad = idle > 0 && environment["FILES_PERFORMANCE_USER_INITIATED_LOAD"] == "1"
+        let activity = userInitiatedLoad ? ProcessInfo.processInfo.beginActivity(
+            options: .userInitiatedAllowingIdleSystemSleep, reason: "Measure folder navigation after idle"
+        ) : nil
+        defer { if let activity { ProcessInfo.processInfo.endActivity(activity) } }
         let idleRSS = currentResidentBytes()
         let location = URL(fileURLWithPath: path, isDirectory: true)
         let started = DispatchTime.now().uptimeNanoseconds
@@ -6006,6 +6013,11 @@ extension BrowserWindow {
             "idleRSSBytes": Double(idleRSS),
             "peakSampledRSSBytes": Double(peakRSS)
         ]
+        if idle > 0 {
+            samples["activeBeforeIdle"] = activeBeforeIdle ? 1 : 0
+            samples["activeAfterIdle"] = activeAfterIdle ? 1 : 0
+            samples["userInitiatedLoad"] = userInitiatedLoad ? 1 : 0
+        }
         if environment["FILES_PERFORMANCE_SCROLL"] == "1" {
             // Let Instruments settle before scrolling a populated window.
             try? await Task.sleep(for: .seconds(2))
