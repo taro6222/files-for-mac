@@ -128,29 +128,42 @@ public final class BrowserModel {
             do {
                 let result: [FileItem]
                 if let streaming = loader as? any DirectoryStreaming {
-                    var collected: [FileItem] = []
+                    var sortedPrefix: [FileItem] = []
+                    var pending: [FileItem] = []
+                    var prefixOrder = self?.sortOrder
                     var nextPreviewCount = 1
                     for try await batch in streaming.batches(of: url, showHidden: hidden) {
                         guard let self, self.generation == request, !Task.isCancelled else { return }
-                        collected.append(contentsOf: batch)
-                        if previousItems.isEmpty && collected.count >= nextPreviewCount {
-                            // Keep the first batch immediate and bound cumulative sorting
-                            // and view updates as the directory grows.
-                            nextPreviewCount = collected.count * 2
-                            self.folderItems = self.sortOrder.sorted(collected)
+                        pending.append(contentsOf: batch)
+                        let count = sortedPrefix.count + pending.count
+                        if previousItems.isEmpty && count >= nextPreviewCount {
+                            nextPreviewCount = count * 2
+                            let order = self.sortOrder
+                            sortedPrefix = order == prefixOrder
+                                ? order.mergeSorted(sortedPrefix, order.sorted(pending))
+                                : order.sorted(sortedPrefix + pending)
+                            prefixOrder = order
+                            pending.removeAll(keepingCapacity: true)
+                            self.folderItems = sortedPrefix
                             self.onChange?()
                         }
                     }
-                    result = collected
+                    guard let self, self.generation == request, !Task.isCancelled else { return }
+                    let order = self.sortOrder
+                    result = order == prefixOrder
+                        ? order.mergeSorted(sortedPrefix, order.sorted(pending))
+                        : order.sorted(sortedPrefix + pending)
                 } else {
-                    result = try await loader.contents(of: url, showHidden: hidden)
+                    let items = try await loader.contents(of: url, showHidden: hidden)
+                    guard let self, self.generation == request, !Task.isCancelled else { return }
+                    result = self.sortOrder.sorted(items)
                 }
                 let items = result
                 guard let self, self.generation == request, !Task.isCancelled else { return }
                 let selection = SelectionRestoration.restore(self.history.current.selection, from: previousItems, to: items)
                 self.history.save(selection: selection, scrollOffset: self.history.current.scrollOffset)
                 self.loadedLocation = url
-                self.folderItems = self.sortOrder.sorted(items); self.isLoading = false; self.onChange?()
+                self.folderItems = items; self.isLoading = false; self.onChange?()
             } catch {
                 guard let self, self.generation == request, !Task.isCancelled else { return }
                 self.folderItems = []; self.error = error.localizedDescription

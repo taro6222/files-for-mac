@@ -4,6 +4,8 @@
 
 ## 이번 구현 단위
 
+대형 폴더를 읽을 때 새 항목만 정렬해 기존 목록에 병합한다. [M7 대형 폴더 정렬과 성능](verification/m7/INCREMENT_39.md)
+
 명령 팔레트가 연 브라우저 창에서 명령을 실행하고, Esc로 닫으면 이전 컨트롤에 초점을 돌려준다. [M7 명령 팔레트 키보드 검증](verification/m7/INCREMENT_38.md)
 
 사이드바를 숨겨도 방향키와 Return으로 홈에서 네트워크 위치를 열고 파일 보기에 초점을 옮길 수 있다. [M7 홈 키보드 탐색](verification/m7/INCREMENT_37.md)

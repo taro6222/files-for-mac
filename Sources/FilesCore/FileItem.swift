@@ -71,26 +71,49 @@ public struct SortOrder: Codable, Equatable, Sendable {
         try values.encode(directoryPlacement, forKey: .directoryPlacement)
     }
     public func sorted(_ items: [FileItem]) -> [FileItem] {
-        items.sorted { a, b in
-            if directoryPlacement != .mixed && a.isBrowsable != b.isBrowsable {
-                return directoryPlacement == .foldersFirst ? a.isBrowsable : !a.isBrowsable
+        items.sorted(by: precedes)
+    }
+
+    // Both inputs are already sorted with this order. Prefer the earlier batch
+    // on ties, preserving the stable ordering of a sort over their concatenation.
+    func mergeSorted(_ prefix: [FileItem], _ suffix: [FileItem]) -> [FileItem] {
+        guard !prefix.isEmpty, let first = suffix.first else { return prefix.isEmpty ? suffix : prefix }
+        if let last = prefix.last, !precedes(first, last) { return prefix + suffix }
+        var merged: [FileItem] = []
+        merged.reserveCapacity(prefix.count + suffix.count)
+        var left = 0
+        var right = 0
+        while left < prefix.count && right < suffix.count {
+            if precedes(suffix[right], prefix[left]) {
+                merged.append(suffix[right]); right += 1
+            } else {
+                merged.append(prefix[left]); left += 1
             }
-            let comparison: ComparisonResult
-            switch field {
-            case .name: comparison = a.name.localizedStandardCompare(b.name)
-            case .created: comparison = compare(a.created, b.created)
-            case .kind: comparison = a.kind.localizedStandardCompare(b.kind)
-            case .tag: comparison = a.tags.joined(separator: "\u{0}").localizedStandardCompare(b.tags.joined(separator: "\u{0}"))
-            case .path: comparison = a.url.deletingLastPathComponent().path.localizedStandardCompare(b.url.deletingLastPathComponent().path)
-            case .syncStatus: comparison = compare(a.cloudState?.rawValue, b.cloudState?.rawValue)
-            case .size:
-                comparison = compare(a.size, b.size)
-            case .modified:
-                comparison = compare(a.modified, b.modified)
-            }
-            if comparison == .orderedSame { return a.id < b.id }
-            return ascending ? comparison == .orderedAscending : comparison == .orderedDescending
         }
+        merged.append(contentsOf: prefix[left...])
+        merged.append(contentsOf: suffix[right...])
+        return merged
+    }
+
+    private func precedes(_ a: FileItem, _ b: FileItem) -> Bool {
+        if directoryPlacement != .mixed && a.isBrowsable != b.isBrowsable {
+            return directoryPlacement == .foldersFirst ? a.isBrowsable : !a.isBrowsable
+        }
+        let comparison: ComparisonResult
+        switch field {
+        case .name: comparison = a.name.localizedStandardCompare(b.name)
+        case .created: comparison = compare(a.created, b.created)
+        case .kind: comparison = a.kind.localizedStandardCompare(b.kind)
+        case .tag: comparison = a.tags.joined(separator: "\u{0}").localizedStandardCompare(b.tags.joined(separator: "\u{0}"))
+        case .path: comparison = a.url.deletingLastPathComponent().path.localizedStandardCompare(b.url.deletingLastPathComponent().path)
+        case .syncStatus: comparison = compare(a.cloudState?.rawValue, b.cloudState?.rawValue)
+        case .size:
+            comparison = compare(a.size, b.size)
+        case .modified:
+            comparison = compare(a.modified, b.modified)
+        }
+        if comparison == .orderedSame { return a.id < b.id }
+        return ascending ? comparison == .orderedAscending : comparison == .orderedDescending
     }
     private func compare<T: Comparable>(_ a: T?, _ b: T?) -> ComparisonResult {
         switch (a, b) {

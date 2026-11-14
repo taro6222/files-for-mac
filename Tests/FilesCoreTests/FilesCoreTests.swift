@@ -1188,6 +1188,25 @@ private struct ManyBatchLoader: DirectoryStreaming {
     #expect(model.items.map(\.name) == (0..<17).map { "item-\($0)" })
 }
 
+@Test @MainActor func modelUsesChangedSortOrderForRemainingDirectoryBatches() async throws {
+    let model = BrowserModel(loader: ManyBatchLoader())
+    let descending = SortOrder(ascending: false)
+    model.onChange = {
+        if model.isLoading, model.items.count == 8, model.sortOrder != descending {
+            model.sort(descending)
+        }
+    }
+    defer { model.onChange = nil }
+    model.navigate(URL(fileURLWithPath: "/many-batches"))
+    for _ in 0..<50 {
+        if !model.isLoading { break }
+        try await Task.sleep(for: .milliseconds(5))
+    }
+    #expect(!model.isLoading)
+    #expect(model.sortOrder == descending)
+    #expect(model.items.map(\.name) == (0..<17).reversed().map { "item-\($0)" })
+}
+
 @Test @MainActor func sidebarSectionsPersistCollapseAndOrderWithoutChangingHome() {
     let suite = "files-sidebar-tests-\(UUID())"
     let defaults = UserDefaults(suiteName: suite)!
