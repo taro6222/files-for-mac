@@ -16,6 +16,7 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
     private var countsSoakDetailCells = false
 #endif
     private let scroll = NSScrollView()
+    private let detailHost = NSView()
     private let gridView = FileGridView()
     private let listView = FileListView()
     private let columnView = FileColumnView()
@@ -434,8 +435,15 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         applyColumnVisibility()
         table.sortDescriptors = [NSSortDescriptor(key: "name", ascending: true)]
         scroll.documentView = table; scroll.hasVerticalScroller = true; scroll.hasHorizontalScroller = true
-        scroll.translatesAutoresizingMaskIntoConstraints = false; content.addSubview(scroll)
-        NSLayoutConstraint.activate([scroll.leadingAnchor.constraint(equalTo: content.leadingAnchor), scroll.trailingAnchor.constraint(equalTo: content.trailingAnchor), scroll.topAnchor.constraint(equalTo: content.topAnchor), scroll.bottomAnchor.constraint(equalTo: content.bottomAnchor)])
+        detailHost.translatesAutoresizingMaskIntoConstraints = false
+        content.addSubview(detailHost)
+        NSLayoutConstraint.activate([
+            detailHost.leadingAnchor.constraint(equalTo: content.leadingAnchor),
+            detailHost.trailingAnchor.constraint(equalTo: content.trailingAnchor),
+            detailHost.topAnchor.constraint(equalTo: content.topAnchor),
+            detailHost.bottomAnchor.constraint(equalTo: content.bottomAnchor)
+        ])
+        scroll.autoresizingMask = [.width, .height]
         content.addSubview(gridView)
         NSLayoutConstraint.activate([gridView.leadingAnchor.constraint(equalTo: content.leadingAnchor), gridView.trailingAnchor.constraint(equalTo: content.trailingAnchor), gridView.topAnchor.constraint(equalTo: content.topAnchor), gridView.bottomAnchor.constraint(equalTo: content.bottomAnchor)])
         content.addSubview(listView)
@@ -894,6 +902,14 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         let showsColumns = model.location != nil && primaryRenderedViewMode == .columns
         let detailsWereHidden = scroll.isHidden
         scroll.isHidden = model.location == nil || showsGrid || showsList || showsColumns
+        // A hidden table still participates in AppKit's window bookkeeping.
+        // Detach it when another view is showing so discarded cells can be released.
+        if scroll.isHidden {
+            scroll.removeFromSuperview()
+        } else if scroll.superview == nil {
+            scroll.frame = detailHost.bounds
+            detailHost.addSubview(scroll)
+        }
         gridView.isHidden = model.location == nil || !showsGrid
         listView.isHidden = model.location == nil || !showsList
         columnView.isHidden = model.location == nil || !showsColumns
@@ -5360,6 +5376,9 @@ extension BrowserWindow {
                       browser.model.history.forward.count == 1 else {
                     throw ReleaseSoakFailure("Navigation history did not return to its expected size")
                 }
+                guard browser.scroll.superview == nil else {
+                    throw ReleaseSoakFailure("The details view is still attached on Home")
+                }
                 cycles += 1
                 try measureMemory(recordSample: cycles == 1 || lastSample.duration(to: clock.now) >= .seconds(30))
                 try report(state: "running")
@@ -5392,7 +5411,9 @@ extension BrowserWindow {
             try await Task.sleep(for: .milliseconds(20))
         }
         window?.contentView?.layoutSubtreeIfNeeded()
-        guard table.numberOfRows == count else { throw ReleaseSoakFailure("Rendered row count mismatch") }
+        guard scroll.superview === detailHost, table.numberOfRows == count else {
+            throw ReleaseSoakFailure("The details view is detached or has an unexpected row count")
+        }
     }
 
     private static func currentResidentBytes() -> UInt64 {
