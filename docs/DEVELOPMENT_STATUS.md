@@ -4,6 +4,8 @@
 
 ## 이번 구현 단위
 
+복사·이동 충돌 비교에 이미지와 PDF 첫 페이지의 썸네일을 표시한다. [M7 충돌 이미지·PDF 미리보기](verification/m7/INCREMENT_91.md)
+
 복사·이동 충돌 창에서 원본과 기존 대상의 텍스트 미리보기를 비교한다. [M7 충돌 텍스트 미리보기](verification/m7/INCREMENT_90.md)
 
 복사·이동 충돌 창에서 원본과 기존 대상의 경로·종류·파일 크기·수정일을 비교한다. [M7 충돌 정보 비교](verification/m7/INCREMENT_89.md)

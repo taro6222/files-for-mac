@@ -2475,6 +2475,11 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
             }
         }
     }
+    private enum ConflictPreviewPart: Sendable {
+        case text(String)
+        case thumbnail(CGImage, label: String)
+    }
+
     private func addConflictComparison(to alert: NSAlert, sources: [URL], destination: URL) -> Task<Void, Never> {
         let scroll = NSScrollView(frame: NSRect(x: 0, y: 0, width: 360, height: 140))
         scroll.hasVerticalScroller = true
@@ -2492,7 +2497,7 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
 
         let sizeUnit = preferences.sizeUnit
         return Task { [weak details] in
-            let worker = Task.detached(priority: .userInitiated) {
+            let worker = Task.detached(priority: .userInitiated) { () -> [ConflictPreviewPart] in
                 func describe(_ url: URL, info: stat) -> String {
                     let type = info.st_mode & S_IFMT
                     let kind: String = switch type {
@@ -2507,8 +2512,8 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
                     return "\(url.path)\n\(kind) · \(bytes) · \(date)"
                 }
 
-                func preview(_ url: URL, expected: stat) -> String {
-                    let unavailable = L("텍스트 미리보기 없음", "Text preview unavailable")
+                func preview(_ url: URL, expected: stat) -> ConflictPreviewPart {
+                    let unavailable = ConflictPreviewPart.text(L("미리보기 없음", "Preview unavailable"))
                     guard expected.st_mode & S_IFMT == S_IFREG else { return unavailable }
                     let descriptor = open(url.path, O_RDONLY | O_NOFOLLOW | O_NONBLOCK | O_CLOEXEC)
                     guard descriptor >= 0 else { return unavailable }
@@ -2519,7 +2524,29 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
                           actual.st_dev == expected.st_dev, actual.st_ino == expected.st_ino else { return unavailable }
                     let limit = 4096
                     guard let data = try? handle.read(upToCount: limit + 1) else {
-                        return actual.st_size == 0 ? L("빈 파일", "Empty file") : unavailable
+                        return actual.st_size == 0 ? .text(L("빈 파일", "Empty file")) : unavailable
+                    }
+                    let visualLimit = 8 * 1024 * 1024
+                    let isPDF = data.starts(with: "%PDF-".utf8)
+                    let type = UTType(filenameExtension: url.pathExtension)
+                    if isPDF || type?.conforms(to: .image) == true {
+                        guard actual.st_size <= visualLimit, !Task.isCancelled,
+                              let _ = try? handle.seek(toOffset: 0),
+                              let contents = try? handle.read(upToCount: visualLimit + 1),
+                              contents.count <= visualLimit else { return unavailable }
+                        let image: CGImage?
+                        if isPDF {
+                            image = Self.conflictPDFThumbnail(contents)
+                        } else if let source = CGImageSourceCreateWithData(contents as CFData, nil) {
+                            image = CGImageSourceCreateThumbnailAtIndex(source, 0, [
+                                kCGImageSourceCreateThumbnailFromImageAlways: true,
+                                kCGImageSourceCreateThumbnailWithTransform: true,
+                                kCGImageSourceThumbnailMaxPixelSize: 240
+                            ] as CFDictionary)
+                        } else { image = nil }
+                        guard let image else { return unavailable }
+                        let label = isPDF ? L("PDF 첫 페이지", "PDF first page") : L("이미지 미리보기", "Image preview")
+                        return .thumbnail(image, label: label)
                     }
                     let truncated = data.count > limit || actual.st_size > Int64(data.count)
                     let bytes = data.prefix(limit)
@@ -2536,38 +2563,75 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
                     guard let text, text.unicodeScalars.allSatisfy({
                         !CharacterSet.controlCharacters.contains($0) || $0 == "\n" || $0 == "\r" || $0 == "\t"
                     }) else { return unavailable }
-                    return text + (truncated ? "\n…" : "")
+                    return .text(text + (truncated ? "\n…" : ""))
                 }
 
-                var pairs: [String] = []
+                var pairs: [ConflictPreviewPart] = []
                 for source in sources.prefix(12) {
-                    guard !Task.isCancelled else { return "" }
+                    guard !Task.isCancelled else { return [] }
                     let target = destination.appendingPathComponent(source.lastPathComponent)
                     var targetInfo = stat()
                     guard lstat(target.path, &targetInfo) == 0 else { continue }
                     var sourceInfo = stat()
                     let sourceExists = lstat(source.path, &sourceInfo) == 0
                     let original = sourceExists
-                        ? describe(source, info: sourceInfo) + "\n" + preview(source, expected: sourceInfo)
+                        ? describe(source, info: sourceInfo)
                         : source.path + "\n" + L("정보를 읽을 수 없습니다.", "Unable to read information.")
-                    pairs.append(L("원본", "Source") + "\n" + original + "\n"
-                        + L("기존 대상", "Existing Destination") + "\n" + describe(target, info: targetInfo)
-                        + "\n" + preview(target, expected: targetInfo))
+                    pairs.append(.text(L("원본", "Source") + "\n" + original + "\n"))
+                    if sourceExists { pairs.append(preview(source, expected: sourceInfo)) }
+                    pairs.append(.text("\n" + L("기존 대상", "Existing Destination") + "\n"
+                        + describe(target, info: targetInfo) + "\n"))
+                    pairs.append(preview(target, expected: targetInfo))
+                    pairs.append(.text("\n\n"))
                 }
                 if pairs.isEmpty {
-                    pairs.append(L("확인한 항목에 표시할 기존 대상이 없습니다.", "No existing destinations to display for the checked items."))
+                    pairs.append(.text(L("확인한 항목에 표시할 기존 대상이 없습니다.", "No existing destinations to display for the checked items.")))
                 }
                 if sources.count > 12 {
-                    pairs.append(L("처음 12개 원본을 확인했습니다.", "Checked the first 12 source items."))
+                    pairs.append(.text(L("처음 12개 원본을 확인했습니다.", "Checked the first 12 source items.")))
                 }
-                return pairs.joined(separator: "\n\n")
+                return pairs
             }
             let comparison = await withTaskCancellationHandler {
                 await worker.value
             } onCancel: { worker.cancel() }
             guard !Task.isCancelled else { return }
-            details?.string = comparison
+            let rendered = NSMutableAttributedString()
+            for part in comparison {
+                switch part {
+                case let .text(text):
+                    rendered.append(NSAttributedString(string: text))
+                case let .thumbnail(image, label):
+                    rendered.append(NSAttributedString(string: label + "\n"))
+                    let attachment = NSTextAttachment()
+                    attachment.attachmentCell = NSTextAttachmentCell(imageCell:
+                        NSImage(cgImage: image, size: NSSize(width: image.width, height: image.height)))
+                    rendered.append(NSAttributedString(attachment: attachment))
+                }
+            }
+            details?.textStorage?.setAttributedString(rendered)
         }
+    }
+
+    private nonisolated static func conflictPDFThumbnail(_ data: Data) -> CGImage? {
+        guard let provider = CGDataProvider(data: data as CFData),
+              let page = CGPDFDocument(provider)?.page(at: 1) else { return nil }
+        let bounds = page.getBoxRect(.cropBox)
+        guard bounds.width.isFinite, bounds.height.isFinite, bounds.width > 0, bounds.height > 0 else { return nil }
+        let rotated = abs(page.rotationAngle % 180) == 90
+        let size = rotated ? CGSize(width: bounds.height, height: bounds.width) : bounds.size
+        let longestSide = max(size.width, size.height)
+        let width = max(1, Int((240 * (size.width / longestSide)).rounded()))
+        let height = max(1, Int((240 * (size.height / longestSide)).rounded()))
+        guard let canvas = CGContext(data: nil, width: width, height: height, bitsPerComponent: 8,
+            bytesPerRow: 0, space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue) else { return nil }
+        let frame = CGRect(x: 0, y: 0, width: width, height: height)
+        canvas.setFillColor(gray: 1, alpha: 1)
+        canvas.fill(frame)
+        canvas.concatenate(page.getDrawingTransform(.cropBox, rect: frame, rotate: 0, preserveAspectRatio: true))
+        canvas.drawPDFPage(page)
+        return canvas.makeImage()
     }
     private func draggedURLs(_ info: any NSDraggingInfo) -> [URL] {
         (info.draggingPasteboard.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [NSURL] ?? []).map { $0 as URL }
@@ -5353,6 +5417,44 @@ extension BrowserWindow {
                     checks["moveResultKeyboardClose"] = resultWindow.performKeyEquivalent(with: close) && !resultWindow.isVisible
                 } else { checks["moveResultKeyboardClose"] = false }
             } else { checks["moveConflictKeyboardShortcut"] = false }
+            let imageFile = source.appendingPathComponent("preview.png")
+            let pdfFile = source.appendingPathComponent("preview.pdf")
+            let canvas = CGContext(data: nil, width: 16, height: 12, bitsPerComponent: 8,
+                bytesPerRow: 0, space: CGColorSpaceCreateDeviceRGB(),
+                bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue)!
+            canvas.setFillColor(red: 1, green: 0, blue: 0, alpha: 1)
+            canvas.fill(CGRect(x: 0, y: 0, width: 16, height: 12))
+            let png = NSBitmapImageRep(cgImage: canvas.makeImage()!).representation(using: .png, properties: [:])!
+            try png.write(to: imageFile)
+            try png.write(to: target.appendingPathComponent(imageFile.lastPathComponent))
+            var page = CGRect(x: 0, y: 0, width: 80, height: 60)
+            let pdf = CGContext(pdfFile as CFURL, mediaBox: &page, nil)!
+            pdf.beginPDFPage(nil)
+            pdf.setFillColor(red: 0, green: 0, blue: 1, alpha: 1)
+            pdf.fill(page)
+            pdf.endPDFPage()
+            pdf.closePDF()
+            try fm.copyItem(at: pdfFile, to: target.appendingPathComponent(pdfFile.lastPathComponent))
+            controller.prepareCopy(sources: [imageFile, pdfFile], destination: target)
+            if let sheet = window.attachedSheet {
+                func thumbnailCount(in view: NSView) -> Int {
+                    if let storage = (view as? NSTextView)?.textStorage {
+                        var count = 0
+                        storage.enumerateAttribute(.attachment, in: NSRange(location: 0, length: storage.length)) { value, _, _ in
+                            if let attachment = value as? NSTextAttachment,
+                               let cell = attachment.attachmentCell as? NSTextAttachmentCell, cell.image != nil { count += 1 }
+                        }
+                        return count
+                    }
+                    return view.subviews.reduce(0) { $0 + thumbnailCount(in: $1) }
+                }
+                let start = ContinuousClock.now
+                while sheet.contentView.map({ thumbnailCount(in: $0) }) != 4 && elapsed(start) < 4 {
+                    try await Task.sleep(for: .milliseconds(20))
+                }
+                checks["conflictImageAndPDFThumbnails"] = sheet.contentView.map { thumbnailCount(in: $0) } == 4
+                window.endSheet(sheet, returnCode: .alertThirdButtonReturn)
+            } else { checks["conflictImageAndPDFThumbnails"] = false }
             let iconCache = FileIconCache()
             var resolutions = 0
             let lookup: (String) -> UTType? = { _ in resolutions += 1; return .plainText }
