@@ -27,7 +27,7 @@ Windows의 비교 기준은 Files v4.2.9의 `99951c66928c4da714da8b1dd4603942118
 
 macOS 캡처에서 발견한 상태 표시줄의 개발 단계 문구를 제거했다. 항목 수, 선택, 읽기 및 자동 갱신 상태는 상태 표시줄에 표시한다.
 
-Windows 실행 화면을 동일 fixture·창 크기·테마로 캡처하는 작업이 남아 있다. 표는 UI-01~UI-20의 구조 대조를 담는다. 화면 치수와 각 화면에서 적용되는 상태별 시각·동작 검증은 정식 출시 게이트에 남아 있다.
+[UI-01 홈 실행 화면 대조](../verification/m7/INCREMENT_189.md)에서 Windows와 macOS의 기본 홈 레이아웃과 위젯을 확인했다. 동일 fixture·창 크기의 화면, UI-02~UI-20 및 적용 상태별 시각·동작 검증은 정식 출시 게이트에 남아 있다.
 
 [home]: https://github.com/files-community/Files/blob/99951c66928c4da714da8b1dd46039421182cbab/src/Files.App/Views/HomePage.xaml
 [main]: https://github.com/files-community/Files/blob/99951c66928c4da714da8b1dd46039421182cbab/src/Files.App/Views/MainPage.xaml

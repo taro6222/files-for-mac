@@ -70,7 +70,8 @@ def capture(output, app_id, window_handle):
                 request("POST", session + "/window", {"name": handle})
                 xml = request("GET", session + "/source")["value"]
                 last_source = xml
-                elements = list(ET.fromstring(xml).iter())
+                tree = ET.ElementTree(ET.fromstring(xml))
+                elements = list(tree.iter())
                 if any(element.get("Name") == "Disclaimer" for element in elements):
                     button = request("POST", session + "/element", {"using": "name", "value": "Accept"})["value"]
                     identifier = button.get("ELEMENT") or button["element-6066-11e4-a52e-4f735466cecf"]
@@ -78,14 +79,14 @@ def capture(output, app_id, window_handle):
                     continue
                 names = {element.get("Name", "").casefold() for element in elements}
                 if {"drives", "network locations"} <= names:
-                    return xml
+                    return tree
             return None
 
         wait_for("Files Home accessibility elements", home_source)
         request("POST", session + "/window/maximize", {})
-        xml = wait_for("maximized Files Home", home_source)
+        tree = wait_for("maximized Files Home", home_source)
         screenshot_sha = screenshot("UI-01_home.png")
-        (output / "UI-01_home.xml").write_text(xml, encoding="utf-8")
+        tree.write(output / "UI-01_home.xml", encoding="utf-8", xml_declaration=True)
         record = {
             "upstreamSHA": os.environ["UPSTREAM_SHA"],
             "packageSHA256": os.environ["FILES_WINDOWS_PACKAGE_SHA"],
@@ -99,7 +100,12 @@ def capture(output, app_id, window_handle):
     except Exception as error:
         (output / "capture-error.txt").write_text(str(error) + "\n", encoding="utf-8")
         if last_source is not None:
-            (output / "last-window.xml").write_text(last_source, encoding="utf-8")
+            try:
+                ET.ElementTree(ET.fromstring(last_source)).write(
+                    output / "last-window.xml", encoding="utf-8", xml_declaration=True
+                )
+            except ET.ParseError:
+                (output / "last-window.txt").write_text(last_source, encoding="utf-8")
         if session is not None:
             try:
                 screenshot("last-window.png")
