@@ -13,6 +13,7 @@ import Testing
 @Test func gitStatusParserRejectsMalformedOrAbsolutePaths() {
     #expect(throws: GitBackendError.invalidOutput) { try GitStatusParser().parse(Data("? /absolute\0".utf8), root: URL(fileURLWithPath: "/tmp/repo")) }
     #expect(throws: GitBackendError.invalidOutput) { try GitStatusParser().parse(Data("1 broken\0".utf8), root: URL(fileURLWithPath: "/tmp/repo")) }
+    #expect(throws: GitBackendError.invalidOutput) { try GitStatusParser().parse(Data("? folder/../escape\0".utf8), root: URL(fileURLWithPath: "/tmp/repo")) }
 }
 
 @Test func gitProviderDiscoversRepositoryAndReadsWorkingTree() async throws {
@@ -25,6 +26,36 @@ import Testing
     #expect(snapshot.root == root.standardizedFileURL); #expect(snapshot.branch == "main")
     #expect(snapshot.entries.contains { $0.path == "tracked.txt" && $0.workTreeStatus == "M" })
     #expect(snapshot.entries.contains { $0.path == "한글 file.txt" && $0.kind == .untracked })
+}
+
+@Test func gitStatusPreservesWhitespaceAndLeadingHyphensInFileNames() async throws {
+    let fm = FileManager.default
+    let parent = fm.temporaryDirectory.appendingPathComponent("files-git-names-\(UUID())", isDirectory: true)
+    let root = parent.appendingPathComponent("repository \n ", isDirectory: true)
+    try fm.createDirectory(at: root, withIntermediateDirectories: true)
+    defer { try? fm.removeItem(at: parent) }
+    try runGit(["init", "-b", "main"], at: root)
+    try configureIdentity(root)
+    let changed = "  한글\nchanged.txt"
+    let original = "-before\r\nrename.txt"
+    let renamed = "  -after\nrename.txt"
+    for name in [changed, original] {
+        try Data(name.utf8).write(to: root.appendingPathComponent(name))
+    }
+    try runGit(["add", "--", changed, original], at: root)
+    try runGit(["commit", "-m", "Initial"], at: root)
+    try Data("changed".utf8).write(to: root.appendingPathComponent(changed))
+    try runGit(["mv", "--", original, renamed], at: root)
+    let untracked = "-untracked\nfile.txt"
+    try Data().write(to: root.appendingPathComponent(untracked))
+
+    let files = try await LocalFileSystem().contents(of: root, showHidden: false)
+    #expect(Set(files.map(\.name)) == Set([changed, renamed, untracked]))
+    let snapshot = try await GitProvider().snapshot(at: root)
+    #expect(snapshot.root.path == root.standardizedFileURL.path)
+    #expect(snapshot.entries.contains { $0.path == changed && $0.statusCode == ".M" })
+    #expect(snapshot.entries.contains { $0.path == renamed && $0.originalPath == original && $0.kind == .renamed })
+    #expect(snapshot.entries.contains { $0.path == untracked && $0.kind == .untracked })
 }
 
 @Test func gitProviderReadsAnUnmergedWorkTreeWithoutChangingIt() async throws {

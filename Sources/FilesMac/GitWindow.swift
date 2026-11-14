@@ -125,7 +125,15 @@ final class GitWindow: NSWindowController, NSTableViewDataSource, NSTableViewDel
     func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
         guard let entry = snapshot?.entries[row], let identifier = tableColumn?.identifier else { return nil }
         let cell = tableView.makeView(withIdentifier: identifier, owner: self) as? NSTableCellView ?? { let value = NSTableCellView(); value.identifier = identifier; let text = NSTextField(labelWithString: ""); text.translatesAutoresizingMaskIntoConstraints = false; value.addSubview(text); value.textField = text; NSLayoutConstraint.activate([text.leadingAnchor.constraint(equalTo: value.leadingAnchor, constant: 6), text.trailingAnchor.constraint(equalTo: value.trailingAnchor, constant: -6), text.centerYAnchor.constraint(equalTo: value.centerYAnchor)]); return value }()
-        cell.textField?.stringValue = identifier.rawValue == "status" ? entry.statusCode : entry.path
+        if identifier.rawValue == "status" {
+            cell.textField?.stringValue = entry.statusCode
+        } else {
+            cell.textField?.stringValue = entry.path.replacingOccurrences(of: "\\", with: "\\\\")
+                .replacingOccurrences(of: "\r\n", with: "\\r\\n")
+                .replacingOccurrences(of: "\r", with: "\\r")
+                .replacingOccurrences(of: "\n", with: "\\n")
+                .replacingOccurrences(of: "\t", with: "\\t")
+        }
         cell.textField?.setAccessibilityLabel(identifier.rawValue == "status" && entry.kind == .unmerged
             ? L("병합 충돌: \(entry.statusCode)", "Unmerged: \(entry.statusCode)") : nil)
         return cell

@@ -72,11 +72,11 @@ public struct GitStatusParser: Sendable {
                     if value.hasPrefix("-") { behind = Int(value.dropFirst()) ?? 0 }
                 }
             } else if record.hasPrefix("1 ") {
-                let fields = record.split(separator: " ", maxSplits: 8, omittingEmptySubsequences: true)
+                let fields = record.split(separator: " ", maxSplits: 8, omittingEmptySubsequences: false)
                 guard fields.count == 9 else { throw GitBackendError.invalidOutput }
                 entries.append(try entry(path: String(fields[8]), originalPath: nil, xy: fields[1], kind: .ordinary))
             } else if record.hasPrefix("2 ") {
-                let fields = record.split(separator: " ", maxSplits: 9, omittingEmptySubsequences: true)
+                let fields = record.split(separator: " ", maxSplits: 9, omittingEmptySubsequences: false)
                 guard fields.count == 10, index + 1 < records.count else { throw GitBackendError.invalidOutput }
                 entries.append(try entry(path: String(fields[9]), originalPath: records[index + 1], xy: fields[1], kind: .renamed)); index += 1
             } else if record.hasPrefix("u ") {
@@ -96,7 +96,8 @@ public struct GitStatusParser: Sendable {
         return .init(path: path, originalPath: originalPath, indexStatus: xy.first!, workTreeStatus: xy.last!, kind: kind)
     }
     private func validate(_ path: String) throws {
-        guard !path.isEmpty, !path.hasPrefix("/"), !path.unicodeScalars.contains(where: { CharacterSet.controlCharacters.subtracting(CharacterSet(charactersIn: "\t")).contains($0) }) else {
+        let components = path.split(separator: "/", omittingEmptySubsequences: false)
+        guard !path.isEmpty, components.allSatisfy({ !$0.isEmpty && $0 != "." && $0 != ".." }) else {
             throw GitBackendError.invalidOutput
         }
     }
@@ -139,7 +140,9 @@ public struct GitProvider: Sendable {
             throw fileManager.isExecutableFile(atPath: executable.path) ? GitBackendError.invalidLocation : GitBackendError.gitUnavailable
         }
         let rootResult = try await run(["-C", location.path, "rev-parse", "--show-toplevel"], at: location)
-        guard let rootPath = String(data: rootResult, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines), rootPath.hasPrefix("/") else {
+        // rev-parse appends one LF. Other trailing whitespace can be part of the path.
+        guard rootResult.last == 0x0a,
+              let rootPath = String(data: rootResult.dropLast(), encoding: .utf8), rootPath.hasPrefix("/") else {
             throw GitBackendError.notRepository
         }
         let root = URL(fileURLWithPath: rootPath, isDirectory: true).standardizedFileURL
