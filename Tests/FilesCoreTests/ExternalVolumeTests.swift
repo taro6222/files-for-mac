@@ -32,6 +32,7 @@ import Testing
     let target = destination.appendingPathComponent(name)
     let payload = Data("data fork".utf8)
     let modificationDate = Date(timeIntervalSince1970: 1_700_000_000)
+    let creationDate = Date(timeIntervalSince1970: 1_600_000_000)
     let xattrs = [
         "com.filesmac.fixture": Data("extended attribute".utf8),
         "com.apple.ResourceFork": Data("resource fork".utf8),
@@ -49,7 +50,8 @@ import Testing
     try chmod.run()
     chmod.waitUntilExit()
     try #require(chmod.terminationStatus == 0)
-    try fm.setAttributes([.posixPermissions: 0o750, .modificationDate: modificationDate], ofItemAtPath: source.path)
+    try fm.setAttributes([.posixPermissions: 0o750, .modificationDate: modificationDate,
+                          .creationDate: creationDate], ofItemAtPath: source.path)
 
     func aclText(_ file: URL) throws -> String {
         let acl = try #require(acl_get_file(file.path, ACL_TYPE_EXTENDED))
@@ -64,6 +66,7 @@ import Testing
         let attrs = try fm.attributesOfItem(atPath: file.path)
         #expect((attrs[.posixPermissions] as? NSNumber)?.intValue == 0o750)
         #expect(attrs[.modificationDate] as? Date == modificationDate)
+        #expect(attrs[.creationDate] as? Date == creationDate)
         #expect(try aclText(file) == expectedACL)
         for (key, expected) in xattrs {
             var actual = Data(count: expected.count)

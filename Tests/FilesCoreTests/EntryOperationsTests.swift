@@ -811,7 +811,7 @@ func crossVolumeMovePreservesSourceWhenExtendedAttributeChanges(_ location: Stri
     }
 }
 
-@Test(arguments: ["acl", "mode", "modification time"])
+@Test(arguments: ["acl", "mode", "modification time", "creation time"])
 func crossVolumeMovePreservesSourceWhenStagedMetadataChanges(_ metadata: String) async throws {
     let root = try entryFixture()
     let fm = FileManager.default
@@ -844,7 +844,8 @@ func crossVolumeMovePreservesSourceWhenStagedMetadataChanges(_ metadata: String)
             #expect(Darwin.chmod(staged.path, 0o600) == 0)
         default:
             do {
-                try FileManager.default.setAttributes([.modificationDate: originalDate.addingTimeInterval(60)],
+                let dateKey: FileAttributeKey = metadata == "creation time" ? .creationDate : .modificationDate
+                try FileManager.default.setAttributes([dateKey: originalDate.addingTimeInterval(60)],
                     ofItemAtPath: staged.path)
             } catch { Issue.record(error) }
         }
@@ -858,6 +859,7 @@ func crossVolumeMovePreservesSourceWhenStagedMetadataChanges(_ metadata: String)
     switch metadata {
     case "acl": reason = .accessControlList
     case "mode": reason = .permissions
+    case "creation time": reason = .creationTime
     default: reason = .modificationTime
     }
     #expect(result.items.first?.message == reason.localizedDescription)

@@ -64,6 +64,14 @@ struct CopyTransferMetadata: Codable, Equatable, Sendable {
     var extendedAttributes: [String: [Data: Data]] = [:]
     var accessControlLists: [String: Data] = [:]
     var modificationDates: [String: Date] = [:]
+    // Earlier journals have no creation-time baseline.
+    var creationDates: [String: Date]? = nil
+
+    func matchesRecorded(_ recorded: Self) -> Bool {
+        extendedAttributes == recorded.extendedAttributes && accessControlLists == recorded.accessControlLists
+            && modificationDates == recorded.modificationDates
+            && (recorded.creationDates == nil || creationDates == recorded.creationDates)
+    }
 }
 
 public struct CopyUndoRecord: Codable, Sendable {
@@ -217,6 +225,7 @@ public enum CopyEngine {
                     }
                     let copyStarted = ContinuousClock.now
                     try fm.copyItem(at: source, to: payload)
+                    try before.restoreCreationTimes(in: payload, cancellation: cancellation)
                     let copyElapsed = copyStarted.duration(to: .now)
                     if let expectedTemplate, !expectedTemplate.isCurrent {
                         throw EntryOperationError.sourceChanged
@@ -358,7 +367,7 @@ public enum CopyEngine {
         let snapshot = try makeSnapshot(item.target, cancellation: CopyCancellation(),
                                         includeTransferMetadata: item.targetMetadata != nil)
         guard snapshot.withPermissions == item.targetSnapshot,
-              item.targetMetadata == nil || snapshot.metadata == item.targetMetadata else { return false }
+              item.targetMetadata.map(snapshot.metadata.matchesRecorded) != false else { return false }
         return try entryIdentity(item.target) == item.targetIdentity
     }
 
@@ -425,6 +434,7 @@ public enum CopyEngine {
         var content: [String: String] = [:]
         var metadata = CopyTransferMetadata()
         var modificationTimeResolution: TimeInterval = 0
+        var filesystemType = ""
         var hasNativePermissions = true
 
         private func transferMismatch(_ source: Self) -> TransferMismatch? {
@@ -435,12 +445,20 @@ public enum CopyEngine {
                 return .permissions
             }
             let resolution = max(modificationTimeResolution, source.modificationTimeResolution)
-            guard metadata.modificationDates.count == source.metadata.modificationDates.count else { return .modificationTime }
-            let datesMatch = metadata.modificationDates.allSatisfy { path, date in
-                guard let sourceDate = source.metadata.modificationDates[path] else { return false }
+            guard datesMatch(metadata.modificationDates, source.metadata.modificationDates,
+                             resolution: resolution) else { return .modificationTime }
+            if filesystemType == "apfs", source.filesystemType == "apfs",
+               !datesMatch(metadata.creationDates ?? [:], source.metadata.creationDates ?? [:],
+                           resolution: 0.000001) { return .creationTime }
+            return nil
+        }
+
+        private func datesMatch(_ dates: [String: Date], _ sourceDates: [String: Date],
+                                resolution: TimeInterval) -> Bool {
+            dates.count == sourceDates.count && dates.allSatisfy { path, date in
+                guard let sourceDate = sourceDates[path] else { return false }
                 return date == sourceDate || abs(date.timeIntervalSince(sourceDate)) < resolution
             }
-            return datesMatch ? nil : .modificationTime
         }
 
         func verifyTransferredContents(of source: Self) throws {
@@ -455,6 +473,42 @@ public enum CopyEngine {
             withPermissions == original.withPermissions && content == original.content && metadata == original.metadata
         }
 
+        func restoreCreationTimes(in payload: URL, cancellation: CopyCancellation) throws {
+            guard filesystemType == "apfs", let dates = metadata.creationDates, !dates.isEmpty else { return }
+            var volume = statfs()
+            guard statfs(payload.deletingLastPathComponent().path, &volume) == 0,
+                  withUnsafeBytes(of: volume.f_fstypename, { String(decoding: $0.prefix { $0 != 0 }, as: UTF8.self) }) == "apfs" else { return }
+            let stagedPath = payload.deletingLastPathComponent().resolvingSymlinksInPath()
+                .appendingPathComponent(payload.lastPathComponent).path
+            for (path, date) in dates {
+                try cancellation.check()
+                let file = path.isEmpty ? payload : payload.appendingPathComponent(String(path.dropFirst()))
+                // Resolve each parent inside the private staging tree, and
+                // reject paths that now lead outside the tree through a symlink.
+                guard file.resolvingSymlinksInPath().path == stagedPath + path else {
+                    throw TransferMismatch.creationTime
+                }
+                let descriptor = open(file.path, O_RDONLY | O_NOFOLLOW | O_NONBLOCK | O_CLOEXEC)
+                guard descriptor >= 0 else { throw TransferMismatch.creationTime }
+                defer { close(descriptor) }
+                var info = stat()
+                guard fstat(descriptor, &info) == 0, info.st_mode & S_IFMT == S_IFREG else {
+                    throw TransferMismatch.creationTime
+                }
+                let seconds = date.timeIntervalSince1970
+                let whole = floor(seconds)
+                var birth = timespec(tv_sec: Int(whole), tv_nsec: Int((seconds - whole) * 1_000_000_000))
+                if info.st_birthtimespec.tv_sec != birth.tv_sec || info.st_birthtimespec.tv_nsec != birth.tv_nsec {
+                    var attributes = attrlist()
+                    attributes.bitmapcount = UInt16(ATTR_BIT_MAP_COUNT)
+                    attributes.commonattr = attrgroup_t(ATTR_CMN_CRTIME)
+                    guard fsetattrlist(descriptor, &attributes, &birth, MemoryLayout<timespec>.size, 0) == 0 else {
+                        throw TransferMismatch.creationTime
+                    }
+                }
+            }
+        }
+
         var legacyPermissionsSnapshot: [String: String] {
             withPermissions.mapValues { value in
                 guard value.hasPrefix("file:"), let suffix = value.range(of: ":resource:") else { return value }
@@ -464,7 +518,7 @@ public enum CopyEngine {
     }
 
     enum TransferMismatch: String, LocalizedError {
-        case contents, extendedAttributes, accessControlList, permissions, modificationTime
+        case contents, extendedAttributes, accessControlList, permissions, modificationTime, creationTime
 
         var errorDescription: String? {
             message(korean: Locale.preferredLanguages.first?.hasPrefix("ko") == true)
@@ -478,6 +532,7 @@ public enum CopyEngine {
             case .accessControlList: property = ("access control list (ACL)", "접근 제어 목록(ACL)")
             case .permissions: property = ("POSIX permissions", "POSIX 권한")
             case .modificationTime: property = ("modification time", "수정 시간")
+            case .creationTime: property = ("creation time", "생성 시간")
             }
             return korean
                 ? "복사본의 \(property.korean) 검증에 실패했습니다. 원본을 보존했습니다."
@@ -489,6 +544,7 @@ public enum CopyEngine {
                              includeTransferMetadata: Bool = true) throws -> VerificationSnapshot {
         let fm = FileManager()
         var snapshot = VerificationSnapshot()
+        if includeTransferMetadata { snapshot.metadata.creationDates = [:] }
         func visit(_ url: URL, relative: String) throws {
             try cancellation.check()
             let attrs = try fm.attributesOfItem(atPath: url.path)
@@ -501,13 +557,17 @@ public enum CopyEngine {
                 let filesystem = withUnsafeBytes(of: volume.f_fstypename) {
                     String(decoding: $0.prefix(while: { $0 != 0 }), as: UTF8.self)
                 }
+                snapshot.filesystemType = filesystem
                 // FAT exposes synthesized modes. Still check the original and
                 // the published copy against their own subsequent snapshots.
                 snapshot.hasNativePermissions = filesystem != "exfat" && filesystem != "msdos"
                 switch filesystem {
-                case "exfat": snapshot.modificationTimeResolution = 0.01
-                case "msdos": snapshot.modificationTimeResolution = 2
-                case "hfs": snapshot.modificationTimeResolution = 1
+                case "exfat":
+                    snapshot.modificationTimeResolution = 0.01
+                case "msdos":
+                    snapshot.modificationTimeResolution = 2
+                case "hfs":
+                    snapshot.modificationTimeResolution = 1
                 default: break
                 }
             }
@@ -543,6 +603,10 @@ public enum CopyEngine {
                 snapshot.metadata.accessControlLists[relative] = try accessControlList(url)
                 if type != .typeSymbolicLink {
                     snapshot.metadata.modificationDates[relative] = attrs[.modificationDate] as? Date
+                }
+                // Foundation can assign a new creation time when copying directories.
+                if type == .typeRegular {
+                    snapshot.metadata.creationDates?[relative] = attrs[.creationDate] as? Date
                 }
             }
         }

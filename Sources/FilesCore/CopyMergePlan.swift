@@ -167,6 +167,7 @@ public enum CopyMergeExecutor {
                     let temporary = parent.appendingPathComponent(".files-merge-\(report.id.uuidString)-\(index)")
                     try fm.copyItem(at: action.source, to: temporary)
                     defer { try? fm.removeItem(at: temporary) }
+                    try before.restoreCreationTimes(in: temporary, cancellation: cancellation)
                     try cancellation.check()
                     let copied = try CopyEngine.makeSnapshot(temporary, cancellation: cancellation)
                     guard try CopyEngine.makeSnapshot(action.source, cancellation: cancellation).matchesOriginal(before) else {

@@ -217,7 +217,7 @@ public enum EntryOperations {
         guard snapshot != nil || metadata != nil else { return true }
         let current = try CopyEngine.makeSnapshot(url, cancellation: CopyCancellation(), includeTransferMetadata: metadata != nil)
         guard snapshot == nil || current.withPermissions == snapshot,
-              metadata == nil || current.metadata == metadata else { return false }
+              metadata.map(current.metadata.matchesRecorded) != false else { return false }
         return try snapshotIdentity(url, fileManager: fileManager) == identity
     }
 
@@ -251,7 +251,7 @@ public enum EntryOperations {
         let allowsLegacyForks = item.snapshotIncludesResourceForks == nil && item.backup == nil && item.targetMetadata == nil
         guard item.targetSnapshot == nil || before.withPermissions == item.targetSnapshot
                 || (allowsLegacyForks && before.legacyPermissionsSnapshot == item.targetSnapshot),
-              item.targetMetadata == nil || before.metadata == item.targetMetadata,
+              item.targetMetadata.map(before.metadata.matchesRecorded) != false,
               try snapshotIdentity(source, fileManager: fm) == sourceIdentity else { throw EntryOperationError.sourceChanged }
         guard !entryExists(target) else { throw MoveUndoDestinationError.occupied }
         guard fm.fileExists(atPath: target.deletingLastPathComponent().path) else {
@@ -266,6 +266,7 @@ public enum EntryOperations {
         defer { if entryExists(stage) { try? fm.removeItem(at: stage) } }
         let payload = stage.appendingPathComponent("payload")
         try fm.copyItem(at: source, to: payload)
+        try before.restoreCreationTimes(in: payload, cancellation: CopyCancellation())
         let verifiedPayload = try CopyEngine.makeSnapshot(payload, cancellation: CopyCancellation())
         guard try CopyEngine.makeSnapshot(source, cancellation: CopyCancellation()).matchesOriginal(before) else {
             throw MoveFailure(text: LString.crossVolumeVerificationFailed)
@@ -936,6 +937,7 @@ public enum EntryOperations {
                                 try save(state: finalState); emit("copying"); try cancellation.check()
                                 let copyStarted = ContinuousClock.now
                                 try fm.copyItem(at: source, to: payload)
+                                try before.restoreCreationTimes(in: payload, cancellation: cancellation)
                                 let copyElapsed = copyStarted.duration(to: .now)
                                 try cancellation.check()
                                 itemStates[index] = MoveItemOperationResult(source: source, target: target, state: "verifying", message: nil)
@@ -1158,7 +1160,7 @@ public enum EntryOperations {
                        let restoredIdentity = item.restoredCopyIdentity {
                         let original = try CopyEngine.makeSnapshot(item.target, cancellation: CopyCancellation())
                         guard item.targetSnapshot == nil || original.withPermissions == item.targetSnapshot,
-                              item.targetMetadata == nil || original.metadata == item.targetMetadata,
+                              item.targetMetadata.map(original.metadata.matchesRecorded) != false,
                               try CopyEngine.makeSnapshot(item.source, cancellation: CopyCancellation()).matchesTransferredContents(of: original),
                               try snapshotIdentity(item.source, fileManager: fm) == restoredIdentity,
                               try snapshotIdentity(item.target, fileManager: fm) == item.targetIdentity else {
