@@ -2555,8 +2555,8 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
                         return actual.st_size == 0 ? .text(L("빈 파일", "Empty file")) : unavailable
                     }
                     let visualLimit = 8 * 1024 * 1024
-                    let isPDF = data.starts(with: "%PDF-".utf8)
                     let type = UTType(filenameExtension: url.pathExtension)
+                    let isPDF = type?.conforms(to: .pdf) == true || data.starts(with: "%PDF-".utf8)
                     if isPDF || type?.conforms(to: .image) == true {
                         guard actual.st_size <= visualLimit, !Task.isCancelled,
                               let _ = try? handle.seek(toOffset: 0),
@@ -5482,7 +5482,18 @@ extension BrowserWindow {
                 pdf.endPDFPage()
                 pdf.closePDF()
             }
-            controller.prepareCopy(sources: [imageFile, pdfFile], destination: target)
+            let damagedPDF = source.appendingPathComponent("damaged.pdf")
+            let damagedImage = source.appendingPathComponent("damaged.png")
+            let linkedImage = source.appendingPathComponent("linked.png")
+            let damagedContent = Data("qa-damaged-document".utf8)
+            for file in [damagedPDF, damagedImage] {
+                try damagedContent.write(to: file)
+                try damagedContent.write(to: target.appendingPathComponent(file.lastPathComponent))
+            }
+            try fm.createSymbolicLink(at: linkedImage, withDestinationURL: imageFile)
+            try fm.createSymbolicLink(at: target.appendingPathComponent(linkedImage.lastPathComponent),
+                                      withDestinationURL: target.appendingPathComponent(imageFile.lastPathComponent))
+            controller.prepareCopy(sources: [damagedPDF, damagedImage, linkedImage, imageFile, pdfFile], destination: target)
             if let sheet = window.attachedSheet, let sheetView = sheet.contentView {
                 func attachmentColors(in view: NSView) -> [String] {
                     if let storage = (view as? NSTextView)?.textStorage {
@@ -5522,6 +5533,15 @@ extension BrowserWindow {
                 if let scroll = comparisonScroll(in: sheetView), let text = scroll.documentView as? NSTextView,
                    let layout = text.layoutManager, let container = text.textContainer,
                    let storage = text.textStorage {
+                    let unavailable = L("미리보기 없음", "Preview unavailable")
+                    let lines = text.string.components(separatedBy: .newlines)
+                    for (file, key) in [(damagedPDF, "DamagedPDF"), (damagedImage, "DamagedImage"), (linkedImage, "SymbolicLink")] {
+                        let paths = [file.path, target.appendingPathComponent(file.lastPathComponent).path]
+                        checks["conflictPreviewRejects" + key] = paths.allSatisfy { path in
+                            guard let index = lines.firstIndex(of: path), lines.indices.contains(index + 2) else { return false }
+                            return lines[index + 2] == unavailable
+                        }
+                    }
                     var lastAttachment = NSRange(location: NSNotFound, length: 0)
                     storage.enumerateAttribute(.attachment, in: NSRange(location: 0, length: storage.length)) { attachment, range, _ in
                         if attachment != nil { lastAttachment = range }
