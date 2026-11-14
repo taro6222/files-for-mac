@@ -1,0 +1,43 @@
+{
+  "sourceBaseSHA": "7e5d11c3795b73ef967d7958e683c37b927fa250",
+  "binarySHA256": "5203ad1654d73c5854f2682f7a88a7b62cb7c6ab58e7379dc17c556bd4a1dbf8",
+  "macOS": "27.2",
+  "macOSBuild": "26B123",
+  "architecture": "arm64",
+  "targetSeconds": 45,
+  "workload": "full",
+  "exitStatus": 0,
+  "completed": true,
+  "report": {
+    "cycles": 17,
+    "elapsedSeconds": 46.988789833,
+    "peakPhysicalFootprintBytes": 74843216,
+    "peakRSSBytes": 160137216,
+    "samples": [
+      {
+        "cycle": 1,
+        "elapsedSeconds": 0.787373208,
+        "physicalFootprintBytes": 68797520,
+        "retainedPrimaryDetailCells": 44,
+        "rssBytes": 153255936
+      },
+      {
+        "cycle": 13,
+        "elapsedSeconds": 33.172806833,
+        "physicalFootprintBytes": 66045008,
+        "retainedPrimaryDetailCells": 44,
+        "rssBytes": 155877376
+      },
+      {
+        "cycle": 17,
+        "elapsedSeconds": 46.988784375,
+        "physicalFootprintBytes": 60441680,
+        "retainedPrimaryDetailCells": 0,
+        "rssBytes": 154828800
+      }
+    ],
+    "state": "completed",
+    "targetSeconds": 45,
+    "workload": "full"
+  }
+}

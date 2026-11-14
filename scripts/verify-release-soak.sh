@@ -46,4 +46,55 @@ status=0
 caffeinate -i "$run_dir/FilesMac" >"$run_dir/app.log" 2>&1 || status=$?
 printf '%s\n' "$status" > "$run_dir/.exit-status"
 mv "$run_dir/.exit-status" "$run_dir/exit-status"
-exit "$status"
+# Keep the app's report and exit status as written. Package a final result
+# that can be reviewed without the run directory or the test executable.
+python3 - "$run_dir" "$status" "$seconds" "$workload" <<'PY'
+import json
+import platform
+import subprocess
+import sys
+from pathlib import Path
+
+root = Path(sys.argv[1])
+status, duration = map(int, sys.argv[2:4])
+workload = sys.argv[4]
+report_error = None
+try:
+    report = json.loads((root / "report.json").read_text())
+    if not isinstance(report, dict):
+        raise ValueError("Expected an object in report.json")
+except (OSError, ValueError) as error:
+    report, report_error = None, str(error)
+
+completed = (
+    status == 0 and report is not None
+    and report.get("state") == "completed"
+    and report.get("targetSeconds") == duration
+    and report.get("workload") == workload
+    and isinstance(report.get("elapsedSeconds"), (int, float))
+    and report["elapsedSeconds"] >= duration
+    and isinstance(report.get("cycles"), int)
+    and report["cycles"] > 0
+    and bool(report.get("samples"))
+)
+result = {
+    "sourceBaseSHA": (root / "source-sha").read_text().strip(),
+    "binarySHA256": (root / "binary.sha256").read_text().split()[0],
+    "macOS": platform.mac_ver()[0],
+    "macOSBuild": subprocess.check_output(["/usr/bin/sw_vers", "-buildVersion"], text=True).strip(),
+    "architecture": platform.machine(),
+    "targetSeconds": duration,
+    "workload": workload,
+    "exitStatus": status,
+    "completed": completed,
+    "report": report,
+}
+if report_error:
+    result["reportError"] = report_error
+temporary = root / ".result.json"
+temporary.write_text(json.dumps(result, indent=2) + "\n")
+temporary.replace(root / "result.json")
+if not completed:
+    print("Soak did not produce a complete result. See result.json.", file=sys.stderr)
+sys.exit(status if status else int(not completed))
+PY
