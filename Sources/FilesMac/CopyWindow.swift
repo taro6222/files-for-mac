@@ -97,6 +97,7 @@ final class CopyWindow: NSWindowController, NSWindowDelegate {
         let remaining = update.total - update.index - 1
         label.stringValue = "\(update.index + 1)/\(update.total) · \(phase) · \(update.name)"
             + L(" · 이후 \(remaining)개", " · \(remaining) after this item")
+        if let transfer = update.stagedTransfer { label.stringValue += stagedTransferDescription(transfer) }
 #if DEBUG
         qaLastProgress = label.stringValue
 #endif
@@ -181,9 +182,11 @@ final class CopyWindow: NSWindowController, NSWindowDelegate {
                     defer { gate.signal() }
                     controller.update(update)
                     let started = clock.now
+                    let staged = update.stagedTransfer?.bytes == Int64(original.count)
+                        && controller.label.stringValue.contains(L("준비된 데이터", "Data staged"))
                     controller.cancel.performClick(nil)
                     sample.clickTime = started
-                    if controller.cancellation.isCancelled && !controller.cancel.isEnabled
+                    if staged && controller.cancellation.isCancelled && !controller.cancel.isEnabled
                         && controller.label.stringValue.hasPrefix(L("취소 요청됨", "Cancellation requested")) {
                         sample.feedbackTime = started.duration(to: clock.now)
                     }
@@ -248,4 +251,18 @@ final class CopyWindow: NSWindowController, NSWindowDelegate {
         return true
     }
     func windowWillClose(_ notification: Notification) { Self.operations.removeAll { $0 === self } }
+}
+
+@MainActor
+func stagedTransferDescription(_ transfer: StagedFileTransfer) -> String {
+    let unit = BrowserPreferences.shared.sizeUnit
+    let bytes = formatByteCount(transfer.bytes, unit: unit)
+    var description = L(" · 준비된 데이터 \(bytes)", " · Data staged \(bytes)")
+    // Very short calls can be clones or dominated by timing noise.
+    if transfer.bytes > 0, transfer.seconds >= 0.1,
+       let rate = Int64(exactly: (Double(transfer.bytes) / transfer.seconds).rounded()) {
+        let speed = formatByteCount(rate, unit: unit)
+        description += L(" · 평균 \(speed)/초", " · Average \(speed)/s")
+    }
+    return description
 }

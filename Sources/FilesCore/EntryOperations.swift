@@ -72,6 +72,7 @@ public struct MoveProgress: Sendable {
     public let total: Int
     public let name: String
     public let phase: String
+    public let stagedTransfer: StagedFileTransfer?
 }
 
 public struct MoveUndoItem: Codable, Sendable {
@@ -793,9 +794,9 @@ public enum EntryOperations {
                             return nil
                         }
                     }
-                    func emit(_ phase: String) {
+                    func emit(_ phase: String, stagedTransfer: StagedFileTransfer? = nil) {
                         progress(MoveProgress(index: index, total: normalizedSources.count,
-                                              name: source.lastPathComponent, phase: phase))
+                                              name: source.lastPathComponent, phase: phase, stagedTransfer: stagedTransfer))
                     }
                     func restoreBackup() -> URL? {
                         guard let backup else {
@@ -907,10 +908,16 @@ public enum EntryOperations {
                                 let payload = stage.appendingPathComponent("payload")
                                 itemStates[index] = MoveItemOperationResult(source: source, target: target, state: "copying", message: nil)
                                 try save(state: finalState); emit("copying"); try cancellation.check()
+                                let copyStarted = ContinuousClock.now
                                 try fm.copyItem(at: source, to: payload)
+                                let copyElapsed = copyStarted.duration(to: .now)
                                 try cancellation.check()
                                 itemStates[index] = MoveItemOperationResult(source: source, target: target, state: "verifying", message: nil)
-                                try save(state: finalState); emit("verifying")
+                                try save(state: finalState)
+                                let stagedTransfer = (try? fm.attributesOfItem(atPath: payload.path)).flatMap {
+                                    StagedFileTransfer(attributes: $0, elapsed: copyElapsed)
+                                }
+                                emit("verifying", stagedTransfer: stagedTransfer)
                                 let verifiedPayload = try CopyEngine.makeSnapshot(payload, cancellation: cancellation)
                                 guard verifiedPayload.content == contentBefore,
                                       try CopyEngine.verifiedSnapshot(source, cancellation: cancellation) == before else {

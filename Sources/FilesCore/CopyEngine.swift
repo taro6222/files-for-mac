@@ -16,6 +16,21 @@ public struct CopyProgress: Sendable {
     public let total: Int
     public let name: String
     public let phase: String
+    public let stagedTransfer: StagedFileTransfer?
+}
+
+/// Logical bytes staged by one completed copy call and its elapsed time.
+public struct StagedFileTransfer: Sendable {
+    public let bytes: Int64
+    public let seconds: Double
+
+    init?(attributes: [FileAttributeKey: Any], elapsed: Duration) {
+        guard attributes[.type] as? FileAttributeType == .typeRegular,
+              let size = attributes[.size] as? NSNumber, size.int64Value >= 0 else { return nil }
+        bytes = size.int64Value
+        let time = elapsed.components
+        seconds = Double(time.seconds) + Double(time.attoseconds) / 1e18
+    }
 }
 
 public struct CopyRecord: Codable, Sendable {
@@ -144,8 +159,9 @@ public enum CopyEngine {
             let source = sources[index].standardizedFileURL
             var stage: URL?
             var stageFD: Int32 = -1
-            func emit(_ phase: String) {
-                progress(CopyProgress(index: index, total: sources.count, name: source.lastPathComponent, phase: phase))
+            func emit(_ phase: String, stagedTransfer: StagedFileTransfer? = nil) {
+                progress(CopyProgress(index: index, total: sources.count, name: source.lastPathComponent,
+                                      phase: phase, stagedTransfer: stagedTransfer))
             }
             do {
                 guard destinationFD >= 0, matches(destination, descriptor: destinationFD),
@@ -191,12 +207,17 @@ public enum CopyEngine {
                     if let expectedTemplate, !expectedTemplate.isCurrent {
                         throw EntryOperationError.sourceChanged
                     }
+                    let copyStarted = ContinuousClock.now
                     try fm.copyItem(at: source, to: payload)
+                    let copyElapsed = copyStarted.duration(to: .now)
                     if let expectedTemplate, !expectedTemplate.isCurrent {
                         throw EntryOperationError.sourceChanged
                     }
                     try cancellation.check()
-                    emit("verifying")
+                    let stagedTransfer = (try? fm.attributesOfItem(atPath: payload.path)).flatMap {
+                        StagedFileTransfer(attributes: $0, elapsed: copyElapsed)
+                    }
+                    emit("verifying", stagedTransfer: stagedTransfer)
                     let verifiedPayload = try makeSnapshot(payload, cancellation: cancellation)
                     guard verifiedPayload.content == before.content,
                           try snapshot(source, cancellation: cancellation) == before.withPermissions else {

@@ -138,6 +138,7 @@ final class MoveWindow: NSWindowController, NSWindowDelegate {
         let remaining = update.total - update.index - 1
         label.stringValue = "\(update.index + 1)/\(update.total) · \(phase) · \(update.name)"
             + L(" · 이후 \(remaining)개", " · \(remaining) after this item")
+        if let transfer = update.stagedTransfer { label.stringValue += stagedTransferDescription(transfer) }
 #if DEBUG
         qaLastProgress = label.stringValue
 #endif
