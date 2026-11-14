@@ -2481,7 +2481,7 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
     }
 
     private func addConflictComparison(to alert: NSAlert, sources: [URL], destination: URL) -> Task<Void, Never> {
-        let scroll = NSScrollView(frame: NSRect(x: 0, y: 0, width: 360, height: 140))
+        let scroll = NSScrollView(frame: NSRect(x: 0, y: 0, width: 360, height: 240))
         scroll.hasVerticalScroller = true
         scroll.borderType = .bezelBorder
         let details = NSTextView(frame: scroll.contentView.bounds)
@@ -2597,15 +2597,22 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
             } onCancel: { worker.cancel() }
             guard !Task.isCancelled else { return }
             let rendered = NSMutableAttributedString()
+            let textStyle: [NSAttributedString.Key: Any] = [
+                .foregroundColor: NSColor.textColor,
+                .font: NSFont.systemFont(ofSize: NSFont.systemFontSize)
+            ]
             for part in comparison {
                 switch part {
                 case let .text(text):
-                    rendered.append(NSAttributedString(string: text))
+                    rendered.append(NSAttributedString(string: text, attributes: textStyle))
                 case let .thumbnail(image, label):
-                    rendered.append(NSAttributedString(string: label + "\n"))
+                    rendered.append(NSAttributedString(string: label + "\n", attributes: textStyle))
+                    let scale = min(1, 160 / CGFloat(max(image.width, image.height)))
+                    let thumbnailSize = NSSize(width: CGFloat(image.width) * scale,
+                                               height: CGFloat(image.height) * scale)
                     let attachment = NSTextAttachment()
                     attachment.attachmentCell = NSTextAttachmentCell(imageCell:
-                        NSImage(cgImage: image, size: NSSize(width: image.width, height: image.height)))
+                        NSImage(cgImage: image, size: thumbnailSize))
                     rendered.append(NSAttributedString(attachment: attachment))
                 }
             }
@@ -5139,9 +5146,10 @@ extension BrowserWindow {
                 if controller.model.isLoading { throw CocoaError(.validationMissingMandatoryProperty) }
                 content.layoutSubtreeIfNeeded(); content.displayIfNeeded()
             }
-            func capture(_ name: String) throws {
-                guard let bitmap = content.bitmapImageRepForCachingDisplay(in: content.bounds) else { throw CocoaError(.fileWriteUnknown) }
-                content.cacheDisplay(in: content.bounds, to: bitmap)
+            func capture(_ name: String, view: NSView = content) throws {
+                view.layoutSubtreeIfNeeded()
+                guard let bitmap = view.bitmapImageRepForCachingDisplay(in: view.bounds) else { throw CocoaError(.fileWriteUnknown) }
+                view.cacheDisplay(in: view.bounds, to: bitmap)
                 guard let png = bitmap.representation(using: .png, properties: [:]) else { throw CocoaError(.fileWriteUnknown) }
                 try png.write(to: destination.appendingPathComponent(name + ".png"))
             }
@@ -5470,6 +5478,30 @@ extension BrowserWindow {
                 }
                 diagnostics["conflictThumbnailColors"] = colors
                 checks["conflictImageAndPDFThumbnails"] = colors == ["red", "green", "blue", "yellow"]
+                func comparisonScroll(in view: NSView) -> NSScrollView? {
+                    if let scroll = view as? NSScrollView, scroll.documentView is NSTextView { return scroll }
+                    return view.subviews.lazy.compactMap(comparisonScroll).first
+                }
+                if let scroll = comparisonScroll(in: sheetView), let text = scroll.documentView as? NSTextView,
+                   let layout = text.layoutManager, let container = text.textContainer,
+                   let storage = text.textStorage {
+                    var lastAttachment = NSRange(location: NSNotFound, length: 0)
+                    storage.enumerateAttribute(.attachment, in: NSRange(location: 0, length: storage.length)) { attachment, range, _ in
+                        if attachment != nil { lastAttachment = range }
+                    }
+                    text.scrollRangeToVisible(NSRange(location: 0, length: 0))
+                    try capture("conflict-preview-top", view: scroll)
+                    if lastAttachment.location != NSNotFound {
+                        text.scrollRangeToVisible(lastAttachment)
+                        let glyphs = layout.glyphRange(forCharacterRange: lastAttachment, actualCharacterRange: nil)
+                        let origin = text.textContainerOrigin
+                        let bounds = layout.boundingRect(forGlyphRange: glyphs, in: container)
+                            .offsetBy(dx: origin.x, dy: origin.y)
+                        checks["conflictPreviewScrolls"] = scroll.contentView.bounds.minY > 0
+                            && bounds.height > 0 && text.visibleRect.contains(bounds)
+                        try capture("conflict-preview-bottom", view: scroll)
+                    } else { checks["conflictPreviewScrolls"] = false }
+                } else { checks["conflictPreviewScrolls"] = false }
                 window.endSheet(sheet, returnCode: .alertThirdButtonReturn)
             } else { checks["conflictImageAndPDFThumbnails"] = false }
             let iconCache = FileIconCache()
