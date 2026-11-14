@@ -8,6 +8,8 @@ M7 출시 검증이 진행 중이다. [유니버설 개발 프리뷰](verificati
 
 ## 이번 구현 단위
 
+CI의 Apple Silicon·Intel에서 탐색·복사·충돌 처리 AppKit 회귀를 실행하도록 구성했다. [파일 작업 회귀](verification/m7/INCREMENT_179.md)
+
 macOS 15의 두 CI 러너에서 유니버설 프리뷰를 설치하고 Launch Services로 실행하도록 구성했다. [설치 실행 검증](verification/m7/INCREMENT_178.md)
 
 고정 원본에서 인벤토리를 다시 추출해 검토 기록을 보존한 상태로 대조할 수 있다. [원본 재대조](verification/m7/INCREMENT_177.md)

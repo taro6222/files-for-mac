@@ -49,6 +49,9 @@ jobs:
       - name: Verify mounted file systems
         timeout-minutes: 5
         run: bash scripts/verify-volume-matrix.sh --skip-build
+      - name: Verify AppKit file operations
+        timeout-minutes: 9
+        run: bash scripts/verify-m2-ui.sh "$(swift build --show-bin-path)/FilesMac"
       - name: Build and launch the installed developer preview
         if: github.event_name != 'pull_request'
         timeout-minutes: 15
