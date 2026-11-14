@@ -3,10 +3,14 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 seconds=${1:-28800}
 workload=${3-full}
-if [[ $# -gt 3 || ! "$seconds" =~ ^[1-9][0-9]*$ || ( "$workload" != full && "$workload" != navigation && "$workload" != tabs ) ]]; then
-  echo "Usage: $0 [positive-duration-seconds [existing-run-parent-directory [full|navigation|tabs]]]" >&2
+if [[ $# -gt 3 || ! "$seconds" =~ ^[1-9][0-9]*$ ]]; then
+  echo "Expected a positive duration and at most three arguments." >&2
   exit 2
 fi
+case "$workload" in
+  full|navigation|tabs|windows) ;;
+  *) echo "Expected workload full, navigation, tabs, or windows." >&2; exit 2 ;;
+esac
 source_sha=$(git rev-parse --verify HEAD)
 if [[ $# -ge 2 ]]; then
   if [[ ! -d "$2" ]]; then

@@ -5784,6 +5784,7 @@ private enum ReleaseSoakWorkload: String, Encodable {
     case full
     case navigation
     case tabs
+    case windows
 }
 
 private struct ReleaseSoakReport: Encodable {
@@ -5923,7 +5924,7 @@ extension BrowserWindow {
         let environment = ProcessInfo.processInfo.environment
         guard let duration = environment["FILES_SOAK_SECONDS"].flatMap(Int.init), duration > 0,
               let workload = ReleaseSoakWorkload(rawValue: environment["FILES_SOAK_WORKLOAD"] ?? "full") else {
-            fputs("Expected a positive soak duration and workload full, navigation, or tabs.\n", stderr)
+            fputs("Expected a positive soak duration and workload full, navigation, tabs, or windows.\n", stderr)
             exit(2)
         }
 
@@ -5989,7 +5990,8 @@ extension BrowserWindow {
             }
         }
 
-        func exerciseNewTab(attachedTo window: NSWindow) async throws {
+        func exerciseSecondaryWindow(relativeTo window: NSWindow) async throws {
+            let usesNativeTabs = workload != .windows
             var tab: BrowserWindow? = BrowserWindow(preferences: preferences,
                 restoresFrame: false, initialLocation: destination)
             weak let releasedTab = tab
@@ -5997,9 +5999,14 @@ extension BrowserWindow {
             var didClose = false
             do {
                 guard let tab, let tabWindow = tab.window else { throw ReleaseSoakFailure("Missing tab") }
+                if !usesNativeTabs { tabWindow.tabbingMode = .disallowed }
                 tab.showWindow(nil)
-                window.addTabbedWindow(tabWindow, ordered: .above)
-                guard window.tabbedWindows?.count == 2 else { throw ReleaseSoakFailure("Tab did not attach") }
+                if usesNativeTabs {
+                    window.addTabbedWindow(tabWindow, ordered: .above)
+                    guard window.tabbedWindows?.count == 2 else { throw ReleaseSoakFailure("Tab did not attach") }
+                } else if (tabWindow.tabbedWindows?.count ?? 1) != 1 || (window.tabbedWindows?.count ?? 1) != 1 {
+                    throw ReleaseSoakFailure("Standalone window joined a tab group")
+                }
                 try await tab.waitForSoakListing(at: destination, count: 0)
                 releasedWatcher = tab.watcher
 
@@ -6058,7 +6065,7 @@ extension BrowserWindow {
                 try await browser.waitForSoakListing(at: source, count: 129)
 
                 if workload != .navigation {
-                    try await exerciseNewTab(attachedTo: window)
+                    try await exerciseSecondaryWindow(relativeTo: window)
                 }
                 // Return through history so the repeated workload keeps one forward
                 // entry instead of retaining two additional entries per cycle.
