@@ -25,7 +25,11 @@ final class SecondaryBrowserPane: NSView, NSTableViewDataSource, NSTableViewDele
         model.viewMode == .adaptive ? adaptiveResolvedMode : model.viewMode
     }
     private let status = NSTextField(labelWithString: "")
-    private let hiddenButton = NSButton()
+    private let hiddenButton = HiddenFilesButton()
+    private let refreshButton = NSButton()
+    private let backButton = NSButton()
+    private let forwardButton = NSButton()
+    private let upButton = NSButton()
     private let viewModeButton = NSPopUpButton()
     private var watcher: DirectoryWatcher?
     private var watcherTask: Task<Void, Never>?
@@ -193,15 +197,17 @@ final class SecondaryBrowserPane: NSView, NSTableViewDataSource, NSTableViewDele
         NSLayoutConstraint.activate([stack.leadingAnchor.constraint(equalTo: leadingAnchor), stack.trailingAnchor.constraint(equalTo: trailingAnchor), stack.topAnchor.constraint(equalTo: topAnchor), stack.bottomAnchor.constraint(equalTo: bottomAnchor)])
         let toolbar = NSStackView(); toolbar.orientation = .horizontal; toolbar.spacing = 6
         toolbar.edgeInsets = NSEdgeInsets(top: 10, left: 10, bottom: 10, right: 10)
-        toolbar.addArrangedSubview(button("chevron.left", #selector(back(_:))))
-        toolbar.addArrangedSubview(button("chevron.right", #selector(forward(_:))))
-        toolbar.addArrangedSubview(button("arrow.up", #selector(up(_:))))
+        configure(backButton, symbol: "chevron.left", title: L("뒤로", "Back"), action: #selector(back(_:)))
+        configure(forwardButton, symbol: "chevron.right", title: L("앞으로", "Forward"), action: #selector(forward(_:)))
+        configure(upButton, symbol: "arrow.up", title: L("상위 폴더", "Enclosing Folder"), action: #selector(up(_:)))
+        for button in [backButton, forwardButton, upButton] { toolbar.addArrangedSubview(button) }
         pathField.placeholderString = L("폴더 경로", "Folder path"); pathField.target = self; pathField.action = #selector(submitPath(_:))
         pathField.setAccessibilityLabel(L("보조 pane 경로", "Secondary pane path")); toolbar.addArrangedSubview(pathField)
-        toolbar.addArrangedSubview(button("arrow.clockwise", #selector(reload(_:))))
-        hiddenButton.image = NSImage(systemSymbolName: "eye.slash", accessibilityDescription: L("숨김 항목 전환", "Toggle Hidden Files"))
-        hiddenButton.title = ""; hiddenButton.imagePosition = .imageOnly; hiddenButton.bezelStyle = .texturedRounded
-        hiddenButton.target = self; hiddenButton.action = #selector(toggleHidden(_:)); toolbar.addArrangedSubview(hiddenButton)
+        configure(refreshButton, symbol: "arrow.clockwise", title: L("새로고침", "Refresh"), action: #selector(reload(_:)))
+        toolbar.addArrangedSubview(refreshButton)
+        configure(hiddenButton, symbol: "eye.slash", title: L("숨김 항목 전환", "Toggle Hidden Files"), action: #selector(toggleHidden(_:)))
+        hiddenButton.setButtonType(.pushOnPushOff)
+        toolbar.addArrangedSubview(hiddenButton)
         for (mode, title) in [(BrowserViewMode.details, L("상세", "Details")),
                               (.list, L("목록", "List")),
                               (.grid, L("그리드", "Grid")),
@@ -216,6 +222,7 @@ final class SecondaryBrowserPane: NSView, NSTableViewDataSource, NSTableViewDele
         toolbar.addArrangedSubview(viewModeButton)
         stack.addArrangedSubview(toolbar)
         table.style = .fullWidth; table.rowHeight = 30; table.allowsMultipleSelection = true
+        table.setAccessibilityLabel(L("보조 패널 파일 목록", "Secondary pane file list"))
         table.delegate = self; table.dataSource = self; table.onActivate = { [weak self] in self?.activate() }
         table.onDoubleClickBackground = { [weak self] in self?.handleBackgroundDoubleClick() }
         table.doubleAction = #selector(openSelection(_:)); table.target = self
@@ -308,9 +315,11 @@ final class SecondaryBrowserPane: NSView, NSTableViewDataSource, NSTableViewDele
             self?.folderSizeTask = nil
         }
     }
-    private func button(_ symbol: String, _ action: Selector) -> NSButton {
-        let button = NSButton(); button.image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)
-        button.title = ""; button.imagePosition = .imageOnly; button.bezelStyle = .texturedRounded; button.target = self; button.action = action; return button
+    private func configure(_ button: NSButton, symbol: String, title: String, action: Selector) {
+        button.image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)
+        button.title = ""; button.imagePosition = .imageOnly; button.bezelStyle = .texturedRounded
+        button.toolTip = title; button.setAccessibilityLabel(title)
+        button.target = self; button.action = action
     }
     private func activate() { onActivate?() }
     private func savePosition() {
@@ -394,6 +403,10 @@ final class SecondaryBrowserPane: NSView, NSTableViewDataSource, NSTableViewDele
         let showsColumns = renderedViewMode == .columns
         scroll.isHidden = showsGrid || showsList || showsColumns; gridView.isHidden = !showsGrid; listView.isHidden = !showsList; columnView.isHidden = !showsColumns
         hiddenButton.contentTintColor = model.showHidden ? .systemBlue : .labelColor
+        hiddenButton.state = model.showHidden ? .on : .off
+        backButton.isEnabled = !model.history.back.isEmpty
+        forwardButton.isEnabled = !model.history.forward.isEmpty
+        upButton.isEnabled = model.location.map { $0.path != "/" } ?? false
         if let item = viewModeButton.itemArray.first(where: {
             ($0.representedObject as? String) == model.viewMode.rawValue
         }) { viewModeButton.select(item) }
@@ -566,6 +579,25 @@ final class SecondaryBrowserPane: NSView, NSTableViewDataSource, NSTableViewDele
         return .resolve(modifiers: modifiers, sourceAllowsMove: info.draggingSourceOperationMask.contains(.move))
     }
     #if DEBUG
+    func qaNavigationAccessibility() -> Bool {
+        let labels = [L("뒤로", "Back"), L("앞으로", "Forward"), L("상위 폴더", "Enclosing Folder"),
+                      L("새로고침", "Refresh"), L("숨김 항목 전환", "Toggle Hidden Files")]
+        let buttons = [backButton, forwardButton, upButton, refreshButton, hiddenButton]
+        return zip(buttons, labels).allSatisfy { button, label in
+            button.accessibilityLabel() == label && button.toolTip == label && button.accessibilityRole() != nil
+        } && table.accessibilityLabel() == L("보조 패널 파일 목록", "Secondary pane file list")
+    }
+    var qaNavigationEnabled: [Bool] {
+        [backButton, forwardButton, upButton].map { $0.isAccessibilityEnabled() }
+    }
+    func qaPressHiddenAccessibility() -> Bool {
+        let previous = model.showHidden
+        let previousState: NSControl.StateValue = previous ? .on : .off
+        guard hiddenButton.state == previousState, hiddenButton.accessibilityPerformPress() else { return false }
+        let toggled = model.showHidden != previous && hiddenButton.state != previousState
+        guard hiddenButton.accessibilityPerformPress() else { return false }
+        return toggled && model.showHidden == previous && hiddenButton.state == previousState
+    }
     func qaEnterFilter(_ query: String) {
         folderFilter.stringValue = query
         folderFilter.controlTextDidChange(Notification(name: NSControl.textDidChangeNotification, object: folderFilter))
@@ -581,6 +613,14 @@ final class SecondaryBrowserPane: NSView, NSTableViewDataSource, NSTableViewDele
     var qaColumnIntegration: (ready: Bool, source: URL?) { (columnView.qaHasDropHandler, columnView.qaPasteboardURL()) }
     var qaThumbnailPolicyApplied: Bool { gridView.showsThumbnails == preferences.showThumbnails && listView.showsThumbnails == preferences.showThumbnails && columnView.showsThumbnails == preferences.showThumbnails }
     #endif
+}
+
+private final class HiddenFilesButton: NSButton {
+    override func accessibilityPerformPress() -> Bool {
+        guard isEnabled, !isHiddenOrHasHiddenAncestor else { return false }
+        performClick(nil)
+        return true
+    }
 }
 
 @MainActor

@@ -4494,6 +4494,10 @@ extension BrowserWindow {
             guard let secondary = controller.secondaryPane else { throw CocoaError(.validationMissingMandatoryProperty) }
             let secondaryStart = ContinuousClock.now
             while secondary.model.isLoading && elapsed(secondaryStart) < 10 { try await Task.sleep(for: .milliseconds(10)) }
+            checks["secondaryNavigationAccessibilityLabels"] = secondary.qaNavigationAccessibility()
+            let initialNavigation = secondary.qaNavigationEnabled
+            checks["secondaryHiddenAccessibilityPress"] = secondary.qaPressHiddenAccessibility()
+            try await controller.waitForFolderQA { !secondary.model.isLoading }
             guard let secondaryMerge = secondary.model.items.first(where: { $0.url.standardizedFileURL == mergeTarget.standardizedFileURL }) else {
                 throw CocoaError(.fileNoSuchFile)
             }
@@ -4526,6 +4530,8 @@ extension BrowserWindow {
             secondary.goBack()
             let secondaryBackStart = ContinuousClock.now
             while secondary.model.isLoading && elapsed(secondaryBackStart) < 10 { try await Task.sleep(for: .milliseconds(10)) }
+            checks["secondaryNavigationAccessibilityState"] = initialNavigation == [false, false, true]
+                && secondary.qaNavigationEnabled == [false, true, true]
             checks["secondaryGridSession"] = secondary.snapshot().viewMode == .grid
             guard let secondaryMergeAgain = secondary.model.items.first(where: { $0.url.standardizedFileURL == mergeTarget.standardizedFileURL }) else {
                 throw CocoaError(.fileNoSuchFile)
