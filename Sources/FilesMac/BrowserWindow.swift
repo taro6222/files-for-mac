@@ -4586,3 +4586,92 @@ private final class VolumeCardView: NSStackView {
         needsDisplay = true
     }
 }
+
+#if RELEASE_PERFORMANCE_QA
+extension BrowserWindow {
+    static func measureReleasePerformance(fixture path: String) async {
+        let environment = ProcessInfo.processInfo.environment
+        guard let processStart = environment["FILES_PERFORMANCE_START_NS"].flatMap(UInt64.init),
+              let output = environment["FILES_PERFORMANCE_REPORT"],
+              let expected = environment["FILES_PERFORMANCE_COUNT"].flatMap(Int.init),
+              let idle = environment["FILES_PERFORMANCE_IDLE_SECONDS"].flatMap(Int.init) else {
+            exit(2)
+        }
+
+        let suite = "FilesMac.ReleasePerformance.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defaults.set(false, forKey: "showThumbnails")
+        let preferences = BrowserPreferences(defaults: defaults, initialFavorites: [])
+        let controller = BrowserWindow(preferences: preferences, restoresFrame: false)
+        var status: Int32 = 1
+        defer {
+            controller.close()
+            defaults.removePersistentDomain(forName: suite)
+            exit(status)
+        }
+        guard let window = controller.window, let content = window.contentView else { return }
+        window.setFrame(NSRect(x: 80, y: 80, width: 900, height: 600), display: true)
+        controller.showWindow(nil)
+        NSApp.activate(ignoringOtherApps: true)
+        // Yield to the event loop before checking the first responder and display.
+        await Task.yield()
+        controller.focusSidebar(nil)
+        content.layoutSubtreeIfNeeded()
+        content.displayIfNeeded()
+        guard window.isVisible, window.firstResponder is SidebarKeyboardButton else { return }
+        let ready = DispatchTime.now().uptimeNanoseconds
+        guard ready >= processStart else { return }
+
+        if idle > 0 {
+            try? await Task.sleep(for: .seconds(idle))
+        }
+        let idleRSS = currentResidentBytes()
+        let location = URL(fileURLWithPath: path, isDirectory: true)
+        let started = DispatchTime.now().uptimeNanoseconds
+        controller.navigate(location)
+        var firstDisplay: UInt64?
+        var peakRSS = idleRSS
+        while true {
+            content.layoutSubtreeIfNeeded()
+            content.displayIfNeeded()
+            let now = DispatchTime.now().uptimeNanoseconds
+            if firstDisplay == nil, controller.table.numberOfRows >= 100,
+               controller.table.rows(in: controller.table.visibleRect).length > 0 {
+                firstDisplay = now
+            }
+            peakRSS = max(peakRSS, currentResidentBytes())
+            if !controller.model.isLoading { break }
+            guard now - started < 90_000_000_000 else { return }
+            try? await Task.sleep(for: .milliseconds(5))
+        }
+        let finished = DispatchTime.now().uptimeNanoseconds
+        guard let firstDisplay, controller.model.failure == nil, idleRSS > 0,
+              controller.table.numberOfRows == expected else { return }
+        let samples: [String: Double] = [
+            "startupSeconds": Double(ready - processStart) / 1e9,
+            "firstDisplaySeconds": Double(firstDisplay - started) / 1e9,
+            "listingSeconds": Double(finished - started) / 1e9,
+            "idleRSSBytes": Double(idleRSS),
+            "peakSampledRSSBytes": Double(peakRSS)
+        ]
+        do {
+            try JSONEncoder().encode(samples).write(to: URL(fileURLWithPath: output), options: .atomic)
+            status = 0
+        } catch {
+            fputs("Performance report: \(error)\n", stderr)
+        }
+    }
+
+    private static func currentResidentBytes() -> UInt64 {
+        var info = mach_task_basic_info()
+        let capacity = MemoryLayout<mach_task_basic_info>.size / MemoryLayout<integer_t>.size
+        var count = mach_msg_type_number_t(capacity)
+        let result = withUnsafeMutablePointer(to: &info) { pointer in
+            pointer.withMemoryRebound(to: integer_t.self, capacity: capacity) {
+                task_info(mach_task_self_, task_flavor_t(MACH_TASK_BASIC_INFO), $0, &count)
+            }
+        }
+        return result == KERN_SUCCESS ? UInt64(info.resident_size) : 0
+    }
+}
+#endif

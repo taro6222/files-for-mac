@@ -35,30 +35,42 @@ public struct LocalFileSystem: DirectoryStreaming {
                     }
                     var batch: [FileItem] = []
                     var first = true
-                    while let enumerated = enumerator.nextObject() as? URL {
-                        let child = url.appendingPathComponent(enumerated.lastPathComponent)
+                    while true {
                         try Task.checkCancellation()
-                        do {
-                            let v = try child.resourceValues(forKeys: keys)
-                            let attributes = try? FileManager.default.attributesOfItem(atPath: child.path)
-                            let identity: String?
-                            if let device = attributes?[.systemNumber] as? NSNumber,
-                               let inode = attributes?[.systemFileNumber] as? NSNumber,
-                               let birth = attributes?[.creationDate] as? Date {
-                                identity = "\(device):\(inode):\(birth.timeIntervalSince1970)"
-                            } else { identity = nil }
-                            batch.append(FileItem(url: child, name: child.lastPathComponent,
-                                isDirectory: v.isDirectory ?? false, identity: identity, isPackage: v.isPackage ?? false,
-                                isSymbolicLink: v.isSymbolicLink ?? false, isHidden: v.isHidden ?? false,
-                                size: v.fileSize.map(Int64.init), created: v.creationDate, modified: v.contentModificationDate,
-                                kind: v.isDirectory == true ? "Folder" : (child.pathExtension.isEmpty ? "File" : child.pathExtension.uppercased()),
-                                tags: v.tagNames ?? [],
-                                cloudState: v.isUbiquitousItem == true ? .readUbiquitousState(at: child) : nil))
-                        } catch {
-                            let e = error as NSError
-                            if e.domain == NSCocoaErrorDomain && e.code == NSFileReadNoSuchFileError { continue }
-                            batch.append(FileItem(url: child, name: child.lastPathComponent, isDirectory: false, kind: "—"))
+                        var reachedEnd = false
+                        let item: FileItem? = autoreleasepool {
+                            guard let enumerated = enumerator.nextObject() as? URL else {
+                                reachedEnd = true
+                                return nil
+                            }
+                            let child = url.appendingPathComponent(enumerated.lastPathComponent)
+                            do {
+                                // Use the resource values prefetched by the directory enumerator.
+                                // Keep a fresh URL in the model for later operations and refreshes.
+                                let v = try enumerated.resourceValues(forKeys: keys)
+                                let attributes = try? FileManager.default.attributesOfItem(atPath: child.path)
+                                let identity: String?
+                                if let device = attributes?[.systemNumber] as? NSNumber,
+                                   let inode = attributes?[.systemFileNumber] as? NSNumber,
+                                   let birth = attributes?[.creationDate] as? Date {
+                                    identity = "\(device):\(inode):\(birth.timeIntervalSince1970)"
+                                } else { identity = nil }
+                                return FileItem(url: child, name: child.lastPathComponent,
+                                    isDirectory: v.isDirectory ?? false, identity: identity, isPackage: v.isPackage ?? false,
+                                    isSymbolicLink: v.isSymbolicLink ?? false, isHidden: v.isHidden ?? false,
+                                    size: v.fileSize.map(Int64.init), created: v.creationDate, modified: v.contentModificationDate,
+                                    kind: v.isDirectory == true ? "Folder" : (child.pathExtension.isEmpty ? "File" : child.pathExtension.uppercased()),
+                                    tags: v.tagNames ?? [],
+                                    cloudState: v.isUbiquitousItem == true ? .readUbiquitousState(at: child) : nil)
+                            } catch {
+                                let e = error as NSError
+                                if e.domain == NSCocoaErrorDomain && e.code == NSFileReadNoSuchFileError { return nil }
+                                return FileItem(url: child, name: child.lastPathComponent, isDirectory: false, kind: "—")
+                            }
                         }
+                        if reachedEnd { break }
+                        guard let item else { continue }
+                        batch.append(item)
                         if batch.count >= (first ? 128 : 1024) {
                             continuation.yield(batch); batch.removeAll(keepingCapacity: true); first = false
                         }

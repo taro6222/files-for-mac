@@ -24,6 +24,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     private var preferencesToken: UUID?
     private let diagnosticArtifacts = DiagnosticArtifacts()
     func applicationDidFinishLaunching(_ notification: Notification) {
+        #if RELEASE_PERFORMANCE_QA
+        if let fixture = ProcessInfo.processInfo.environment["FILES_PERFORMANCE_FIXTURE"] {
+            Task { @MainActor in await BrowserWindow.measureReleasePerformance(fixture: fixture) }
+            return
+        }
+        #endif
         _ = try? diagnosticArtifacts.append(event: "application launched")
         applyAppearance()
         preferencesToken = BrowserPreferences.shared.observe { [weak self] in self?.applyAppearance() }

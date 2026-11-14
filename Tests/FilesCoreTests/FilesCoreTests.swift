@@ -23,6 +23,20 @@ private func fixture() throws -> URL {
     #expect(all.count == 3)
 }
 
+@Test func listingRefreshReadsUpdatedMetadata() async throws {
+    let root = try fixture()
+    defer { try? FileManager.default.removeItem(at: root) }
+    let file = root.appendingPathComponent("document.txt")
+    try Data([1]).write(to: file)
+    let provider = LocalFileSystem()
+    let initial = try await provider.contents(of: root, showHidden: true)
+    try Data([1, 2, 3]).write(to: file)
+    let refreshed = try await provider.contents(of: root, showHidden: true)
+    #expect(initial.first?.size == 1)
+    #expect(refreshed.first?.size == 3)
+    #expect(initial.first?.identity == refreshed.first?.identity)
+}
+
 @Test func mountedVolumeCapabilitiesClampUsageAndRestrictEject() {
     let external = MountedVolume(url: URL(fileURLWithPath: "/Volumes/Test"), name: "Test", totalCapacity: 100,
         availableCapacity: 25, formatDescription: "APFS", isInternal: false, isLocal: true, isReadOnly: false,
