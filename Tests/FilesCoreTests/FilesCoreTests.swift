@@ -1665,3 +1665,38 @@ private struct ManyBatchLoader: DirectoryStreaming {
     #expect(cleared.applied == 2 && cleared.failed == 0)
     #expect(try await inspector.permissions(child).accessControlList == nil)
 }
+
+@Test func folderOwnershipPreservesACLAndDoesNotFollowLinks() async throws {
+    let root = try fixture()
+    defer { try? FileManager.default.removeItem(at: root) }
+    let tree = root.appendingPathComponent("tree")
+    let child = tree.appendingPathComponent("child")
+    let external = root.appendingPathComponent("external")
+    try FileManager.default.createDirectory(at: tree, withIntermediateDirectories: false)
+    try Data().write(to: child)
+    try Data().write(to: external)
+    try FileManager.default.createSymbolicLink(at: tree.appendingPathComponent("link"), withDestinationURL: external)
+
+    let inspector = FilePropertiesInspector()
+    let initial = try await inspector.permissions(tree)
+    let originalChild = try await inspector.permissions(child)
+    let originalExternal = try await inspector.permissions(external)
+    let withACL = try await inspector.setAccessControlList("group::everyone::allow:read", at: child, expected: originalChild)
+    let currentGroup = try await inspector.inspect(tree).group
+    let names = await FileACLAccountKind.group.accountNames(memberGroupsOnly: true)
+    guard let group = names.first(where: { $0 != currentGroup }) ?? names.first else { return }
+    let result = try await inspector.setFolderOwnership(group, kind: .group, at: tree, expected: initial)
+    let updatedTree = try await inspector.permissions(tree)
+    let updatedChild = try await inspector.permissions(child)
+    #expect(result.applied == 2 && result.skipped == 1 && result.failed == 0)
+    #expect(try await inspector.inspect(tree).group == group)
+    #expect(updatedChild.groupID == updatedTree.groupID)
+    #expect(updatedChild.ownerID == withACL.ownerID)
+    #expect(updatedChild.accessControlList == withACL.accessControlList)
+    #expect(try await inspector.permissions(external).groupID == originalExternal.groupID)
+    if !FilePropertiesInspector.canChangeOwner {
+        let denied = try await inspector.setFolderOwnership("root", kind: .user, at: tree, expected: updatedTree)
+        #expect(denied.applied == 0 && denied.skipped == 1 && denied.failed == 2)
+        #expect(try await inspector.permissions(child).ownerID == updatedChild.ownerID)
+    }
+}

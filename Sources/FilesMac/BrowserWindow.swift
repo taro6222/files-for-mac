@@ -4614,6 +4614,17 @@ extension BrowserWindow {
                 let appliedACL = try await info.qaApplyFolderMode(acl: "group::everyone::allow:read")
                 let enclosedACL = try await FilePropertiesInspector().permissions(aclChild).accessControlList
                 checks["fileInfoFolderACL"] = appliedACL && enclosedACL?.hasSuffix(":allow:read") == true
+                let ownershipWindow = FileInfoWindow()
+                ownershipWindow.present(items: [FileItem(url: aclFolder, name: aclFolder.lastPathComponent, isDirectory: true)])
+                let oldGroup = try await FilePropertiesInspector().inspect(aclChild).group
+                if let group = groups.first(where: { $0 != oldGroup }) ?? groups.first {
+                    let changed = try await ownershipWindow.qaApplyFolderMode(group: group)
+                    let childProperties = try await FilePropertiesInspector().inspect(aclChild)
+                    let childACL = try await FilePropertiesInspector().permissions(aclChild).accessControlList
+                    checks["fileInfoFolderOwnership"] = changed && childProperties.group == group
+                        && childACL == enclosedACL
+                } else { checks["fileInfoFolderOwnership"] = false }
+                ownershipWindow.close()
             } else {
                 checks["fileInfoHashComparison"] = false
                 checks["fileInfoHashFileComparison"] = false
@@ -4624,6 +4635,7 @@ extension BrowserWindow {
                 checks["fileInfoOwnerPrivileges"] = false
                 checks["fileInfoFolderPermissions"] = false
                 checks["fileInfoFolderACL"] = false
+                checks["fileInfoFolderOwnership"] = false
             }
             controller.infoWindow?.close(); window.makeKeyAndOrderFront(nil)
             let taggedURL = controller.activeSelectedItems.first?.url

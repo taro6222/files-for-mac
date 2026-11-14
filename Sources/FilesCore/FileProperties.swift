@@ -288,14 +288,8 @@ public struct FilePropertiesInspector: Sendable {
     }
 
     public func setGroup(_ name: String, at url: URL, expected: FilePermissionSnapshot) async throws -> FilePermissionSnapshot {
-        guard !name.isEmpty, !name.utf8.contains(0) else { throw FilePermissionError.unknownACLAccount }
-        return try await Task.detached(priority: .utility) {
-            var record = group()
-            var found: UnsafeMutablePointer<group>?
-            var buffer = [CChar](repeating: 0, count: 64 * 1024)
-            let code = getgrnam_r(name, &record, &buffer, buffer.count, &found)
-            guard code == 0, found != nil else { throw FilePermissionError.unknownACLAccount }
-            let groupID = record.gr_gid
+        try await Task.detached(priority: .utility) {
+            let groupID = try Self.ownershipID(name, kind: .group)
             return try Self.withPermissionDescriptor(url) { descriptor in
                 let current = try Self.permissionSnapshot(descriptor)
                 try Self.checkPermissionSnapshot(current, expected: expected)
@@ -310,14 +304,8 @@ public struct FilePropertiesInspector: Sendable {
     }
 
     public func setOwner(_ name: String, at url: URL, expected: FilePermissionSnapshot) async throws -> FilePermissionSnapshot {
-        guard !name.isEmpty, !name.utf8.contains(0) else { throw FilePermissionError.unknownACLAccount }
-        return try await Task.detached(priority: .utility) {
-            var record = passwd()
-            var found: UnsafeMutablePointer<passwd>?
-            var buffer = [CChar](repeating: 0, count: 64 * 1024)
-            let code = getpwnam_r(name, &record, &buffer, buffer.count, &found)
-            guard code == 0, found != nil else { throw FilePermissionError.unknownACLAccount }
-            let ownerID = record.pw_uid
+        try await Task.detached(priority: .utility) {
+            let ownerID = try Self.ownershipID(name, kind: .user)
             return try Self.withPermissionDescriptor(url) { descriptor in
                 let current = try Self.permissionSnapshot(descriptor)
                 try Self.checkPermissionSnapshot(current, expected: expected)
@@ -329,6 +317,44 @@ public struct FilePropertiesInspector: Sendable {
                 return updated
             }
         }.value
+    }
+
+    public func setFolderOwnership(_ name: String, kind: FileACLAccountKind, at url: URL,
+                                   expected: FilePermissionSnapshot) async throws -> FolderPermissionResult {
+        try await Task.detached(priority: .utility) {
+            let id = try Self.ownershipID(name, kind: kind)
+            return try Self.withPermissionDescriptor(url) { descriptor in
+                try Self.updateFolder(descriptor, expected: expected) { entry, metadata in
+                    if kind == .user ? metadata.st_uid == id : metadata.st_gid == id { return true }
+                    let owner = kind == .user ? id : uid_t.max
+                    let group = kind == .group ? id : gid_t.max
+                    var updated = stat()
+                    guard fchown(entry, owner, group) == 0, fstat(entry, &updated) == 0 else { return false }
+                    return kind == .user
+                        ? updated.st_uid == id && updated.st_gid == metadata.st_gid
+                        : updated.st_gid == id && updated.st_uid == metadata.st_uid
+                }
+            }
+        }.value
+    }
+
+    private static func ownershipID(_ name: String, kind: FileACLAccountKind) throws -> UInt32 {
+        guard !name.isEmpty, !name.utf8.contains(0) else { throw FilePermissionError.unknownACLAccount }
+        var buffer = [CChar](repeating: 0, count: 64 * 1024)
+        switch kind {
+        case .user:
+            var record = passwd()
+            var found: UnsafeMutablePointer<passwd>?
+            guard getpwnam_r(name, &record, &buffer, buffer.count, &found) == 0,
+                  found != nil, record.pw_uid != uid_t.max else { throw FilePermissionError.unknownACLAccount }
+            return record.pw_uid
+        case .group:
+            var record = group()
+            var found: UnsafeMutablePointer<group>?
+            guard getgrnam_r(name, &record, &buffer, buffer.count, &found) == 0,
+                  found != nil, record.gr_gid != gid_t.max else { throw FilePermissionError.unknownACLAccount }
+            return record.gr_gid
+        }
     }
 
     public func setAccessControlList(_ entries: String, at url: URL, expected: FilePermissionSnapshot) async throws -> FilePermissionSnapshot {

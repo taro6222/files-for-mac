@@ -270,14 +270,14 @@ final class FileInfoWindow: NSWindowController, NSTextFieldDelegate {
     private func cancelTasks() { inspectTask?.cancel(); inspectTask = nil; hashTask?.cancel(); hashTask = nil; signatureTask?.cancel(); signatureTask = nil }
 #if DEBUG
     var qaLoaded: Bool { properties != nil }
-    func qaApplyFolderMode(acl: String? = nil) async throws -> Bool {
+    func qaApplyFolderMode(acl: String? = nil, group: String? = nil) async throws -> Bool {
         guard let sheet = openPermissions() else { return false }
         defer { sheet.dismissQA() }
         let deadline = ContinuousClock.now + .seconds(5)
         while !sheet.qaReady && ContinuousClock.now < deadline {
             try await Task.sleep(for: .milliseconds(20))
         }
-        return try await sheet.qaApplyDescendants(acl: acl)
+        return try await sheet.qaApplyDescendants(acl: acl, group: group)
     }
     func qaOwnerControlMatchesPrivileges() async throws -> Bool {
         guard let sheet = openPermissions() else { return false }
@@ -525,14 +525,17 @@ private final class FilePermissionsSheet: NSObject, NSTextViewDelegate {
         let pickedGroup = groupList.indexOfSelectedItem > 0
         let pickedOwnership = pickedOwner || pickedGroup
         checks.forEach { $0.isEnabled = !pickedOwnership }
-        includeDescendants.isEnabled = !pickedOwnership && initial?.isDirectory == true
+        includeDescendants.isEnabled = initial?.isDirectory == true
         editACL.isEnabled = !pickedOwnership
         save.isEnabled = pickedOwnership
         if pickedOwnership {
             ownerList.isEnabled = !pickedGroup && ownerList.numberOfItems > 1
             groupList.isEnabled = !pickedOwner && groupList.numberOfItems > 1
-            status.stringValue = L("소유권을 변경하면 macOS가 setuid 또는 setgid 비트를 해제할 수 있습니다.",
-                                   "macOS may clear setuid or setgid bits when ownership changes.")
+            status.stringValue = includeDescendants.state == .on
+                ? L("하위 항목의 소유권도 변경합니다. macOS가 setuid 또는 setgid 비트를 해제할 수 있습니다.",
+                    "Ownership also changes on enclosed items. macOS may clear setuid or setgid bits.")
+                : L("소유권을 변경하면 macOS가 setuid 또는 setgid 비트를 해제할 수 있습니다.",
+                    "macOS may clear setuid or setgid bits when ownership changes.")
         } else {
             permissionChanged(nil)
         }
@@ -542,6 +545,10 @@ private final class FilePermissionsSheet: NSObject, NSTextViewDelegate {
         guard let initial else { return }
         if aclText.isEditable {
             updateACLSaveState()
+            return
+        }
+        if ownerList.indexOfSelectedItem > 0 || groupList.indexOfSelectedItem > 0 {
+            changeOwnership(sender)
             return
         }
         let requested = (initial.mode & 0o7000) | selectedMode
@@ -669,13 +676,13 @@ private final class FilePermissionsSheet: NSObject, NSTextViewDelegate {
         Task {
             defer { alert.buttons[1].isEnabled = true }
             do {
-                if let owner {
-                    _ = try await inspector.setOwner(owner, at: url, expected: initial)
-                } else if let group {
-                    _ = try await inspector.setGroup(group, at: url, expected: initial)
-                } else if recursive {
+                if recursive {
                     let result: FolderPermissionResult
-                    if let aclEntries {
+                    if let owner {
+                        result = try await inspector.setFolderOwnership(owner, kind: .user, at: url, expected: initial)
+                    } else if let group {
+                        result = try await inspector.setFolderOwnership(group, kind: .group, at: url, expected: initial)
+                    } else if let aclEntries {
                         result = try await inspector.setFolderAccessControlList(aclEntries, at: url, expected: initial)
                     } else {
                         result = try await inspector.setFolderPermissions(requested, at: url, expected: initial)
@@ -684,6 +691,10 @@ private final class FilePermissionsSheet: NSObject, NSTextViewDelegate {
                     status.stringValue = L("적용 \(result.applied)개, 건너뜀 \(result.skipped)개, 실패 \(result.failed)개.",
                                            "Applied to \(result.applied), skipped \(result.skipped), failed \(result.failed).")
                     return
+                } else if let owner {
+                    _ = try await inspector.setOwner(owner, at: url, expected: initial)
+                } else if let group {
+                    _ = try await inspector.setGroup(group, at: url, expected: initial)
                 } else if let aclEntries {
                     _ = try await inspector.setAccessControlList(aclEntries, at: url, expected: initial)
                 } else {
@@ -709,8 +720,18 @@ private final class FilePermissionsSheet: NSObject, NSTextViewDelegate {
 #if DEBUG
     var qaReady: Bool { initial != nil }
     var qaOwnerEnabled: Bool { ownerList.isEnabled }
-    func qaApplyDescendants(acl: String?) async throws -> Bool {
+    func qaApplyDescendants(acl: String?, group: String?) async throws -> Bool {
         guard includeDescendants.isEnabled else { return false }
+        if let group {
+            let deadline = ContinuousClock.now + .seconds(5)
+            while !groupList.isEnabled && ContinuousClock.now < deadline {
+                try await Task.sleep(for: .milliseconds(20))
+            }
+            let index = groupList.indexOfItem(withTitle: group)
+            guard index > 0, groupList.isEnabled else { return false }
+            groupList.selectItem(at: index)
+            changeOwnership(nil)
+        }
         if let acl {
             editACL.performClick(nil)
             guard aclText.isEditable else { return false }
