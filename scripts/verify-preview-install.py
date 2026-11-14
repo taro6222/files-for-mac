@@ -38,17 +38,17 @@ if CommandLine.arguments[1] == "--launch" {
     RunLoop.main.run()
     exit(2)
 }
-if CommandLine.arguments[1] == "--close" {
+if ["--close", "--quit"].contains(CommandLine.arguments[1]) {
     guard let pid = pid_t(CommandLine.arguments[2]),
           let application = NSRunningApplication(processIdentifier: pid),
           application.bundleURL?.standardizedFileURL == URL(fileURLWithPath: CommandLine.arguments[3], isDirectory: true).standardizedFileURL
     else { exit(2) }
-    _ = application.terminate()
+    if !application.terminate() && CommandLine.arguments[1] == "--quit" { exit(2) }
     let deadline = ProcessInfo.processInfo.systemUptime + 4
     while !application.isTerminated && ProcessInfo.processInfo.systemUptime < deadline {
         RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.05))
     }
-    if !application.isTerminated {
+    if !application.isTerminated && CommandLine.arguments[1] == "--close" {
         _ = application.forceTerminate()
         let forcedDeadline = ProcessInfo.processInfo.systemUptime + 2
         while !application.isTerminated && ProcessInfo.processInfo.systemUptime < forcedDeadline {
@@ -149,7 +149,7 @@ def isolate(app, bundle_id):
     verify_signature(app)
 
 
-def launch(app, probe, fixture, home, log, *, interactive=False, launch_services=False):
+def launch(app, probe, fixture, home, log, *, interactive=False, launch_services=False, save_session=False):
     env = dict(os.environ, CFFIXED_USER_HOME=str(home))
     title = f"{fixture.name} — Files macOS"
     with log.open("ab") as output:
@@ -183,6 +183,10 @@ def launch(app, probe, fixture, home, log, *, interactive=False, launch_services
                 if status == 0:
                     elapsed = round(time.monotonic() - start, 3)
                     if not interactive:
+                        if save_session:
+                            run(probe, "--quit", str(pid), app, timeout=8)
+                            if process.wait(timeout=5) != 0:
+                                raise RuntimeError(f"App did not quit cleanly; see {log}")
                         return elapsed
                     window_time = elapsed
                 elif status != 1:
@@ -306,14 +310,14 @@ def exercise(previous, candidate, root, bundle_id):
         "continueLastSession": True,
         "favorites": [str(fixture)],
         "showExtensions": False,
-        "tabSession": json.dumps(legacy_session).encode(),
     }
+    legacy_data = json.dumps(legacy_session).encode()
     prefs = root / "initial-preferences.plist"
-    prefs.write_bytes(plistlib.dumps(expected_preferences))
+    prefs.write_bytes(plistlib.dumps(dict(expected_preferences, tabSession=legacy_data)))
     run("defaults", "import", bundle_id, prefs)
     verified_stages = []
 
-    def verify_user_state(stage):
+    def verify_user_state(stage, *, has_legacy_session=True):
         exported = subprocess.check_output(["defaults", "export", bundle_id, "-"])
         saved = plistlib.loads(exported)
         for key, value in expected_preferences.items():
@@ -321,7 +325,10 @@ def exercise(previous, candidate, root, bundle_id):
                 raise RuntimeError(f"{stage}: preference changed or missing: {key}")
         if user_file.read_text() != "Preview upgrade fixture\n":
             raise RuntimeError(f"{stage}: user file changed")
+        if has_legacy_session and saved.get("tabSession") != legacy_data:
+            raise RuntimeError(f"{stage}: legacy session changed or missing")
         verified_stages.append(stage)
+        return saved
 
     initial_time = launch(app, probe, session_folder, home, launch_log)
     verify_user_state("firstInstall")
@@ -350,16 +357,24 @@ def exercise(previous, candidate, root, bundle_id):
         raise ValueError("Expected two distinct preview executables")
     app.rename(backup)
     staged.rename(app)
-    upgrade_time = launch(app, probe, session_folder, home, launch_log)
+    upgrade_time = launch(app, probe, session_folder, home, launch_log, save_session=True)
     if version(app) != next_version or sha256(installed_binary) != next_binary:
         raise RuntimeError("The installed bundle does not match the candidate")
-    verify_user_state("afterReplacement")
+    saved = verify_user_state("afterReplacement")
+    workspace_data = saved["workspaceSessionV2"]
+    workspaces = json.loads(workspace_data)
+    panes = workspaces[0]["panes"] if len(workspaces) == 1 else []
+    if len(panes) != 1 or panes[0]["tab"]["history"]["current"]["url"] != legacy_session[0]["history"]["current"]["url"]:
+        raise RuntimeError("Candidate did not save the restored folder in workspaceSessionV2")
+    run("defaults", "delete", bundle_id, "tabSession")
     app.rename(staged)
     backup.rename(app)
     rollback_time = launch(app, probe, session_folder, home, launch_log)
     if version(app) != prior_version or sha256(installed_binary) != prior_binary:
         raise RuntimeError("Rollback failed to restore the original bundle")
-    verify_user_state("afterRollback")
+    saved = verify_user_state("afterRollback", has_legacy_session=False)
+    if "tabSession" in saved or saved.get("workspaceSessionV2") != workspace_data:
+        raise RuntimeError("Saved workspace changed after rollback")
     return {
         "previousImageSHA256": previous_hash,
         "candidateImageSHA256": candidate_hash,
@@ -371,7 +386,7 @@ def exercise(previous, candidate, root, bundle_id):
         "preservedUserState": {
             "preferenceKeys": list(expected_preferences),
             "verifiedStages": verified_stages,
-            "restoredSessionFormat": "tabSession",
+            "restoredSessionFormats": ["tabSession", "workspaceSessionV2"],
         },
         "windowVisibleSeconds": {
             "firstInstall": initial_time,
