@@ -116,6 +116,13 @@ import Testing
 
     try runGit(["branch", "-m", "topic/local"], at: local)
     try runGit(["branch", "--set-upstream-to=origin/main"], at: local)
+    let hookDirectory = root.appendingPathComponent("hooks", isDirectory: true)
+    try fm.createDirectory(at: hookDirectory, withIntermediateDirectories: true)
+    for (name, body) in [("pre-push", "touch hook-ran; exit 1"), ("fsmonitor", "touch fsmonitor-ran; exit 1")] {
+        let hook = hookDirectory.appendingPathComponent(name)
+        try Data("#!/bin/sh\n\(body)\n".utf8).write(to: hook)
+        try fm.setAttributes([.posixPermissions: 0o700], ofItemAtPath: hook.path)
+    }
     try runGit(["config", "remote.origin.push", "+refs/heads/*:refs/heads/*"], at: local)
     try runGit(["config", "remote.origin.mirror", "true"], at: local)
     try runGit(["config", "push.followTags", "true"], at: local)
@@ -124,9 +131,14 @@ import Testing
     try runGit(["add", "topic.txt"], at: local)
     try runGit(["commit", "-m", "Topic"], at: local)
     try runGit(["tag", "-a", "local-only", "-m", "Local tag"], at: local)
+    try runGit(["config", "core.hooksPath", hookDirectory.path], at: local)
+    try runGit(["config", "core.fsmonitor", hookDirectory.appendingPathComponent("fsmonitor").path], at: local)
     let matching = try await provider.synchronize(at: local)
     #expect(matching.upstream == "origin/main")
     #expect(matching.ahead == 0 && matching.behind == 0)
+    #expect(!fm.fileExists(atPath: local.appendingPathComponent("hook-ran").path))
+    #expect(!fm.fileExists(atPath: local.appendingPathComponent("fsmonitor-ran").path))
+    #expect(try gitOutput(["config", "--local", "core.hooksPath"], at: local) == hookDirectory.path)
     #expect(try gitOutput(["--git-dir", bare.path, "for-each-ref", "--format=%(refname)"], at: root) == "refs/heads/main")
     #expect(try gitOutput(["--git-dir", bare.path, "rev-parse", "main"], at: root) == gitOutput(["rev-parse", "HEAD"], at: local))
     await #expect(throws: GitBackendError.invalidLocation) {
@@ -183,7 +195,7 @@ import Testing
     let fm = FileManager.default, root = fm.temporaryDirectory.appendingPathComponent("files-git-cancel-\(UUID())", isDirectory: true)
     defer { try? fm.removeItem(at: root) }; try fm.createDirectory(at: root, withIntermediateDirectories: true)
     let sleeper = root.appendingPathComponent("fake-git.sh")
-    try Data("#!/bin/sh\nlast=''\nfor arg in \"$@\"; do last=\"$arg\"; done\ncase \"$1\" in clone) mkdir \"$last\" ;; esac\nexec /bin/sleep 5\n".utf8).write(to: sleeper)
+    try Data("#!/bin/sh\nlast=''\nfor arg in \"$@\"; do last=\"$arg\"; done\nmkdir \"$last\"\nexec /bin/sleep 5\n".utf8).write(to: sleeper)
     try fm.setAttributes([.posixPermissions: 0o700], ofItemAtPath: sleeper.path)
     let provider = GitProvider(executable: sleeper), destination = root.appendingPathComponent("destination")
     let task = Task { try await provider.clone(from: root.appendingPathComponent("source.git"), to: destination) }

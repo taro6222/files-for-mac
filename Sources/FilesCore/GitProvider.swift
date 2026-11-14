@@ -261,7 +261,9 @@ public struct GitProvider: Sendable {
     }
     private static func runSynchronously(executable: URL, arguments: [String], directory: URL, outputLimit: Int, box: GitProcessBox) throws -> Data {
         let process = Process(), output = Pipe(), errors = Pipe()
-        process.executableURL = executable; process.arguments = arguments; process.currentDirectoryURL = directory
+        process.executableURL = executable
+        process.arguments = ["-c", "core.hooksPath=/dev/null", "-c", "core.fsmonitor=false"] + arguments
+        process.currentDirectoryURL = directory
         var environment = ProcessInfo.processInfo.environment; environment["GIT_TERMINAL_PROMPT"] = "0"; environment["GIT_OPTIONAL_LOCKS"] = "0"; process.environment = environment
         process.standardOutput = output; process.standardError = errors
         do { try process.run() } catch { throw GitBackendError.gitUnavailable }
