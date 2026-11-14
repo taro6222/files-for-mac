@@ -64,6 +64,7 @@ public struct BrowserPreferencesArchive: Codable, Equatable, Sendable {
     public let showGitCommitMessageColumn: Bool?
     public let showGitCommitAuthorColumn: Bool?
     public let showGitCommitSHAColumn: Bool?
+    public let showSyncStatusColumn: Bool?
     public let showFileTagColumn: Bool?
     public let showPathColumn: Bool?
     public let showCompressionOptions: Bool?
@@ -151,6 +152,7 @@ public final class BrowserPreferences {
     public private(set) var showGitCommitMessageColumn: Bool
     public private(set) var showGitCommitAuthorColumn: Bool
     public private(set) var showGitCommitSHAColumn: Bool
+    public private(set) var showSyncStatusColumn: Bool
     public private(set) var showFileTagColumn: Bool
     public private(set) var showPathColumn: Bool
     public private(set) var showCompressionOptions: Bool
@@ -233,6 +235,7 @@ public final class BrowserPreferences {
         showGitCommitMessageColumn = defaults.bool(forKey: "showGitCommitMessageColumn")
         showGitCommitAuthorColumn = defaults.bool(forKey: "showGitCommitAuthorColumn")
         showGitCommitSHAColumn = defaults.bool(forKey: "showGitCommitSHAColumn")
+        showSyncStatusColumn = defaults.bool(forKey: "showSyncStatusColumn")
         showFileTagColumn = defaults.object(forKey: "showFileTagColumn") as? Bool ?? false
         showPathColumn = defaults.object(forKey: "showPathColumn") as? Bool ?? false
         showCompressionOptions = defaults.object(forKey: "showCompressionOptions") as? Bool ?? true
@@ -374,6 +377,12 @@ public final class BrowserPreferences {
         guard showGitCommitSHAColumn != value else { return }
         showGitCommitSHAColumn = value
         defaults.set(value, forKey: "showGitCommitSHAColumn")
+        changed()
+    }
+    public func setShowSyncStatusColumn(_ value: Bool) {
+        guard showSyncStatusColumn != value else { return }
+        showSyncStatusColumn = value
+        defaults.set(value, forKey: "showSyncStatusColumn")
         changed()
     }
     public func setShowFileTagColumn(_ value: Bool) { guard showFileTagColumn != value else { return }; showFileTagColumn = value; defaults.set(value, forKey: "showFileTagColumn"); changed() }
@@ -579,6 +588,7 @@ public final class BrowserPreferences {
             showGitCommitMessageColumn: showGitCommitMessageColumn,
             showGitCommitAuthorColumn: showGitCommitAuthorColumn,
             showGitCommitSHAColumn: showGitCommitSHAColumn,
+            showSyncStatusColumn: showSyncStatusColumn,
             showFileTagColumn: showFileTagColumn, showPathColumn: showPathColumn,
             showCompressionOptions: showCompressionOptions, showFlattenOptions: showFlattenOptions,
             showOpenTerminal: showOpenTerminal, showCreateFolderWithSelection: showCreateFolderWithSelection,
@@ -664,6 +674,7 @@ public final class BrowserPreferences {
         showGitCommitMessageColumn = archive.showGitCommitMessageColumn ?? false
         showGitCommitAuthorColumn = archive.showGitCommitAuthorColumn ?? false
         showGitCommitSHAColumn = archive.showGitCommitSHAColumn ?? false
+        showSyncStatusColumn = archive.showSyncStatusColumn ?? false
         showFileTagColumn = archive.showFileTagColumn ?? false; showPathColumn = archive.showPathColumn ?? false
         showCompressionOptions = archive.showCompressionOptions ?? true; showOpenTerminal = archive.showOpenTerminal ?? true
         showFlattenOptions = archive.showFlattenOptions ?? false
@@ -713,6 +724,7 @@ public final class BrowserPreferences {
         defaults.set(showGitCommitMessageColumn, forKey: "showGitCommitMessageColumn")
         defaults.set(showGitCommitAuthorColumn, forKey: "showGitCommitAuthorColumn")
         defaults.set(showGitCommitSHAColumn, forKey: "showGitCommitSHAColumn")
+        defaults.set(showSyncStatusColumn, forKey: "showSyncStatusColumn")
         defaults.set(showFileTagColumn, forKey: "showFileTagColumn"); defaults.set(showPathColumn, forKey: "showPathColumn")
         defaults.set(showCompressionOptions, forKey: "showCompressionOptions"); defaults.set(showOpenTerminal, forKey: "showOpenTerminal")
         defaults.set(showFlattenOptions, forKey: "showFlattenOptions")

@@ -556,16 +556,16 @@ private struct DelayedLoader: DirectoryLoading {
     defer { defaults.removePersistentDomain(forName: suite) }
     let preferences = BrowserPreferences(defaults: defaults, initialFavorites: [])
     #expect(!preferences.showCreatedColumn && preferences.showDateColumn && preferences.showTypeColumn && preferences.showSizeColumn)
-    #expect(!preferences.showGitStatusColumn && !preferences.showFileTagColumn && !preferences.showPathColumn)
+    #expect(!preferences.showGitStatusColumn && !preferences.showSyncStatusColumn && !preferences.showFileTagColumn && !preferences.showPathColumn)
     var notifications = 0; let token = preferences.observe { notifications += 1 }
     preferences.setShowCreatedColumn(true); preferences.setShowDateColumn(false); preferences.setShowTypeColumn(false)
     preferences.setShowSizeColumn(false); preferences.setShowGitStatusColumn(true)
-    preferences.setShowFileTagColumn(true); preferences.setShowPathColumn(true)
+    preferences.setShowFileTagColumn(true); preferences.setShowPathColumn(true); preferences.setShowSyncStatusColumn(true)
     preferences.setShowDateColumn(false); preferences.setShowGitStatusColumn(true)
     let restored = BrowserPreferences(defaults: defaults, initialFavorites: [])
     #expect(restored.showCreatedColumn && !restored.showDateColumn && !restored.showTypeColumn && !restored.showSizeColumn && restored.showGitStatusColumn)
-    #expect(restored.showFileTagColumn && restored.showPathColumn)
-    #expect(notifications == 7)
+    #expect(restored.showFileTagColumn && restored.showPathColumn && restored.showSyncStatusColumn)
+    #expect(notifications == 8)
     preferences.removeObserver(token)
 }
 
@@ -786,7 +786,7 @@ private struct DelayedLoader: DirectoryLoading {
     source.setShowGitCommitSHAColumn(true)
     source.setShowShelfToggle(true)
     source.setShowCreatedColumn(true); source.setShowDateColumn(false); source.setShowTypeColumn(false); source.setShowSizeColumn(false); source.setShowGitStatusColumn(true)
-    source.setShowFileTagColumn(true); source.setShowPathColumn(true)
+    source.setShowFileTagColumn(true); source.setShowPathColumn(true); source.setShowSyncStatusColumn(true)
     source.setShowCompressionOptions(false); source.setShowOpenTerminal(false); source.setShowCreateFolderWithSelection(false)
     source.setShowPinToSidebar(false)
     source.setShowSendToMenu(false)
@@ -823,7 +823,7 @@ private struct DelayedLoader: DirectoryLoading {
     #expect(destination.showGitCommitDateColumn && destination.showGitCommitMessageColumn
         && destination.showGitCommitAuthorColumn && destination.showGitCommitSHAColumn)
     #expect(destination.showCreatedColumn && !destination.showDateColumn && !destination.showTypeColumn && !destination.showSizeColumn && destination.showGitStatusColumn)
-    #expect(destination.showFileTagColumn && destination.showPathColumn)
+    #expect(destination.showFileTagColumn && destination.showPathColumn && destination.showSyncStatusColumn)
     #expect(!destination.showCompressionOptions && !destination.showOpenTerminal && !destination.showCreateFolderWithSelection)
     #expect(!destination.showPinToSidebar)
     #expect(!destination.showSendToMenu)

@@ -401,7 +401,7 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
             ("gitCommitMessage", L("Git 커밋 메시지", "Git Commit Message"), 140),
             ("gitCommitAuthor", L("Git 커밋 작성자", "Git Commit Author"), 140),
             ("gitCommitSHA", L("Git 커밋 SHA", "Git Commit SHA"), 100),
-            ("tag", L("Finder 태그", "Finder Tags"), 150), ("path", L("폴더 경로", "Folder Path"), 260),
+            ("syncStatus", L("동기화 상태", "Sync Status"), 150), ("tag", L("Finder 태그", "Finder Tags"), 150), ("path", L("폴더 경로", "Folder Path"), 260),
             ("created", L("생성일", "Date Created"), 200), ("modified", L("수정일", "Date Modified"), 185),
             ("kind", L("종류", "Kind"), 140), ("size", L("크기", "Size"), 100)]
         for (key, label, width) in specs {
@@ -928,6 +928,10 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
             let cacheKey = preferences.showThumbnails ? "preview:\(item.url.path)" : "type:\(item.isDirectory ? (item.isPackage ? "bundle" : "folder") : item.url.pathExtension.lowercased())"
             if iconCache[cacheKey] == nil { iconCache[cacheKey] = fileIcon(for: item, showsThumbnails: preferences.showThumbnails) }
             cell.imageView?.image = iconCache[cacheKey]
+        case "syncStatus":
+            let status = cloudStateTitle(item.cloudState)
+            cell.textField?.stringValue = item.cloudState == nil ? "—" : status
+            cell.toolTip = status
         case "git": cell.textField?.stringValue = gitStatus(for: item)
         case "gitCommitDate", "gitCommitMessage", "gitCommitAuthor", "gitCommitSHA":
             requestGitCommit(for: item)
@@ -1152,6 +1156,7 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
     @objc func sortByModified(_ sender: Any?) { updateSort(field: .modified) }
     @objc func sortBySize(_ sender: Any?) { updateSort(field: .size) }
     @objc func sortByKind(_ sender: Any?) { updateSort(field: .kind) }
+    @objc func sortBySyncStatus(_ sender: Any?) { updateSort(field: .syncStatus) }
     @objc func sortByTag(_ sender: Any?) { updateSort(field: .tag) }
     @objc func sortByPath(_ sender: Any?) { updateSort(field: .path) }
     @objc func sortAscending(_ sender: Any?) { updateSort(ascending: true) }
@@ -1501,6 +1506,7 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
             let item = model.items[row]
             switch identifier.rawValue {
             case "name": return item.displayName(showExtensions: preferences.showExtensions)
+            case "syncStatus": return item.cloudState.map { cloudStateTitle($0) } ?? "—"
             case "git": return gitStatus(for: item)
             case "gitCommitDate", "gitCommitMessage", "gitCommitAuthor", "gitCommitSHA": return gitCommitValue(identifier.rawValue, for: item)
             case "created": return item.created.map(dateFormatter.string) ?? "—"
@@ -1531,6 +1537,7 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
     @objc func groupByModified(_ sender: Any?) { updateGrouping(field: .modified) }
     @objc func groupBySize(_ sender: Any?) { updateGrouping(field: .size) }
     @objc func groupByKind(_ sender: Any?) { updateGrouping(field: .kind) }
+    @objc func groupBySyncStatus(_ sender: Any?) { updateGrouping(field: .syncStatus) }
     @objc func groupByTag(_ sender: Any?) { updateGrouping(field: .tag) }
     @objc func groupByFolderPath(_ sender: Any?) { updateGrouping(field: .path) }
     @objc func groupByModifiedYear(_ sender: Any?) { updateGrouping(field: .modified, dateUnit: .year) }
@@ -2533,6 +2540,7 @@ extension BrowserWindow {
             (L("Git 커밋 메시지 열 표시", "Show Git Commit Message Column"), #selector(toggleGitCommitMessageColumn(_:)), preferences.showGitCommitMessageColumn),
             (L("Git 커밋 작성자 열 표시", "Show Git Commit Author Column"), #selector(toggleGitCommitAuthorColumn(_:)), preferences.showGitCommitAuthorColumn),
             (L("Git 커밋 SHA 열 표시", "Show Git Commit SHA Column"), #selector(toggleGitCommitSHAColumn(_:)), preferences.showGitCommitSHAColumn),
+            (L("동기화 상태 열 표시", "Show Sync Status Column"), #selector(toggleSyncStatusColumn(_:)), preferences.showSyncStatusColumn),
             (L("Finder 태그 열 표시", "Show Finder Tags Column"), #selector(toggleTagColumn(_:)), preferences.showFileTagColumn),
             (L("폴더 경로 열 표시", "Show Folder Path Column"), #selector(togglePathColumn(_:)), preferences.showPathColumn),
             (L("홈: 빠른 접근", "Home: Quick Access"), #selector(toggleHomeFavorites(_:)), preferences.showHomeFavorites),
@@ -2584,6 +2592,7 @@ extension BrowserWindow {
     @objc private func toggleGitCommitSHAColumn(_ sender: Any?) {
         preferences.setShowGitCommitSHAColumn(!preferences.showGitCommitSHAColumn)
     }
+    @objc private func toggleSyncStatusColumn(_ sender: Any?) { preferences.setShowSyncStatusColumn(!preferences.showSyncStatusColumn) }
     @objc private func toggleTagColumn(_ sender: Any?) { preferences.setShowFileTagColumn(!preferences.showFileTagColumn) }
     @objc private func togglePathColumn(_ sender: Any?) { preferences.setShowPathColumn(!preferences.showPathColumn) }
     private func applyColumnVisibility() {
@@ -2596,6 +2605,7 @@ extension BrowserWindow {
         table.tableColumn(withIdentifier: .init("gitCommitMessage"))?.isHidden = !preferences.showGitCommitMessageColumn
         table.tableColumn(withIdentifier: .init("gitCommitAuthor"))?.isHidden = !preferences.showGitCommitAuthorColumn
         table.tableColumn(withIdentifier: .init("gitCommitSHA"))?.isHidden = !preferences.showGitCommitSHAColumn
+        table.tableColumn(withIdentifier: .init("syncStatus"))?.isHidden = !preferences.showSyncStatusColumn
         table.tableColumn(withIdentifier: .init("tag"))?.isHidden = !preferences.showFileTagColumn
         table.tableColumn(withIdentifier: .init("path"))?.isHidden = !preferences.showPathColumn
     }
@@ -2850,6 +2860,8 @@ extension BrowserWindow {
             menuItem.state = preferences.showFilterHeader ? .on : .off
             return activeModel.location != nil
         case #selector(useCardsLayout(_:)): return activeModel.location != nil
+        case #selector(sortBySyncStatus(_:)): menuItem.state = activeModel.sortOrder.field == .syncStatus ? .on : .off; return activeModel.location != nil
+        case #selector(groupBySyncStatus(_:)): menuItem.state = activeModel.grouping.field == .syncStatus ? .on : .off; return activeModel.location != nil
         case #selector(sortByTag(_:)): menuItem.state = activeModel.sortOrder.field == .tag ? .on : .off; return activeModel.location != nil
         case #selector(groupByTag(_:)): menuItem.state = activeModel.grouping.field == .tag ? .on : .off; return activeModel.location != nil
         case #selector(sortByPath(_:)): menuItem.state = activeModel.sortOrder.field == .path ? .on : .off; return activeModel.location != nil
@@ -3747,6 +3759,19 @@ extension BrowserWindow {
                 && [#selector(sortByTag(_:)), #selector(groupByTag(_:))].allSatisfy { action in
                     paletteEntries.contains { $0.item.action == action }
                 }
+            let syncColumnID = NSUserInterfaceItemIdentifier("syncStatus")
+            let syncColumn = controller.table.tableColumn(withIdentifier: syncColumnID)
+            let syncColumnStartsHidden = syncColumn?.isHidden == true
+            controller.toggleSyncStatusColumn(nil)
+            controller.sortBySyncStatus(nil); controller.groupBySyncStatus(nil)
+            let syncColumnVisible = syncColumn?.isHidden == false && syncColumn?.resizingMask.contains(.userResizingMask) == true
+            checks["syncStatusColumnAndCommands"] = syncColumnStartsHidden && syncColumnVisible
+                && controller.model.sortOrder.field == .syncStatus && controller.model.grouping.field == .syncStatus
+                && controller.model.items.allSatisfy { $0.cloudState == nil }
+                && [#selector(sortBySyncStatus(_:)), #selector(groupBySyncStatus(_:))].allSatisfy { action in
+                    paletteEntries.contains { $0.item.action == action }
+                }
+            controller.toggleSyncStatusColumn(nil)
             controller.sortByPath(nil); controller.groupByFolderPath(nil)
             checks["folderPathSortAndGroupCommands"] = controller.model.sortOrder.field == .path
                 && controller.model.grouping.field == .path

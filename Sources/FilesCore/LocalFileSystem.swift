@@ -25,7 +25,7 @@ public struct LocalFileSystem: DirectoryStreaming {
                     }
                     var rootError: Error?
                     let keys: Set<URLResourceKey> = [.isDirectoryKey, .isPackageKey, .isSymbolicLinkKey,
-                        .isHiddenKey, .fileSizeKey, .creationDateKey, .contentModificationDateKey, .tagNamesKey]
+                        .isHiddenKey, .fileSizeKey, .creationDateKey, .contentModificationDateKey, .tagNamesKey, .isUbiquitousItemKey]
                     var options: FileManager.DirectoryEnumerationOptions = [.skipsSubdirectoryDescendants]
                     if !showHidden { options.insert(.skipsHiddenFiles) }
                     guard let enumerator = FileManager.default.enumerator(at: url,
@@ -52,7 +52,8 @@ public struct LocalFileSystem: DirectoryStreaming {
                                 isSymbolicLink: v.isSymbolicLink ?? false, isHidden: v.isHidden ?? false,
                                 size: v.fileSize.map(Int64.init), created: v.creationDate, modified: v.contentModificationDate,
                                 kind: v.isDirectory == true ? "Folder" : (child.pathExtension.isEmpty ? "File" : child.pathExtension.uppercased()),
-                                tags: v.tagNames ?? []))
+                                tags: v.tagNames ?? [],
+                                cloudState: v.isUbiquitousItem == true ? .readUbiquitousState(at: child) : nil))
                         } catch {
                             let e = error as NSError
                             if e.domain == NSCocoaErrorDomain && e.code == NSFileReadNoSuchFileError { continue }

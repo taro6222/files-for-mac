@@ -7,6 +7,7 @@ func fileGroupTitle(_ key: String, field: FileGroupField) -> String {
     switch field {
     case .none: return ""
     case .name, .kind, .tag: return value == "untagged" ? L("태그 없음", "Untagged") : value
+    case .syncStatus: return cloudStateTitle(CloudItemState(rawValue: value))
     case .path: return value
     case .created, .modified:
         let parts = value.split(separator: "-").compactMap { Int($0) }
@@ -23,6 +24,19 @@ func fileGroupTitle(_ key: String, field: FileGroupField) -> String {
         case "large": return L("1GB 이상", "1 GB and Larger")
         default: return value
         }
+    }
+}
+
+func cloudStateTitle(_ state: CloudItemState?) -> String {
+    switch state {
+    case .availableOffline: return L("오프라인 사용 가능", "Available Offline")
+    case .onlineOnly: return L("온라인 전용", "Online Only")
+    case .downloading: return L("다운로드 중", "Downloading")
+    case .uploading: return L("업로드 중", "Uploading")
+    case .conflict: return L("충돌", "Conflict")
+    case .error: return L("오류", "Error")
+    case .unknown: return L("알 수 없음", "Unknown")
+    case nil: return L("상태 정보 없음", "No Status Available")
     }
 }
 

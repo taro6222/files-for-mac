@@ -15,14 +15,17 @@ public struct FileItem: Identifiable, Sendable, Equatable {
     public let modified: Date?
     public let kind: String
     public let tags: [String]
+    public let cloudState: CloudItemState?
 
     public init(url: URL, name: String, isDirectory: Bool, identity: String? = nil, isPackage: Bool = false,
                 isSymbolicLink: Bool = false, isHidden: Bool = false,
-                size: Int64? = nil, created: Date? = nil, modified: Date? = nil, kind: String = "", tags: [String] = []) {
+                size: Int64? = nil, created: Date? = nil, modified: Date? = nil, kind: String = "", tags: [String] = [],
+                cloudState: CloudItemState? = nil) {
         self.identity = identity
         self.url = url; self.name = name; self.isDirectory = isDirectory
         self.isPackage = isPackage; self.isSymbolicLink = isSymbolicLink
         self.isHidden = isHidden; self.size = size; self.created = created; self.modified = modified; self.kind = kind; self.tags = tags
+        self.cloudState = cloudState
     }
     public func displayName(showExtensions: Bool) -> String {
         guard !showExtensions, !isDirectory, !name.hasPrefix("."), !url.pathExtension.isEmpty else { return name }
@@ -32,11 +35,11 @@ public struct FileItem: Identifiable, Sendable, Equatable {
     public func replacingSize(_ size: Int64?) -> FileItem {
         FileItem(url: url, name: name, isDirectory: isDirectory, identity: identity, isPackage: isPackage,
                  isSymbolicLink: isSymbolicLink, isHidden: isHidden, size: size, created: created,
-                 modified: modified, kind: kind, tags: tags)
+                 modified: modified, kind: kind, tags: tags, cloudState: cloudState)
     }
 }
 
-public enum SortField: String, CaseIterable, Codable, Sendable { case name, created, modified, kind, size, tag, path }
+public enum SortField: String, CaseIterable, Codable, Sendable { case name, created, modified, kind, size, tag, path, syncStatus }
 public enum SortDirectoryPlacement: String, CaseIterable, Codable, Sendable { case foldersFirst, filesFirst, mixed }
 public struct SortOrder: Codable, Equatable, Sendable {
     public var field: SortField
@@ -79,6 +82,7 @@ public struct SortOrder: Codable, Equatable, Sendable {
             case .kind: comparison = a.kind.localizedStandardCompare(b.kind)
             case .tag: comparison = a.tags.joined(separator: "\u{0}").localizedStandardCompare(b.tags.joined(separator: "\u{0}"))
             case .path: comparison = a.url.deletingLastPathComponent().path.localizedStandardCompare(b.url.deletingLastPathComponent().path)
+            case .syncStatus: comparison = compare(a.cloudState?.rawValue, b.cloudState?.rawValue)
             case .size:
                 comparison = compare(a.size, b.size)
             case .modified:

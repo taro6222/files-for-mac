@@ -33,3 +33,22 @@ import Testing
     #expect(throws: CloudOperationError.unsupported) { try provider.evictLocalCopy(file, fileManager: fm) }
     #expect(try String(contentsOf: file, encoding: .utf8) == "keep")
 }
+
+@Test func syncStatusSortingAndGroupingKeepUnreportedItemsDistinct() throws {
+    let root = URL(fileURLWithPath: "/test")
+    let local = FileItem(url: root.appendingPathComponent("local"), name: "local", isDirectory: false)
+    let unknown = FileItem(url: root.appendingPathComponent("unknown"), name: "unknown", isDirectory: false,
+                           cloudState: .unknown)
+    let online = FileItem(url: root.appendingPathComponent("online"), name: "online", isDirectory: false,
+                          cloudState: .onlineOnly)
+    let items = [unknown, local, online]
+    let ascending = SortOrder(field: .syncStatus, directoryPlacement: .mixed)
+    let descending = SortOrder(field: .syncStatus, ascending: false, directoryPlacement: .mixed)
+    #expect(ascending.sorted(items) == [local, online, unknown])
+    #expect(descending.sorted(items) == [unknown, online, local])
+    let grouping = FileGroupOptions(field: .syncStatus)
+    #expect(FileGrouping.groups(items, options: grouping).map(\.items) == [[local], [online], [unknown]])
+    #expect(online.replacingSize(128).cloudState == .onlineOnly)
+    #expect(try JSONDecoder().decode(SortOrder.self, from: JSONEncoder().encode(ascending)) == ascending)
+    #expect(try JSONDecoder().decode(FileGroupOptions.self, from: JSONEncoder().encode(grouping)) == grouping)
+}

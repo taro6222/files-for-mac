@@ -439,6 +439,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         go.addItem(withTitle: L("카드 보기", "Cards View"), action: #selector(BrowserWindow.useCardsLayout(_:)), keyEquivalent: "")
         go.addItem(withTitle: L("보기 크기 축소", "Decrease View Size"), action: #selector(BrowserWindow.decreaseViewSize(_:)), keyEquivalent: "-")
         go.addItem(withTitle: L("보기 크기 확대", "Increase View Size"), action: #selector(BrowserWindow.increaseViewSize(_:)), keyEquivalent: "+")
+        go.addItem(withTitle: L("동기화 상태로 정렬", "Sort by Sync Status"), action: #selector(BrowserWindow.sortBySyncStatus(_:)), keyEquivalent: "")
+        go.addItem(withTitle: L("동기화 상태로 그룹화", "Group by Sync Status"), action: #selector(BrowserWindow.groupBySyncStatus(_:)), keyEquivalent: "")
         go.addItem(withTitle: L("Finder 태그로 정렬", "Sort by Finder Tag"), action: #selector(BrowserWindow.sortByTag(_:)), keyEquivalent: "")
         go.addItem(withTitle: L("Finder 태그로 그룹화", "Group by Finder Tag"), action: #selector(BrowserWindow.groupByTag(_:)), keyEquivalent: "")
         go.addItem(withTitle: L("폴더 경로로 정렬", "Sort by Folder Path"), action: #selector(BrowserWindow.sortByPath(_:)), keyEquivalent: "")

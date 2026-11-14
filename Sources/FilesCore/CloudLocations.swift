@@ -1,7 +1,22 @@
 import Foundation
 
-public enum CloudItemState: String, Sendable, Equatable {
+public enum CloudItemState: String, CaseIterable, Sendable, Equatable {
     case availableOffline, onlineOnly, downloading, uploading, conflict, error, unknown
+
+    static func readUbiquitousState(at url: URL) -> CloudItemState {
+        let keys: Set<URLResourceKey> = [.ubiquitousItemDownloadingStatusKey, .ubiquitousItemIsDownloadingKey,
+            .ubiquitousItemIsUploadingKey, .ubiquitousItemHasUnresolvedConflictsKey, .ubiquitousItemDownloadingErrorKey, .ubiquitousItemUploadingErrorKey]
+        guard let values = try? url.resourceValues(forKeys: keys) else { return .unknown }
+        if values.ubiquitousItemDownloadingError != nil || values.ubiquitousItemUploadingError != nil { return .error }
+        if values.ubiquitousItemHasUnresolvedConflicts == true { return .conflict }
+        if values.ubiquitousItemIsDownloading == true { return .downloading }
+        if values.ubiquitousItemIsUploading == true { return .uploading }
+        switch values.ubiquitousItemDownloadingStatus {
+        case .current, .downloaded: return .availableOffline
+        case .notDownloaded: return .onlineOnly
+        default: return .unknown
+        }
+    }
 }
 
 public struct CloudLocation: Sendable, Equatable, Identifiable {
@@ -54,18 +69,8 @@ public struct CloudLocationProvider: Sendable {
     }
 
     public func state(of url: URL) -> CloudItemState {
-        let keys: Set<URLResourceKey> = [.isUbiquitousItemKey, .ubiquitousItemDownloadingStatusKey, .ubiquitousItemIsDownloadingKey,
-            .ubiquitousItemIsUploadingKey, .ubiquitousItemHasUnresolvedConflictsKey, .ubiquitousItemDownloadingErrorKey, .ubiquitousItemUploadingErrorKey]
-        guard let values = try? url.resourceValues(forKeys: keys), values.isUbiquitousItem == true else { return .unknown }
-        if values.ubiquitousItemDownloadingError != nil || values.ubiquitousItemUploadingError != nil { return .error }
-        if values.ubiquitousItemHasUnresolvedConflicts == true { return .conflict }
-        if values.ubiquitousItemIsDownloading == true { return .downloading }
-        if values.ubiquitousItemIsUploading == true { return .uploading }
-        switch values.ubiquitousItemDownloadingStatus {
-        case .current, .downloaded: return .availableOffline
-        case .notDownloaded: return .onlineOnly
-        default: return .unknown
-        }
+        guard isUbiquitous(url) else { return .unknown }
+        return CloudItemState.readUbiquitousState(at: url)
     }
 
     public func capabilities(for url: URL) -> CloudItemCapabilities {
