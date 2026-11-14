@@ -304,6 +304,33 @@ private struct DelayedLoader: DirectoryLoading {
     model.navigate(nil); #expect(model.items.isEmpty); #expect(model.error == nil)
 }
 
+@Test @MainActor func folderNameFilterSurvivesRefreshAndClearsOnNavigation() async throws {
+    let model = BrowserModel(loader: DelayedLoader())
+    func waitForLoad() async throws {
+        let deadline = ContinuousClock.now.advanced(by: .seconds(2))
+        while model.isLoading && ContinuousClock.now < deadline {
+            try await Task.sleep(for: .milliseconds(5))
+        }
+        try #require(!model.isLoading)
+    }
+
+    model.navigate(URL(fileURLWithPath: "/fast"))
+    try await waitForLoad()
+    model.savePosition(selection: Set(model.items.map(\.id)), scrollOffset: 50)
+    model.setNameFilter("missing")
+    #expect(model.items.isEmpty)
+    #expect(model.history.current.selection.isEmpty)
+    model.reload()
+    try await waitForLoad()
+    #expect(model.items.isEmpty)
+    model.setNameFilter("FAST")
+    #expect(model.items.map(\.name) == ["fast"])
+    model.navigate(URL(fileURLWithPath: "/elsewhere"))
+    try await waitForLoad()
+    #expect(model.nameFilter.isEmpty)
+    #expect(model.items.map(\.name) == ["elsewhere"])
+}
+
 @Test @MainActor func failedLoadIsNotEmptySuccess() async throws {
     let model = BrowserModel()
     model.navigate(URL(fileURLWithPath: "/tmp/no-such-\(UUID())"))
@@ -721,6 +748,7 @@ private struct DelayedLoader: DirectoryLoading {
     source.setShowThumbnails(false)
     source.setDoubleClickToGoUp(false)
     source.setReverseTabScrollDirection(true)
+    source.setShowFilterHeader(true)
     source.setShowCreatedColumn(true); source.setShowDateColumn(false); source.setShowTypeColumn(false); source.setShowSizeColumn(false); source.setShowGitStatusColumn(true)
     source.setShowFileTagColumn(true); source.setShowPathColumn(true)
     source.setShowCompressionOptions(false); source.setShowOpenTerminal(false); source.setShowCreateFolderWithSelection(false)
@@ -750,6 +778,7 @@ private struct DelayedLoader: DirectoryLoading {
     #expect(!destination.showThumbnails)
     #expect(!destination.doubleClickToGoUp)
     #expect(destination.reverseTabScrollDirection)
+    #expect(destination.showFilterHeader)
     #expect(destination.showCreatedColumn && !destination.showDateColumn && !destination.showTypeColumn && !destination.showSizeColumn && destination.showGitStatusColumn)
     #expect(destination.showFileTagColumn && destination.showPathColumn)
     #expect(!destination.showCompressionOptions && !destination.showOpenTerminal && !destination.showCreateFolderWithSelection)

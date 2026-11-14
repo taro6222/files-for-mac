@@ -49,6 +49,7 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
     private let homeView = NSStackView()
     private let sidebar = NSStackView()
     private let content = AppBackgroundView()
+    private let folderFilter = FolderFilterField()
     private let workspaceSplit = NSSplitView()
     private var secondaryPane: SecondaryBrowserPane?
     private var secondaryActive = false
@@ -302,6 +303,11 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         rebuildToolbar(force: true)
         main.addArrangedSubview(toolbar)
         let divider = NSBox(); divider.boxType = .separator; main.addArrangedSubview(divider)
+        folderFilter.onChange = { [weak self] query in
+            self?.setSecondaryActive(false)
+            self?.model.setNameFilter(query)
+        }
+        main.addArrangedSubview(folderFilter)
         main.addArrangedSubview(content)
         content.translatesAutoresizingMaskIntoConstraints = false
         content.heightAnchor.constraint(greaterThanOrEqualToConstant: 350).isActive = true
@@ -349,7 +355,7 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         toolbar.isHidden = !preferences.showToolbar
         bottom.isHidden = !preferences.showStatusBar
         sidebarContainer.isHidden = !preferences.showSidebar
-        for view in [header, toolbar, divider, content, bottom] { view.widthAnchor.constraint(equalTo: main.widthAnchor).isActive = true }
+        for view in [header, toolbar, divider, folderFilter, content, bottom] { view.widthAnchor.constraint(equalTo: main.widthAnchor).isActive = true }
     }
 
     private func setupTable(restoresLayout: Bool) {
@@ -738,6 +744,7 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
                 }
             }
         }
+        folderFilter.synchronize(with: model, visible: preferences.showFilterHeader)
         titleLabel.stringValue = model.location.map(displayName) ?? L("홈", "Home")
         window?.title = "\(titleLabel.stringValue) — Files macOS"
         if pathField.currentEditor() == nil { pathField.stringValue = model.location?.path ?? "" }
@@ -806,7 +813,11 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         else if model.wasCancelled && model.items.isEmpty {
             message.stringValue = L("읽기를 중단했습니다.\n새로고침하거나 다른 폴더로 이동하세요.", "Loading stopped.\nRefresh or open another folder.")
         }
-        else if model.location != nil && model.items.isEmpty { message.stringValue = L("이 폴더는 비어 있습니다.", "This folder is empty.") }
+        else if model.location != nil && model.items.isEmpty {
+            message.stringValue = model.nameFilter.isEmpty
+                ? L("이 폴더는 비어 있습니다.", "This folder is empty.")
+                : L("일치하는 이름이 없습니다.", "No matching names.")
+        }
         else { message.stringValue = "" }
         message.isHidden = message.stringValue.isEmpty
         recoveryActions.isHidden = message.isHidden || model.isLoading || (model.failure == nil && !model.wasCancelled)
@@ -1023,6 +1034,16 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
     @objc func sortFoldersFirst(_ sender: Any?) { updateSort(placement: .foldersFirst) }
     @objc func sortFilesFirst(_ sender: Any?) { updateSort(placement: .filesFirst) }
     @objc func sortMixed(_ sender: Any?) { updateSort(placement: .mixed) }
+    @objc func toggleFilterHeader(_ sender: Any?) {
+        guard activeModel.location != nil else { return }
+        preferences.setShowFilterHeader(!preferences.showFilterHeader)
+        if preferences.showFilterHeader {
+            if secondaryActive { secondaryPane?.focusFilter() }
+            else { window?.makeFirstResponder(folderFilter) }
+        } else {
+            focusFiles(nil)
+        }
+    }
     @objc func showSearch(_ sender: Any?) {
         guard let root = activeModel.location else { return }
         if searchWindow == nil {
@@ -2123,6 +2144,7 @@ extension BrowserWindow {
         rootSplit.layoutSubtreeIfNeeded()
         buildSidebar()
         rebuildToolbar(force: true)
+        if !preferences.showFilterHeader { model.setNameFilter("") }
         secondaryPane?.applyPreferences()
         if preferences.calculateFolderSizes { startFolderSizeCalculationIfNeeded() } else { folderSizeTask?.cancel(); folderSizeTask = nil }
         if model.location == nil { buildHome() }
@@ -2145,7 +2167,7 @@ extension BrowserWindow {
     private func startFolderSizeCalculationIfNeeded() {
         guard folderSizeTask == nil else { return }
         guard preferences.calculateFolderSizes, !model.isLoading, let location = model.location else { return }
-        let folders = model.items.filter(\.isBrowsable).map(\.url)
+        let folders = model.loadedItems.filter(\.isBrowsable).map(\.url)
         guard !folders.isEmpty else { return }
         folderSizeTask = Task { [weak self] in
             let sizes = await FolderSizeCalculator().sizes(of: folders)
@@ -2185,6 +2207,7 @@ extension BrowserWindow {
         guard menu === optionsMenu else { return }
         menu.removeAllItems()
         let entries: [(String, Selector, Bool)] = [
+            (L("현재 폴더 필터", "Filter Current Folder"), #selector(toggleFilterHeader(_:)), preferences.showFilterHeader),
             (L("사이드바 표시", "Show Sidebar"), #selector(toggleSidebarVisibility(_:)), preferences.showSidebar),
             (L("툴바 표시", "Show Toolbar"), #selector(toggleToolbar(_:)), preferences.showToolbar),
             (L("상태 막대 표시", "Show Status Bar"), #selector(toggleStatusBar(_:)), preferences.showStatusBar),
@@ -2436,6 +2459,9 @@ extension BrowserWindow {
         case #selector(splitVertically(_:)), #selector(splitHorizontally(_:)): return true
         case #selector(arrangePanesVertically(_:)), #selector(arrangePanesHorizontally(_:)), #selector(focusOtherPane(_:)), #selector(openCurrentFolderInOtherPane(_:)): return secondaryPane != nil
         case #selector(toggleDualPane(_:)): return true
+        case #selector(toggleFilterHeader(_:)):
+            menuItem.state = preferences.showFilterHeader ? .on : .off
+            return activeModel.location != nil
         case #selector(useCardsLayout(_:)): return activeModel.location != nil
         case #selector(sortByTag(_:)): menuItem.state = activeModel.sortOrder.field == .tag ? .on : .off; return activeModel.location != nil
         case #selector(groupByTag(_:)): menuItem.state = activeModel.grouping.field == .tag ? .on : .off; return activeModel.location != nil
@@ -2834,6 +2860,25 @@ extension BrowserWindow {
                 checks["openCurrentFolderInNewPane"] = expectedPaneURL != nil && openedPaneState.panes.count == 2 && openedPaneState.panes[1].tab.location == expectedPaneURL
                 checks["thumbnailPolicyBothPanes"] = controller.qaThumbnailPolicyApplied
                 preferences.setShowThumbnails(true)
+                controller.setSecondaryActive(false)
+                controller.toggleFilterHeader(nil)
+                let filterFocused = controller.folderFilter.currentEditor() != nil
+                controller.folderFilter.stringValue = "LONG-FILE-NAME"
+                controller.folderFilter.controlTextDidChange(Notification(name: NSControl.textDidChangeNotification, object: controller.folderFilter))
+                checks["folderFilterMatchesNames"] = filterFocused && controller.model.items.count == 1
+                    && controller.model.items.first?.name.contains("long-file-name") == true
+                    && controller.secondaryPane?.model.nameFilter == ""
+                let otherFilterLoad = ContinuousClock.now
+                while controller.secondaryPane?.model.isLoading == true && elapsed(otherFilterLoad) < 10 {
+                    try await Task.sleep(for: .milliseconds(20))
+                }
+                controller.secondaryPane?.qaEnterFilter("000-grid")
+                checks["folderFilterSplitIsolation"] = controller.secondaryPane?.model.items.map(\.name) == ["000-grid-folder"]
+                    && controller.model.nameFilter == "LONG-FILE-NAME"
+                controller.toggleFilterHeader(nil)
+                checks["folderFilterClearsOnClose"] = controller.folderFilter.isHidden
+                    && controller.model.nameFilter.isEmpty && controller.model.items.count == 10_000
+                    && controller.secondaryPane?.model.nameFilter == ""
                 controller.arrangePanesHorizontally(nil); checks["arrangePanesHorizontally"] = controller.workspaceSnapshot().axis == .horizontal
                 controller.arrangePanesVertically(nil); checks["arrangePanesVertically"] = controller.workspaceSnapshot().axis == .vertical
                 let activePaneBeforeFocus = controller.workspaceSnapshot().activePaneID

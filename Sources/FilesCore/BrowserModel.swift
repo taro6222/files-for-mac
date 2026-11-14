@@ -47,7 +47,13 @@ public enum DirectoryFailure: String, Sendable {
 @MainActor
 public final class BrowserModel {
     public private(set) var history = NavigationHistory()
+    private var folderItems: [FileItem] = [] {
+        didSet { updateVisibleItems() }
+    }
     public private(set) var items: [FileItem] = []
+    public var loadedItems: [FileItem] { folderItems }
+    public private(set) var nameFilter = ""
+    private var filterLocation: URL?
     public private(set) var isLoading = false
     public private(set) var wasCancelled = false
     public private(set) var error: String?
@@ -67,6 +73,9 @@ public final class BrowserModel {
         TabSnapshot(history: history, sortOrder: sortOrder, showHidden: showHidden, viewMode: viewMode, grouping: grouping)
     }
     public func restore(_ snapshot: TabSnapshot) {
+        nameFilter = ""
+        filterLocation = nil
+        updateVisibleItems()
         history = snapshot.history
         sortOrder = snapshot.sortOrder
         showHidden = snapshot.showHidden
@@ -76,6 +85,19 @@ public final class BrowserModel {
     }
     public func savePosition(selection: Set<String>, scrollOffset: Double) {
         history.save(selection: selection, scrollOffset: scrollOffset)
+    }
+    public func setNameFilter(_ query: String) {
+        guard query != nameFilter else { return }
+        nameFilter = query
+        filterLocation = location
+        updateVisibleItems()
+        history.save(selection: history.current.selection.intersection(items.map(\.id)), scrollOffset: 0)
+        onChange?()
+    }
+    private func updateVisibleItems() {
+        items = nameFilter.isEmpty ? folderItems : folderItems.filter {
+            $0.name.localizedStandardContains(nameFilter)
+        }
     }
     public func navigate(_ url: URL?) {
         history.visit(url?.standardizedFileURL); reload()
@@ -93,9 +115,13 @@ public final class BrowserModel {
         generation += 1
         let request = generation
         task?.cancel(); error = nil; failure = nil; wasCancelled = false
-        let previousItems = loadedLocation == location ? items : []
-        if loadedLocation != location { items = [] }
-        guard let url = location else { items = []; loadedLocation = nil; isLoading = false; onChange?(); return }
+        if filterLocation != location && !nameFilter.isEmpty {
+            nameFilter = ""
+            updateVisibleItems()
+        }
+        let previousItems = loadedLocation == location ? folderItems : []
+        if loadedLocation != location { folderItems = [] }
+        guard let url = location else { folderItems = []; loadedLocation = nil; isLoading = false; onChange?(); return }
         isLoading = true; onChange?()
         let hidden = showHidden
         task = Task { [weak self, loader] in
@@ -107,7 +133,7 @@ public final class BrowserModel {
                         guard let self, self.generation == request, !Task.isCancelled else { return }
                         collected.append(contentsOf: batch)
                         if previousItems.isEmpty {
-                            self.items = self.sortOrder.sorted(collected)
+                            self.folderItems = self.sortOrder.sorted(collected)
                             self.onChange?()
                         }
                     }
@@ -120,27 +146,27 @@ public final class BrowserModel {
                 let selection = SelectionRestoration.restore(self.history.current.selection, from: previousItems, to: items)
                 self.history.save(selection: selection, scrollOffset: self.history.current.scrollOffset)
                 self.loadedLocation = url
-                self.items = self.sortOrder.sorted(items); self.isLoading = false; self.onChange?()
+                self.folderItems = self.sortOrder.sorted(items); self.isLoading = false; self.onChange?()
             } catch {
                 guard let self, self.generation == request, !Task.isCancelled else { return }
-                self.items = []; self.error = error.localizedDescription
+                self.folderItems = []; self.error = error.localizedDescription
                 self.failure = DirectoryFailure(error)
                 self.isLoading = false; self.onChange?()
             }
         }
     }
     public func sort(_ order: SortOrder) {
-        sortOrder = order; items = order.sorted(items); onChange?()
+        sortOrder = order; folderItems = order.sorted(folderItems); onChange?()
     }
     public func applyDirectorySizes(_ sizes: [URL: Int64], at expectedLocation: URL) {
         guard location?.standardizedFileURL == expectedLocation.standardizedFileURL, !isLoading else { return }
         var changed = false
-        let updated = items.map { item -> FileItem in
+        let updated = folderItems.map { item -> FileItem in
             guard item.isBrowsable, let size = sizes[item.url.standardizedFileURL], item.size != size else { return item }
             changed = true; return item.replacingSize(size)
         }
         guard changed else { return }
-        items = sortOrder.sorted(updated); onChange?()
+        folderItems = sortOrder.sorted(updated); onChange?()
     }
     public func setViewMode(_ mode: BrowserViewMode) {
         guard viewMode != mode else { return }

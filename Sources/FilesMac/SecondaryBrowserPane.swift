@@ -15,6 +15,7 @@ final class SecondaryBrowserPane: NSView, NSTableViewDataSource, NSTableViewDele
     private let listView = FileListView()
     private let columnView = FileColumnView()
     private let browserContent = AppBackgroundView()
+    private let folderFilter = FolderFilterField()
     private let adaptivePolicy = AdaptiveViewPolicy()
     private var adaptiveResolvedMode: BrowserViewMode = .details
     private var adaptiveWidth: CGFloat = 0
@@ -140,7 +141,9 @@ final class SecondaryBrowserPane: NSView, NSTableViewDataSource, NSTableViewDele
     }
     func stopLoading() { model.cancelLoad() }
     func setViewMode(_ mode: BrowserViewMode) { activate(); setViewModeAndPersist(mode) }
+    func focusFilter() { window?.makeFirstResponder(folderFilter) }
     func applyPreferences() {
+        if !preferences.showFilterHeader { model.setNameFilter("") }
         applyBackground(); render()
         if preferences.calculateFolderSizes { startFolderSizeCalculationIfNeeded() } else { folderSizeTask?.cancel(); folderSizeTask = nil }
     }
@@ -247,11 +250,16 @@ final class SecondaryBrowserPane: NSView, NSTableViewDataSource, NSTableViewDele
             guard let self else { return false }; self.activate()
             return self.onFileDrop?(sources, item?.isBrowsable == true ? item!.url : columnURL, intent) ?? false
         }
+        folderFilter.onChange = { [weak self] query in
+            self?.activate()
+            self?.model.setNameFilter(query)
+        }
+        stack.addArrangedSubview(folderFilter)
         stack.addArrangedSubview(browserContent)
         status.font = .systemFont(ofSize: 11); status.textColor = .secondaryLabelColor
         let footer = NSStackView(); footer.edgeInsets = NSEdgeInsets(top: 6, left: 10, bottom: 6, right: 10)
         footer.addArrangedSubview(status); footer.addArrangedSubview(NSView()); stack.addArrangedSubview(footer)
-        for view in [toolbar, browserContent, footer] { view.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true }
+        for view in [toolbar, folderFilter, browserContent, footer] { view.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true }
         browserContent.heightAnchor.constraint(greaterThanOrEqualToConstant: 300).isActive = true
         applyBackground()
     }
@@ -266,7 +274,7 @@ final class SecondaryBrowserPane: NSView, NSTableViewDataSource, NSTableViewDele
     private func startFolderSizeCalculationIfNeeded() {
         guard folderSizeTask == nil else { return }
         guard preferences.calculateFolderSizes, !model.isLoading, let location = model.location else { return }
-        let folders = model.items.filter(\.isBrowsable).map(\.url)
+        let folders = model.loadedItems.filter(\.isBrowsable).map(\.url)
         guard !folders.isEmpty else { return }
         folderSizeTask = Task { [weak self] in
             let sizes = await FolderSizeCalculator().sizes(of: folders)
@@ -322,6 +330,7 @@ final class SecondaryBrowserPane: NSView, NSTableViewDataSource, NSTableViewDele
     }
     private func render() {
         rendering = true; defer { rendering = false }
+        folderFilter.synchronize(with: model, visible: preferences.showFilterHeader)
         pathField.stringValue = model.location?.path ?? ""
         var revealEntry = false
         if let target = pendingEntrySelection, !model.isLoading {
@@ -365,6 +374,7 @@ final class SecondaryBrowserPane: NSView, NSTableViewDataSource, NSTableViewDele
         }
         if model.isLoading { status.stringValue = L("읽는 중…", "Loading…") }
         else if let failure = model.failure { status.stringValue = failure.message(korean: Locale.preferredLanguages.first?.hasPrefix("ko") == true) }
+        else if !model.nameFilter.isEmpty && model.items.isEmpty { status.stringValue = L("일치하는 이름이 없습니다.", "No matching names.") }
         else { status.stringValue = L("\(model.items.count)개 항목", "\(model.items.count) items") }
     }
     func numberOfRows(in tableView: NSTableView) -> Int { detailRows.count }
@@ -489,6 +499,10 @@ final class SecondaryBrowserPane: NSView, NSTableViewDataSource, NSTableViewDele
         return .resolve(modifiers: modifiers, sourceAllowsMove: info.draggingSourceOperationMask.contains(.move))
     }
     #if DEBUG
+    func qaEnterFilter(_ query: String) {
+        folderFilter.stringValue = query
+        folderFilter.controlTextDidChange(Notification(name: NSControl.textDidChangeNotification, object: folderFilter))
+    }
     func qaGridIntegration() -> (menu: Bool, drop: Bool, source: URL?) {
         (gridView.contextMenu != nil, gridView.qaHasDropHandler, gridView.qaPasteboardURL(at: 0))
     }

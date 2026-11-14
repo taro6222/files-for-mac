@@ -405,6 +405,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         edit.addItem(withTitle: L("선택 반전", "Invert Selection"), action: #selector(BrowserWindow.invertSelection(_:)), keyEquivalent: "")
         edit.addItem(.separator())
         edit.addItem(withTitle: L("현재 위치 검색…", "Search Current Location…"), action: #selector(BrowserWindow.showSearch(_:)), keyEquivalent: "f")
+        let filter = edit.addItem(withTitle: L("현재 폴더 필터", "Filter Current Folder"), action: #selector(BrowserWindow.toggleFilterHeader(_:)), keyEquivalent: "f")
+        filter.keyEquivalentModifierMask = [.command, .shift]
         let goItem = NSMenuItem(); goItem.title = L("이동", "Go"); menu.addItem(goItem)
         let go = NSMenu(title: goItem.title); goItem.submenu = go
         go.addItem(withTitle: L("뒤로", "Back"), action: #selector(BrowserWindow.goBack(_:)), keyEquivalent: "[")

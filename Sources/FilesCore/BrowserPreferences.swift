@@ -81,6 +81,7 @@ public struct BrowserPreferencesArchive: Codable, Equatable, Sendable {
     public let showThumbnails: Bool?
     public let doubleClickToGoUp: Bool?
     public let reverseTabScrollDirection: Bool?
+    public let showFilterHeader: Bool?
     public let startupLocationPath: String?
     public let developerApplicationPath: String?
     public let appBackgroundPath: String?
@@ -156,6 +157,7 @@ public final class BrowserPreferences {
     public private(set) var showThumbnails: Bool
     public private(set) var doubleClickToGoUp: Bool
     public private(set) var reverseTabScrollDirection: Bool
+    public private(set) var showFilterHeader: Bool
     public private(set) var startupLocationPath: String?
     public private(set) var developerApplicationPath: String?
     public private(set) var appBackgroundPath: String?
@@ -225,6 +227,7 @@ public final class BrowserPreferences {
         showThumbnails = defaults.object(forKey: "showThumbnails") as? Bool ?? true
         doubleClickToGoUp = defaults.object(forKey: "doubleClickToGoUp") as? Bool ?? true
         reverseTabScrollDirection = defaults.object(forKey: "reverseTabScrollDirection") as? Bool ?? false
+        showFilterHeader = defaults.object(forKey: "showFilterHeader") as? Bool ?? false
         startupLocationPath = defaults.string(forKey: "startupLocationPath").flatMap { $0.hasPrefix("/") ? $0 : nil }
         developerApplicationPath = defaults.string(forKey: "developerApplicationPath")
         appBackgroundPath = defaults.string(forKey: "appBackgroundPath").flatMap { $0.hasPrefix("/") ? $0 : nil }
@@ -376,6 +379,12 @@ public final class BrowserPreferences {
         guard doubleClickToGoUp != value else { return }
         doubleClickToGoUp = value; defaults.set(value, forKey: "doubleClickToGoUp"); changed()
     }
+    public func setShowFilterHeader(_ value: Bool) {
+        guard showFilterHeader != value else { return }
+        showFilterHeader = value
+        defaults.set(value, forKey: "showFilterHeader")
+        changed()
+    }
     public func setReverseTabScrollDirection(_ value: Bool) {
         guard reverseTabScrollDirection != value else { return }
         reverseTabScrollDirection = value; defaults.set(value, forKey: "reverseTabScrollDirection"); changed()
@@ -446,6 +455,7 @@ public final class BrowserPreferences {
             showThumbnails: showThumbnails,
             doubleClickToGoUp: doubleClickToGoUp,
             reverseTabScrollDirection: reverseTabScrollDirection,
+            showFilterHeader: showFilterHeader,
             startupLocationPath: startupLocationPath, developerApplicationPath: developerApplicationPath, appBackgroundPath: appBackgroundPath,
             appBackgroundFit: appBackgroundFit.rawValue, appBackgroundOpacity: appBackgroundOpacity,
             appBackgroundHorizontalAlignment: appBackgroundHorizontalAlignment.rawValue, appBackgroundVerticalAlignment: appBackgroundVerticalAlignment.rawValue,
@@ -522,6 +532,7 @@ public final class BrowserPreferences {
         showThumbnails = archive.showThumbnails ?? true
         doubleClickToGoUp = archive.doubleClickToGoUp ?? true
         reverseTabScrollDirection = archive.reverseTabScrollDirection ?? false
+        showFilterHeader = archive.showFilterHeader ?? false
         developerApplicationPath = archive.developerApplicationPath; appBackgroundPath = archive.appBackgroundPath; toolbarOrder = importedToolbar; hiddenToolbarItems = Set(importedHiddenToolbar)
         appBackgroundFit = importedBackgroundFit; appBackgroundOpacity = importedOpacity
         appBackgroundHorizontalAlignment = importedHorizontal; appBackgroundVerticalAlignment = importedVertical
@@ -555,6 +566,7 @@ public final class BrowserPreferences {
         defaults.set(showThumbnails, forKey: "showThumbnails")
         defaults.set(doubleClickToGoUp, forKey: "doubleClickToGoUp")
         defaults.set(reverseTabScrollDirection, forKey: "reverseTabScrollDirection")
+        defaults.set(showFilterHeader, forKey: "showFilterHeader")
         if let startupLocationPath { defaults.set(startupLocationPath, forKey: "startupLocationPath") } else { defaults.removeObject(forKey: "startupLocationPath") }
         if let developerApplicationPath { defaults.set(developerApplicationPath, forKey: "developerApplicationPath") } else { defaults.removeObject(forKey: "developerApplicationPath") }
         if let appBackgroundPath { defaults.set(appBackgroundPath, forKey: "appBackgroundPath") } else { defaults.removeObject(forKey: "appBackgroundPath") }
