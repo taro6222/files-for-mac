@@ -14,17 +14,15 @@ final class CopyWindow: NSWindowController, NSWindowDelegate {
     private let details = NSTextView()
     private let cancel = NSButton(title: L("취소", "Cancel"), target: nil, action: #selector(cancelCopy(_:)))
 
-    static func start(sources: [URL], destination: URL, conflictPolicy: CopyConflictPolicy = .skip, completion: @escaping @MainActor () -> Void) {
+    static func start(sources: [URL], destination: URL, conflictPolicy: CopyConflictPolicy = .skip,
+                      journalDirectory: URL, completion: @escaping @MainActor () -> Void) {
         guard !isRunning else { return }
         let controller = CopyWindow(sources: sources, destination: destination, conflictPolicy: conflictPolicy)
         operations.append(controller)
         controller.showWindow(nil)
         controller.window?.makeKeyAndOrderFront(nil)
-        let journals = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent(Bundle.main.bundleIdentifier ?? "org.taro6222.files-for-mac")
-            .appendingPathComponent("operations")
         Task { [controller] in
-            let report = await CopyEngine.run(sources: sources, destination: destination, journalDirectory: journals,
+            let report = await CopyEngine.run(sources: sources, destination: destination, journalDirectory: journalDirectory,
                                               cancellation: controller.cancellation, conflictPolicy: conflictPolicy) { [weak controller] update in
                 Task { @MainActor in controller?.update(update) }
             }
@@ -53,12 +51,14 @@ final class CopyWindow: NSWindowController, NSWindowDelegate {
         label.stringValue = L("복사 준비 중…", "Preparing copy…"); stack.addArrangedSubview(label)
         progress.isIndeterminate = false; progress.minValue = 0; progress.maxValue = Double(sources.count)
         progress.style = .bar; stack.addArrangedSubview(progress)
+        progress.setAccessibilityLabel(L("복사 진행률", "Copy progress"))
         let scroll = NSScrollView(); scroll.hasVerticalScroller = true; scroll.borderType = .bezelBorder
         details.isEditable = false; details.isSelectable = true; details.font = .systemFont(ofSize: 12)
+        details.setAccessibilityLabel(L("복사 상세 결과", "Copy details"))
         details.autoresizingMask = [.width]; details.textContainer?.widthTracksTextView = true
         details.string = (conflictPolicy == .keepBoth ? L("같은 이름은 번호를 붙여 양쪽을 유지합니다.\n", "Conflicting names receive a number; both items are kept.\n") : "") + L("완료된 복사는 취소해도 유지됩니다.\n\n", "Completed copies remain when cancelled.\n\n") + sources.map(\.path).joined(separator: "\n")
         scroll.documentView = details; stack.addArrangedSubview(scroll)
-        cancel.target = self; stack.addArrangedSubview(cancel)
+        cancel.target = self; cancel.keyEquivalent = "\u{1b}"; stack.addArrangedSubview(cancel)
         for view in [target, label, progress, scroll] {
             view.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
         }
@@ -82,6 +82,7 @@ final class CopyWindow: NSWindowController, NSWindowDelegate {
         if !running { close(); return }
         cancellation.cancel(); cancel.isEnabled = false
         label.stringValue = L("취소 요청됨 — 현재 파일의 복사 호출이 끝나면 임시 출력을 정리합니다.", "Cancellation requested — cleaning up after the current file copy returns.")
+        announceStatus()
     }
     private func finish(_ report: CopyReport) {
         running = false
@@ -105,7 +106,24 @@ final class CopyWindow: NSWindowController, NSWindowDelegate {
         }.joined(separator: "\n\n")
         if let error = report.journalError { details.string += "\n\n" + L("저널 저장 오류: ", "Journal error: ") + error }
         cancel.title = L("닫기", "Close"); cancel.isEnabled = true
+        window?.defaultButtonCell = cancel.cell as? NSButtonCell
+        announceStatus()
     }
+    private func announceStatus() {
+        guard let window else { return }
+        NSAccessibility.post(element: window, notification: .announcementRequested, userInfo: [
+            .announcement: label.stringValue,
+            .priority: NSAccessibilityPriorityLevel.medium.rawValue,
+        ])
+    }
+#if DEBUG
+    var qaAccessibleResult: Bool {
+        !running && progress.accessibilityLabel() == L("복사 진행률", "Copy progress")
+            && details.accessibilityLabel() == L("복사 상세 결과", "Copy details")
+            && label.stringValue.contains(L("충돌 1", "Conflicts 1"))
+            && window?.defaultButtonCell === cancel.cell
+    }
+#endif
     func windowShouldClose(_ sender: NSWindow) -> Bool {
         if running { NSSound.beep(); return false }
         return true

@@ -2282,8 +2282,13 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
             L("\(sources.count)개 항목을 복사합니다. 이번 작업에서 이름이 겹치면 적용할 정책을 선택하세요. 기존 항목은 덮어쓰지 않습니다.", "Copy \(sources.count) items. Choose how this job handles conflicting names. Existing items are never overwritten.")
         if canMergeFolders { alert.addButton(withTitle: L("폴더 병합", "Merge Folders")) }
         alert.addButton(withTitle: L("양쪽 유지", "Keep Both"))
-        alert.addButton(withTitle: L("건너뛰기", "Skip Conflicts"))
-        alert.addButton(withTitle: L("취소", "Cancel"))
+        let skip = alert.addButton(withTitle: L("건너뛰기", "Skip Conflicts"))
+        skip.keyEquivalent = "s"
+        skip.keyEquivalentModifierMask = [.command]
+        let cancel = alert.addButton(withTitle: L("취소", "Cancel"))
+        cancel.keyEquivalent = "\u{1b}"
+        cancel.keyEquivalentModifierMask = []
+        let journals = undoJournalDirectory
         alert.beginSheetModal(for: window) { response in
             if canMergeFolders, response == .alertFirstButtonReturn {
                 guard validateSources() else { return }
@@ -2295,7 +2300,8 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
             guard response == keepResponse || response == skipResponse else { return }
             guard validateSources() else { return }
             CopyWindow.start(sources: sources, destination: destination,
-                             conflictPolicy: response == keepResponse ? .keepBoth : .skip) {
+                             conflictPolicy: response == keepResponse ? .keepBoth : .skip,
+                             journalDirectory: journals) {
                 if targetModel.location?.resolvingSymlinksInPath() == destination.resolvingSymlinksInPath() {
                     targetModel.reload()
                 }
@@ -4570,6 +4576,29 @@ extension BrowserWindow {
                 checks["templateNameAndContents"] = false
                 if let sheet = window.attachedSheet { window.endSheet(sheet, returnCode: .alertSecondButtonReturn) }
             }
+            let existing = target.appendingPathComponent("conflict.txt")
+            controller.prepareCopy(sources: [source.appendingPathComponent("conflict.txt")], destination: target)
+            if let sheet = window.attachedSheet,
+               let skip = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: .command,
+                   timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: sheet.windowNumber,
+                   context: nil, characters: "s", charactersIgnoringModifiers: "s", isARepeat: false, keyCode: 1) {
+                checks["copyConflictKeyboardShortcut"] = sheet.performKeyEquivalent(with: skip)
+                let start = ContinuousClock.now
+                var copy: CopyWindow?
+                repeat {
+                    try await Task.sleep(for: .milliseconds(20))
+                    copy = NSApp.windows.compactMap { $0.windowController as? CopyWindow }.first
+                } while (copy == nil || CopyWindow.isRunning) && elapsed(start) < 5
+                checks["copyConflictAccessibleResult"] = copy?.qaAccessibleResult == true
+                    && (try? Data(contentsOf: existing)) == Data("target".utf8)
+                    && !fm.fileExists(atPath: target.appendingPathComponent("conflict (2).txt").path)
+                if let resultWindow = copy?.window,
+                   let close = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [],
+                       timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: resultWindow.windowNumber,
+                       context: nil, characters: "\r", charactersIgnoringModifiers: "\r", isARepeat: false, keyCode: 36) {
+                    checks["copyResultKeyboardClose"] = resultWindow.performKeyEquivalent(with: close) && !resultWindow.isVisible
+                } else { checks["copyResultKeyboardClose"] = false }
+            } else { checks["copyConflictKeyboardShortcut"] = false }
             let result: [String: Any] = ["checks": checks, "diagnostics": diagnostics,
                 "language": Locale.preferredLanguages.first ?? "unknown", "theme": dark ? "dark" : "light",
                 "os": ProcessInfo.processInfo.operatingSystemVersionString]

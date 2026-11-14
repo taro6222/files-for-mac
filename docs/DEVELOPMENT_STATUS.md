@@ -4,6 +4,8 @@
 
 ## 이번 구현 단위
 
+복사 충돌을 키보드로 건너뛰고 결과를 닫는 동작을 확인했다. 진행률·결과 접근성 이름과 상태 알림을 추가했다. [M7 복사 접근성](verification/m7/INCREMENT_14.md)
+
 실제 exFAT에서 일괄 이름 교환을 보완하고, 이름 충돌 시 부분 완료와 복구 결과를 검증했다. [M7 exFAT 일괄 이름 변경](verification/m7/INCREMENT_13.md)
 
 로컬 목록의 식별자 조회를 간소화해 10,000항목 전체 표시 p95 1.350초를 기록했고 exFAT 단일 항목 이름 변경을 보완했다. [M7 대형 폴더·exFAT](verification/m7/INCREMENT_12.md)
