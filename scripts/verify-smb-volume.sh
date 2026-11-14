@@ -22,6 +22,7 @@ except ValueError:
 # Keep the deadline outside the processes making filesystem calls.
 command = r'''
 volume=$1
+echo "SMB verification: inspecting mount" >&2
 if [[ ! -d "$volume" ]]; then
   echo "SMB path is not a directory: $volume" >&2
   exit 66
@@ -42,6 +43,14 @@ if [[ ! -w "$volume" ]]; then
   echo "SMB path is not writable: $volume" >&2
   exit 73
 fi
+echo "SMB verification: reading share directory" >&2
+# Read the directory itself before compiling or launching integration tests.
+# This distinguishes a mounted but unresponsive share from a test failure.
+if ! /bin/ls -A "$volume" >/dev/null; then
+  echo "Could not enumerate SMB directory: $volume" >&2
+  exit 74
+fi
+echo "SMB verification: running file operation tests" >&2
 export FILES_TEST_SMB_VOLUME="$volume"
 export CLANG_MODULE_CACHE_PATH="$PWD/.build/ModuleCache"
 export SWIFT_TMPDIR=/tmp

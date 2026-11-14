@@ -8,6 +8,8 @@ M7 출시 검증이 진행 중이다. [유니버설 개발 프리뷰](verificati
 
 ## 이번 구현 단위
 
+SMB 통합 시험 전에 공유의 디렉터리 응답을 확인한다. [SMB 검증 기록](verification/m7/INCREMENT_141.md)
+
 복사·이동 결과의 접근성 알림에 취소 건수와 저널 저장 오류를 포함한다. [접근성 알림 검증](verification/m7/INCREMENT_140.md)
 
 최신 프리뷰와 동일한 소스에서 한국어·영어 AppKit 회귀를 실행했다. [AppKit 회귀 기록](verification/m7/INCREMENT_139.md)
