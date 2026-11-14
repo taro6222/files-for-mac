@@ -1,0 +1,61 @@
+{
+  "sourceBaseSHA": "23e36e9bd5e87381ed869d40b7d6dc90494a112b",
+  "binarySHA256": "64d32de3aca5412adf6a6ecd245f6cda9e9ebfeebd8204261848ac5d3e50a68b",
+  "macOS": "27.2",
+  "macOSBuild": "26B123",
+  "architecture": "arm64",
+  "memoryBytes": 25769803776,
+  "fixtureFilesystem": "apfs",
+  "fixtureVersion": "numbered-empty-text-v1",
+  "measurement": "Optimized QA build; fresh processes, OS caches warm; no thumbnails; AppKit display, not compositor presentation; sampled RSS",
+  "idleComparison": [
+    {
+      "immediate": {
+        "firstDisplaySeconds": 0.060177917,
+        "idleRSSBytes": 93863936,
+        "peakSampledRSSBytes": 127090688,
+        "startupSeconds": 0.41128275,
+        "listingSeconds": 1.344259208
+      },
+      "idle300Seconds": {
+        "firstDisplaySeconds": 0.298628958,
+        "listingSeconds": 6.932700583,
+        "startupSeconds": 0.152538083,
+        "peakSampledRSSBytes": 114900992,
+        "idleRSSBytes": 66240512
+      }
+    },
+    {
+      "immediate": {
+        "peakSampledRSSBytes": 127893504,
+        "idleRSSBytes": 94339072,
+        "listingSeconds": 1.126903375,
+        "firstDisplaySeconds": 0.066863458,
+        "startupSeconds": 0.193530792
+      },
+      "idle300Seconds": {
+        "listingSeconds": 4.934746709,
+        "firstDisplaySeconds": 0.217501667,
+        "idleRSSBytes": 66256896,
+        "startupSeconds": 0.157970375,
+        "peakSampledRSSBytes": 104284160
+      }
+    },
+    {
+      "immediate": {
+        "firstDisplaySeconds": 0.076456792,
+        "listingSeconds": 1.138601333,
+        "startupSeconds": 0.195990792,
+        "idleRSSBytes": 94175232,
+        "peakSampledRSSBytes": 121929728
+      },
+      "idle300Seconds": {
+        "startupSeconds": 0.173117709,
+        "idleRSSBytes": 66797568,
+        "firstDisplaySeconds": 0.226008,
+        "listingSeconds": 5.371212667,
+        "peakSampledRSSBytes": 115032064
+      }
+    }
+  ]
+}
