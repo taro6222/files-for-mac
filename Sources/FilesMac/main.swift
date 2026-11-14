@@ -6,6 +6,7 @@ import FilesCore
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     var windows: [BrowserWindow] = []
+    private weak var lastFocusedBrowser: BrowserWindow?
     private var closedWorkspaces: [SplitTabState] = []
     private let sessionStore = TabSessionStore()
     private let workspaceStore = WorkspaceSessionStore()
@@ -49,6 +50,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             return
         }
         #endif
+        NotificationCenter.default.addObserver(self, selector: #selector(browserWindowBecameKey(_:)),
+            name: NSWindow.didBecomeKeyNotification, object: nil)
         var restored: [(index: Int, workspace: SplitTabState)] = []
         if BrowserPreferences.shared.continueLastSession {
             restored = workspaceStore.loadEntries()
@@ -78,13 +81,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
                 let startup = BrowserPreferences.shared.startupLocationPath.map { URL(fileURLWithPath: $0, isDirectory: true) }
                 makeBrowser(location: startup, tabbedTo: first, selectNewTab: true)
             } else {
-                (selected ?? first)?.window?.makeKeyAndOrderFront(nil)
+                lastFocusedBrowser = selected ?? first
+                lastFocusedBrowser?.window?.makeKeyAndOrderFront(nil)
             }
         }
         NSApp.activate(ignoringOtherApps: true)
     }
     private var currentBrowser: BrowserWindow? {
         (NSApp.keyWindow?.windowController as? BrowserWindow) ?? (NSApp.mainWindow?.windowController as? BrowserWindow)
+    }
+    @objc private func browserWindowBecameKey(_ notification: Notification) {
+        if let browser = (notification.object as? NSWindow)?.windowController as? BrowserWindow,
+           windows.contains(where: { $0 === browser }) {
+            lastFocusedBrowser = browser
+        }
     }
     @discardableResult private func makeBrowser(location: URL? = nil, snapshot: TabSnapshot? = nil,
                                                  workspace: SplitTabState? = nil,
@@ -98,6 +108,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
                 if let self, self.closedWorkspaces.count > 20 { self.closedWorkspaces.removeFirst(self.closedWorkspaces.count - 20) }
             }
             self?.windows.removeAll { $0 === controller }
+            if self?.lastFocusedBrowser === controller { self?.lastFocusedBrowser = nil }
         }
         controller.showWindow(nil)
         if let sourceWindow = source?.window, let targetWindow = controller.window {
@@ -286,7 +297,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
     func applicationWillTerminate(_ notification: Notification) {
         if let preferencesToken { BrowserPreferences.shared.removeObserver(preferencesToken) }
-        let selected = currentBrowser.flatMap { current in windows.firstIndex(where: { $0 === current }) } ?? -1
+        let selected = (currentBrowser ?? lastFocusedBrowser).flatMap { current in
+            windows.firstIndex(where: { $0 === current })
+        } ?? (windows.isEmpty ? -1 : 0)
         BrowserPreferences.shared.setLastSessionSelectedTabIndex(selected)
         try? workspaceStore.save(windows.map { $0.workspaceSnapshot() })
     }
