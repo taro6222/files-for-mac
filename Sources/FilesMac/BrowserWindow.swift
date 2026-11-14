@@ -969,14 +969,18 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         if table.sortDescriptors.first != sortDescriptor { table.sortDescriptors = [sortDescriptor] }
         let rows = detailDisplayRows(items: model.items, grouping: model.grouping)
         if detailPresentationNeedsReload || (detailsWereHidden && !scroll.isHidden) || detailRows != rows {
-            let previousCount = detailRows.count
+            let previousRows = detailRows
+            let oldCount = previousRows.count
+            let newCount = rows.count
+            let appendOnly = oldCount < newCount && rows.starts(with: previousRows)
+            let truncateOnly = newCount < oldCount && previousRows.starts(with: rows)
             detailRows = rows
-            // Keep AppKit's row views reusable when navigation clears or fills the table.
-            // Repeated full reloads across the empty state retain AppKit dependencies.
-            if previousCount == 0 && !rows.isEmpty {
-                table.insertRows(at: IndexSet(integersIn: 0..<rows.count), withAnimation: [])
-            } else if previousCount > 0 && rows.isEmpty {
-                table.removeRows(at: IndexSet(integersIn: 0..<previousCount), withAnimation: [])
+            // The directory stream can append a batch to an already visible preview.
+            // Preserve existing row views when the prefix and its presentation are unchanged.
+            if appendOnly && (oldCount == 0 || (!detailPresentationNeedsReload && !detailsWereHidden)) {
+                table.insertRows(at: IndexSet(integersIn: oldCount..<newCount), withAnimation: [])
+            } else if truncateOnly && (newCount == 0 || (!detailPresentationNeedsReload && !detailsWereHidden)) {
+                table.removeRows(at: IndexSet(integersIn: newCount..<oldCount), withAnimation: [])
             } else if !rows.isEmpty {
                 table.reloadData()
             }
@@ -3717,9 +3721,58 @@ private struct DelayedUIListLoader: DirectoryLoading {
     }
 }
 
+#if DEBUG
+private struct ControlledUIListLoader: DirectoryStreaming {
+    let stream: AsyncThrowingStream<[FileItem], Error>
+    func batches(of url: URL, showHidden: Bool) -> AsyncThrowingStream<[FileItem], Error> { stream }
+    func contents(of url: URL, showHidden: Bool) async throws -> [FileItem] {
+        var items: [FileItem] = []
+        for try await batch in stream { items.append(contentsOf: batch) }
+        return items
+    }
+}
+#endif
+
 /// Runs against generated fixtures only; release builds contain no QA entry point.
 extension BrowserWindow {
 #if DEBUG
+    private static func verifyStreamedDetailAppend(at location: URL, preferences: BrowserPreferences) async throws -> Bool {
+        let (stream, continuation) = AsyncThrowingStream<[FileItem], Error>.makeStream()
+        let browser = BrowserWindow(preferences: preferences, restoresFrame: false,
+            loader: ControlledUIListLoader(stream: stream), makeWatcher: { _ in nil })
+        defer {
+            continuation.finish()
+            browser.close()
+        }
+        browser.showWindow(nil)
+        browser.navigate(location)
+        browser.model.setViewMode(.details)
+        func item(_ name: String) -> FileItem {
+            FileItem(url: location.appendingPathComponent(name), name: name, isDirectory: false)
+        }
+        func waitForRows(_ count: Int) async throws -> Bool {
+            let clock = ContinuousClock()
+            let deadline = clock.now + .seconds(5)
+            while browser.table.numberOfRows != count && clock.now < deadline {
+                try await clock.sleep(for: .milliseconds(5))
+            }
+            return browser.table.numberOfRows == count
+        }
+        let first = item("first.txt")
+        continuation.yield([first])
+        guard try await waitForRows(1) else { return false }
+        browser.window?.contentView?.layoutSubtreeIfNeeded()
+        let column = browser.table.column(withIdentifier: .init("name"))
+        guard column >= 0, let cell = browser.table.view(atColumn: column, row: 0, makeIfNecessary: true) else {
+            return false
+        }
+        browser.table.selectRowIndexes(IndexSet(integer: 0), byExtendingSelection: false)
+        continuation.yield([item("second.txt")])
+        guard try await waitForRows(2) else { return false }
+        return browser.table.view(atColumn: column, row: 0, makeIfNecessary: false) === cell
+            && browser.table.selectedRowIndexes == IndexSet(integer: 0)
+    }
+
     var qaSidebarVisible: Bool { !sidebarContainer.isHidden }
     var qaHasAppBackground: Bool { content.image != nil }
     var qaGitLoading: Bool { gitTask != nil }
@@ -4956,6 +5009,8 @@ extension BrowserWindow {
             } else {
                 checks["unchangedDetailsKeepVisibleCell"] = false
             }
+            checks["streamedDetailsAppendKeepsVisibleCell"] = try await verifyStreamedDetailAppend(
+                at: fixture, preferences: preferences)
             try capture("files-bottom")
             controller.goHome(nil)
             controller.goBack(nil)
