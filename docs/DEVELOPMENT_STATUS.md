@@ -4,6 +4,8 @@
 
 ## 이번 구현 단위
 
+SMB 마운트가 응답하지 않을 때 검증 명령이 시간 제한을 적용하고 실패를 반환한다. [M7 SMB 마운트와 검증 제한 시간](verification/m7/INCREMENT_36.md)
+
 마운트된 네트워크 볼륨을 홈의 네트워크 위치에서 열 수 있다. [M7 홈 네트워크 위치](verification/m7/INCREMENT_35.md)
 
 Windows 원본 탐색 화면의 XAML과 macOS 캡처를 대조하고 상태 표시줄의 개발 단계 문구를 제거했다. [탐색 화면 대조](reference/UI_BASELINE.md)

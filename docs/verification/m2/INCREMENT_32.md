@@ -18,6 +18,8 @@ scripts/verify-smb-volume.sh /Volumes/<mounted-smb-share>
 
 스크립트는 실제 `smbfs`이면서 쓰기 가능한 경로만 허용한다. 공유 루트 아래 고유한 `FilesM2-SMB-<UUID>` 폴더만 사용하고 종료 시 fixture를 정리한다.
 
+M7부터 전체 명령에 기본 180초 제한을 적용한다. 필요한 경우 `FILES_SMB_TIMEOUT_SECONDS`에 양의 정수 초를 지정할 수 있다. 시간 초과 시 종료 코드 124를 반환한다. 강제 종료로 fixture 정리가 중단될 수 있으므로 공유가 다시 응답하면 이번 실행이 만든 고유 폴더를 확인한다. [M7 SMB 마운트 검증](../m7/INCREMENT_36.md)
+
 ## 이번 환경의 결과
 
 - `mount`와 `smbutil statshares -a`에서 연결된 SMB 공유가 없음을 확인했다.
