@@ -766,6 +766,63 @@ func crossVolumeMovePreservesSourceWhenResourceForkChanges(_ phase: String) asyn
     }
 }
 
+@Test(arguments: [false, true])
+func moveUndoPreservesResourceForkFromLegacyJournal(legacy: Bool) async throws {
+    let root = try entryFixture()
+    let fm = FileManager.default
+    defer { try? fm.removeItem(at: root) }
+    let destination = root.appendingPathComponent("dest", isDirectory: true)
+    let journal = root.appendingPathComponent("journal", isDirectory: true)
+    let source = root.appendingPathComponent("folder", isDirectory: true)
+    let target = destination.appendingPathComponent("folder", isDirectory: true)
+    let sourceFile = source.appendingPathComponent("file")
+    let targetFile = target.appendingPathComponent("file")
+    try fm.createDirectory(at: destination, withIntermediateDirectories: true)
+    try fm.createDirectory(at: source, withIntermediateDirectories: true)
+    try Data("data fork".utf8).write(to: sourceFile)
+    let resource = Data("resource fork".utf8)
+    let attribute = "com.apple.ResourceFork"
+    if legacy {
+        try #require(resource.withUnsafeBytes { setxattr(sourceFile.path, attribute, $0.baseAddress, $0.count, 0, 0) } == 0)
+    }
+    let move = try await EntryOperations.moveAcrossVolumeForTesting([source], to: destination, journalDirectory: journal)
+    #expect(move.state == "completed")
+    let record = try #require(EntryOperations.latestUndoMove(journalDirectory: journal))
+    let recordURL = journal.appendingPathComponent("undo-move-\(record.operationId).json")
+    if legacy {
+        var json = try #require(JSONSerialization.jsonObject(with: Data(contentsOf: recordURL)) as? [String: Any])
+        var items = try #require(json["items"] as? [[String: Any]])
+        items[0].removeValue(forKey: "snapshotIncludesResourceForks")
+        var snapshot = try #require(items[0]["targetSnapshot"] as? [String: String])
+        let digest = try #require(snapshot["/file"])
+        let suffix = try #require(digest.range(of: ":resource:"))
+        snapshot["/file"] = String(digest[..<suffix.lowerBound])
+        items[0]["targetSnapshot"] = snapshot
+        json["items"] = items
+        try JSONSerialization.data(withJSONObject: json).write(to: recordURL)
+    } else {
+        try #require(resource.withUnsafeBytes { setxattr(targetFile.path, attribute, $0.baseAddress, $0.count, 0, 0) } == 0)
+    }
+    let updatedRecord = try #require(EntryOperations.latestUndoMove(journalDirectory: journal))
+    #expect(updatedRecord.items.first?.snapshotIncludesResourceForks == (legacy ? nil : true))
+    let firstUndo = await EntryOperations.undoMove(updatedRecord, journalDirectory: journal)
+    if legacy {
+        try #require(firstUndo.state == "completed")
+        #expect(try Data(contentsOf: sourceFile) == Data("data fork".utf8))
+        #expect(!fm.fileExists(atPath: target.path))
+        var restored = Data(count: resource.count)
+        let count = restored.withUnsafeMutableBytes { getxattr(sourceFile.path, attribute, $0.baseAddress, $0.count, 0, 0) }
+        #expect(count == resource.count && restored == resource)
+        let redo = try #require(firstUndo.redo)
+        #expect(await EntryOperations.redoMove(redo, journalDirectory: journal).first?.state == "completed")
+        #expect(getxattr(targetFile.path, attribute, nil, 0, 0, 0) == resource.count)
+    } else {
+        #expect(firstUndo.items.map(\.state) == ["changed"])
+        #expect(!fm.fileExists(atPath: source.path))
+        #expect(getxattr(targetFile.path, attribute, nil, 0, 0, 0) == resource.count)
+    }
+}
+
 @Test func entryReplacementCancellationReportsBackupWhenDestinationIsOccupied() async throws {
     let root = try entryFixture()
     let fm = FileManager.default

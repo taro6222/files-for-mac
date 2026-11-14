@@ -84,6 +84,7 @@ public struct MoveUndoItem: Codable, Sendable {
     public let crossVolume: Bool
     public let targetSnapshot: [String: String]?
     public let backupSnapshot: [String: String]?
+    private(set) var snapshotIncludesResourceForks: Bool?
     private(set) var backupRestorePending: Bool?
     var restoredCopyIdentity: String? = nil
     var restoredCopySnapshot: [String: String]? = nil
@@ -102,6 +103,7 @@ public struct MoveUndoItem: Codable, Sendable {
         self.source = source; self.target = target; self.targetIdentity = targetIdentity
         self.backup = backup; self.backupIdentity = backupIdentity; self.crossVolume = crossVolume
         self.targetSnapshot = targetSnapshot; self.backupSnapshot = backupSnapshot
+        self.snapshotIncludesResourceForks = true
         self.backupRestorePending = backupRestorePending
     }
 
@@ -113,7 +115,7 @@ public struct MoveUndoItem: Codable, Sendable {
 
     private enum CodingKeys: String, CodingKey {
         case source, target, targetIdentity, backup, backupIdentity, crossVolume, targetSnapshot, backupSnapshot, backupRestorePending
-        case restoredCopyIdentity, restoredCopySnapshot
+        case restoredCopyIdentity, restoredCopySnapshot, snapshotIncludesResourceForks
     }
     public init(from decoder: Decoder) throws {
         let values = try decoder.container(keyedBy: CodingKeys.self)
@@ -125,6 +127,7 @@ public struct MoveUndoItem: Codable, Sendable {
         crossVolume = try values.decodeIfPresent(Bool.self, forKey: .crossVolume) ?? false
         targetSnapshot = try values.decodeIfPresent([String: String].self, forKey: .targetSnapshot)
         backupSnapshot = try values.decodeIfPresent([String: String].self, forKey: .backupSnapshot)
+        snapshotIncludesResourceForks = try values.decodeIfPresent(Bool.self, forKey: .snapshotIncludesResourceForks)
         backupRestorePending = try values.decodeIfPresent(Bool.self, forKey: .backupRestorePending)
         restoredCopyIdentity = try values.decodeIfPresent(String.self, forKey: .restoredCopyIdentity)
         restoredCopySnapshot = try values.decodeIfPresent([String: String].self, forKey: .restoredCopySnapshot)
@@ -1155,8 +1158,25 @@ public enum EntryOperations {
                     guard entryExists(item.target) else {
                         results.append(MoveUndoItemResult(source: item.source, target: item.target, state: "notFound", message: LString.undoTargetMissing)); continue
                     }
-                    guard try matchesUndoEntry(item.target, identity: item.targetIdentity, snapshot: item.targetSnapshot, fileManager: fm) else {
-                        results.append(MoveUndoItemResult(source: item.source, target: item.target, state: "changed", message: LString.undoTargetChanged)); continue
+                    var expectedSnapshot = item.targetSnapshot
+                    let targetMatches: Bool
+                    if item.snapshotIncludesResourceForks == nil, item.backup == nil,
+                       let recorded = item.targetSnapshot,
+                       try snapshotIdentity(item.target, fileManager: fm) == item.targetIdentity {
+                        // An older journal may omit forks. Carry the current fork
+                        // back intact, and pin it for transfer verification and Redo.
+                        let current = try CopyEngine.makeSnapshot(item.target, cancellation: CopyCancellation())
+                        let currentIdentity = try snapshotIdentity(item.target, fileManager: fm)
+                        targetMatches = (recorded == current.withPermissions || recorded == current.legacyPermissionsSnapshot)
+                            && currentIdentity == item.targetIdentity
+                        expectedSnapshot = current.withPermissions
+                    } else {
+                        targetMatches = try matchesUndoEntry(item.target, identity: item.targetIdentity,
+                            snapshot: expectedSnapshot, fileManager: fm)
+                    }
+                    guard targetMatches else {
+                        results.append(MoveUndoItemResult(source: item.source, target: item.target, state: "changed", message: LString.undoTargetChanged))
+                        continue
                     }
                     guard !entryExists(item.source) else {
                         results.append(MoveUndoItemResult(source: item.source, target: item.target, state: "conflict", message: LString.undoSourceConflict)); continue
@@ -1164,10 +1184,10 @@ public enum EntryOperations {
                     guard fm.fileExists(atPath: item.source.deletingLastPathComponent().path) else {
                         results.append(MoveUndoItemResult(source: item.source, target: item.target, state: "notFound", message: LString.undoSourceParentMissing)); continue
                     }
-                    let replaySnapshot = item.backup == nil ? item.targetSnapshot ?? (try? CopyEngine.verifiedSnapshot(item.target)) : nil
+                    let replaySnapshot = item.backup == nil ? expectedSnapshot ?? (try? CopyEngine.verifiedSnapshot(item.target)) : nil
                     let destinationFolder = ShelfEntry(item.target.deletingLastPathComponent())
                     try transferForUndo(item.target, to: item.source, crossVolume: item.crossVolume,
-                                        expectedSnapshot: item.targetSnapshot, checkpointCopy: { identity, snapshot in
+                                        expectedSnapshot: expectedSnapshot, checkpointCopy: { identity, snapshot in
                         guard item.backup != nil else { return }
                         undoItems[index].restoredCopyIdentity = identity
                         undoItems[index].restoredCopySnapshot = snapshot

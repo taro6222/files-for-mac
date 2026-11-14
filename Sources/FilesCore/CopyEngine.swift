@@ -410,11 +410,20 @@ public enum CopyEngine {
         try makeSnapshot(root, cancellation: cancellation).content
     }
 
-    static func makeSnapshot(_ root: URL, cancellation: CopyCancellation) throws
-        -> (withPermissions: [String: String], content: [String: String]) {
-        let fm = FileManager()
+    struct VerificationSnapshot {
         var withPermissions: [String: String] = [:]
         var content: [String: String] = [:]
+        var legacyPermissionsSnapshot: [String: String] {
+            withPermissions.mapValues { value in
+                guard value.hasPrefix("file:"), let suffix = value.range(of: ":resource:") else { return value }
+                return String(value[..<suffix.lowerBound])
+            }
+        }
+    }
+
+    static func makeSnapshot(_ root: URL, cancellation: CopyCancellation) throws -> VerificationSnapshot {
+        let fm = FileManager()
+        var snapshot = VerificationSnapshot()
         func visit(_ url: URL, relative: String) throws {
             try cancellation.check()
             let attrs = try fm.attributesOfItem(atPath: url.path)
@@ -422,11 +431,11 @@ public enum CopyEngine {
             switch type {
             case .typeSymbolicLink:
                 let link = "link:" + (try fm.destinationOfSymbolicLink(atPath: url.path))
-                withPermissions[relative] = link
-                content[relative] = link
+                snapshot.withPermissions[relative] = link
+                snapshot.content[relative] = link
             case .typeDirectory:
-                withPermissions[relative] = "directory:\(attrs[.posixPermissions] ?? 0)"
-                content[relative] = "directory"
+                snapshot.withPermissions[relative] = "directory:\(attrs[.posixPermissions] ?? 0)"
+                snapshot.content[relative] = "directory"
                 for child in try fm.contentsOfDirectory(at: url, includingPropertiesForKeys: nil) {
                     try visit(child, relative: relative + "/" + child.lastPathComponent)
                 }
@@ -441,13 +450,13 @@ public enum CopyEngine {
                 if let resource = try resourceForkDigest(url, cancellation: cancellation) {
                     digest += ":resource:" + resource
                 }
-                withPermissions[relative] = "file:\(attrs[.posixPermissions] ?? 0):" + digest
-                content[relative] = "file:" + digest
+                snapshot.withPermissions[relative] = "file:\(attrs[.posixPermissions] ?? 0):" + digest
+                snapshot.content[relative] = "file:" + digest
             default: throw CopyFailure(text: "Unsupported special file: " + url.path)
             }
         }
         try visit(root, relative: "")
-        return (withPermissions, content)
+        return snapshot
     }
 
     private static func resourceForkDigest(_ url: URL, cancellation: CopyCancellation) throws -> String? {
