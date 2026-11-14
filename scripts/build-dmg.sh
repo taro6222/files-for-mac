@@ -32,6 +32,8 @@ app="$stage/contents/Files macOS.app"
 mkdir -p "$stage/contents"
 ditto "build/Files macOS.app" "$app"
 ln -s /Applications "$stage/contents/Applications"
+cp LICENSE "$stage/contents/LICENSE.txt"
+cp docs/RELEASE_NOTES.md "$stage/contents/Release Notes.txt"
 if [[ "$mode" == --release ]]; then
   codesign --force --options runtime --timestamp --sign "$FILES_SIGNING_IDENTITY" "$app"
 fi

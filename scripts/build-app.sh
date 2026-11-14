@@ -11,6 +11,8 @@ esac
 
 APP="build/Files macOS.app"
 mkdir -p "$APP/Contents/MacOS"
+mkdir -p "$APP/Contents/Resources"
+cp LICENSE "$APP/Contents/Resources/LICENSE.txt"
 if [[ "$mode" == --universal ]]; then
   for architecture in arm64 x86_64; do
     scratch="$PWD/build/swiftpm-$architecture"

@@ -8,7 +8,7 @@ Files의 탐색 경험을 macOS용 네이티브 앱으로 구현하는 프로젝
 
 ## 실행
 
-Xcode 26.6 / Swift 6.3.3에서 개발·검증했습니다. 최소 배포 대상은 macOS 14이며, 현재 실기기 실행은 Apple Silicon macOS 26.6.2에서 확인했습니다.
+최소 배포 대상은 macOS 14입니다. 최신 프리뷰는 Apple Silicon macOS 27.2에서 검증했습니다. Intel과 macOS 14 실행 검증은 진행 중입니다.
 
 ```sh
 ./scripts/build-app.sh
@@ -16,6 +16,8 @@ open 'build/Files macOS.app'
 ```
 
 Apple Silicon·Intel 유니버설 로컬 프리뷰 설치 이미지와 SHA-256 파일은 `./scripts/build-dmg.sh --preview`로 생성합니다.
+
+[0.1.0 설치 안내 및 지원 범위](docs/RELEASE_NOTES.md)
 
 또는 `FilesMac.xcodeproj`를 Xcode에서 열고 `Files macOS` scheme을 실행합니다. SwiftPM에서는 `Package.swift`로 코어 테스트와 앱을 빌드합니다.
 
