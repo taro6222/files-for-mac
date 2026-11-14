@@ -94,8 +94,9 @@ import Testing
     #expect(!fm.fileExists(atPath: target.path))
 }
 
-@Test func mountedVolumeAPFSPreservesNestedFolderCreationTimes() async throws {
-    guard let path = ProcessInfo.processInfo.environment["FILES_TEST_APFSX_VOLUME"] else { return }
+@Test(arguments: ["FILES_TEST_APFSX_VOLUME", "FILES_TEST_EXFAT_VOLUME"])
+func mountedVolumePreservesNestedCreationTimes(volumeKey: String) async throws {
+    guard let path = ProcessInfo.processInfo.environment[volumeKey] else { return }
     let fm = FileManager.default
     let root = fm.temporaryDirectory.appendingPathComponent("FilesMac-FolderDates-\(UUID())", isDirectory: true)
     let destination = URL(fileURLWithPath: path, isDirectory: true)
@@ -106,26 +107,42 @@ import Testing
     defer { try? fm.removeItem(at: root); try? fm.removeItem(at: destination) }
     try fm.createDirectory(at: source.appendingPathComponent("nested", isDirectory: true), withIntermediateDirectories: true)
     try fm.createDirectory(at: destination, withIntermediateDirectories: false)
-    let rootDate = Date(timeIntervalSince1970: 1_600_000_000)
+    let file = source.appendingPathComponent("nested/file.txt")
+    try Data("creation time".utf8).write(to: file)
+    let rootDate = Date(timeIntervalSince1970: 1_600_000_001.987)
     let nestedDate = rootDate.addingTimeInterval(60)
+    let fileDate = nestedDate.addingTimeInterval(60)
     try fm.setAttributes([.creationDate: rootDate], ofItemAtPath: source.path)
     try fm.setAttributes([.creationDate: nestedDate], ofItemAtPath: source.appendingPathComponent("nested").path)
-    func verify(_ folder: URL) throws {
-        #expect(try fm.attributesOfItem(atPath: folder.path)[.creationDate] as? Date == rootDate)
-        #expect(try fm.attributesOfItem(atPath: folder.appendingPathComponent("nested").path)[.creationDate] as? Date == nestedDate)
+    try fm.setAttributes([.creationDate: fileDate], ofItemAtPath: file.path)
+    func dates(in folder: URL) throws -> [Date] {
+        try [folder, folder.appendingPathComponent("nested"), folder.appendingPathComponent("nested/file.txt")].map {
+            try #require(try fm.attributesOfItem(atPath: $0.path)[.creationDate] as? Date)
+        }
+    }
+    func verify(_ folder: URL) throws -> [Date] {
+        let actual = try dates(in: folder)
+        let tolerance = volumeKey == "FILES_TEST_EXFAT_VOLUME" ? 1.0 : 0.000001
+        for (date, expected) in zip(actual, [rootDate, nestedDate, fileDate]) {
+            #expect(abs(date.timeIntervalSince(expected)) < tolerance)
+        }
+        return actual
     }
     let copy = await CopyEngine.run(sources: [source], destination: destination,
                                     journalDirectory: journal, cancellation: CopyCancellation())
     try #require(copy.state == "completed", Comment(rawValue: copy.items.first?.message ?? ""))
-    try verify(target)
+    _ = try verify(target)
     let copyUndo = try #require(CopyEngine.latestUndoCopy(journalDirectory: journal))
     try #require(await CopyEngine.undoCopy(copyUndo, journalDirectory: journal).state == "completed")
     let move = try await EntryOperations.move([source], to: destination, journalDirectory: journal)
-    try #require(move.state == "completed")
-    try verify(target)
+    try #require(move.state == "completed", Comment(rawValue: move.items.first?.message ?? ""))
+    let movedDates = try verify(target)
     let undo = try #require(EntryOperations.latestUndoMove(journalDirectory: journal))
     try #require(await EntryOperations.undoMove(undo, journalDirectory: journal).state == "completed")
-    try verify(source)
+    let restoredDates = try dates(in: source)
+    for (restored, moved) in zip(restoredDates, movedDates) {
+        #expect(abs(restored.timeIntervalSince(moved)) < 0.000001)
+    }
 }
 
 @Test func mountedVolumeCopyMoveUndoAndCaseSemantics() async throws {

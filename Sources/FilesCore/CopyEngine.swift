@@ -437,6 +437,15 @@ public enum CopyEngine {
         var filesystemType = ""
         var hasNativePermissions = true
 
+        private static func creationTimeResolution(for filesystem: String) -> TimeInterval? {
+            switch filesystem {
+            case "apfs": return 0.000001
+            // macOS exposes whole-second creation times through stat on exFAT.
+            case "exfat": return 1
+            default: return nil
+            }
+        }
+
         private func transferMismatch(_ source: Self) -> TransferMismatch? {
             if content != source.content { return .contents }
             if metadata.extendedAttributes != source.metadata.extendedAttributes { return .extendedAttributes }
@@ -447,9 +456,10 @@ public enum CopyEngine {
             let resolution = max(modificationTimeResolution, source.modificationTimeResolution)
             guard datesMatch(metadata.modificationDates, source.metadata.modificationDates,
                              resolution: resolution) else { return .modificationTime }
-            if filesystemType == "apfs", source.filesystemType == "apfs",
+            if let resolution = Self.creationTimeResolution(for: filesystemType),
+               let sourceResolution = Self.creationTimeResolution(for: source.filesystemType),
                !datesMatch(metadata.creationDates ?? [:], source.metadata.creationDates ?? [:],
-                           resolution: 0.000001) { return .creationTime }
+                           resolution: max(resolution, sourceResolution)) { return .creationTime }
             return nil
         }
 
@@ -474,14 +484,17 @@ public enum CopyEngine {
         }
 
         func restoreCreationTimes(in payload: URL, cancellation: CopyCancellation) throws {
-            guard filesystemType == "apfs", let dates = metadata.creationDates, !dates.isEmpty else { return }
+            guard Self.creationTimeResolution(for: filesystemType) != nil,
+                  let dates = metadata.creationDates, !dates.isEmpty else { return }
             let parent = open(payload.deletingLastPathComponent().path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
             guard parent >= 0 else { throw TransferMismatch.creationTime }
             defer { close(parent) }
             var volume = statfs()
             guard fstatfs(parent, &volume) == 0 else { throw TransferMismatch.creationTime }
-            guard
-                  withUnsafeBytes(of: volume.f_fstypename, { String(decoding: $0.prefix { $0 != 0 }, as: UTF8.self) }) == "apfs" else { return }
+            let filesystem = withUnsafeBytes(of: volume.f_fstypename) {
+                String(decoding: $0.prefix { $0 != 0 }, as: UTF8.self)
+            }
+            guard Self.creationTimeResolution(for: filesystem) != nil else { return }
             for (path, date) in dates {
                 try cancellation.check()
                 let isDirectory = content[path] == "directory"
