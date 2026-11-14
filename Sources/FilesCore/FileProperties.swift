@@ -28,6 +28,23 @@ public enum FileHashError: Error, Equatable {
     case unsupportedFileType
 }
 
+public struct FilePermissionSnapshot: Sendable {
+    public let mode: Int
+    public let accessControlList: String?
+    fileprivate let device: dev_t
+    fileprivate let inode: ino_t
+    fileprivate let birthSeconds: Int
+    fileprivate let birthNanoseconds: Int
+}
+
+public enum FilePermissionError: Error, Equatable {
+    case unsupportedFileType
+    case changedItem
+    case changedPermissions
+    case invalidMode
+    case modeNotApplied
+}
+
 public enum FileHashAlgorithm: String, CaseIterable, Sendable {
     case crc32 = "CRC32"
     case md5 = "MD5"
@@ -69,6 +86,72 @@ public struct FilePropertiesInspector: Sendable {
                 isReadable: values.isReadable ?? false, isWritable: values.isWritable ?? false,
                 isExecutable: values.isExecutable ?? false)
         }.value
+    }
+
+    public func permissions(_ url: URL) async throws -> FilePermissionSnapshot {
+        try await Task.detached(priority: .utility) {
+            try Self.withPermissionDescriptor(url, Self.permissionSnapshot)
+        }.value
+    }
+
+    public func setPermissions(_ mode: Int, at url: URL, expected: FilePermissionSnapshot) async throws -> FilePermissionSnapshot {
+        guard (0...0o777).contains(mode) else { throw FilePermissionError.invalidMode }
+        return try await Task.detached(priority: .utility) {
+            try Self.withPermissionDescriptor(url) { descriptor in
+                let current = try Self.permissionSnapshot(descriptor)
+                guard current.device == expected.device, current.inode == expected.inode,
+                      current.birthSeconds == expected.birthSeconds,
+                      current.birthNanoseconds == expected.birthNanoseconds else {
+                    throw FilePermissionError.changedItem
+                }
+                guard current.mode == expected.mode, current.accessControlList == expected.accessControlList else {
+                    throw FilePermissionError.changedPermissions
+                }
+                let requested = (current.mode & 0o7000) | mode
+                if current.mode != requested {
+                    guard fchmod(descriptor, mode_t(requested)) == 0 else { throw Self.permissionPOSIXError() }
+                }
+                let updated = try Self.permissionSnapshot(descriptor)
+                guard updated.mode == requested else { throw FilePermissionError.modeNotApplied }
+                return updated
+            }
+        }.value
+    }
+
+    private static func withPermissionDescriptor<T>(_ url: URL, _ body: (Int32) throws -> T) throws -> T {
+        let descriptor = open(url.path, O_EVTONLY | O_NOFOLLOW | O_CLOEXEC)
+        guard descriptor >= 0 else { throw permissionPOSIXError() }
+        defer { close(descriptor) }
+        return try body(descriptor)
+    }
+
+    private static func permissionSnapshot(_ descriptor: Int32) throws -> FilePermissionSnapshot {
+        var metadata = stat()
+        guard fstat(descriptor, &metadata) == 0 else { throw permissionPOSIXError() }
+        let type = metadata.st_mode & S_IFMT
+        guard type == S_IFREG || type == S_IFDIR else { throw FilePermissionError.unsupportedFileType }
+        return FilePermissionSnapshot(
+            mode: Int(metadata.st_mode & 0o7777), accessControlList: try permissionACL(descriptor),
+            device: metadata.st_dev, inode: metadata.st_ino,
+            birthSeconds: metadata.st_birthtimespec.tv_sec, birthNanoseconds: metadata.st_birthtimespec.tv_nsec
+        )
+    }
+
+    private static func permissionACL(_ descriptor: Int32) throws -> String? {
+        guard let acl = acl_get_fd_np(descriptor, ACL_TYPE_EXTENDED) else {
+            if errno == ENOENT || errno == ENOTSUP || errno == EOPNOTSUPP { return nil }
+            throw permissionPOSIXError()
+        }
+        defer { acl_free(UnsafeMutableRawPointer(acl)) }
+        var length = 0
+        guard let text = acl_to_text(acl, &length) else { throw permissionPOSIXError() }
+        defer { acl_free(text) }
+        let entries = String(cString: text).split(separator: "\n").dropFirst()
+        return entries.isEmpty ? nil : entries.joined(separator: "\n")
+    }
+
+    private static func permissionPOSIXError() -> POSIXError {
+        POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
     }
 
     public func sha256(_ url: URL, progress: (@Sendable (Int64) -> Void)? = nil) async throws -> String {

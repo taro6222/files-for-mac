@@ -4575,9 +4575,13 @@ extension BrowserWindow {
                 try await controller.waitForFolderQA { !info.qaHashing }
                 checks["fileInfoHashFileComparison"] = checks["fileInfoHashFileComparison"] == true
                     && info.qaHashStatus == L("해시값이 일치합니다.", "Hashes match.")
+                let editedPermissions = try await info.qaChangePermissions(to: 0o640)
+                let savedPermissions = try await FilePropertiesInspector().permissions(inputFile)
+                checks["fileInfoPermissionEditing"] = editedPermissions && savedPermissions.mode == 0o640
             } else {
                 checks["fileInfoHashComparison"] = false
                 checks["fileInfoHashFileComparison"] = false
+                checks["fileInfoPermissionEditing"] = false
             }
             controller.infoWindow?.close(); window.makeKeyAndOrderFront(nil)
             let taggedURL = controller.activeSelectedItems.first?.url

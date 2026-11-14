@@ -6,6 +6,7 @@ final class FileInfoWindow: NSWindowController, NSTextFieldDelegate {
     private let inspector = FilePropertiesInspector()
     private let scroll = NSScrollView()
     private let details = NSStackView(), status = NSTextField(labelWithString: "")
+    private let permissionsButton = NSButton()
     private let hashButton = NSButton(), hashProgress = NSProgressIndicator(), digest = NSTextField(wrappingLabelWithString: "")
     private let hashAlgorithm = NSPopUpButton(), expectedHash = NSTextField(), compareHashButton = NSButton()
     private let hashStatus = NSTextField(wrappingLabelWithString: "")
@@ -42,6 +43,9 @@ final class FileInfoWindow: NSWindowController, NSTextFieldDelegate {
             root.bottomAnchor.constraint(equalTo: content.bottomAnchor)
         ])
         details.orientation = .vertical; details.alignment = .leading; details.spacing = 8; root.addArrangedSubview(details)
+        permissionsButton.title = L("파일 권한…", "File Permissions…")
+        permissionsButton.target = self; permissionsButton.action = #selector(showPermissions(_:))
+        root.addArrangedSubview(permissionsButton)
         let tagTitle = NSTextField(labelWithString: L("Finder 태그", "Finder Tags")); tagTitle.font = .systemFont(ofSize: 14, weight: .semibold); root.addArrangedSubview(tagTitle)
         let tagControls = NSStackView(); tagControls.orientation = .horizontal; tagControls.spacing = 8
         tagField.placeholderString = L("쉼표로 태그 구분", "Separate tags with commas"); tagField.setAccessibilityLabel(L("Finder 태그", "Finder Tags")); tagControls.addArrangedSubview(tagField)
@@ -82,6 +86,7 @@ final class FileInfoWindow: NSWindowController, NSTextFieldDelegate {
     func present(items: [FileItem]) {
         cancelTasks(); self.items = items; properties = nil; tagIdentity = nil; tagField.stringValue = ""; tagField.isEnabled = false; saveTagsButton.isEnabled = false; digest.stringValue = ""; hashProgress.isHidden = true; signatureDetails.stringValue = ""; signatureButton.isEnabled = items.count == 1; iconStatus.stringValue = ""
         let folderIconEnabled = items.count == 1 && items[0].isDirectory
+        permissionsButton.isEnabled = items.count == 1 && !items[0].isSymbolicLink
         expectedHash.stringValue = ""; hashStatus.stringValue = ""
         finishHash()
         chooseIconButton.isEnabled = folderIconEnabled; resetIconButton.isEnabled = folderIconEnabled
@@ -119,6 +124,19 @@ final class FileInfoWindow: NSWindowController, NSTextFieldDelegate {
     private func row(_ label: String, _ value: String) { let field = NSTextField(wrappingLabelWithString: "\(label):  \(value)"); field.lineBreakMode = .byTruncatingMiddle; details.addArrangedSubview(field) }
     private func size(_ value: Int64?) -> String { value.map { formatByteCount($0, unit: BrowserPreferences.shared.sizeUnit) } ?? "—" }
     private func date(_ value: Date?) -> String { value.map { DateFormatter.localizedString(from: $0, dateStyle: .medium, timeStyle: .medium) } ?? "—" }
+    @objc private func showPermissions(_ sender: Any?) {
+        _ = openPermissions()
+    }
+    private func openPermissions() -> FilePermissionsSheet? {
+        guard items.count == 1, !items[0].isSymbolicLink, let window, window.attachedSheet == nil else { return nil }
+        let item = items[0]
+        let sheet = FilePermissionsSheet(url: item.url) { [weak self] in
+            guard let self, self.items == [item] else { return }
+            self.present(items: [item])
+        }
+        sheet.present(on: window)
+        return sheet
+    }
     @objc private func toggleHash(_ sender: Any?) { hashTask == nil ? startHash() : cancelHash() }
     @objc private func saveTags(_ sender: Any?) {
         guard items.count == 1 else { return }
@@ -252,6 +270,15 @@ final class FileInfoWindow: NSWindowController, NSTextFieldDelegate {
     private func cancelTasks() { inspectTask?.cancel(); inspectTask = nil; hashTask?.cancel(); hashTask = nil; signatureTask?.cancel(); signatureTask = nil }
 #if DEBUG
     var qaLoaded: Bool { properties != nil }
+    func qaChangePermissions(to mode: Int) async throws -> Bool {
+        guard let sheet = openPermissions() else { return false }
+        let deadline = ContinuousClock.now + .seconds(5)
+        while !sheet.qaReady && ContinuousClock.now < deadline { try await Task.sleep(for: .milliseconds(20)) }
+        guard sheet.qaSetMode(mode) else { return false }
+        while window?.attachedSheet != nil && ContinuousClock.now < deadline { try await Task.sleep(for: .milliseconds(20)) }
+        while properties?.posixPermissions != mode && ContinuousClock.now < deadline { try await Task.sleep(for: .milliseconds(20)) }
+        return window?.attachedSheet == nil && properties?.posixPermissions == mode
+    }
     func qaCanReachSignature() -> Bool {
         guard let window, let content = scroll.documentView else { return false }
         let previousSize = scroll.frame.size
@@ -287,5 +314,145 @@ final class FileInfoWindow: NSWindowController, NSTextFieldDelegate {
     var qaSignatureLoaded: Bool { signatureTask == nil && !signatureDetails.stringValue.isEmpty }
     func qaApplyFolderIcon(_ image: NSImage?) { applyFolderIcon(image) }
     var qaIconOperationSucceeded: Bool { iconStatus.stringValue.contains(L("저장했습니다", "saved")) || iconStatus.stringValue.contains(L("복원했습니다", "restored")) }
+#endif
+}
+
+@MainActor
+private final class FilePermissionsSheet {
+    private let inspector = FilePropertiesInspector()
+    private let url: URL
+    private let onSave: () -> Void
+    private let alert = NSAlert()
+    private var initial: FilePermissionSnapshot?
+    private var checks: [NSButton] = []
+    private let aclText = NSTextView()
+    private let status = NSTextField(wrappingLabelWithString: "")
+    private let save: NSButton
+
+    init(url: URL, onSave: @escaping () -> Void) {
+        self.url = url
+        self.onSave = onSave
+        alert.messageText = L("파일 권한", "File Permissions")
+        alert.informativeText = url.lastPathComponent
+        save = alert.addButton(withTitle: L("저장", "Save"))
+        save.isEnabled = false
+        alert.addButton(withTitle: L("닫기", "Close"))
+        save.target = self
+        save.action = #selector(savePermissions(_:))
+        buildControls()
+    }
+
+    func present(on parent: NSWindow) {
+        let sheet = alert.window
+        alert.beginSheetModal(for: parent) { [self] _ in
+            withExtendedLifetime(self) {}
+        }
+        Task {
+            do {
+                let snapshot = try await inspector.permissions(url)
+                guard sheet.sheetParent != nil else { return }
+                display(snapshot)
+            } catch {
+                status.stringValue = error.localizedDescription
+            }
+        }
+    }
+
+    private func buildControls() {
+        let classes = [L("소유자", "Owner"), L("그룹", "Group"), L("기타", "Others")]
+        let operations = [L("읽기", "Read"), L("쓰기", "Write"), L("실행/탐색", "Execute/Search")]
+        var rows: [[NSView]] = [[NSTextField(labelWithString: "")] + operations.map(NSTextField.init(labelWithString:))]
+        for accessClass in classes {
+            let buttons = operations.map { operation in
+                let button = NSButton(checkboxWithTitle: "", target: self, action: #selector(permissionChanged(_:)))
+                button.setAccessibilityLabel(accessClass + " " + operation)
+                button.isEnabled = false
+                return button
+            }
+            checks.append(contentsOf: buttons)
+            rows.append([NSTextField(labelWithString: accessClass)] + buttons)
+        }
+        let grid = NSGridView(views: rows)
+        grid.rowSpacing = 5
+        grid.columnSpacing = 10
+
+        let aclLabel = NSTextField(labelWithString: L("확장 ACL", "Extended ACL"))
+        let scroll = NSScrollView()
+        scroll.hasVerticalScroller = true
+        aclText.isEditable = false
+        aclText.font = .monospacedSystemFont(ofSize: 11, weight: .regular)
+        aclText.setAccessibilityLabel(aclLabel.stringValue)
+        aclText.isVerticallyResizable = true
+        aclText.autoresizingMask = [.width]
+        scroll.documentView = aclText
+
+        let stack = NSStackView(views: [grid, aclLabel, scroll, status])
+        stack.orientation = .vertical
+        stack.alignment = .leading
+        stack.spacing = 8
+        scroll.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
+        scroll.heightAnchor.constraint(equalToConstant: 86).isActive = true
+        status.preferredMaxLayoutWidth = 350
+        status.stringValue = L("권한을 읽는 중…", "Reading permissions…")
+        stack.frame = NSRect(x: 0, y: 0, width: 360, height: 225)
+        alert.accessoryView = stack
+    }
+
+    private var selectedMode: Int {
+        checks.enumerated().reduce(0) { mode, pair in
+            pair.element.state == .on ? mode | (1 << (8 - pair.offset)) : mode
+        }
+    }
+
+    private func display(_ snapshot: FilePermissionSnapshot) {
+        initial = snapshot
+        for (index, button) in checks.enumerated() {
+            button.state = snapshot.mode & (1 << (8 - index)) != 0 ? .on : .off
+            button.isEnabled = true
+        }
+        aclText.string = snapshot.accessControlList ?? L("확장 ACL 항목이 없습니다.", "No extended ACL entries.")
+        status.stringValue = String(format: "%04o", snapshot.mode)
+    }
+
+    @objc private func permissionChanged(_ sender: Any?) {
+        guard let initial else { return }
+        let requested = (initial.mode & 0o7000) | selectedMode
+        status.stringValue = String(format: "%04o → %04o", initial.mode, requested)
+        save.isEnabled = requested != initial.mode
+    }
+
+    @objc private func savePermissions(_ sender: Any?) {
+        guard let initial, save.isEnabled else { return }
+        let requested = selectedMode
+        save.isEnabled = false
+        alert.buttons[1].isEnabled = false
+        checks.forEach { $0.isEnabled = false }
+        Task {
+            defer { alert.buttons[1].isEnabled = true }
+            do {
+                _ = try await inspector.setPermissions(requested, at: url, expected: initial)
+                if let parent = alert.window.sheetParent { parent.endSheet(alert.window, returnCode: .alertFirstButtonReturn) }
+                onSave()
+            } catch FilePermissionError.changedItem {
+                status.stringValue = L("항목이 바뀌었습니다. 속성 창에서 권한을 다시 여세요.", "The item changed. Reopen File Permissions.")
+            } catch FilePermissionError.changedPermissions {
+                status.stringValue = L("권한이 외부에서 변경되었습니다. 권한을 다시 여세요.", "Permissions changed externally. Reopen File Permissions.")
+            } catch {
+                status.stringValue = L("권한을 변경하지 못했습니다. ", "Unable to change permissions. ") + error.localizedDescription
+            }
+        }
+    }
+#if DEBUG
+    var qaReady: Bool { initial != nil }
+    func qaSetMode(_ mode: Int) -> Bool {
+        guard qaReady, checks.allSatisfy({ $0.isEnabled && $0.accessibilityLabel()?.isEmpty == false }) else { return false }
+        for (index, button) in checks.enumerated() {
+            button.state = mode & (1 << (8 - index)) != 0 ? .on : .off
+        }
+        permissionChanged(nil)
+        guard save.isEnabled else { return false }
+        save.performClick(nil)
+        return true
+    }
 #endif
 }

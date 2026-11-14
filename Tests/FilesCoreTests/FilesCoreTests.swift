@@ -1455,3 +1455,53 @@ private struct ManyBatchLoader: DirectoryStreaming {
     let permissions = try FileManager.default.attributesOfItem(atPath: artifacts.logFile.path)[.posixPermissions] as? NSNumber
     #expect(permissions?.intValue == 0o600)
 }
+
+@Test func permissionEditingPreservesACLAndRejectsChangedItems() async throws {
+    let root = try fixture()
+    defer { try? FileManager.default.removeItem(at: root) }
+    let file = root.appendingPathComponent("permissions.txt")
+    let replacement = root.appendingPathComponent("replacement.txt")
+    let alias = root.appendingPathComponent("link")
+    try Data("original".utf8).write(to: file)
+    try Data("replacement".utf8).write(to: replacement)
+    try FileManager.default.createSymbolicLink(at: alias, withDestinationURL: file)
+    try #require(chmod(file.path, 0o640) == 0)
+    try #require(chmod(replacement.path, 0o644) == 0)
+
+    let inspector = FilePropertiesInspector()
+    let initial = try await inspector.permissions(file)
+    let chmodACL = Process()
+    chmodACL.executableURL = URL(fileURLWithPath: "/bin/chmod")
+    chmodACL.arguments = ["+a", "everyone allow read", file.path]
+    try chmodACL.run()
+    chmodACL.waitUntilExit()
+    try #require(chmodACL.terminationStatus == 0)
+
+    await #expect(throws: FilePermissionError.changedPermissions) {
+        try await inspector.setPermissions(0o600, at: file, expected: initial)
+    }
+    let withACL = try await inspector.permissions(file)
+    #expect(withACL.accessControlList?.contains("read") == true)
+    let updated = try await inspector.setPermissions(0o200, at: file, expected: withACL)
+    #expect(updated.mode == 0o200)
+    #expect(updated.accessControlList == withACL.accessControlList)
+    let restored = try await inspector.setPermissions(0o640, at: file, expected: updated)
+    #expect(restored.mode == 0o640)
+    await #expect(throws: FilePermissionError.changedPermissions) {
+        try await inspector.setPermissions(0o700, at: file, expected: updated)
+    }
+    await #expect(throws: POSIXError.self) {
+        try await inspector.setPermissions(0o777, at: alias, expected: restored)
+    }
+
+    try #require(chmod(file.path, 0o600) == 0)
+    await #expect(throws: FilePermissionError.changedItem) {
+        try await inspector.setPermissions(0o777, at: replacement, expected: restored)
+    }
+    #expect(try await inspector.permissions(replacement).mode == 0o644)
+
+    try #require(chmod(root.path, 0o1700) == 0)
+    let folder = try await inspector.permissions(root)
+    let updatedFolder = try await inspector.setPermissions(0o750, at: root, expected: folder)
+    #expect(updatedFolder.mode == 0o1750)
+}

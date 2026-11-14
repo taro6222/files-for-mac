@@ -8,6 +8,8 @@ M7 출시 검증이 진행 중이다. [유니버설 개발 프리뷰](verificati
 
 ## 이번 구현 단위
 
+파일 속성에서 단일 항목의 POSIX 모드를 편집하고 확장 ACL을 조회한다. [파일 권한 검증](verification/m7/INCREMENT_153.md)
+
 파일 속성 창에서 여섯 해시 알고리즘을 선택하고 해시값 또는 다른 파일과 비교한다. [파일 해시 검증](verification/m7/INCREMENT_152.md)
 
 파일 이동 복구 변경을 포함한 유니버설 프리뷰를 갱신했다. Apple Silicon에서 설치·교체·복원과 Launch Services 기동 20회를 확인했다. [프리뷰 설치와 기동](verification/m7/PREVIEW_0.1.0.md)
