@@ -55,9 +55,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         }
         else {
             var first: BrowserWindow?
+            var controllers: [BrowserWindow] = []
             for workspace in restored {
                 let controller = makeBrowser(workspace: workspace, tabbedTo: first)
                 if first == nil { first = controller }
+                controllers.append(controller)
+            }
+            if BrowserPreferences.shared.openNewTabOnStartup {
+                let startup = BrowserPreferences.shared.startupLocationPath.map { URL(fileURLWithPath: $0, isDirectory: true) }
+                makeBrowser(location: startup, tabbedTo: first)
+            } else if controllers.indices.contains(BrowserPreferences.shared.lastSessionSelectedTabIndex) {
+                controllers[BrowserPreferences.shared.lastSessionSelectedTabIndex].window?.makeKeyAndOrderFront(nil)
             }
         }
         NSApp.activate(ignoringOtherApps: true)
@@ -260,6 +268,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
     func applicationWillTerminate(_ notification: Notification) {
         if let preferencesToken { BrowserPreferences.shared.removeObserver(preferencesToken) }
+        let selected = currentBrowser.flatMap { current in windows.firstIndex(where: { $0 === current }) } ?? -1
+        BrowserPreferences.shared.setLastSessionSelectedTabIndex(selected)
         try? workspaceStore.save(windows.map { $0.workspaceSnapshot() })
     }
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
@@ -520,6 +530,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     var qaGeneralSettingsVisible: Bool { generalSettingsWindow?.qaVisible == true }
     var qaGeneralSettingsContentView: NSView? { generalSettingsWindow?.window?.contentView }
     var qaGeneralWidgetStates: (Bool, Bool, Bool)? { generalSettingsWindow?.qaWidgetStates }
+    var qaGeneralOpenNewTabOnStartup: Bool? { generalSettingsWindow?.qaOpenNewTabOnStartup }
+    func qaToggleGeneralOpenNewTabOnStartup() { generalSettingsWindow?.qaToggleOpenNewTabOnStartup() }
     func qaToggleGeneralWidgets() { generalSettingsWindow?.qaToggleWidgets() }
     var qaGeneralSizeUnit: BrowserSizeUnit? { generalSettingsWindow?.qaSizeUnit }
     func qaToggleGeneralSizeUnit() { generalSettingsWindow?.qaToggleSizeUnit() }

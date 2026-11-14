@@ -545,6 +545,21 @@ private struct DelayedLoader: DirectoryLoading {
     preferences.removeObserver(token)
 }
 
+@Test @MainActor func startupTabPreferencesPersistRepairAndAvoidDuplicateNotifications() {
+    let suite = "startup-tab-preferences-tests-\(UUID())", defaults = UserDefaults(suiteName: suite)!
+    defer { defaults.removePersistentDomain(forName: suite) }
+    let preferences = BrowserPreferences(defaults: defaults, initialFavorites: [])
+    #expect(!preferences.openNewTabOnStartup && preferences.lastSessionSelectedTabIndex == -1)
+    var notifications = 0; let token = preferences.observe { notifications += 1 }
+    preferences.setOpenNewTabOnStartup(true); preferences.setOpenNewTabOnStartup(true)
+    preferences.setLastSessionSelectedTabIndex(3); preferences.setLastSessionSelectedTabIndex(3)
+    let restored = BrowserPreferences(defaults: defaults, initialFavorites: [])
+    #expect(restored.openNewTabOnStartup && restored.lastSessionSelectedTabIndex == 3)
+    preferences.setLastSessionSelectedTabIndex(-9)
+    #expect(preferences.lastSessionSelectedTabIndex == -1 && notifications == 3)
+    preferences.removeObserver(token)
+}
+
 @Test @MainActor func contextMenuVisibilityDefaultsPersistAndAvoidsDuplicateNotifications() {
     let suite = "context-menu-visibility-tests-\(UUID())", defaults = UserDefaults(suiteName: suite)!
     defer { defaults.removePersistentDomain(forName: suite) }
@@ -614,6 +629,7 @@ private struct DelayedLoader: DirectoryLoading {
     source.setShowFileExtensionWarning(false)
     source.setDefaultSortDirectoryPlacement(.filesFirst)
     source.setAutoSizeColumnsInDetailsLayout(true)
+    source.setOpenNewTabOnStartup(true); source.setLastSessionSelectedTabIndex(2)
     source.setShowCreatedColumn(true); source.setShowDateColumn(false); source.setShowTypeColumn(false); source.setShowSizeColumn(false); source.setShowGitStatusColumn(true)
     source.setShowFileTagColumn(true); source.setShowPathColumn(true)
     source.setShowCompressionOptions(false); source.setShowOpenTerminal(false); source.setShowCreateFolderWithSelection(false)
@@ -635,6 +651,7 @@ private struct DelayedLoader: DirectoryLoading {
     #expect(!destination.showFileExtensionWarning)
     #expect(destination.defaultSortDirectoryPlacement == .filesFirst)
     #expect(destination.autoSizeColumnsInDetailsLayout)
+    #expect(destination.openNewTabOnStartup && destination.lastSessionSelectedTabIndex == 2)
     #expect(destination.showCreatedColumn && !destination.showDateColumn && !destination.showTypeColumn && !destination.showSizeColumn && destination.showGitStatusColumn)
     #expect(destination.showFileTagColumn && destination.showPathColumn)
     #expect(!destination.showCompressionOptions && !destination.showOpenTerminal && !destination.showCreateFolderWithSelection)

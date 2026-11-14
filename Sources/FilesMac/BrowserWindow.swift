@@ -2724,10 +2724,11 @@ extension BrowserWindow {
                 let sizeUnitBefore = delegate.qaGeneralSizeUnit; let newTabBefore = delegate.qaGeneralOpenFoldersInNewTab
                 let defaultSortBefore = delegate.qaGeneralDefaultSortDirectoryPlacement
                 let autoSizeColumnsBefore = delegate.qaGeneralAutoSizeColumnsInDetailsLayout
+                let startupTabBefore = delegate.qaGeneralOpenNewTabOnStartup
                 let revealBefore = delegate.qaGeneralScrollToPreviousFolderOnUp
                 let extensionWarningBefore = delegate.qaGeneralShowFileExtensionWarning
                 let contextMenuBefore = delegate.qaGeneralContextMenuStates
-                delegate.qaToggleGeneralWidgets(); delegate.qaToggleGeneralSizeUnit(); delegate.qaCycleGeneralDefaultSortDirectoryPlacement(); delegate.qaToggleGeneralAutoSizeColumnsInDetailsLayout(); delegate.qaToggleGeneralOpenFoldersInNewTab(); delegate.qaToggleGeneralScrollToPreviousFolderOnUp(); delegate.qaToggleGeneralShowFileExtensionWarning(); delegate.qaToggleGeneralContextMenuItems(); let widgetsAfter = delegate.qaGeneralWidgetStates
+                delegate.qaToggleGeneralWidgets(); delegate.qaToggleGeneralOpenNewTabOnStartup(); delegate.qaToggleGeneralSizeUnit(); delegate.qaCycleGeneralDefaultSortDirectoryPlacement(); delegate.qaToggleGeneralAutoSizeColumnsInDetailsLayout(); delegate.qaToggleGeneralOpenFoldersInNewTab(); delegate.qaToggleGeneralScrollToPreviousFolderOnUp(); delegate.qaToggleGeneralShowFileExtensionWarning(); delegate.qaToggleGeneralContextMenuItems(); let widgetsAfter = delegate.qaGeneralWidgetStates
                 let contextMenuAfter = delegate.qaGeneralContextMenuStates
                 let contextMenusToggled = contextMenuBefore?.count == contextMenuAfter?.count
                     && zip(contextMenuBefore ?? [], contextMenuAfter ?? []).allSatisfy { $0 != $1 }
@@ -2736,6 +2737,7 @@ extension BrowserWindow {
                     && delegate.qaGeneralSizeUnit != sizeUnitBefore
                     && delegate.qaGeneralDefaultSortDirectoryPlacement != defaultSortBefore
                     && delegate.qaGeneralAutoSizeColumnsInDetailsLayout != autoSizeColumnsBefore
+                    && delegate.qaGeneralOpenNewTabOnStartup != startupTabBefore
                     && delegate.qaGeneralOpenFoldersInNewTab != newTabBefore
                     && delegate.qaGeneralScrollToPreviousFolderOnUp != revealBefore
                     && delegate.qaGeneralShowFileExtensionWarning != extensionWarningBefore
@@ -2775,7 +2777,7 @@ extension BrowserWindow {
                 controller.toggleDualPane(nil); checks["toggleDualPaneOpens"] = controller.workspaceSnapshot().isSplit
                 controller.closeSecondaryPane(nil)
                 try capture("general-settings", view: delegate.qaGeneralSettingsContentView)
-                delegate.qaToggleGeneralWidgets(); delegate.qaToggleGeneralSizeUnit(); delegate.qaCycleGeneralDefaultSortDirectoryPlacement(); delegate.qaToggleGeneralAutoSizeColumnsInDetailsLayout(); delegate.qaToggleGeneralOpenFoldersInNewTab(); delegate.qaToggleGeneralScrollToPreviousFolderOnUp(); delegate.qaToggleGeneralShowFileExtensionWarning(); delegate.qaToggleGeneralContextMenuItems(); delegate.qaGeneralSettingsContentView?.window?.close(); window.makeKeyAndOrderFront(nil)
+                delegate.qaToggleGeneralWidgets(); delegate.qaToggleGeneralOpenNewTabOnStartup(); delegate.qaToggleGeneralSizeUnit(); delegate.qaCycleGeneralDefaultSortDirectoryPlacement(); delegate.qaToggleGeneralAutoSizeColumnsInDetailsLayout(); delegate.qaToggleGeneralOpenFoldersInNewTab(); delegate.qaToggleGeneralScrollToPreviousFolderOnUp(); delegate.qaToggleGeneralShowFileExtensionWarning(); delegate.qaToggleGeneralContextMenuItems(); delegate.qaGeneralSettingsContentView?.window?.close(); window.makeKeyAndOrderFront(nil)
                 delegate.showArchiveCapabilities(nil); try await Task.sleep(for: .milliseconds(50))
                 checks["archiveCapabilitiesWindow"] = delegate.qaArchiveCapabilitiesVisible
                 try capture("archive-capabilities", view: delegate.qaArchiveCapabilitiesContentView)
