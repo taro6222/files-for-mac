@@ -725,6 +725,47 @@ func entryCrossVolumeUndoResumesAfterCopyPublication(edited: Bool) async throws 
     #expect((try FileManager.default.contentsOfDirectory(atPath: destination.path)).allSatisfy { !$0.hasPrefix(".files-move-") })
 }
 
+@Test(arguments: ["verifying", "removingSource"])
+func crossVolumeMovePreservesSourceWhenResourceForkChanges(_ phase: String) async throws {
+    let root = try entryFixture()
+    let fm = FileManager.default
+    defer { try? fm.removeItem(at: root) }
+    let destination = root.appendingPathComponent("dest", isDirectory: true)
+    let source = root.appendingPathComponent("move.txt")
+    let target = destination.appendingPathComponent(source.lastPathComponent)
+    try fm.createDirectory(at: destination, withIntermediateDirectories: true)
+    try Data("data fork".utf8).write(to: source)
+    let attribute = "com.apple.ResourceFork"
+    let original = Data(repeating: 0x41, count: 1024 * 1024 + 1)
+    let created = original.withUnsafeBytes { setxattr(source.path, attribute, $0.baseAddress, $0.count, 0, 0) }
+    try #require(created == 0)
+
+    let result = try await EntryOperations.moveAcrossVolumeForTesting([source], to: destination,
+        journalDirectory: root.appendingPathComponent("journal")) { progress in
+        guard progress.phase == phase else { return }
+        let files = try? FileManager.default.contentsOfDirectory(at: destination, includingPropertiesForKeys: nil)
+        let payload = files?.first { $0.lastPathComponent.hasPrefix(".files-move-") }?.appendingPathComponent("payload")
+        guard let changed = phase == "verifying" ? payload : target else { return }
+        let byte: UInt8 = 0x42
+        withUnsafePointer(to: byte) {
+            _ = setxattr(changed.path, attribute, $0, 1, UInt32(original.count - 1), 0)
+        }
+    }
+
+    #expect(result.items.first?.state == "failed")
+    #expect(try Data(contentsOf: source) == Data("data fork".utf8))
+    var resource = Data(count: original.count)
+    let size = resource.withUnsafeMutableBytes { getxattr(source.path, attribute, $0.baseAddress, $0.count, 0, 0) }
+    #expect(size == original.count && resource == original)
+    if phase == "verifying" {
+        #expect(!fm.fileExists(atPath: target.path))
+    } else {
+        var byte: UInt8 = 0
+        #expect(getxattr(target.path, attribute, &byte, 1, UInt32(original.count - 1), 0) == 1)
+        #expect(byte == 0x42)
+    }
+}
+
 @Test func entryReplacementCancellationReportsBackupWhenDestinationIsOccupied() async throws {
     let root = try entryFixture()
     let fm = FileManager.default

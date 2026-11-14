@@ -437,7 +437,10 @@ public enum CopyEngine {
                 while let data = try handle.read(upToCount: 1024 * 1024), !data.isEmpty {
                     try cancellation.check(); hash.update(data: data)
                 }
-                let digest = hash.finalize().map { String(format: "%02x", $0) }.joined()
+                var digest = hash.finalize().map { String(format: "%02x", $0) }.joined()
+                if let resource = try resourceForkDigest(url, cancellation: cancellation) {
+                    digest += ":resource:" + resource
+                }
                 withPermissions[relative] = "file:\(attrs[.posixPermissions] ?? 0):" + digest
                 content[relative] = "file:" + digest
             default: throw CopyFailure(text: "Unsupported special file: " + url.path)
@@ -445,5 +448,33 @@ public enum CopyEngine {
         }
         try visit(root, relative: "")
         return (withPermissions, content)
+    }
+
+    private static func resourceForkDigest(_ url: URL, cancellation: CopyCancellation) throws -> String? {
+        let key = "com.apple.ResourceFork"
+        let size = getxattr(url.path, key, nil, 0, 0, XATTR_NOFOLLOW)
+        if size == -1 && (errno == ENOATTR || errno == ENOTSUP) { return nil }
+        guard size >= 0, UInt32(exactly: size) != nil else {
+            throw CopyFailure(text: "Unable to verify the resource fork: " + url.path)
+        }
+        var hash = SHA256()
+        var offset = 0
+        var buffer = Data(count: min(size, 1024 * 1024))
+        while offset < size {
+            try cancellation.check()
+            let requested = min(buffer.count, size - offset)
+            let count = buffer.withUnsafeMutableBytes {
+                getxattr(url.path, key, $0.baseAddress, requested, UInt32(offset), XATTR_NOFOLLOW)
+            }
+            guard count == requested else {
+                throw CopyFailure(text: "Resource fork changed during verification: " + url.path)
+            }
+            hash.update(data: buffer.prefix(count))
+            offset += count
+        }
+        guard getxattr(url.path, key, nil, 0, 0, XATTR_NOFOLLOW) == size else {
+            throw CopyFailure(text: "Resource fork changed during verification: " + url.path)
+        }
+        return hash.finalize().map { String(format: "%02x", $0) }.joined()
     }
 }
