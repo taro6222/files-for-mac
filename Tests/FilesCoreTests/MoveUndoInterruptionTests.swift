@@ -18,6 +18,8 @@ import Testing
     case "interrupt":
         try Data("new".utf8).write(to: source, options: .withoutOverwriting)
         try Data("old".utf8).write(to: target, options: .withoutOverwriting)
+        try fm.setAttributes([.creationDate: Date(timeIntervalSince1970: 1_600_000_000)], ofItemAtPath: source.path)
+        try fm.setAttributes([.creationDate: Date(timeIntervalSince1970: 1_600_000_060)], ofItemAtPath: target.path)
         let move = try await EntryOperations.move([source], to: destination,
             conflictPolicy: .replace, journalDirectory: journal)
         try #require(move.state == "completed")
@@ -37,15 +39,32 @@ import Testing
         let item = try #require(record.items.first)
         let backup = try #require(item.backup)
         #expect(item.restoredCopyIdentity != nil)
+        #expect(item.restoredCopyMetadata != nil)
         #expect(item.backupRestorePending != true)
         #expect(try Data(contentsOf: source) == Data("new".utf8))
         #expect(try Data(contentsOf: target) == Data("new".utf8))
         #expect(try Data(contentsOf: backup) == Data("old".utf8))
-        let resumed = await EntryOperations.undoMove(record, journalDirectory: journal)
+
+        // A metadata-only edit after the checkpoint must prevent source deletion.
+        let attribute = "com.filesmac.interruption-test"
+        let value: UInt8 = 42
+        try #require(withUnsafePointer(to: value) { setxattr(source.path, attribute, $0, 1, 0, 0) } == 0)
+        let blocked = await EntryOperations.undoMove(record, journalDirectory: journal)
+        #expect(blocked.items.map(\.state) == ["conflict"])
+        #expect(try Data(contentsOf: source) == Data("new".utf8))
+        #expect(try Data(contentsOf: target) == Data("new".utf8))
+        #expect(try Data(contentsOf: backup) == Data("old".utf8))
+        #expect(getxattr(source.path, attribute, nil, 0, 0, 0) == 1)
+        try #require(removexattr(source.path, attribute, 0) == 0)
+
+        let retry = try #require(EntryOperations.latestUndoMove(journalDirectory: journal))
+        let resumed = await EntryOperations.undoMove(retry, journalDirectory: journal)
         #expect(resumed.state == "completed")
         #expect(resumed.journalError == nil)
         #expect(try Data(contentsOf: source) == Data("new".utf8))
         #expect(try Data(contentsOf: target) == Data("old".utf8))
+        #expect(try fm.attributesOfItem(atPath: source.path)[.creationDate] as? Date == Date(timeIntervalSince1970: 1_600_000_000))
+        #expect(try fm.attributesOfItem(atPath: target.path)[.creationDate] as? Date == Date(timeIntervalSince1970: 1_600_000_060))
         #expect(EntryOperations.latestUndoMove(journalDirectory: journal) == nil)
     default:
         Issue.record("Unexpected interruption test phase: \(phase)")
