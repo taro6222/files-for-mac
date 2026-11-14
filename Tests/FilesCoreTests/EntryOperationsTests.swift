@@ -1071,6 +1071,28 @@ private extension Data {
     #expect(EntryOperations.PendingTransferUndo.latest(in: journals) == nil)
 }
 
+@Test func sameVolumeFileMoveCanCancelDuringUndoVerification() async throws {
+    let root = try entryFixture()
+    let fm = FileManager.default
+    defer { try? fm.removeItem(at: root) }
+    let destination = root.appendingPathComponent("dest", isDirectory: true)
+    let source = root.appendingPathComponent("file")
+    let journal = root.appendingPathComponent("journal", isDirectory: true)
+    try fm.createDirectory(at: destination, withIntermediateDirectories: false)
+    let payload = Data("keep this file".utf8)
+    try payload.write(to: source)
+    let cancellation = CopyCancellation()
+
+    let move = try await EntryOperations.move([source], to: destination, journalDirectory: journal,
+                                              cancellation: cancellation) { progress in
+        if progress.phase == "verifyingUndo" { cancellation.cancel() }
+    }
+    #expect(move.state == "cancelled")
+    #expect(try Data(contentsOf: source) == payload)
+    #expect(!fm.fileExists(atPath: destination.appendingPathComponent("file").path))
+    #expect(EntryOperations.latestUndoMove(journalDirectory: journal) == nil)
+}
+
 @Test func redoMoveRechecksRestoredSourceAndPublishesWithoutReplacing() async throws {
     let fm = FileManager.default
     let root = fm.temporaryDirectory.appendingPathComponent(UUID().uuidString)

@@ -803,14 +803,13 @@ public enum EntryOperations {
                     var retrySource: ShelfEntry?
                     func snapshotForUndo(_ url: URL) throws -> CopyEngine.VerificationSnapshot? {
                         do {
-                            let attributes = try fm.attributesOfItem(atPath: url.path)
-                            if attributes[.type] as? FileAttributeType == .typeDirectory { emit("verifyingUndo") }
+                            emit("verifyingUndo")
                             return try CopyEngine.makeSnapshot(url, cancellation: cancellation)
                         } catch is CancellationError {
                             throw CancellationError()
                         } catch {
-                            // A rename may work on a folder we cannot read or which
-                            // contains special files. Never offer an unchecked Undo.
+                            // A rename can succeed even if the item cannot be read.
+                            // Only offer Undo when a snapshot was captured.
                             canRecordUndo[index] = false
                             return nil
                         }
