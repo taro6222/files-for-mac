@@ -510,6 +510,45 @@ func entryMoveUndoRecoversSameVolumeRenameBeforeCheckpoint(occupied: Bool) async
     #expect(try String(contentsOf: target, encoding: .utf8) == "old")
 }
 
+@Test func entryCrossVolumeUndoResumesFromVerifiedCopyCheckpoint() async throws {
+    let root = try entryFixture()
+    let fm = FileManager.default
+    defer { try? fm.removeItem(at: root) }
+    let journal = root.appendingPathComponent("journal")
+    let destination = root.appendingPathComponent("dest")
+    let source = root.appendingPathComponent("move.txt")
+    let target = destination.appendingPathComponent("move.txt")
+    try fm.createDirectory(at: destination, withIntermediateDirectories: true)
+    try Data("new".utf8).write(to: source)
+    try Data("old".utf8).write(to: target)
+    let move = try await EntryOperations.moveAcrossVolumeForTesting([source], to: destination,
+        conflictPolicy: .replace, journalDirectory: journal)
+    #expect(move.state == "completed")
+    let record = try #require(EntryOperations.latestUndoMove(journalDirectory: journal))
+    let partial = await EntryOperations.undoMove(record, journalDirectory: journal) { path in
+        do { try Data("external".utf8).write(to: path, options: .withoutOverwriting) }
+        catch { Issue.record(error) }
+    }
+    #expect(partial.items.map(\.state) == ["conflict"])
+    try fm.removeItem(at: target)
+
+    let pending = journal.appendingPathComponent("undo-move-\(record.operationId).json")
+    var saved = try #require(JSONSerialization.jsonObject(with: Data(contentsOf: pending)) as? [String: Any])
+    var items = try #require(saved["items"] as? [[String: Any]])
+    #expect(items.first?["restoredCopyIdentity"] as? String != record.items.first?.targetIdentity)
+    #expect(items.first?["restoredCopyIdentity"] != nil)
+    // Simulate losing the later checkpoint while keeping the pre-publication data.
+    items[0].removeValue(forKey: "backupRestorePending")
+    saved["items"] = items
+    try JSONSerialization.data(withJSONObject: saved).write(to: pending)
+    let checkpoint = try #require(EntryOperations.latestUndoMove(journalDirectory: journal))
+    let resumed = await EntryOperations.undoMove(checkpoint, journalDirectory: journal)
+    #expect(resumed.state == "completed")
+    #expect(resumed.journalError == nil)
+    #expect(try String(contentsOf: source, encoding: .utf8) == "new")
+    #expect(try String(contentsOf: target, encoding: .utf8) == "old")
+}
+
 @Test func entryCrossVolumeMoveCopiesVerifiesThenRemovesSource() async throws {
     let root = try entryFixture(); defer { try? FileManager.default.removeItem(at: root) }
     let journal = root.appendingPathComponent("journal")

@@ -82,7 +82,9 @@ public struct MoveUndoItem: Codable, Sendable {
     public let crossVolume: Bool
     public let targetSnapshot: [String: String]?
     public let backupSnapshot: [String: String]?
-    let backupRestorePending: Bool?
+    private(set) var backupRestorePending: Bool?
+    var restoredCopyIdentity: String? = nil
+    var restoredCopySnapshot: [String: String]? = nil
 
     public init(source: URL, target: URL, targetIdentity: String, backup: URL? = nil,
                 backupIdentity: String? = nil, crossVolume: Bool = false,
@@ -102,13 +104,14 @@ public struct MoveUndoItem: Codable, Sendable {
     }
 
     func awaitingBackupRestore() -> Self {
-        Self(source: source, target: target, targetIdentity: targetIdentity, backup: backup,
-             backupIdentity: backupIdentity, crossVolume: crossVolume, targetSnapshot: targetSnapshot,
-             backupSnapshot: backupSnapshot, backupRestorePending: true)
+        var item = self
+        item.backupRestorePending = true
+        return item
     }
 
     private enum CodingKeys: String, CodingKey {
         case source, target, targetIdentity, backup, backupIdentity, crossVolume, targetSnapshot, backupSnapshot, backupRestorePending
+        case restoredCopyIdentity, restoredCopySnapshot
     }
     public init(from decoder: Decoder) throws {
         let values = try decoder.container(keyedBy: CodingKeys.self)
@@ -121,6 +124,8 @@ public struct MoveUndoItem: Codable, Sendable {
         targetSnapshot = try values.decodeIfPresent([String: String].self, forKey: .targetSnapshot)
         backupSnapshot = try values.decodeIfPresent([String: String].self, forKey: .backupSnapshot)
         backupRestorePending = try values.decodeIfPresent(Bool.self, forKey: .backupRestorePending)
+        restoredCopyIdentity = try values.decodeIfPresent(String.self, forKey: .restoredCopyIdentity)
+        restoredCopySnapshot = try values.decodeIfPresent([String: String].self, forKey: .restoredCopySnapshot)
     }
 }
 
@@ -219,7 +224,8 @@ public enum EntryOperations {
     }
 
     private static func transferForUndo(_ source: URL, to target: URL, crossVolume: Bool,
-                                        expectedSnapshot: [String: String]?) throws {
+                                        expectedSnapshot: [String: String]?,
+                                        checkpointCopy: (String, [String: String]) throws -> Void) throws {
         let fm = FileManager.default
         if !crossVolume { try fm.moveItem(at: source, to: target); return }
         let sourceIdentity = try snapshotIdentity(source, fileManager: fm)
@@ -231,11 +237,13 @@ public enum EntryOperations {
         defer { if entryExists(stage) { try? fm.removeItem(at: stage) } }
         let payload = stage.appendingPathComponent("payload")
         try fm.copyItem(at: source, to: payload)
-        guard try CopyEngine.verifiedContentSnapshot(payload) == contentBefore,
+        let verifiedPayload = try CopyEngine.makeSnapshot(payload, cancellation: CopyCancellation())
+        guard verifiedPayload.content == contentBefore,
               try CopyEngine.verifiedSnapshot(source) == before else {
             throw MoveFailure(text: LString.crossVolumeVerificationFailed)
         }
         let payloadIdentity = try snapshotIdentity(payload, fileManager: fm)
+        try checkpointCopy(payloadIdentity, verifiedPayload.withPermissions)
         try fm.moveItem(at: payload, to: target)
         do {
             guard try CopyEngine.verifiedSnapshot(source) == before,
@@ -1032,10 +1040,18 @@ public enum EntryOperations {
             var results: [MoveUndoItemResult] = []
             var replay: [MoveRedoRecord.Item] = []
             var pendingBackupRestorations = Set<Int>()
+            var undoItems = record.items
             let pending = journalDirectory.appendingPathComponent("undo-move-\(record.operationId).json")
             func savePending(_ items: [MoveUndoItem]) throws {
                 let retryRecord = MoveUndoRecord(operationId: record.operationId, items: items, createdAt: record.createdAt)
                 try JSONEncoder().encode(retryRecord).write(to: pending, options: .atomic)
+            }
+            func checkpoint(_ index: Int) throws {
+                let remaining = undoItems.enumerated().compactMap { offset, candidate -> MoveUndoItem? in
+                    if offset > index, results[undoItems.count - 1 - offset].state == "completed" { return nil }
+                    return pendingBackupRestorations.contains(offset) ? candidate.awaitingBackupRestore() : candidate
+                }
+                try savePending(remaining)
             }
             for (index, item) in record.items.enumerated().reversed() {
                 let result: MoveUndoItemResult
@@ -1043,10 +1059,19 @@ public enum EntryOperations {
                     // A same-volume rename preserves the item's identity. If the
                     // process stopped before saving the checkpoint, the original
                     // location can prove that the first half of Undo already ran.
-                    let sourceAlreadyRestored = item.backupRestorePending != true && !item.crossVolume
+                    let sourceAlreadyRenamed = item.backupRestorePending != true && !item.crossVolume
                         && item.backup != nil && entryExists(item.source)
                         && (try? matchesUndoEntry(item.source, identity: item.targetIdentity,
                                                   snapshot: item.targetSnapshot, fileManager: fm)) == true
+                    let sourceAlreadyCopied: Bool
+                    if item.backupRestorePending != true, item.crossVolume, item.backup != nil,
+                       let identity = item.restoredCopyIdentity, let snapshot = item.restoredCopySnapshot,
+                       !entryExists(item.target), entryExists(item.source) {
+                        sourceAlreadyCopied = try matchesUndoEntry(item.source, identity: identity, snapshot: snapshot, fileManager: fm)
+                    } else {
+                        sourceAlreadyCopied = false
+                    }
+                    let sourceAlreadyRestored = sourceAlreadyRenamed || sourceAlreadyCopied
                     if item.backupRestorePending == true || sourceAlreadyRestored,
                        let backup = item.backup, let identity = item.backupIdentity,
                        !entryExists(backup), entryExists(item.target),
@@ -1091,7 +1116,12 @@ public enum EntryOperations {
                     let replaySnapshot = item.backup == nil ? item.targetSnapshot ?? (try? CopyEngine.verifiedSnapshot(item.target)) : nil
                     let destinationFolder = ShelfEntry(item.target.deletingLastPathComponent())
                     try transferForUndo(item.target, to: item.source, crossVolume: item.crossVolume,
-                                        expectedSnapshot: item.targetSnapshot)
+                                        expectedSnapshot: item.targetSnapshot) { identity, snapshot in
+                        guard item.backup != nil else { return }
+                        undoItems[index].restoredCopyIdentity = identity
+                        undoItems[index].restoredCopySnapshot = snapshot
+                        try checkpoint(index)
+                    }
                     if let replaySnapshot, let destinationFolder,
                        let identity = try? snapshotIdentity(item.source, fileManager: fm) {
                         replay.append(.init(source: item.source, target: item.target, identity: identity,
@@ -1101,11 +1131,7 @@ public enum EntryOperations {
                         pendingBackupRestorations.insert(index)
                         // Save before publishing the backup, so a restart can resume
                         // without moving the already-restored source again.
-                        let remaining = record.items.enumerated().compactMap { offset, candidate -> MoveUndoItem? in
-                            if offset > index, results[record.items.count - 1 - offset].state == "completed" { return nil }
-                            return pendingBackupRestorations.contains(offset) ? candidate.awaitingBackupRestore() : candidate
-                        }
-                        try savePending(remaining)
+                        try checkpoint(index)
                         beforeBackupRestore(item.target)
                         guard try matchesUndoEntry(backup, identity: identity, snapshot: item.backupSnapshot, fileManager: fm) else {
                             throw MoveFailure(text: LString.undoBackupChanged)
@@ -1137,7 +1163,7 @@ public enum EntryOperations {
                 if state == "completed" {
                     if fm.fileExists(atPath: pending.path) { try fm.moveItem(at: pending, to: consumed) }
                 } else {
-                    let remaining = zip(record.items, results).enumerated().compactMap { index, pair -> MoveUndoItem? in
+                    let remaining = zip(undoItems, results).enumerated().compactMap { index, pair -> MoveUndoItem? in
                         let (item, result) = pair
                         guard result.state != "completed" else { return nil }
                         return pendingBackupRestorations.contains(index) ? item.awaitingBackupRestore() : item
