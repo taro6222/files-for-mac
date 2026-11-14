@@ -6,6 +6,11 @@ on:
   pull_request:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      verify_upgrade:
+        description: Verify preview replacement and rollback
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -14,7 +19,7 @@ jobs:
   verify:
     name: macOS 15 (${{ matrix.architecture }})
     runs-on: ${{ matrix.runner }}
-    timeout-minutes: 40
+    timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix:
@@ -61,3 +66,20 @@ jobs:
           bash scripts/build-dmg.sh --preview
           python3 scripts/verify-preview-install.py build/Files-macOS-preview.dmg \
             --startup --launch-services --expect-architecture "$EXPECTED_ARCH"
+      - name: Check out the previous preview source
+        if: github.event_name == 'workflow_dispatch' && inputs.verify_upgrade
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ff22ecb8d36ca0171bca62989b7e6ae42cfcd588
+          path: build/previous-preview
+          persist-credentials: false
+      - name: Verify preview replacement and rollback
+        if: github.event_name == 'workflow_dispatch' && inputs.verify_upgrade
+        timeout-minutes: 17
+        env:
+          EXPECTED_ARCH: ${{ matrix.architecture }}
+        run: |
+          bash build/previous-preview/scripts/build-dmg.sh --preview
+          python3 scripts/verify-preview-install.py \
+            build/previous-preview/build/Files-macOS-preview.dmg build/Files-macOS-preview.dmg \
+            --expect-architecture "$EXPECTED_ARCH"

@@ -286,7 +286,7 @@ def measure_startup(image, root, bundle_id, *, interactive=False, launch_service
     }
 
 
-def exercise(previous, candidate, root, bundle_id):
+def exercise(previous, candidate, root, bundle_id, *, expected_architecture=None):
     previous_hash, candidate_hash = map(image_hash, (previous, candidate))
     if previous_hash == candidate_hash:
         raise ValueError("Expected two distinct preview images")
@@ -348,7 +348,11 @@ def exercise(previous, candidate, root, bundle_id):
         verified_stages.append(stage)
         return saved
 
-    initial_time = launch(app, probe, session_folder, home, launch_log)
+    def launch_installed(*, save_session=False):
+        return launch(app, probe, session_folder, home, launch_log,
+                      save_session=save_session, expected_architecture=expected_architecture)
+
+    initial_time = launch_installed()
     verify_user_state("firstInstall")
 
     with mounted(candidate, mountpoint) as mounted_app:
@@ -363,7 +367,7 @@ def exercise(previous, candidate, root, bundle_id):
         except subprocess.CalledProcessError:
             if sha256(installed_binary) != prior_binary:
                 raise RuntimeError("Staging modified the installed executable")
-            failure_time = launch(app, probe, session_folder, home, launch_log)
+            failure_time = launch_installed()
             verify_user_state("afterStagedSignatureFailure")
         else:
             raise RuntimeError("The damaged staging bundle passed code-signature validation")
@@ -375,7 +379,7 @@ def exercise(previous, candidate, root, bundle_id):
         raise ValueError("Expected two distinct preview executables")
     app.rename(backup)
     staged.rename(app)
-    upgrade_time = launch(app, probe, session_folder, home, launch_log, save_session=True)
+    upgrade_time = launch_installed(save_session=True)
     if version(app) != next_version or sha256(installed_binary) != next_binary:
         raise RuntimeError("The installed bundle does not match the candidate")
     saved = verify_user_state("afterReplacement")
@@ -387,7 +391,7 @@ def exercise(previous, candidate, root, bundle_id):
     run("defaults", "delete", bundle_id, "tabSession")
     app.rename(staged)
     backup.rename(app)
-    rollback_time = launch(app, probe, session_folder, home, launch_log)
+    rollback_time = launch_installed()
     if version(app) != prior_version or sha256(installed_binary) != prior_binary:
         raise RuntimeError("Rollback failed to restore the original bundle")
     saved = verify_user_state("afterRollback", has_legacy_session=False)
@@ -425,8 +429,8 @@ def main():
     parser.add_argument("--launch-services", action="store_true", help="Use Launch Services for interactive startup measurement")
     parser.add_argument("--run-parent", type=Path, help="Existing directory for the isolated installation and mount")
     parser.add_argument("--expect-architecture", choices=("arm64", "x86_64"),
-                        help="Require this architecture in each launched app process during startup measurement")
-    parser.add_argument("--expect-macos", help="Require this exact macOS product version before startup measurement")
+                        help="Require this architecture in each launched app process")
+    parser.add_argument("--expect-macos", help="Require this exact macOS product version before verification")
     args = parser.parse_args()
     if args.launch_services and not (args.startup or args.interactive_startup):
         parser.error("--launch-services requires a startup measurement")
@@ -435,8 +439,6 @@ def main():
         parser.error("Startup measurement accepts one preview image")
     if not startup and args.candidate is None:
         parser.error("Installation verification requires a previous and candidate preview image")
-    if not startup and (args.expect_architecture is not None or args.expect_macos is not None):
-        parser.error("Environment expectations require a startup measurement")
     if args.expect_macos is not None:
         actual = launch_environment()["macOS"]
         if actual != args.expect_macos:
@@ -459,10 +461,10 @@ def main():
             result = measure_startup(images[0], root, bundle_id, interactive=args.interactive_startup,
                                      launch_services=args.launch_services,
                                      expected_architecture=args.expect_architecture)
-            if args.expect_architecture is not None:
-                result["verifiedAppArchitecture"] = args.expect_architecture
         else:
-            result = exercise(*images, root, bundle_id)
+            result = exercise(*images, root, bundle_id, expected_architecture=args.expect_architecture)
+        if args.expect_architecture is not None:
+            result["verifiedAppArchitecture"] = args.expect_architecture
         (root / "report.json").write_text(json.dumps(result, indent=2) + "\n")
         print(json.dumps(result, indent=2))
     finally:
