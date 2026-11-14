@@ -8,6 +8,8 @@ M7 출시 검증이 진행 중이다. [유니버설 개발 프리뷰](verificati
 
 ## 이번 구현 단위
 
+SMB 통합 시험에 앱의 폴더 목록과 외부 파일 변경 후 다시 읽기 검사를 추가했다. [SMB 목록 검증](verification/m7/INCREMENT_142.md)
+
 SMB 통합 시험 전에 공유의 디렉터리 응답을 확인한다. [SMB 검증 기록](verification/m7/INCREMENT_141.md)
 
 복사·이동 결과의 접근성 알림에 취소 건수와 저널 저장 오류를 포함한다. [접근성 알림 검증](verification/m7/INCREMENT_140.md)

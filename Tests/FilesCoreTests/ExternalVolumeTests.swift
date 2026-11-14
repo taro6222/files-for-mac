@@ -440,16 +440,35 @@ func mountedVolumePreservesNestedCreationTimes(volumeKey: String, tolerance: Tim
     try fm.createDirectory(at: destination, withIntermediateDirectories: true)
     try fm.createDirectory(at: local, withIntermediateDirectories: true)
 
+    let filesystem = LocalFileSystem()
+    func visibleNames(in directory: URL) async throws -> Set<String> {
+        Set(try await filesystem.contents(of: directory, showHidden: false).map(\.name))
+    }
+    #expect(try await visibleNames(in: destination).isEmpty)
+
     let copySource = local.appendingPathComponent("복사-é-📁", isDirectory: true)
     try fm.createDirectory(at: copySource, withIntermediateDirectories: true)
     let payload = Data(repeating: 0x5A, count: 512 * 1024)
     try payload.write(to: copySource.appendingPathComponent("payload.bin"))
     let copy = await CopyEngine.run(sources: [copySource], destination: destination,
                                     journalDirectory: journal, cancellation: CopyCancellation())
-    #expect(copy.state == "completed")
+    try #require(copy.state == "completed", Comment(rawValue: copy.items.first?.message ?? ""))
+    #expect(try await visibleNames(in: destination) == [copySource.lastPathComponent])
+    let copiedFolder = destination.appendingPathComponent(copySource.lastPathComponent)
+    #expect(try await visibleNames(in: copiedFolder) == ["payload.bin"])
     #expect(try Data(contentsOf: destination.appendingPathComponent("복사-é-📁/payload.bin")) == payload)
     let copyUndo = try #require(CopyEngine.latestUndoCopy(journalDirectory: journal))
     #expect(await CopyEngine.undoCopy(copyUndo, journalDirectory: journal).state == "completed")
+    #expect(try await visibleNames(in: destination).isEmpty)
+
+    let external = destination.appendingPathComponent("external.txt")
+    let renamed = destination.appendingPathComponent("renamed.txt")
+    try Data("external".utf8).write(to: external)
+    #expect(try await visibleNames(in: destination) == ["external.txt"])
+    try fm.moveItem(at: external, to: renamed)
+    #expect(try await visibleNames(in: destination) == ["renamed.txt"])
+    try fm.removeItem(at: renamed)
+    #expect(try await visibleNames(in: destination).isEmpty)
 
     let moveSource = local.appendingPathComponent("move.txt")
     try Data("network-move".utf8).write(to: moveSource)
