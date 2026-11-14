@@ -681,6 +681,9 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
     private var effectiveViewSize: BrowserViewSize {
         model.location.flatMap { preferences.folderViewPreference(for: $0)?.size } ?? preferences.viewSize
     }
+    private var activeEffectiveViewSize: BrowserViewSize {
+        activeModel.location.flatMap { preferences.folderViewPreference(for: $0)?.size } ?? preferences.viewSize
+    }
     private func applyFolderViewPreference() {
         guard let url = model.location, let folder = preferences.folderViewPreference(for: url) else { return }
         model.setViewMode(folder.mode)
@@ -2060,7 +2063,7 @@ extension BrowserWindow {
                               (.large, L("보기 크기: 크게", "View Size: Large"))] {
             let item = menu.addItem(withTitle: label, action: #selector(setViewSize(_:)), keyEquivalent: "")
             item.target = self; item.representedObject = size.rawValue
-            item.state = effectiveViewSize == size ? .on : .off
+            item.state = activeEffectiveViewSize == size ? .on : .off
         }
         if let location = model.location {
             menu.addItem(.separator())
@@ -2105,9 +2108,23 @@ extension BrowserWindow {
     }
     @objc private func setViewSize(_ sender: NSMenuItem) {
         guard let raw = sender.representedObject as? String, let size = BrowserViewSize(rawValue: raw) else { return }
-        if let location = model.location, preferences.folderViewPreference(for: location) != nil {
-            preferences.setFolderViewPreference(FolderViewPreference(mode: model.viewMode, size: size), for: location)
+        setEffectiveViewSize(size)
+    }
+    private func setEffectiveViewSize(_ size: BrowserViewSize) {
+        if let location = activeModel.location, preferences.folderViewPreference(for: location) != nil {
+            preferences.setFolderViewPreference(FolderViewPreference(mode: activeModel.viewMode, size: size), for: location)
         } else { preferences.setViewSize(size) }
+    }
+    @objc func useCardsLayout(_ sender: Any?) {
+        if secondaryActive { secondaryPane?.setViewMode(.grid) } else { model.setViewMode(.grid) }
+    }
+    @objc func decreaseViewSize(_ sender: Any?) {
+        guard let index = BrowserViewSize.allCases.firstIndex(of: activeEffectiveViewSize), index > 0 else { return }
+        setEffectiveViewSize(BrowserViewSize.allCases[index - 1])
+    }
+    @objc func increaseViewSize(_ sender: Any?) {
+        guard let index = BrowserViewSize.allCases.firstIndex(of: activeEffectiveViewSize), index < BrowserViewSize.allCases.count - 1 else { return }
+        setEffectiveViewSize(BrowserViewSize.allCases[index + 1])
     }
     @objc private func saveFolderView(_ sender: Any?) {
         guard let location = model.location else { return }
@@ -2267,6 +2284,9 @@ extension BrowserWindow {
         case #selector(splitVertically(_:)), #selector(splitHorizontally(_:)): return true
         case #selector(arrangePanesVertically(_:)), #selector(arrangePanesHorizontally(_:)), #selector(focusOtherPane(_:)), #selector(openCurrentFolderInOtherPane(_:)): return secondaryPane != nil
         case #selector(toggleDualPane(_:)): return true
+        case #selector(useCardsLayout(_:)): return activeModel.location != nil
+        case #selector(decreaseViewSize(_:)): return BrowserViewSize.allCases.firstIndex(of: activeEffectiveViewSize) != 0
+        case #selector(increaseViewSize(_:)): return BrowserViewSize.allCases.firstIndex(of: activeEffectiveViewSize) != BrowserViewSize.allCases.count - 1
         case #selector(enterCompactOverlay(_:)):
             menuItem.state = compactOverlayState != nil ? .on : .off; return compactOverlayState == nil
         case #selector(exitCompactOverlay(_:)): return compactOverlayState != nil
@@ -3024,6 +3044,17 @@ extension BrowserWindow {
             preferences.setViewSize(.large)
             checks["largeViewSizeApplied"] = controller.gridView.qaItemSize == NSSize(width: 142, height: 124)
                 && controller.listView.qaRowHeight == 38
+            preferences.setViewSize(.medium)
+            controller.useCardsLayout(nil)
+            controller.decreaseViewSize(nil)
+            let decreasedViewSize = preferences.viewSize == .small
+            controller.increaseViewSize(nil); controller.increaseViewSize(nil)
+            checks["layoutSizeCommands"] = controller.model.viewMode == .grid
+                && decreasedViewSize && preferences.viewSize == .large
+            checks["layoutSizeCommandsCatalog"] = [#selector(useCardsLayout(_:)), #selector(decreaseViewSize(_:)),
+                #selector(increaseViewSize(_:))].allSatisfy { action in
+                    paletteEntries.contains { $0.item.action == action }
+                }
             preferences.setViewSize(.medium)
             controller.focusFiles(nil)
             checks["gridFocus"] = (window.firstResponder as? NSView)?.isDescendant(of: controller.gridView) == true

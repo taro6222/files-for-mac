@@ -361,6 +361,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         palette.keyEquivalentModifierMask = [.command, .shift]
         go.addItem(withTitle: L("보기 옵션…", "View Options…"), action: #selector(BrowserWindow.openViewOptions(_:)), keyEquivalent: "")
         go.addItem(withTitle: L("열 너비 자동 맞춤", "Auto Fit Columns"), action: #selector(BrowserWindow.autoFitColumns(_:)), keyEquivalent: "")
+        go.addItem(withTitle: L("카드 보기", "Cards View"), action: #selector(BrowserWindow.useCardsLayout(_:)), keyEquivalent: "")
+        go.addItem(withTitle: L("보기 크기 축소", "Decrease View Size"), action: #selector(BrowserWindow.decreaseViewSize(_:)), keyEquivalent: "-")
+        go.addItem(withTitle: L("보기 크기 확대", "Increase View Size"), action: #selector(BrowserWindow.increaseViewSize(_:)), keyEquivalent: "+")
         go.addItem(withTitle: L("사이드바 표시 전환", "Toggle Sidebar"), action: #selector(BrowserWindow.toggleSidebarVisibility(_:)), keyEquivalent: "")
         go.addItem(withTitle: L("툴바 표시 전환", "Toggle Toolbar"), action: #selector(BrowserWindow.toggleToolbar(_:)), keyEquivalent: "")
         go.addItem(withTitle: L("툴바 사용자 지정…", "Customize Toolbar…"), action: #selector(BrowserWindow.showToolbarSettings(_:)), keyEquivalent: "")
