@@ -8,6 +8,8 @@ M7 출시 검증이 진행 중이다. [유니버설 개발 프리뷰](verificati
 
 ## 이번 구현 단위
 
+파일 이동 복구 변경을 포함한 유니버설 프리뷰를 갱신했다. Apple Silicon에서 설치·교체·복원과 Launch Services 기동 20회를 확인했다. [프리뷰 설치와 기동](verification/m7/PREVIEW_0.1.0.md)
+
 AppKit 검증 스크립트가 실행별 시험 폴더를 만들고 결과 경로를 출력한다. [검증 폴더 격리](verification/m7/INCREMENT_151.md)
 
 현재 소스에서 한국어·영어와 두 테마의 AppKit 검사가 조합별로 258개 통과했다. [AppKit 회귀 기록](verification/m7/INCREMENT_150.md)
