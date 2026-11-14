@@ -510,6 +510,47 @@ func entryMoveUndoRecoversSameVolumeRenameBeforeCheckpoint(occupied: Bool) async
     #expect(try String(contentsOf: target, encoding: .utf8) == "old")
 }
 
+@Test(arguments: [false, true])
+func entryCrossVolumeUndoResumesAfterCopyPublication(edited: Bool) async throws {
+    let root = try entryFixture()
+    let fm = FileManager.default
+    defer { try? fm.removeItem(at: root) }
+    let journal = root.appendingPathComponent("journal")
+    let destination = root.appendingPathComponent("dest")
+    let source = root.appendingPathComponent("move.txt")
+    let target = destination.appendingPathComponent("move.txt")
+    try fm.createDirectory(at: destination, withIntermediateDirectories: true)
+    try Data("new".utf8).write(to: source)
+    try Data("old".utf8).write(to: target)
+    let move = try await EntryOperations.moveAcrossVolumeForTesting([source], to: destination,
+        conflictPolicy: .replace, journalDirectory: journal)
+    #expect(move.state == "completed")
+    let record = try #require(EntryOperations.latestUndoMove(journalDirectory: journal))
+    let backup = try #require(record.items.first?.backup)
+    let interrupted = await EntryOperations.undoMove(record, journalDirectory: journal,
+        afterCopyPublication: { throw CancellationError() }, beforeBackupRestore: { _ in })
+    #expect(interrupted.state == "partial")
+    #expect(try Data(contentsOf: source) == Data("new".utf8))
+    #expect(try Data(contentsOf: target) == Data("new".utf8))
+    if edited { try Data("edited".utf8).write(to: target) }
+
+    let checkpoint = try #require(EntryOperations.latestUndoMove(journalDirectory: journal))
+    #expect(checkpoint.items.first?.restoredCopyIdentity != nil)
+    #expect(checkpoint.items.first?.backupRestorePending != true)
+    let result = await EntryOperations.undoMove(checkpoint, journalDirectory: journal)
+    #expect(result.journalError == nil)
+    #expect(try Data(contentsOf: source) == Data("new".utf8))
+    if edited {
+        #expect(result.items.map(\.state) == ["changed"])
+        #expect(try Data(contentsOf: target) == Data("edited".utf8))
+        #expect(try Data(contentsOf: backup) == Data("old".utf8))
+    } else {
+        #expect(result.state == "completed")
+        #expect(try Data(contentsOf: target) == Data("old".utf8))
+        #expect(!fm.fileExists(atPath: backup.path))
+    }
+}
+
 @Test func entryCrossVolumeUndoResumesFromVerifiedCopyCheckpoint() async throws {
     let root = try entryFixture()
     let fm = FileManager.default
