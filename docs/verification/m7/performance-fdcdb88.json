@@ -1,0 +1,231 @@
+{
+  "sourceBaseSHA": "fdcdb886d0b7de4a9fc2fac6ffcd4a5dfc3401a3",
+  "binarySHA256": "3da3c182068f3347c1c2de4c3fe943da4491f8a27e6bd1cfe25971afdb20b0d8",
+  "macOS": "27.2",
+  "macOSBuild": "26B123",
+  "architecture": "arm64",
+  "memoryBytes": 25769803776,
+  "fixtureFilesystem": "apfs",
+  "fixtureVersion": "numbered-empty-text-v1",
+  "measurement": "Optimized QA build; fresh processes, OS caches warm; no thumbnails; AppKit display, not compositor presentation; sampled RSS",
+  "samples": {
+    "10000": [
+      {
+        "listingSeconds": 1.223516334,
+        "firstDisplaySeconds": 0.058481459,
+        "idleRSSBytes": 94273536,
+        "startupSeconds": 0.458528667,
+        "peakSampledRSSBytes": 126976000
+      },
+      {
+        "startupSeconds": 0.161242167,
+        "listingSeconds": 1.327101,
+        "firstDisplaySeconds": 0.057545417,
+        "idleRSSBytes": 94126080,
+        "peakSampledRSSBytes": 126959616
+      },
+      {
+        "startupSeconds": 0.150317459,
+        "firstDisplaySeconds": 0.058180375,
+        "peakSampledRSSBytes": 126992384,
+        "idleRSSBytes": 94126080,
+        "listingSeconds": 1.245123375
+      },
+      {
+        "idleRSSBytes": 94224384,
+        "firstDisplaySeconds": 0.057323709,
+        "startupSeconds": 0.148541417,
+        "listingSeconds": 1.260949792,
+        "peakSampledRSSBytes": 127172608
+      },
+      {
+        "idleRSSBytes": 94044160,
+        "firstDisplaySeconds": 0.056649333,
+        "startupSeconds": 0.149015292,
+        "listingSeconds": 1.119631458,
+        "peakSampledRSSBytes": 126926848
+      },
+      {
+        "firstDisplaySeconds": 0.056601916,
+        "listingSeconds": 1.142397666,
+        "idleRSSBytes": 94076928,
+        "startupSeconds": 0.150161083,
+        "peakSampledRSSBytes": 127320064
+      },
+      {
+        "listingSeconds": 1.060149375,
+        "startupSeconds": 0.150754459,
+        "firstDisplaySeconds": 0.055540375,
+        "peakSampledRSSBytes": 127008768,
+        "idleRSSBytes": 94093312
+      },
+      {
+        "listingSeconds": 1.086688416,
+        "idleRSSBytes": 93945856,
+        "startupSeconds": 0.15083425,
+        "firstDisplaySeconds": 0.057802583,
+        "peakSampledRSSBytes": 127156224
+      },
+      {
+        "peakSampledRSSBytes": 127074304,
+        "startupSeconds": 0.148675333,
+        "firstDisplaySeconds": 0.057221,
+        "idleRSSBytes": 93962240,
+        "listingSeconds": 1.155783375
+      },
+      {
+        "idleRSSBytes": 94044160,
+        "listingSeconds": 1.140461708,
+        "peakSampledRSSBytes": 126730240,
+        "startupSeconds": 0.14970225,
+        "firstDisplaySeconds": 0.051122125
+      },
+      {
+        "startupSeconds": 0.151062542,
+        "listingSeconds": 1.195669416,
+        "firstDisplaySeconds": 0.056582541,
+        "peakSampledRSSBytes": 127352832,
+        "idleRSSBytes": 94093312
+      },
+      {
+        "idleRSSBytes": 93962240,
+        "firstDisplaySeconds": 0.057623459,
+        "peakSampledRSSBytes": 127221760,
+        "startupSeconds": 0.147714625,
+        "listingSeconds": 1.094484709
+      },
+      {
+        "idleRSSBytes": 94158848,
+        "startupSeconds": 0.153414125,
+        "peakSampledRSSBytes": 127008768,
+        "firstDisplaySeconds": 0.057644583,
+        "listingSeconds": 1.112299708
+      },
+      {
+        "startupSeconds": 0.152082208,
+        "listingSeconds": 1.086910875,
+        "peakSampledRSSBytes": 127123456,
+        "firstDisplaySeconds": 0.0580685,
+        "idleRSSBytes": 94126080
+      },
+      {
+        "peakSampledRSSBytes": 127287296,
+        "firstDisplaySeconds": 0.049293292,
+        "startupSeconds": 0.153966542,
+        "listingSeconds": 1.143811834,
+        "idleRSSBytes": 94289920
+      },
+      {
+        "startupSeconds": 0.15324225,
+        "listingSeconds": 1.213223958,
+        "idleRSSBytes": 94076928,
+        "peakSampledRSSBytes": 126976000,
+        "firstDisplaySeconds": 0.058453458
+      },
+      {
+        "firstDisplaySeconds": 0.048517625,
+        "startupSeconds": 0.150165292,
+        "listingSeconds": 1.1610935,
+        "peakSampledRSSBytes": 126894080,
+        "idleRSSBytes": 93995008
+      },
+      {
+        "firstDisplaySeconds": 0.057992917,
+        "listingSeconds": 1.145574125,
+        "idleRSSBytes": 94765056,
+        "startupSeconds": 0.152525709,
+        "peakSampledRSSBytes": 127270912
+      },
+      {
+        "peakSampledRSSBytes": 127533056,
+        "firstDisplaySeconds": 0.057253417,
+        "listingSeconds": 1.102501959,
+        "idleRSSBytes": 94404608,
+        "startupSeconds": 0.1552385
+      },
+      {
+        "idleRSSBytes": 94109696,
+        "peakSampledRSSBytes": 126910464,
+        "startupSeconds": 0.152678333,
+        "firstDisplaySeconds": 0.049437625,
+        "listingSeconds": 1.13994975
+      }
+    ],
+    "100000": [
+      {
+        "idleRSSBytes": 93896704,
+        "firstDisplaySeconds": 0.051794458,
+        "listingSeconds": 13.163783458,
+        "peakSampledRSSBytes": 255737856,
+        "startupSeconds": 0.153967208
+      },
+      {
+        "peakSampledRSSBytes": 256016384,
+        "startupSeconds": 0.160015375,
+        "listingSeconds": 11.922568708,
+        "idleRSSBytes": 94044160,
+        "firstDisplaySeconds": 0.058965041
+      },
+      {
+        "firstDisplaySeconds": 0.057447167,
+        "idleRSSBytes": 94093312,
+        "listingSeconds": 11.471023,
+        "peakSampledRSSBytes": 256049152,
+        "startupSeconds": 0.16193675
+      }
+    ]
+  },
+  "summary": {
+    "10000": {
+      "listingSeconds": {
+        "max": 1.327101,
+        "p95": 1.260949792
+      },
+      "firstDisplaySeconds": {
+        "max": 0.058481459,
+        "p95": 0.058453458
+      },
+      "idleRSSBytes": {
+        "max": 94765056,
+        "p95": 94404608
+      },
+      "startupSeconds": {
+        "max": 0.458528667,
+        "p95": 0.161242167
+      },
+      "peakSampledRSSBytes": {
+        "max": 127533056,
+        "p95": 127352832
+      }
+    },
+    "100000": {
+      "idleRSSBytes": {
+        "max": 94093312,
+        "p95": 94093312
+      },
+      "firstDisplaySeconds": {
+        "max": 0.058965041,
+        "p95": 0.058965041
+      },
+      "listingSeconds": {
+        "max": 13.163783458,
+        "p95": 13.163783458
+      },
+      "peakSampledRSSBytes": {
+        "max": 256049152,
+        "p95": 256049152
+      },
+      "startupSeconds": {
+        "max": 0.16193675,
+        "p95": 0.16193675
+      }
+    }
+  },
+  "idle300Seconds": {
+    "idleRSSBytes": 95371264,
+    "peakSampledRSSBytes": 126255104,
+    "firstDisplaySeconds": 0.295231084,
+    "startupSeconds": 0.154107333,
+    "listingSeconds": 6.926843209
+  }
+}
