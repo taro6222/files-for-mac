@@ -103,6 +103,11 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
     private var gitLocation: URL?
     private var gitStatuses: [String: String] = [:]
     private var gitChangedPaths: [String] = []
+    private var gitCommitRoot: URL?
+    private var gitCommits: [URL: GitFileCommit] = [:]
+    private var gitCommitRequested: Set<URL> = []
+    private var gitCommitQueue: [URL] = []
+    private var gitCommitTask: Task<Void, Never>?
     private var gitObservedLoading = false
     private var autoFitObservedLoading = false
     private var folderSizeTask: Task<Void, Never>?
@@ -195,6 +200,7 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
                 self.watcher = nil
                 self.model.onChange = nil; self.model.cancelLoad()
                 self.completionTask?.cancel(); self.volumeTask?.cancel(); self.cloudTask?.cancel(); self.gitTask?.cancel(); self.folderSizeTask?.cancel()
+                self.resetGitCommits()
                 self.secondaryPane?.shutdown()
                 if let token = self.preferencesToken { self.preferences.removeObserver(token) }
                 for token in self.observerTokens {
@@ -378,13 +384,19 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         table.setDraggingSourceOperationMask(.copy, forLocal: false)
         table.setAccessibilityLabel(L("파일 목록", "File list"))
         let specs: [(String, String, CGFloat)] = [("name", L("이름", "Name"), 340), ("git", "Git", 72),
+            ("gitCommitDate", L("Git 커밋 날짜", "Git Commit Date"), 140),
+            ("gitCommitMessage", L("Git 커밋 메시지", "Git Commit Message"), 140),
+            ("gitCommitAuthor", L("Git 커밋 작성자", "Git Commit Author"), 140),
+            ("gitCommitSHA", L("Git 커밋 SHA", "Git Commit SHA"), 100),
             ("tag", L("Finder 태그", "Finder Tags"), 150), ("path", L("폴더 경로", "Folder Path"), 260),
             ("created", L("생성일", "Date Created"), 200), ("modified", L("수정일", "Date Modified"), 185),
             ("kind", L("종류", "Kind"), 140), ("size", L("크기", "Size"), 100)]
         for (key, label, width) in specs {
             let column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier(key))
             column.title = label; column.width = width; column.minWidth = 70
-            if key != "git" { column.sortDescriptorPrototype = NSSortDescriptor(key: key, ascending: true) }
+            if key != "git" && !key.hasPrefix("gitCommit") {
+                column.sortDescriptorPrototype = NSSortDescriptor(key: key, ascending: true)
+            }
             table.addTableColumn(column)
         }
         applyColumnVisibility()
@@ -738,6 +750,7 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         let gitLoadCompleted = gitObservedLoading && !model.isLoading
         gitObservedLoading = model.isLoading
         if model.location == nil {
+            resetGitCommits()
             gitTask?.cancel(); gitTask = nil; gitGeneration += 1; gitLocation = nil; gitStatuses = [:]; gitChangedPaths = []
         } else if !model.isLoading, let location = model.location, gitLocation != location || gitLoadCompleted {
             refreshGitStatuses(for: location)
@@ -880,6 +893,11 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
             if iconCache[cacheKey] == nil { iconCache[cacheKey] = fileIcon(for: item, showsThumbnails: preferences.showThumbnails) }
             cell.imageView?.image = iconCache[cacheKey]
         case "git": cell.textField?.stringValue = gitStatus(for: item)
+        case "gitCommitDate", "gitCommitMessage", "gitCommitAuthor", "gitCommitSHA":
+            requestGitCommit(for: item)
+            let value = gitCommitValue(key, for: item)
+            cell.textField?.stringValue = value
+            cell.toolTip = gitCommits[item.url]?.sha == nil ? nil : (key == "gitCommitSHA" ? gitCommits[item.url]?.sha : value)
         case "tag": cell.textField?.stringValue = item.tags.isEmpty ? "—" : item.tags.joined(separator: ", ")
         case "path": cell.textField?.stringValue = item.url.deletingLastPathComponent().standardizedFileURL.path
         case "created": cell.textField?.stringValue = item.created.map(dateFormatter.string) ?? "—"
@@ -896,6 +914,7 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
     }
     func tableView(_ tableView: NSTableView, shouldSelectRow row: Int) -> Bool { detailItem(at: row, in: detailRows) != nil }
     private func refreshGitStatuses(for location: URL) {
+        resetGitCommits()
         gitTask?.cancel(); gitGeneration += 1; let request = gitGeneration
         gitLocation = location; gitStatuses = [:]; gitChangedPaths = []; reloadGitColumn()
         gitTask = Task { [weak self] in
@@ -909,12 +928,60 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
                     let path = snapshot.root.appendingPathComponent(entry.path).standardizedFileURL.path
                     statuses[path] = "\(entry.indexStatus)\(entry.workTreeStatus)"; changed.append(path)
                 }
+                gitCommitRoot = snapshot.root
                 gitStatuses = statuses; gitChangedPaths = changed.sorted(); reloadGitColumn()
             } catch is CancellationError { return }
             catch {
                 guard request == gitGeneration, model.location == location else { return }
                 gitStatuses = [:]; gitChangedPaths = []; reloadGitColumn()
             }
+        }
+    }
+    private func resetGitCommits() {
+        gitCommitTask?.cancel()
+        gitCommitTask = nil
+        gitCommitRoot = nil
+        gitCommits.removeAll()
+        gitCommitRequested.removeAll()
+        gitCommitQueue.removeAll()
+    }
+    private func requestGitCommit(for item: FileItem) {
+        guard !item.isDirectory, !model.isLoading, gitLocation == model.location,
+              let root = gitCommitRoot, gitCommitRequested.insert(item.url).inserted else { return }
+        gitCommitQueue.append(item.url)
+        guard gitCommitTask == nil else { return }
+        let generation = gitGeneration
+        gitCommitTask = Task { [weak self] in
+            while !Task.isCancelled, let url = self?.gitCommitQueue.popLast() {
+                let commit = try? await GitProvider().lastCommit(for: url, in: root)
+                guard !Task.isCancelled, let self, self.gitGeneration == generation,
+                      self.gitLocation == self.model.location else { return }
+                if let commit {
+                    self.gitCommits[url] = commit
+                    self.reloadGitCommitRow(for: url)
+                }
+            }
+            if !Task.isCancelled, self?.gitGeneration == generation { self?.gitCommitTask = nil }
+        }
+    }
+    private func reloadGitCommitRow(for url: URL) {
+        let visible = table.rows(in: table.visibleRect)
+        guard visible.location != NSNotFound else { return }
+        for row in visible.location..<(visible.location + visible.length) {
+            guard detailItem(at: row, in: detailRows)?.url == url else { continue }
+            let columns = IndexSet(table.tableColumns.indices.filter {
+                table.tableColumns[$0].identifier.rawValue.hasPrefix("gitCommit") && !table.tableColumns[$0].isHidden
+            })
+            table.reloadData(forRowIndexes: IndexSet(integer: row), columnIndexes: columns)
+        }
+    }
+    private func gitCommitValue(_ column: String, for item: FileItem) -> String {
+        guard gitLocation == model.location, let commit = gitCommits[item.url] else { return "—" }
+        switch column {
+        case "gitCommitDate": return dateFormatter.string(from: commit.date)
+        case "gitCommitMessage": return commit.subject
+        case "gitCommitAuthor": return commit.author
+        default: return String(commit.sha.prefix(12))
         }
     }
     private func reloadGitColumn() {
@@ -1365,6 +1432,7 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
             switch identifier.rawValue {
             case "name": return item.displayName(showExtensions: preferences.showExtensions)
             case "git": return gitStatus(for: item)
+            case "gitCommitDate", "gitCommitMessage", "gitCommitAuthor", "gitCommitSHA": return gitCommitValue(identifier.rawValue, for: item)
             case "created": return item.created.map(dateFormatter.string) ?? "—"
             case "modified": return item.modified.map(dateFormatter.string) ?? "—"
             case "kind": return item.kind == "Folder" ? L("폴더", "Folder") : (item.kind == "File" ? L("파일", "File") : item.kind)
@@ -2297,6 +2365,10 @@ extension BrowserWindow {
             (L("종류 열 표시", "Show Kind Column"), #selector(toggleTypeColumn(_:)), preferences.showTypeColumn),
             (L("크기 열 표시", "Show Size Column"), #selector(toggleSizeColumn(_:)), preferences.showSizeColumn),
             (L("Git 상태 열 표시", "Show Git Status Column"), #selector(toggleGitColumn(_:)), preferences.showGitStatusColumn),
+            (L("Git 커밋 날짜 열 표시", "Show Git Commit Date Column"), #selector(toggleGitCommitDateColumn(_:)), preferences.showGitCommitDateColumn),
+            (L("Git 커밋 메시지 열 표시", "Show Git Commit Message Column"), #selector(toggleGitCommitMessageColumn(_:)), preferences.showGitCommitMessageColumn),
+            (L("Git 커밋 작성자 열 표시", "Show Git Commit Author Column"), #selector(toggleGitCommitAuthorColumn(_:)), preferences.showGitCommitAuthorColumn),
+            (L("Git 커밋 SHA 열 표시", "Show Git Commit SHA Column"), #selector(toggleGitCommitSHAColumn(_:)), preferences.showGitCommitSHAColumn),
             (L("Finder 태그 열 표시", "Show Finder Tags Column"), #selector(toggleTagColumn(_:)), preferences.showFileTagColumn),
             (L("폴더 경로 열 표시", "Show Folder Path Column"), #selector(togglePathColumn(_:)), preferences.showPathColumn),
             (L("홈: 빠른 접근", "Home: Quick Access"), #selector(toggleHomeFavorites(_:)), preferences.showHomeFavorites),
@@ -2336,6 +2408,18 @@ extension BrowserWindow {
     @objc private func toggleTypeColumn(_ sender: Any?) { preferences.setShowTypeColumn(!preferences.showTypeColumn) }
     @objc private func toggleSizeColumn(_ sender: Any?) { preferences.setShowSizeColumn(!preferences.showSizeColumn) }
     @objc private func toggleGitColumn(_ sender: Any?) { preferences.setShowGitStatusColumn(!preferences.showGitStatusColumn) }
+    @objc private func toggleGitCommitDateColumn(_ sender: Any?) {
+        preferences.setShowGitCommitDateColumn(!preferences.showGitCommitDateColumn)
+    }
+    @objc private func toggleGitCommitMessageColumn(_ sender: Any?) {
+        preferences.setShowGitCommitMessageColumn(!preferences.showGitCommitMessageColumn)
+    }
+    @objc private func toggleGitCommitAuthorColumn(_ sender: Any?) {
+        preferences.setShowGitCommitAuthorColumn(!preferences.showGitCommitAuthorColumn)
+    }
+    @objc private func toggleGitCommitSHAColumn(_ sender: Any?) {
+        preferences.setShowGitCommitSHAColumn(!preferences.showGitCommitSHAColumn)
+    }
     @objc private func toggleTagColumn(_ sender: Any?) { preferences.setShowFileTagColumn(!preferences.showFileTagColumn) }
     @objc private func togglePathColumn(_ sender: Any?) { preferences.setShowPathColumn(!preferences.showPathColumn) }
     private func applyColumnVisibility() {
@@ -2344,6 +2428,10 @@ extension BrowserWindow {
         table.tableColumn(withIdentifier: .init("kind"))?.isHidden = !preferences.showTypeColumn
         table.tableColumn(withIdentifier: .init("size"))?.isHidden = !preferences.showSizeColumn
         table.tableColumn(withIdentifier: .init("git"))?.isHidden = !preferences.showGitStatusColumn
+        table.tableColumn(withIdentifier: .init("gitCommitDate"))?.isHidden = !preferences.showGitCommitDateColumn
+        table.tableColumn(withIdentifier: .init("gitCommitMessage"))?.isHidden = !preferences.showGitCommitMessageColumn
+        table.tableColumn(withIdentifier: .init("gitCommitAuthor"))?.isHidden = !preferences.showGitCommitAuthorColumn
+        table.tableColumn(withIdentifier: .init("gitCommitSHA"))?.isHidden = !preferences.showGitCommitSHAColumn
         table.tableColumn(withIdentifier: .init("tag"))?.isHidden = !preferences.showFileTagColumn
         table.tableColumn(withIdentifier: .init("path"))?.isHidden = !preferences.showPathColumn
     }
@@ -3033,12 +3121,36 @@ extension BrowserWindow {
                 let qaGitFile = cloneDestination.appendingPathComponent("qa-untracked.txt")
                 try Data("Git column QA".utf8).write(to: qaGitFile, options: .atomic)
                 preferences.setShowGitStatusColumn(true)
+                preferences.setShowGitCommitDateColumn(true)
+                preferences.setShowGitCommitMessageColumn(true)
+                preferences.setShowGitCommitAuthorColumn(true)
+                preferences.setShowGitCommitSHAColumn(true)
                 let gitList = BrowserWindow(preferences: preferences, restoresFrame: false, initialLocation: cloneDestination, cloudProvider: qaCloudProvider)
                 gitList.showWindow(nil); let gitListWait = ContinuousClock.now
                 while (gitList.model.isLoading || gitList.qaGitLoading) && gitListWait.duration(to: .now) < .seconds(15) { try await Task.sleep(for: .milliseconds(20)) }
                 checks["gitFileColumn"] = gitList.qaGitColumnVisible && gitList.qaGitMarkedRows > 0
+                let commitColumns = ["gitCommitDate", "gitCommitMessage", "gitCommitAuthor", "gitCommitSHA"]
+                if let row = gitList.detailRows.indices.first(where: {
+                    detailItem(at: $0, in: gitList.detailRows)?.name == "README.md"
+                }), let tracked = detailItem(at: row, in: gitList.detailRows) {
+                    for key in commitColumns {
+                        let column = gitList.table.tableColumn(withIdentifier: .init(key))
+                        _ = gitList.tableView(gitList.table, viewFor: column, row: row)
+                    }
+                    let metadataWait = ContinuousClock.now
+                    while gitList.gitCommits[tracked.url] == nil && metadataWait.duration(to: .now) < .seconds(10) {
+                        try await Task.sleep(for: .milliseconds(20))
+                    }
+                    checks["gitCommitColumns"] = commitColumns.allSatisfy {
+                        gitList.qaVisibleDetailColumns.contains($0) && gitList.gitCommitValue($0, for: tracked) != "—"
+                    } && gitList.gitCommitValue("gitCommitSHA", for: tracked).count == 12
+                } else { checks["gitCommitColumns"] = false }
                 try capture("git-file-column", view: gitList.window?.contentView); gitList.close(); window.makeKeyAndOrderFront(nil)
                 preferences.setShowGitStatusColumn(false)
+                preferences.setShowGitCommitDateColumn(false)
+                preferences.setShowGitCommitMessageColumn(false)
+                preferences.setShowGitCommitAuthorColumn(false)
+                preferences.setShowGitCommitSHAColumn(false)
             } else { checks["shortcutSettingsWindow"] = false }
             controller.showToolbarSettings(nil); try await Task.sleep(for: .milliseconds(50))
             checks["toolbarSettingsWindow"] = controller.toolbarSettingsWindow?.window?.isVisible == true

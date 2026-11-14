@@ -27,6 +27,36 @@ import Testing
     #expect(snapshot.entries.contains { $0.path == "한글 file.txt" && $0.kind == .untracked })
 }
 
+@Test func gitLastCommitUsesLiteralPathAndCurrentHead() async throws {
+    let fm = FileManager.default
+    let root = fm.temporaryDirectory.appendingPathComponent("files-git-history-\(UUID())", isDirectory: true)
+    try fm.createDirectory(at: root, withIntermediateDirectories: true)
+    defer { try? fm.removeItem(at: root) }
+    try runGit(["init", "-b", "main"], at: root)
+    try configureIdentity(root)
+    let literal = root.appendingPathComponent("한글[1].txt")
+    let other = root.appendingPathComponent("한글1.txt")
+    try Data("first".utf8).write(to: literal)
+    try runGit(["--literal-pathspecs", "add", "--", literal.lastPathComponent], at: root)
+    try runGit(["commit", "-m", "첫 커밋"], at: root)
+    let sha = try gitOutput(["rev-parse", "HEAD"], at: root)
+    let timestamp = try #require(Int64(gitOutput(["show", "-s", "--format=%ct", "HEAD"], at: root)))
+    try Data("second".utf8).write(to: other)
+    try runGit(["add", "--", other.lastPathComponent], at: root)
+    try runGit(["commit", "-m", "Other file"], at: root)
+
+    let provider = GitProvider()
+    let commit = try #require(await provider.lastCommit(for: literal, in: root))
+    #expect(commit.sha == sha)
+    #expect(commit.subject == "첫 커밋")
+    #expect(commit.author == "Files Test")
+    #expect(commit.date == Date(timeIntervalSince1970: Double(timestamp)))
+    try runGit(["--literal-pathspecs", "rm", "--", literal.lastPathComponent], at: root)
+    try runGit(["commit", "-m", "Remove literal file"], at: root)
+    try Data("untracked replacement".utf8).write(to: literal)
+    #expect(try await provider.lastCommit(for: literal, in: root) == nil)
+}
+
 @Test func gitInitializeAndSafeSyncUseTrackedRemoteWithoutForce() async throws {
     let fm = FileManager.default, root = fm.temporaryDirectory.appendingPathComponent("files-git-sync-\(UUID())", isDirectory: true)
     defer { try? fm.removeItem(at: root) }; try fm.createDirectory(at: root, withIntermediateDirectories: true)

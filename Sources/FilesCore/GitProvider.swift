@@ -97,10 +97,38 @@ public struct GitStatusParser: Sendable {
     }
 }
 
+public struct GitFileCommit: Sendable, Equatable {
+    public let date: Date
+    public let subject: String
+    public let author: String
+    public let sha: String
+}
+
 public struct GitProvider: Sendable {
     private let executable: URL
     public init() { executable = URL(fileURLWithPath: "/usr/bin/git") }
     init(executable: URL) { self.executable = executable }
+    public func lastCommit(for file: URL, in repository: URL) async throws -> GitFileCommit? {
+        let root = repository.resolvingSymlinksInPath().path
+        let path = file.deletingLastPathComponent().resolvingSymlinksInPath().appendingPathComponent(file.lastPathComponent).path
+        let prefix = root.hasSuffix("/") ? root : root + "/"
+        guard file.isFileURL, repository.isFileURL, path.hasPrefix(prefix), path.count > prefix.count else {
+            throw GitBackendError.invalidLocation
+        }
+        let relative = String(path.dropFirst(prefix.count))
+        let base = ["--literal-pathspecs", "-C", root]
+        let tracked = try await run(base + ["ls-tree", "-z", "HEAD", "--", relative], at: repository)
+        guard !tracked.isEmpty else { return nil }
+        let data = try await run(base + ["-c", "log.showSignature=false", "log", "-1", "--no-notes",
+            "--format=%H%x00%ct%x00%an%x00%s%x00", "HEAD", "--", relative], at: repository)
+        guard !data.isEmpty else { return nil }
+        let fields = String(decoding: data, as: UTF8.self).split(separator: "\0", omittingEmptySubsequences: false)
+        guard fields.count == 5, [40, 64].contains(fields[0].count),
+              fields[0].utf8.allSatisfy({ (48...57).contains($0) || (97...102).contains($0) }),
+              let seconds = Int64(fields[1]) else { throw GitBackendError.invalidOutput }
+        return GitFileCommit(date: Date(timeIntervalSince1970: Double(seconds)), subject: String(fields[3]),
+                             author: String(fields[2]), sha: String(fields[0]))
+    }
     public func snapshot(at location: URL, fileManager: FileManager = .default) async throws -> GitRepositorySnapshot {
         guard location.isFileURL, fileManager.fileExists(atPath: location.path), fileManager.isExecutableFile(atPath: executable.path) else {
             throw fileManager.isExecutableFile(atPath: executable.path) ? GitBackendError.invalidLocation : GitBackendError.gitUnavailable
