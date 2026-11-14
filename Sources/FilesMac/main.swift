@@ -37,7 +37,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         #endif
         _ = try? diagnosticArtifacts.append(event: "application launched")
         applyAppearance()
-        preferencesToken = BrowserPreferences.shared.observe(includesRecentLocations: false) { [weak self] in self?.applyAppearance() }
         buildMenu()
         configureShortcuts()
         #if DEBUG
@@ -50,6 +49,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             return
         }
         #endif
+        preferencesToken = BrowserPreferences.shared.observe(includesRecentLocations: false) { [weak self] in self?.applyAppearance() }
         NotificationCenter.default.addObserver(self, selector: #selector(browserWindowBecameKey(_:)),
             name: NSWindow.didBecomeKeyNotification, object: nil)
         var restored: [(index: Int, workspace: SplitTabState)] = []

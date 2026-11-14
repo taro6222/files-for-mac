@@ -3767,17 +3767,21 @@ extension BrowserWindow {
             let qaCloudProvider = CloudLocationProvider(cloudStorageRoot: qaCloudStorage, iCloudDriveRoot: qaICloud)
             let preferences = BrowserPreferences(defaults: defaults, initialFavorites: [fixture])
             let dark = ProcessInfo.processInfo.environment["FILES_UI_QA_THEME"] == "dark"
-            NSApp.appearance = NSAppearance(named: dark ? .darkAqua : .aqua)
+            let expectedAppearance: NSAppearance.Name = dark ? .darkAqua : .aqua
+            NSApp.appearance = NSAppearance(named: expectedAppearance)
             var storageRequests: [URL] = []
             let controller = BrowserWindow(preferences: preferences, restoresFrame: false, cloudProvider: qaCloudProvider,
                                            openSystemURL: { storageRequests.append($0); return true })
             guard let window = controller.window, let root = window.contentView else { throw CocoaError(.coderInvalidValue) }
-            window.appearance = NSAppearance(named: dark ? .darkAqua : .aqua)
+            window.appearance = NSAppearance(named: expectedAppearance)
             window.setFrame(NSRect(x: 80, y: 80, width: 900, height: 600), display: true)
             controller.showWindow(nil)
             NSApp.activate(ignoringOtherApps: true)
+            var capturesUseRequestedTheme = true
             func capture(_ name: String, view: NSView? = nil) throws {
                 let view = view ?? root
+                capturesUseRequestedTheme = capturesUseRequestedTheme
+                    && view.effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == expectedAppearance
                 view.layoutSubtreeIfNeeded()
                 view.displayIfNeeded()
                 guard let bitmap = view.bitmapImageRepForCachingDisplay(in: view.bounds) else { throw CocoaError(.fileWriteUnknown) }
@@ -5137,6 +5141,7 @@ extension BrowserWindow {
             checks["loadingButtonRestoresRefreshSymbol"] = cancellable.refreshButton.image === idleImage
             checks["cancelledRecoveryVisible"] = !cancellable.recoveryActions.isHidden
             try capture("cancelled", view: cancellable.window?.contentView)
+            checks["capturesUseRequestedTheme"] = capturesUseRequestedTheme
             try await Task.sleep(for: .milliseconds(400))
             cancellable.requestWatcherRefresh(for: denied)
             checks["cancelledReadStaysStopped"] = cancellable.model.wasCancelled && !cancellable.model.isLoading
