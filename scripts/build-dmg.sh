@@ -26,7 +26,7 @@ case "$mode" in
 esac
 
 scripts/build-app.sh --universal
-stage=$(mktemp -d "${TMPDIR:-/tmp}/files-dmg.XXXXXX")
+stage=$(mktemp -d "$PWD/build/.files-dmg.XXXXXX")
 trap 'rm -rf -- "$stage"' EXIT
 app="$stage/contents/Files macOS.app"
 mkdir -p "$stage/contents"
@@ -37,20 +37,34 @@ cp docs/RELEASE_NOTES.md "$stage/contents/Release Notes.txt"
 if [[ "$mode" == --release ]]; then
   codesign --force --options runtime --timestamp --sign "$FILES_SIGNING_IDENTITY" "$app"
 fi
-codesign --verify --strict --verbose=2 "$app"
+codesign --verify --all-architectures --strict --verbose=2 "$app"
 
 image="$stage/$file_name"
 /usr/bin/hdiutil create -volname "Files macOS" -srcfolder "$stage/contents" -format UDZO "$image"
-/usr/bin/hdiutil verify "$image"
 if [[ "$mode" == --release ]]; then
   codesign --timestamp --sign "$FILES_SIGNING_IDENTITY" "$image"
-  xcrun notarytool submit "$image" --keychain-profile "$FILES_NOTARY_PROFILE" --wait
+  response="$stage/notarization.plist"
+  if ! xcrun notarytool submit "$image" --keychain-profile "$FILES_NOTARY_PROFILE" \
+      --wait --output-format plist > "$response"; then
+    echo "Notarization submission failed." >&2
+    /usr/libexec/PlistBuddy -c 'Print :id' "$response" >&2 || true
+    exit 1
+  fi
+  submission=$(/usr/libexec/PlistBuddy -c 'Print :id' "$response")
+  status=$(/usr/libexec/PlistBuddy -c 'Print :status' "$response")
+  printf 'Notarization submission %s: %s\n' "$submission" "$status"
+  if [[ "$status" != Accepted ]]; then
+    echo "The release image was not accepted for notarization." >&2
+    exit 1
+  fi
   xcrun stapler staple "$image"
   xcrun stapler validate "$image"
   codesign --verify --verbose=2 "$image"
   spctl --assess --type open --context context:primary-signature --verbose=2 "$image"
 fi
+/usr/bin/hdiutil verify "$image"
+(cd "$stage" && shasum -a 256 "$file_name" > "$file_name.sha256")
 
 mv -f -- "$image" "build/$file_name"
-(cd build && shasum -a 256 "$file_name" > "$file_name.sha256")
+mv -f -- "$stage/$file_name.sha256" "build/$file_name.sha256"
 printf 'Built %s\n' "$PWD/build/$file_name"

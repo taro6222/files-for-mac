@@ -3,7 +3,7 @@
 | 검증 | 현재 증거 | 완료에 필요한 실행 |
 |---|---|---|
 | 로컬 설치 이미지 | Apple Silicon 마운트, 체크섬, ad-hoc 앱 서명 및 실행 | 깨끗한 Mac에서 다운로드·설치·재실행 |
-| Developer ID·공증 | 서명·공증 실행 경로 제공, 인증서와 Keychain 프로필 준비 중 | 설치된 인증서와 Keychain 프로필로 정식 DMG를 만들고 Gatekeeper 검사 |
+| Developer ID·공증 | 공증 응답 검사와 최종 이미지 검증 경로, 모의 실패에서 기존 산출물 보존 확인. 자격 증명 준비 중 | 설치된 인증서와 Keychain 프로필로 정식 DMG를 만들고 Gatekeeper 검사 |
 | OS·CPU 환경 | Apple Silicon macOS 27.2에서 실행, Intel용 바이너리 교차 컴파일 | Intel 및 최소 지원 macOS 14에서 실행·회귀 |
 | 로컬·네트워크 볼륨 | APFS·대소문자 구분 APFS·exFAT 파일 작업과 일괄 이름 교환, 시스템 휴지통 검증 | 실제 SMB 공유에서 재연결, 중단, 권한, 갱신 |
 | 외부 서비스 | FTP/FTPS/SFTP 루프백 및 Git 임시 원격 검증 | 실제 클라우드 계정, 외부 서버 인증·오프라인, Git 인증 조합 |
