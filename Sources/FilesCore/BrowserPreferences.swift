@@ -7,6 +7,9 @@ public enum BrowserAppearance: String, CaseIterable, Sendable {
     case system, light, dark
 }
 public enum BrowserSizeUnit: String, CaseIterable, Sendable { case binary, decimal }
+public enum AppBackgroundFit: String, CaseIterable, Codable, Sendable { case fill, fit, stretch }
+public enum AppBackgroundHorizontalAlignment: String, CaseIterable, Codable, Sendable { case leading, center, trailing }
+public enum AppBackgroundVerticalAlignment: String, CaseIterable, Codable, Sendable { case bottom, center, top }
 public func formatByteCount(_ value: Int64, unit: BrowserSizeUnit) -> String {
     ByteCountFormatter.string(fromByteCount: value, countStyle: unit == .binary ? .binary : .file)
 }
@@ -77,6 +80,10 @@ public struct BrowserPreferencesArchive: Codable, Equatable, Sendable {
     public let startupLocationPath: String?
     public let developerApplicationPath: String?
     public let appBackgroundPath: String?
+    public let appBackgroundFit: String?
+    public let appBackgroundOpacity: Double?
+    public let appBackgroundHorizontalAlignment: String?
+    public let appBackgroundVerticalAlignment: String?
     public let toolbarOrder: [String]
     public let hiddenToolbarItems: [String]
     public let folderViewPreferences: [String: FolderViewPreference]
@@ -144,6 +151,10 @@ public final class BrowserPreferences {
     public private(set) var startupLocationPath: String?
     public private(set) var developerApplicationPath: String?
     public private(set) var appBackgroundPath: String?
+    public private(set) var appBackgroundFit: AppBackgroundFit
+    public private(set) var appBackgroundOpacity: Double
+    public private(set) var appBackgroundHorizontalAlignment: AppBackgroundHorizontalAlignment
+    public private(set) var appBackgroundVerticalAlignment: AppBackgroundVerticalAlignment
     public private(set) var toolbarOrder: [BrowserToolbarItem]
     public private(set) var hiddenToolbarItems: Set<BrowserToolbarItem>
     public private(set) var folderViewPreferences: [String: FolderViewPreference]
@@ -205,6 +216,10 @@ public final class BrowserPreferences {
         startupLocationPath = defaults.string(forKey: "startupLocationPath").flatMap { $0.hasPrefix("/") ? $0 : nil }
         developerApplicationPath = defaults.string(forKey: "developerApplicationPath")
         appBackgroundPath = defaults.string(forKey: "appBackgroundPath").flatMap { $0.hasPrefix("/") ? $0 : nil }
+        appBackgroundFit = defaults.string(forKey: "appBackgroundFit").flatMap(AppBackgroundFit.init(rawValue:)) ?? .fill
+        appBackgroundOpacity = min(1, max(0, defaults.object(forKey: "appBackgroundOpacity") as? Double ?? 1))
+        appBackgroundHorizontalAlignment = defaults.string(forKey: "appBackgroundHorizontalAlignment").flatMap(AppBackgroundHorizontalAlignment.init(rawValue:)) ?? .center
+        appBackgroundVerticalAlignment = defaults.string(forKey: "appBackgroundVerticalAlignment").flatMap(AppBackgroundVerticalAlignment.init(rawValue:)) ?? .center
         var toolbar: [BrowserToolbarItem] = []
         for raw in defaults.stringArray(forKey: "toolbarOrder") ?? [] {
             if let item = BrowserToolbarItem(rawValue: raw), !toolbar.contains(item) { toolbar.append(item) }
@@ -360,6 +375,21 @@ public final class BrowserPreferences {
         else { defaults.removeObject(forKey: "appBackgroundPath") }
         changed()
     }
+    public func setAppBackgroundPresentation(fit: AppBackgroundFit? = nil, opacity: Double? = nil,
+                                             horizontal: AppBackgroundHorizontalAlignment? = nil,
+                                             vertical: AppBackgroundVerticalAlignment? = nil) {
+        let nextFit = fit ?? appBackgroundFit
+        let nextOpacity = min(1, max(0, opacity ?? appBackgroundOpacity))
+        let nextHorizontal = horizontal ?? appBackgroundHorizontalAlignment
+        let nextVertical = vertical ?? appBackgroundVerticalAlignment
+        guard nextFit != appBackgroundFit || nextOpacity != appBackgroundOpacity ||
+              nextHorizontal != appBackgroundHorizontalAlignment || nextVertical != appBackgroundVerticalAlignment else { return }
+        appBackgroundFit = nextFit; appBackgroundOpacity = nextOpacity
+        appBackgroundHorizontalAlignment = nextHorizontal; appBackgroundVerticalAlignment = nextVertical
+        defaults.set(nextFit.rawValue, forKey: "appBackgroundFit"); defaults.set(nextOpacity, forKey: "appBackgroundOpacity")
+        defaults.set(nextHorizontal.rawValue, forKey: "appBackgroundHorizontalAlignment"); defaults.set(nextVertical.rawValue, forKey: "appBackgroundVerticalAlignment")
+        changed()
+    }
     public func exportData() throws -> Data {
         let archive = BrowserPreferencesArchive(version: 1, sidebarOrder: sidebarOrder.map(\.rawValue),
             collapsedSidebar: collapsedSidebar.map(\.rawValue).sorted(), favorites: favorites.map(\.path), recent: recent.map(\.path),
@@ -384,7 +414,10 @@ public final class BrowserPreferences {
             lastSessionSelectedTabIndex: lastSessionSelectedTabIndex,
             alwaysOpenDualPaneInNewTab: alwaysOpenDualPaneInNewTab,
             alwaysSwitchToNewlyOpenedTab: alwaysSwitchToNewlyOpenedTab,
-            startupLocationPath: startupLocationPath, developerApplicationPath: developerApplicationPath, appBackgroundPath: appBackgroundPath, toolbarOrder: toolbarOrder.map(\.rawValue),
+            startupLocationPath: startupLocationPath, developerApplicationPath: developerApplicationPath, appBackgroundPath: appBackgroundPath,
+            appBackgroundFit: appBackgroundFit.rawValue, appBackgroundOpacity: appBackgroundOpacity,
+            appBackgroundHorizontalAlignment: appBackgroundHorizontalAlignment.rawValue, appBackgroundVerticalAlignment: appBackgroundVerticalAlignment.rawValue,
+            toolbarOrder: toolbarOrder.map(\.rawValue),
             hiddenToolbarItems: hiddenToolbarItems.map(\.rawValue).sorted(), folderViewPreferences: folderViewPreferences)
         let encoder = JSONEncoder(); encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         return try encoder.encode(archive)
@@ -423,6 +456,11 @@ public final class BrowserPreferences {
         if let appBackgroundPath = archive.appBackgroundPath, !appBackgroundPath.hasPrefix("/") {
             throw BrowserPreferencesArchiveError.invalidValue
         }
+        guard let importedBackgroundFit = archive.appBackgroundFit.flatMap(AppBackgroundFit.init(rawValue:)) ?? (archive.appBackgroundFit == nil ? .fill : nil),
+              let importedHorizontal = archive.appBackgroundHorizontalAlignment.flatMap(AppBackgroundHorizontalAlignment.init(rawValue:)) ?? (archive.appBackgroundHorizontalAlignment == nil ? .center : nil),
+              let importedVertical = archive.appBackgroundVerticalAlignment.flatMap(AppBackgroundVerticalAlignment.init(rawValue:)) ?? (archive.appBackgroundVerticalAlignment == nil ? .center : nil) else { throw BrowserPreferencesArchiveError.invalidValue }
+        let importedOpacity = archive.appBackgroundOpacity ?? 1
+        guard (0...1).contains(importedOpacity) else { throw BrowserPreferencesArchiveError.invalidValue }
         sidebarOrder = importedSidebar; collapsedSidebar = Set(importedCollapsed)
         favorites = archive.favorites.map { URL(fileURLWithPath: $0) }; recent = archive.recent.map { URL(fileURLWithPath: $0) }
         showHidden = archive.showHidden; showExtensions = archive.showExtensions; showToolbar = archive.showToolbar; showStatusBar = archive.showStatusBar; showSidebar = archive.showSidebar ?? true
@@ -449,6 +487,8 @@ public final class BrowserPreferences {
         alwaysOpenDualPaneInNewTab = archive.alwaysOpenDualPaneInNewTab ?? false
         alwaysSwitchToNewlyOpenedTab = archive.alwaysSwitchToNewlyOpenedTab ?? false
         developerApplicationPath = archive.developerApplicationPath; appBackgroundPath = archive.appBackgroundPath; toolbarOrder = importedToolbar; hiddenToolbarItems = Set(importedHiddenToolbar)
+        appBackgroundFit = importedBackgroundFit; appBackgroundOpacity = importedOpacity
+        appBackgroundHorizontalAlignment = importedHorizontal; appBackgroundVerticalAlignment = importedVertical
         folderViewPreferences = archive.folderViewPreferences
         defaults.set(sidebarOrder.map(\.rawValue), forKey: "sidebarOrder"); defaults.set(collapsedSidebar.map(\.rawValue).sorted(), forKey: "collapsedSidebar")
         defaults.set(favorites.map(\.path), forKey: "favorites"); defaults.set(recent.map(\.path), forKey: "recent")
@@ -478,6 +518,8 @@ public final class BrowserPreferences {
         if let startupLocationPath { defaults.set(startupLocationPath, forKey: "startupLocationPath") } else { defaults.removeObject(forKey: "startupLocationPath") }
         if let developerApplicationPath { defaults.set(developerApplicationPath, forKey: "developerApplicationPath") } else { defaults.removeObject(forKey: "developerApplicationPath") }
         if let appBackgroundPath { defaults.set(appBackgroundPath, forKey: "appBackgroundPath") } else { defaults.removeObject(forKey: "appBackgroundPath") }
+        defaults.set(appBackgroundFit.rawValue, forKey: "appBackgroundFit"); defaults.set(appBackgroundOpacity, forKey: "appBackgroundOpacity")
+        defaults.set(appBackgroundHorizontalAlignment.rawValue, forKey: "appBackgroundHorizontalAlignment"); defaults.set(appBackgroundVerticalAlignment.rawValue, forKey: "appBackgroundVerticalAlignment")
         defaults.set(toolbarOrder.map(\.rawValue), forKey: "toolbarOrder"); defaults.set(hiddenToolbarItems.map(\.rawValue).sorted(), forKey: "hiddenToolbarItems")
         saveFolderViewPreferences(); changed()
     }

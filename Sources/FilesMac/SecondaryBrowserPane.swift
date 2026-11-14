@@ -247,6 +247,8 @@ final class SecondaryBrowserPane: NSView, NSTableViewDataSource, NSTableViewDele
         applyBackground()
     }
     private func applyBackground() {
+        browserContent.setPresentation(fit: preferences.appBackgroundFit, opacity: preferences.appBackgroundOpacity,
+                                       horizontal: preferences.appBackgroundHorizontalAlignment, vertical: preferences.appBackgroundVerticalAlignment)
         _ = browserContent.setImage(at: preferences.appBackgroundPath)
         let enabled = browserContent.image != nil
         scroll.drawsBackground = !enabled; table.backgroundColor = enabled ? .clear : .controlBackgroundColor

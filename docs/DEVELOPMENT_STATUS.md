@@ -4,13 +4,13 @@
 
 ## 이번 구현 단위
 
-M6 여든두 번째 개발 단위로 macOS 테마 색상·글꼴 정책과 기존 앱 배경 소스 대응을 확정했다. 설정 33개와 명령 22개는 계속 검토 대기이므로 M6 완료로 표시하지 않는다.
+M6 여든세 번째 개발 단위로 앱 배경 맞춤·투명도·수직/수평 정렬을 구현했다. 설정 29개와 명령 22개는 계속 검토 대기이므로 M6 완료로 표시하지 않는다.
 
 | 영역 | 상태 | 내용 |
 |---|---|---|
 | 원격 기반 | 완료 | 지정 origin의 초기 LICENSE/이력 보존 |
 | 기준 원본 | 완료 | v4.2.9/SHA 고정 |
-| 원본 인벤토리 | 진행 | 202 명령·143 설정·33 화면 감사 통과. 명령 146개 구현·19개 macOS 대체·15개 플랫폼 제외·22개 검토 대기, 설정 45개 구현·50개 macOS 대체·15개 플랫폼 제외·33개 검토 대기, 화면 29개 macOS 대체·4개 플랫폼 제외·0개 검토 대기 |
+| 원본 인벤토리 | 진행 | 202 명령·143 설정·33 화면 감사 통과. 명령 146개 구현·19개 macOS 대체·15개 플랫폼 제외·22개 검토 대기, 설정 49개 구현·50개 macOS 대체·15개 플랫폼 제외·29개 검토 대기, 화면 29개 macOS 대체·4개 플랫폼 제외·0개 검토 대기 |
 | 네이티브 앱 | 구현 | AppKit 창·네이티브 탭 그룹·사이드바·홈·상세 목록·경로 |
 | 로컬 I/O | 검증 | 배치 열거·숨김 항목·메타데이터·파일 identity·오류 상태 |
 | 탐색 상태 | 검증 | 히스토리·선택 복원·외부 rename 대응·오래된 비동기 결과 방지 |
@@ -33,7 +33,7 @@ M6 여든두 번째 개발 단위로 macOS 테마 색상·글꼴 정책과 기�
 | 클라우드 | 구현 중 | `~/Library/CloudStorage` 공급자 폴더와 iCloud Drive 탐지·사이드바 탐색, ubiquitous resource value 기반 상태 분류, iCloud 지금 다운로드·공간 비우기 메뉴, 일반 File Provider 상태는 unknown·명령 비활성 유지 |
 | 원격 연결 | 구현 중 | FTP/암시적 FTPS·SFTP 원격 pane 탐색·중단·세션·접근성·안전 다운로드, FTPS 인증서·호스트 검증, Keychain 자격 증명 게이트, FTP Unix·Windows/DOS LIST 폴더 metadata와 미지원 형식 차단, unsafe rename 업로드 차단 |
 | Git | 구현 중 | 상태 패널과 clone UI, HTTPS/SSH/file 입력, sibling staging publish, 완료 후 새 탐색 창, fetch/FF-only pull/push/중단, 상세 목록 XY 상태·폴더 하위 변경 표시, 탐색 중 stale 결과 폐기·선택 보존, stage/commit·submodule·LFS·hook 제외와 시스템 인증 위임을 UI에 명시 |
-| 테스트 | 통과 | 184개 Swift Testing, 새 탭 dual-pane·선택 정책 저장·archive·중복 알림 방지, UI 4조합 각 191개 검사와 일반 설정 탭 정책 제어, Git·압축·원격 실제 fixture 수용 |
+| 테스트 | 통과 | 185개 Swift Testing, 배경 맞춤·투명도·정렬 저장·범위 보정·archive, UI 4조합 각 192개 검사와 실제 외형 설정 제어, Git·압축·원격 실제 fixture 수용 |
 | 파일 복사 | 구현 | 대상 폴더 선택·클립보드·양쪽 유지/건너뛰기·내용 검증·취소·항목별 결과·JSON 저널·안전 실행 취소, 다중 선택 폴더 병합·통합 Undo |
 | 느린 폴더 복구 | 구현 | 읽기 중단·늦은 결과 차단·불완전 목록 안내·명시적 재시도 |
 | 접근 복구 | 부분 검증 | 오류 화면 재시도·폴더 선택, 시스템 선택 후 Desktop fixture 읽기 성공; 재실행 읽기 확인; 감시는 연결 대기 |
@@ -116,3 +116,4 @@ M6 추가 검증: [상세 열 자동 맞춤 정책](verification/m6/INCREMENT_79
 M6 추가 검증: [시작 새 탭·선택 탭 복원](verification/m6/INCREMENT_80.md).
 M6 추가 검증: [새 탭 dual-pane·전환 정책](verification/m6/INCREMENT_81.md).
 M6 추가 검증: [macOS 테마 토큰·앱 배경 소스](verification/m6/INCREMENT_82.md).
+M6 추가 검증: [앱 배경 표시 제어](verification/m6/INCREMENT_83.md).

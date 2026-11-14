@@ -573,6 +573,22 @@ private struct DelayedLoader: DirectoryLoading {
     preferences.removeObserver(token)
 }
 
+@Test @MainActor func appBackgroundPresentationPersistsClampsAndAvoidsDuplicateNotifications() {
+    let suite = "app-background-presentation-tests-\(UUID())", defaults = UserDefaults(suiteName: suite)!
+    defer { defaults.removePersistentDomain(forName: suite) }
+    let preferences = BrowserPreferences(defaults: defaults, initialFavorites: [])
+    #expect(preferences.appBackgroundFit == .fill && preferences.appBackgroundOpacity == 1)
+    #expect(preferences.appBackgroundHorizontalAlignment == .center && preferences.appBackgroundVerticalAlignment == .center)
+    var notifications = 0; let token = preferences.observe { notifications += 1 }
+    preferences.setAppBackgroundPresentation(fit: .fit, opacity: 1.5, horizontal: .trailing, vertical: .top)
+    preferences.setAppBackgroundPresentation(fit: .fit, opacity: 1, horizontal: .trailing, vertical: .top)
+    let restored = BrowserPreferences(defaults: defaults, initialFavorites: [])
+    #expect(restored.appBackgroundFit == .fit && restored.appBackgroundOpacity == 1)
+    #expect(restored.appBackgroundHorizontalAlignment == .trailing && restored.appBackgroundVerticalAlignment == .top)
+    #expect(notifications == 1)
+    preferences.removeObserver(token)
+}
+
 @Test @MainActor func contextMenuVisibilityDefaultsPersistAndAvoidsDuplicateNotifications() {
     let suite = "context-menu-visibility-tests-\(UUID())", defaults = UserDefaults(suiteName: suite)!
     defer { defaults.removePersistentDomain(forName: suite) }
@@ -644,6 +660,7 @@ private struct DelayedLoader: DirectoryLoading {
     source.setAutoSizeColumnsInDetailsLayout(true)
     source.setOpenNewTabOnStartup(true); source.setLastSessionSelectedTabIndex(2)
     source.setAlwaysOpenDualPaneInNewTab(true); source.setAlwaysSwitchToNewlyOpenedTab(true)
+    source.setAppBackgroundPresentation(fit: .fit, opacity: 0.4, horizontal: .trailing, vertical: .top)
     source.setShowCreatedColumn(true); source.setShowDateColumn(false); source.setShowTypeColumn(false); source.setShowSizeColumn(false); source.setShowGitStatusColumn(true)
     source.setShowFileTagColumn(true); source.setShowPathColumn(true)
     source.setShowCompressionOptions(false); source.setShowOpenTerminal(false); source.setShowCreateFolderWithSelection(false)
@@ -667,6 +684,8 @@ private struct DelayedLoader: DirectoryLoading {
     #expect(destination.autoSizeColumnsInDetailsLayout)
     #expect(destination.openNewTabOnStartup && destination.lastSessionSelectedTabIndex == 2)
     #expect(destination.alwaysOpenDualPaneInNewTab && destination.alwaysSwitchToNewlyOpenedTab)
+    #expect(destination.appBackgroundFit == .fit && destination.appBackgroundOpacity == 0.4)
+    #expect(destination.appBackgroundHorizontalAlignment == .trailing && destination.appBackgroundVerticalAlignment == .top)
     #expect(destination.showCreatedColumn && !destination.showDateColumn && !destination.showTypeColumn && !destination.showSizeColumn && destination.showGitStatusColumn)
     #expect(destination.showFileTagColumn && destination.showPathColumn)
     #expect(!destination.showCompressionOptions && !destination.showOpenTerminal && !destination.showCreateFolderWithSelection)

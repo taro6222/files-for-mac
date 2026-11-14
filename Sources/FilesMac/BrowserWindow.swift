@@ -2102,6 +2102,8 @@ extension BrowserWindow {
         }
     }
     private func applyAppBackground() {
+        content.setPresentation(fit: preferences.appBackgroundFit, opacity: preferences.appBackgroundOpacity,
+                                horizontal: preferences.appBackgroundHorizontalAlignment, vertical: preferences.appBackgroundVerticalAlignment)
         let valid = content.setImage(at: preferences.appBackgroundPath)
         if !valid { preferences.setAppBackground(nil); return }
         let enabled = content.image != nil
@@ -2902,9 +2904,15 @@ extension BrowserWindow {
             appearanceSettings.qaSelect(dark ? .dark : .light)
             checks["appearanceSettingsWindow"] = appearanceSettings.window?.isVisible == true
             checks["folderSettingsManagement"] = appearanceSettings.qaFolderCount == 1
+            appearanceSettings.qaChangeBackgroundPresentation()
+            checks["appBackgroundPresentation"] = preferences.appBackgroundFit == .fit
+                && preferences.appBackgroundHorizontalAlignment == .trailing
+                && preferences.appBackgroundVerticalAlignment == .top
+                && abs(preferences.appBackgroundOpacity - 0.45) < 0.001
             try capture("appearance-settings", view: appearanceSettings.window?.contentView)
             appearanceSettings.qaResetFolderViews()
             checks["folderSettingsResetAll"] = appearanceSettings.qaFolderCount == 0
+            preferences.setAppBackgroundPresentation(fit: .fill, opacity: 1, horizontal: .center, vertical: .center)
             appearanceSettings.qaClearAppBackground()
             checks["appBackgroundCleared"] = preferences.appBackgroundPath == nil && !controller.qaHasAppBackground
             appearanceSettings.close(); window.makeKeyAndOrderFront(nil)
