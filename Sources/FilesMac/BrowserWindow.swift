@@ -597,7 +597,7 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         stack.addArrangedSubview(label); stack.setCustomSpacing(10, after: label)
     }
     private func homeSection(_ title: String, expanded: Bool, action: Selector) {
-        let button = NSButton(title: (expanded ? "▾ " : "▸ ") + title, target: self, action: action)
+        let button = SidebarKeyboardButton(title: (expanded ? "▾ " : "▸ ") + title, target: self, action: action)
         button.bezelStyle = .recessed; button.isBordered = false; button.alignment = .left
         button.font = .systemFont(ofSize: 11, weight: .semibold)
         button.setAccessibilityLabel(title); button.setAccessibilityValue(expanded ? L("펼침", "Expanded") : L("접힘", "Collapsed"))
@@ -704,6 +704,9 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         }
     }
     private func buildHome() {
+        let focusedButton = (window?.firstResponder as? SidebarKeyboardButton).flatMap {
+            $0.isDescendant(of: homeView) ? $0 : nil
+        }
         homeView.arrangedSubviews.forEach { homeView.removeArrangedSubview($0); $0.removeFromSuperview() }
         let heading = NSTextField(labelWithString: L("홈", "Home")); heading.font = .systemFont(ofSize: 28, weight: .bold)
         homeView.addArrangedSubview(heading)
@@ -745,10 +748,41 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
                 homeView.addArrangedSubview(NSTextField(labelWithString: L("방문한 폴더가 여기에 표시됩니다.", "Folders you visit will appear here.")))
             } else if preferences.homeRecentExpanded {
                 for url in recent { locationButton(url.path, symbol: "clock", url: url, in: homeView) }
-                let clear = NSButton(title: L("최근 기록 지우기", "Clear Recent Locations"), target: self, action: #selector(clearRecent(_:)))
+                let clear = SidebarKeyboardButton(title: L("최근 기록 지우기", "Clear Recent Locations"), target: self, action: #selector(clearRecent(_:)))
                 clear.bezelStyle = .rounded; homeView.addArrangedSubview(clear)
             }
         }
+        if let focusedButton {
+            let buttons = homeKeyboardButtons
+            let replacement = buttons.first {
+                $0.action == focusedButton.action && $0.accessibilityLabel() == focusedButton.accessibilityLabel()
+                    && ($0 as? LocationButton)?.url == (focusedButton as? LocationButton)?.url
+            }
+            if let button = replacement ?? buttons.first { focusHomeButton(button) }
+        }
+    }
+    private var homeKeyboardButtons: [SidebarKeyboardButton] {
+        homeView.arrangedSubviews.flatMap { view in
+            (view as? VolumeCardView)?.arrangedSubviews ?? [view]
+        }.compactMap { $0 as? SidebarKeyboardButton }.filter { !$0.isHiddenOrHasHiddenAncestor && $0.isEnabled }
+    }
+    private func focusHomeButton(_ button: SidebarKeyboardButton) {
+        guard window?.makeFirstResponder(button) == true else { return }
+        homeView.layoutSubtreeIfNeeded()
+        _ = button.scrollToVisible(button.bounds)
+    }
+    fileprivate func moveHomeFocus(from button: SidebarKeyboardButton, by offset: Int) -> Bool {
+        guard button.isDescendant(of: homeView) else { return false }
+        let buttons = homeKeyboardButtons
+        if let index = buttons.firstIndex(of: button), buttons.indices.contains(index + offset) {
+            focusHomeButton(buttons[index + offset])
+        }
+        return true
+    }
+    fileprivate func activateHomeButton(_ button: SidebarKeyboardButton) -> Bool {
+        guard homeKeyboardButtons.contains(button) else { return false }
+        button.performClick(nil)
+        return true
     }
     private func displayName(_ url: URL) -> String { FileManager.default.displayName(atPath: url.path) }
     private func savePosition(allowWhileLoading: Bool = false) {
@@ -1108,7 +1142,12 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         order.ascending = descriptor.ascending
         setPrimarySort(order)
     }
-    @objc func openLocation(_ sender: LocationButton) { navigate(sender.url) }
+    @objc func openLocation(_ sender: LocationButton) {
+        if sender.url == nil { goHome(sender); return }
+        let fromHome = sender.isDescendant(of: homeView)
+        navigate(sender.url)
+        if fromHome { setSecondaryActive(false); focusFiles(nil) }
+    }
     @objc func goBack(_ sender: Any?) { if secondaryActive { secondaryPane?.goBack() } else { window?.makeFirstResponder(nil); savePosition(); model.back(); applyFolderViewPreference() } }
     @objc func goForward(_ sender: Any?) { if secondaryActive { secondaryPane?.goForward() } else { window?.makeFirstResponder(nil); savePosition(); model.forward(); applyFolderViewPreference() } }
     @objc func goUp(_ sender: Any?) {
@@ -2961,17 +3000,20 @@ extension BrowserWindow {
         guard let raw = sender.representedObject as? String, let section = BrowserPreferences.SidebarSection(rawValue: raw) else { return }
         preferences.moveSidebar(section, by: offset)
     }
-    @objc func goHome(_ sender: Any?) { navigate(nil); focusSidebar(nil) }
+    @objc func goHome(_ sender: Any?) { navigate(nil); setSecondaryActive(false); focusFiles(nil) }
     @objc func focusFiles(_ sender: Any?) {
         if secondaryActive { secondaryPane?.focusFiles() }
-        else if model.location == nil { focusSidebar(nil) }
+        else if model.location == nil {
+            if let first = homeKeyboardButtons.first { focusHomeButton(first) }
+            else { focusSidebar(nil) }
+        }
         else if primaryRenderedViewMode == .grid { gridView.focus() }
         else if primaryRenderedViewMode == .list { listView.focus() }
         else if primaryRenderedViewMode == .columns { columnView.focus() }
         else { window?.makeFirstResponder(table) }
     }
     @objc func focusSidebar(_ sender: Any?) {
-        if let first = sidebar.arrangedSubviews.first { window?.makeFirstResponder(first) }
+        if !sidebarContainer.isHidden, let first = sidebar.arrangedSubviews.first { window?.makeFirstResponder(first) }
     }
     @objc func openViewOptions(_ sender: Any?) {
         optionsMenu.popUp(positioning: nil, at: NSPoint(x: content.bounds.maxX - 200, y: content.bounds.maxY), in: content)
@@ -3111,6 +3153,7 @@ extension BrowserWindow {
         case #selector(goUp(_:)): return secondaryActive ? secondaryPane?.model.location != nil : model.location != nil && model.location?.path != "/"
         case #selector(openSelection(_:)): return !activeSelectedItems.isEmpty && activeModel.location != nil
         case #selector(showInfo(_:)): return !activeSelectedItems.isEmpty && activeModel.location != nil
+        case #selector(showQuickLook(_:)): return !activeSelectedItems.isEmpty
         case #selector(openInNewTab(_:)), #selector(openInNewWindow(_:)), #selector(openInNewPane(_:)): return contextFolderURL != nil
         case #selector(openArchive(_:)): return activeSelectedItems.count == 1 && activeSelectedItems.first.map { ArchiveFormat.detect($0.url).map { ArchiveCapabilityMatrix.capabilities(for: $0).browse } == true } == true
         case #selector(createArchive(_:)): return !ArchiveCreationWindow.isRunning && !activeModel.isLoading && !activeSelectedItems.isEmpty
@@ -3138,11 +3181,15 @@ class SidebarKeyboardButton: NSButton {
             (window?.windowController as? BrowserWindow)?.stopLoading(nil)
             return
         }
-        if modifiers.isEmpty, event.keyCode == 125 || event.keyCode == 126,
-           let stack = superview as? NSStackView {
+        if modifiers.isEmpty, event.keyCode == 36 || event.keyCode == 76 || event.keyCode == 49,
+           (window?.windowController as? BrowserWindow)?.activateHomeButton(self) == true { return }
+        if modifiers.isEmpty, event.keyCode == 125 || event.keyCode == 126 {
+            let offset = event.keyCode == 125 ? 1 : -1
+            if (window?.windowController as? BrowserWindow)?.moveHomeFocus(from: self, by: offset) == true { return }
+            guard let stack = superview as? NSStackView else { super.keyDown(with: event); return }
             let buttons = stack.arrangedSubviews.compactMap { $0 as? NSButton }.filter { !$0.isHidden && $0.isEnabled }
             if let index = buttons.firstIndex(of: self) {
-                let next = index + (event.keyCode == 125 ? 1 : -1)
+                let next = index + offset
                 if buttons.indices.contains(next) { window?.makeFirstResponder(buttons[next]) }
             }
             return
@@ -4695,7 +4742,37 @@ extension BrowserWindow {
                 .flatMap { $0.arrangedSubviews.compactMap { $0 as? LocationButton } }
             checks["homeNetworkLocationOpensMountedPath"] = networkButton?.accessibilityLabel() == shareName
                 && homeCards.contains { $0.url == local.url } && !homeCards.contains { $0.url == network.url }
-            networkButton?.performClick(nil)
+            preferences.setShowSidebar(false)
+            controller.goHome(nil)
+            func sendHomeKey(_ keyCode: UInt16, characters: String) {
+                guard let event = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [],
+                    timestamp: 0, windowNumber: window.windowNumber, context: nil,
+                    characters: characters, charactersIgnoringModifiers: characters, isARepeat: false, keyCode: keyCode)
+                else { return }
+                window.sendEvent(event)
+            }
+            let startsOnHome = window.firstResponder === controller.homeKeyboardButtons.first
+                && controller.sidebarContainer.isHidden
+            sendHomeKey(125, characters: "\u{f701}")
+            let reachesFavorite = (window.firstResponder as? LocationButton)?.url == target
+            sendHomeKey(125, characters: "\u{f701}")
+            let drivesAction = #selector(toggleHomeVolumesExpanded(_:))
+            let reachesDrives = (window.firstResponder as? NSButton)?.action == drivesAction
+            sendHomeKey(36, characters: "\r")
+            let retainsFocus = (window.firstResponder as? NSButton)?.action == drivesAction
+                && !preferences.homeVolumesExpanded
+            sendHomeKey(49, characters: " ")
+            sendHomeKey(125, characters: "\u{f701}")
+            let reachesLocal = (window.firstResponder as? LocationButton)?.title == local.name
+            sendHomeKey(125, characters: "\u{f701}")
+            let reachesNetwork = (window.firstResponder as? LocationButton)?.title == shareName
+            sendHomeKey(126, characters: "\u{f700}")
+            let returnsToLocal = (window.firstResponder as? LocationButton)?.title == local.name
+            sendHomeKey(125, characters: "\u{f701}")
+            sendHomeKey(36, characters: "\r")
+            checks["homeKeyboardReachesNetworkAndFocusesFiles"] = startsOnHome && reachesFavorite && reachesDrives
+                && retainsFocus && reachesLocal && reachesNetwork && returnsToLocal
+                && window.firstResponder === controller.table
             checks["homeNetworkLocationOpensMountedPath"] = checks["homeNetworkLocationOpensMountedPath"] == true
                 && controller.model.location == network.url
             controller.goHome(nil)
