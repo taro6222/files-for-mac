@@ -4490,6 +4490,7 @@ extension BrowserWindow {
             let signatureStart = ContinuousClock.now
             while controller.infoWindow?.qaSignatureLoaded != true && signatureStart.duration(to: .now) < .seconds(5) { try await Task.sleep(for: .milliseconds(10)) }
             checks["fileInfoSignature"] = controller.infoWindow?.qaSignatureLoaded == true
+            checks["fileInfoScrollsAtMinimumSize"] = controller.infoWindow?.qaCanReachSignature() == true
             try capture("file-info", view: controller.infoWindow?.window?.contentView)
             controller.infoWindow?.close(); window.makeKeyAndOrderFront(nil)
             let taggedURL = controller.activeSelectedItems.first?.url

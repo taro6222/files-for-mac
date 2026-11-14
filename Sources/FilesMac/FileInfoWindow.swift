@@ -4,6 +4,7 @@ import FilesCore
 @MainActor
 final class FileInfoWindow: NSWindowController {
     private let inspector = FilePropertiesInspector()
+    private let scroll = NSScrollView()
     private let details = NSStackView(), status = NSTextField(labelWithString: "")
     private let hashButton = NSButton(), hashProgress = NSProgressIndicator(), digest = NSTextField(wrappingLabelWithString: "")
     private let tagField = NSTextField(), saveTagsButton = NSButton()
@@ -14,14 +15,30 @@ final class FileInfoWindow: NSWindowController {
 
     init() {
         let panel = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 540, height: 560), styleMask: [.titled, .closable, .resizable, .utilityWindow], backing: .buffered, defer: false)
-        super.init(window: panel); panel.title = L("정보", "Info"); panel.isReleasedWhenClosed = false; buildUI()
+        super.init(window: panel); panel.title = L("정보", "Info"); panel.isReleasedWhenClosed = false
+        panel.contentMinSize = NSSize(width: 420, height: 280)
+        buildUI()
         NotificationCenter.default.addObserver(forName: NSWindow.willCloseNotification, object: panel, queue: .main) { [weak self] _ in Task { @MainActor in self?.cancelTasks() } }
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
     private func buildUI() {
-        guard let content = window?.contentView else { return }
+        guard let window else { return }
+        scroll.hasVerticalScroller = true
+        scroll.drawsBackground = false
+        scroll.setAccessibilityLabel(L("파일 속성", "File Properties"))
+        window.contentView = scroll
+        let content = FlippedView()
+        content.translatesAutoresizingMaskIntoConstraints = false
+        scroll.documentView = content
         let root = NSStackView(); root.orientation = .vertical; root.spacing = 12; root.edgeInsets = NSEdgeInsets(top: 18, left: 18, bottom: 18, right: 18); root.translatesAutoresizingMaskIntoConstraints = false
-        content.addSubview(root); NSLayoutConstraint.activate([root.leadingAnchor.constraint(equalTo: content.leadingAnchor), root.trailingAnchor.constraint(equalTo: content.trailingAnchor), root.topAnchor.constraint(equalTo: content.topAnchor), root.bottomAnchor.constraint(equalTo: content.bottomAnchor)])
+        content.addSubview(root)
+        NSLayoutConstraint.activate([
+            content.widthAnchor.constraint(equalTo: scroll.contentView.widthAnchor),
+            root.leadingAnchor.constraint(equalTo: content.leadingAnchor),
+            root.trailingAnchor.constraint(equalTo: content.trailingAnchor),
+            root.topAnchor.constraint(equalTo: content.topAnchor),
+            root.bottomAnchor.constraint(equalTo: content.bottomAnchor)
+        ])
         details.orientation = .vertical; details.alignment = .leading; details.spacing = 8; root.addArrangedSubview(details)
         let tagTitle = NSTextField(labelWithString: L("Finder 태그", "Finder Tags")); tagTitle.font = .systemFont(ofSize: 14, weight: .semibold); root.addArrangedSubview(tagTitle)
         let tagControls = NSStackView(); tagControls.orientation = .horizontal; tagControls.spacing = 8
@@ -42,13 +59,16 @@ final class FileInfoWindow: NSWindowController {
         let signatureTitle = NSTextField(labelWithString: L("코드 서명", "Code Signature")); signatureTitle.font = .systemFont(ofSize: 14, weight: .semibold); root.addArrangedSubview(signatureTitle)
         signatureButton.title = L("서명 확인", "Inspect Signature"); signatureButton.target = self; signatureButton.action = #selector(inspectSignature(_:)); root.addArrangedSubview(signatureButton)
         signatureDetails.isSelectable = true; signatureDetails.textColor = .secondaryLabelColor; root.addArrangedSubview(signatureDetails)
-        status.textColor = .secondaryLabelColor; root.addArrangedSubview(status); root.addArrangedSubview(NSView())
+        status.textColor = .secondaryLabelColor; root.addArrangedSubview(status)
     }
     func present(items: [FileItem]) {
         cancelTasks(); self.items = items; properties = nil; tagIdentity = nil; tagField.stringValue = ""; tagField.isEnabled = false; saveTagsButton.isEnabled = false; digest.stringValue = ""; hashProgress.isHidden = true; signatureDetails.stringValue = ""; signatureButton.isEnabled = items.count == 1; iconStatus.stringValue = ""
         let folderIconEnabled = items.count == 1 && items[0].isDirectory
         chooseIconButton.isEnabled = folderIconEnabled; resetIconButton.isEnabled = folderIconEnabled
-        rebuildDetails(); window?.center(); showWindow(nil); window?.makeKeyAndOrderFront(nil)
+        rebuildDetails()
+        scroll.contentView.scroll(to: .zero)
+        scroll.reflectScrolledClipView(scroll.contentView)
+        window?.center(); showWindow(nil); window?.makeKeyAndOrderFront(nil)
         guard items.count == 1 else { status.stringValue = L("\(items.count)개 항목", "\(items.count) items"); return }
         status.stringValue = L("속성을 읽는 중…", "Loading properties…")
         inspectTask = Task { [weak self, inspector] in
@@ -144,6 +164,22 @@ final class FileInfoWindow: NSWindowController {
     private func cancelTasks() { inspectTask?.cancel(); inspectTask = nil; hashTask?.cancel(); hashTask = nil; signatureTask?.cancel(); signatureTask = nil }
 #if DEBUG
     var qaLoaded: Bool { properties != nil }
+    func qaCanReachSignature() -> Bool {
+        guard let window, let content = scroll.documentView else { return false }
+        let previousSize = scroll.frame.size
+        let clip = scroll.contentView
+        defer {
+            window.setContentSize(previousSize)
+            clip.scroll(to: .zero)
+            scroll.reflectScrolledClipView(clip)
+        }
+        window.setContentSize(window.contentMinSize)
+        scroll.layoutSubtreeIfNeeded()
+        let buttonFrame = signatureButton.convert(signatureButton.bounds, to: content)
+        guard !buttonFrame.isEmpty, !content.visibleRect.contains(buttonFrame) else { return false }
+        _ = signatureButton.scrollToVisible(signatureButton.bounds)
+        return content.visibleRect.contains(buttonFrame)
+    }
     var qaHashing: Bool { hashTask != nil }
     var qaDigest: String? { digest.stringValue.isEmpty ? nil : digest.stringValue }
     func qaStartHash() { startHash() }

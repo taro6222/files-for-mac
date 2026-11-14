@@ -12,6 +12,7 @@ Windows의 비교 기준은 Files v4.2.9의 `99951c66928c4da714da8b1dd4603942118
 | UI-06 분할 보기 | 탐색 셸의 시각 상태가 분할 중 활성 영역의 테두리 두께를 조정한다. [ModernShellPage.xaml][shell] | macOS는 활성 패널의 테두리와 좌우·상하 분할을 제공한다. [키보드 초점과 저장 상태](../verification/m7/INCREMENT_81.md) 및 [두 방향의 비율 복원](../verification/m7/INCREMENT_83.md)을 AppKit에서 검증한다. Windows 실행 화면과 탭 드롭 동작의 대조가 남아 있다. |
 | UI-07 검색 | 탐색 툴바의 Omnibar가 검색 모드의 질의를 제출하고, 탐색 셸이 결과 화면에 검색 머리글을 표시한다. [NavigationToolbar.xaml][navigation] · [ModernShellPage.xaml][shell] | 별도 검색 창에 검색 방법, 범위, 메타데이터 필터와 결과 목록을 표시한다. `search.png`에서 결과 이름·위치·종류와 검색 방식별 상태를 확인했다. Spotlight 콘텐츠 검색은 [모든 인덱싱된 위치](../verification/m7/INCREMENT_78.md)를 선택할 수 있다. Windows 실행 캡처 대조가 남아 있다. |
 | UI-08 정보·미리보기 | 정보 패널에 상세·미리보기 탭, 속성 스크롤 영역, 미리보기 콘텐츠와 로딩·오류 표시를 배치한다. [InfoPane.xaml][info] | macOS 정보 패널은 상세 속성과 내장 Quick Look을 제공한다. 다중 선택에서 [이전·다음 미리보기](../verification/m7/INCREMENT_79.md)를 사용할 수 있다. Windows 실행 화면과 Quick Look 확장별 콘텐츠 렌더링 대조가 남아 있다. |
+| UI-09 속성 창 | 속성 페이지에 일반 정보, 보안, 해시, 서명 등 항목별 화면을 제공한다. 해시 화면에서 여러 알고리즘을 선택할 수 있다. [MainPropertiesPage.xaml][properties] · [HashesPage.xaml][hashes] | macOS 속성 창에서 경로, 크기, 날짜, 소유자·권한, Finder 태그, SHA-256과 코드 서명 정보를 제공한다. [최소 창 크기의 스크롤과 하단 버튼 접근](../verification/m7/INCREMENT_97.md)을 검증했다. Windows의 추가 해시 알고리즘과 ACL 편집은 대응 차이로 남아 있다. |
 
 macOS 캡처에서 발견한 상태 표시줄의 개발 단계 문구를 제거했다. 항목 수, 선택, 읽기 및 자동 갱신 상태는 상태 표시줄에 표시한다.
 
@@ -25,3 +26,5 @@ Windows 실행 화면을 동일 fixture·창 크기·테마로 캡처하는 작�
 [navigation]: https://github.com/files-community/Files/blob/99951c66928c4da714da8b1dd46039421182cbab/src/Files.App/UserControls/NavigationToolbar.xaml
 [shell]: https://github.com/files-community/Files/blob/99951c66928c4da714da8b1dd46039421182cbab/src/Files.App/Views/Shells/ModernShellPage.xaml
 [info]: https://github.com/files-community/Files/blob/99951c66928c4da714da8b1dd46039421182cbab/src/Files.App/UserControls/Pane/InfoPane.xaml
+[properties]: https://github.com/files-community/Files/blob/99951c66928c4da714da8b1dd46039421182cbab/src/Files.App/Views/Properties/MainPropertiesPage.xaml
+[hashes]: https://github.com/files-community/Files/blob/99951c66928c4da714da8b1dd46039421182cbab/src/Files.App/Views/Properties/HashesPage.xaml
