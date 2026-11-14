@@ -5012,6 +5012,7 @@ private struct ReleaseSoakFailure: Error, CustomStringConvertible {
 private struct ReleaseSoakSample: Encodable {
     let cycle: Int
     let rssBytes: UInt64
+    let physicalFootprintBytes: UInt64
     let elapsedSeconds: Double
 }
 
@@ -5021,6 +5022,7 @@ private struct ReleaseSoakReport: Encodable {
     let elapsedSeconds: Double
     let cycles: Int
     let peakRSSBytes: UInt64
+    let peakPhysicalFootprintBytes: UInt64
     let samples: [ReleaseSoakSample]
     let error: String?
 }
@@ -5169,6 +5171,7 @@ extension BrowserWindow {
         var peakRSS: UInt64 = 0
         var samples: [ReleaseSoakSample] = []
         var lastSample = start
+        var peakPhysicalFootprint: UInt64 = 0
 
         func elapsedSeconds() -> Double {
             let time = start.duration(to: clock.now).components
@@ -5178,8 +5181,33 @@ extension BrowserWindow {
         func report(state: String, error: String? = nil) throws {
             let report = ReleaseSoakReport(state: state, targetSeconds: duration,
                 elapsedSeconds: elapsedSeconds(), cycles: cycles, peakRSSBytes: peakRSS,
+                peakPhysicalFootprintBytes: peakPhysicalFootprint,
                 samples: samples, error: error)
             try encoder.encode(report).write(to: root.appendingPathComponent("report.json"), options: .atomic)
+        }
+
+        func measureMemory(recordSample: Bool) throws {
+            var info = task_vm_info_data_t()
+            let capacity = MemoryLayout<task_vm_info_data_t>.size / MemoryLayout<integer_t>.size
+            var count = mach_msg_type_number_t(capacity)
+            let result = withUnsafeMutablePointer(to: &info) { pointer in
+                pointer.withMemoryRebound(to: integer_t.self, capacity: capacity) {
+                    task_info(mach_task_self_, task_flavor_t(TASK_VM_INFO), $0, &count)
+                }
+            }
+            let footprintEnd = MemoryLayout<task_vm_info_data_t>.offset(of: \.phys_footprint)!
+                + MemoryLayout<mach_vm_size_t>.size
+            guard result == KERN_SUCCESS, Int(count) * MemoryLayout<integer_t>.size >= footprintEnd,
+                  info.resident_size > 0, info.phys_footprint > 0 else {
+                throw ReleaseSoakFailure("Unable to read process RSS and physical footprint")
+            }
+            peakRSS = max(peakRSS, info.resident_size)
+            peakPhysicalFootprint = max(peakPhysicalFootprint, info.phys_footprint)
+            if recordSample {
+                samples.append(.init(cycle: cycles, rssBytes: info.resident_size,
+                    physicalFootprintBytes: info.phys_footprint, elapsedSeconds: elapsedSeconds()))
+                lastSample = clock.now
+            }
         }
 
         let browser = BrowserWindow(preferences: preferences, restoresFrame: false)
@@ -5254,21 +5282,12 @@ extension BrowserWindow {
                     throw ReleaseSoakFailure("Navigation history did not return to its expected size")
                 }
                 cycles += 1
-                let rss = currentResidentBytes()
-                guard rss > 0 else { throw ReleaseSoakFailure("Unable to read process RSS") }
-                peakRSS = max(peakRSS, rss)
-                if cycles == 1 || lastSample.duration(to: clock.now) >= .seconds(30) {
-                    samples.append(.init(cycle: cycles, rssBytes: rss, elapsedSeconds: elapsedSeconds()))
-                    lastSample = clock.now
-                }
+                try measureMemory(recordSample: cycles == 1 || lastSample.duration(to: clock.now) >= .seconds(30))
                 try report(state: "running")
                 try await Task.sleep(for: .seconds(2))
             } while start.duration(to: clock.now) < .seconds(duration)
 
-            let finalRSS = currentResidentBytes()
-            guard finalRSS > 0 else { throw ReleaseSoakFailure("Unable to read final process RSS") }
-            peakRSS = max(peakRSS, finalRSS)
-            samples.append(.init(cycle: cycles, rssBytes: finalRSS, elapsedSeconds: elapsedSeconds()))
+            try measureMemory(recordSample: true)
             try report(state: "completed")
             exitCode = 0
         } catch {

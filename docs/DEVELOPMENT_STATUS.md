@@ -4,6 +4,8 @@
 
 ## 이번 구현 단위
 
+장시간 시험에서 사이클별 RSS와 macOS 물리 메모리 사용량을 함께 측정한다. [M7 메모리 계측 검증](verification/m7/INCREMENT_67.md)
+
 Git 열을 숨긴 창에서는 목록용 Git 조회를 생략한다. [M7 Git 조회 검증](verification/m7/INCREMENT_66.md)
 
 장시간 시험의 프로세스 종료 코드를 보고서와 함께 보존하고, 상세 목록 재사용 후보로 8시간 시험을 시작했다. [M7 장시간 종료 증거](verification/m7/INCREMENT_65.md)
