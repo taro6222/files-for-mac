@@ -2419,7 +2419,9 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         cancel.keyEquivalent = "\u{1b}"
         cancel.keyEquivalentModifierMask = []
         let journals = undoJournalDirectory
+        let comparison = addConflictComparison(to: alert, sources: sources, destination: destination)
         alert.beginSheetModal(for: window) { response in
+            comparison.cancel()
             if canMergeFolders, response == .alertFirstButtonReturn {
                 guard validateSources() else { return }
                 FolderMergeWindow.start(sources: sources, destination: destination) { targetModel.reload() }
@@ -2460,7 +2462,9 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         cancel.keyEquivalent = "\u{1b}"
         cancel.keyEquivalentModifierMask = []
         let journals = undoJournalDirectory
+        let comparison = addConflictComparison(to: alert, sources: sources, destination: destination)
         alert.beginSheetModal(for: window) { response in
+            comparison.cancel()
             guard response == .alertFirstButtonReturn || response == .alertSecondButtonReturn else { return }
             guard validateSources() else { return }
             onStarted?()
@@ -2469,6 +2473,66 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
                              journalDirectory: journals) {
                 targetModel.reload()
             }
+        }
+    }
+    private func addConflictComparison(to alert: NSAlert, sources: [URL], destination: URL) -> Task<Void, Never> {
+        let scroll = NSScrollView(frame: NSRect(x: 0, y: 0, width: 360, height: 140))
+        scroll.hasVerticalScroller = true
+        scroll.borderType = .bezelBorder
+        let details = NSTextView(frame: scroll.contentView.bounds)
+        details.autoresizingMask = [.width]
+        details.isEditable = false
+        details.isSelectable = true
+        details.textContainerInset = NSSize(width: 6, height: 6)
+        details.textContainer?.widthTracksTextView = true
+        details.setAccessibilityLabel(L("원본과 기존 대상 비교", "Source and Existing Destination Comparison"))
+        details.string = L("기존 대상을 확인하는 중…", "Checking existing destinations…")
+        scroll.documentView = details
+        alert.accessoryView = scroll
+
+        let sizeUnit = preferences.sizeUnit
+        return Task { [weak details] in
+            let worker = Task.detached(priority: .userInitiated) {
+                func describe(_ url: URL, info: stat) -> String {
+                    let type = info.st_mode & S_IFMT
+                    let kind: String = switch type {
+                    case S_IFDIR: L("폴더", "Folder")
+                    case S_IFLNK: L("심볼릭 링크", "Symbolic Link")
+                    case S_IFREG: L("파일", "File")
+                    default: L("기타", "Other")
+                    }
+                    let bytes = type == S_IFREG ? formatByteCount(info.st_size, unit: sizeUnit) : "—"
+                    let date = Date(timeIntervalSince1970: Double(info.st_mtimespec.tv_sec))
+                        .formatted(date: .abbreviated, time: .shortened)
+                    return "\(url.path)\n\(kind) · \(bytes) · \(date)"
+                }
+
+                var pairs: [String] = []
+                for source in sources.prefix(12) {
+                    guard !Task.isCancelled else { return "" }
+                    let target = destination.appendingPathComponent(source.lastPathComponent)
+                    var targetInfo = stat()
+                    guard lstat(target.path, &targetInfo) == 0 else { continue }
+                    var sourceInfo = stat()
+                    let original = lstat(source.path, &sourceInfo) == 0
+                        ? describe(source, info: sourceInfo)
+                        : source.path + "\n" + L("정보를 읽을 수 없습니다.", "Unable to read information.")
+                    pairs.append(L("원본", "Source") + "\n" + original + "\n"
+                        + L("기존 대상", "Existing Destination") + "\n" + describe(target, info: targetInfo))
+                }
+                if pairs.isEmpty {
+                    pairs.append(L("확인한 항목에 표시할 기존 대상이 없습니다.", "No existing destinations to display for the checked items."))
+                }
+                if sources.count > 12 {
+                    pairs.append(L("처음 12개 원본을 확인했습니다.", "Checked the first 12 source items."))
+                }
+                return pairs.joined(separator: "\n\n")
+            }
+            let comparison = await withTaskCancellationHandler {
+                await worker.value
+            } onCancel: { worker.cancel() }
+            guard !Task.isCancelled else { return }
+            details?.string = comparison
         }
     }
     private func draggedURLs(_ info: any NSDraggingInfo) -> [URL] {
@@ -5189,6 +5253,24 @@ extension BrowserWindow {
             ]
             checks["copyResponderWorkflowThroughHome"] = sourceSelected && copied && openedHome && pasted
                 && controller.model.location == target && controller.clipboardFiles.map(\.path) == [copySource.path]
+            func hasConflictComparison(in view: NSView, source: URL, existing: URL) -> Bool {
+                if let text = view as? NSTextView,
+                   text.accessibilityLabel() == L("원본과 기존 대상 비교", "Source and Existing Destination Comparison") {
+                    return text.string.contains(source.path) && text.string.contains(existing.path)
+                        && text.string.contains(formatByteCount(6, unit: preferences.sizeUnit))
+                        && !text.isEditable
+                }
+                return view.subviews.contains { hasConflictComparison(in: $0, source: source, existing: existing) }
+            }
+            func waitForConflictComparison(_ source: URL) async -> Bool {
+                let start = ContinuousClock.now
+                while elapsed(start) < 3, let view = window.attachedSheet?.contentView {
+                    if hasConflictComparison(in: view, source: source, existing: existing) { return true }
+                    try? await Task.sleep(for: .milliseconds(20))
+                }
+                return false
+            }
+            checks["copyConflictComparison"] = await waitForConflictComparison(copySource)
             if let sheet = window.attachedSheet,
                let skip = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: .command,
                    timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: sheet.windowNumber,
@@ -5213,6 +5295,7 @@ extension BrowserWindow {
             } else { checks["copyConflictKeyboardShortcut"] = false }
             let moveSource = source.appendingPathComponent("conflict.txt")
             controller.prepareMove(sources: [moveSource], destination: target)
+            checks["moveConflictComparison"] = await waitForConflictComparison(moveSource)
             if let sheet = window.attachedSheet,
                let skip = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: .command,
                    timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: sheet.windowNumber,
