@@ -972,15 +972,14 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
             let previousRows = detailRows
             let oldCount = previousRows.count
             let newCount = rows.count
-            let appendOnly = oldCount < newCount && rows.starts(with: previousRows)
-            let truncateOnly = newCount < oldCount && previousRows.starts(with: rows)
+            let canReuseRows = oldCount == 0 || newCount == 0 || (!detailPresentationNeedsReload && !detailsWereHidden)
             detailRows = rows
-            // The directory stream can append a batch to an already visible preview.
-            // Preserve existing row views when the prefix and its presentation are unchanged.
-            if appendOnly && (oldCount == 0 || (!detailPresentationNeedsReload && !detailsWereHidden)) {
-                table.insertRows(at: IndexSet(integersIn: oldCount..<newCount), withAnimation: [])
-            } else if truncateOnly && (newCount == 0 || (!detailPresentationNeedsReload && !detailsWereHidden)) {
-                table.removeRows(at: IndexSet(integersIn: newCount..<oldCount), withAnimation: [])
+            if canReuseRows && oldCount < newCount,
+               let inserted = detailInsertedRows(from: previousRows, to: rows) {
+                table.insertRows(at: inserted, withAnimation: [])
+            } else if canReuseRows && newCount < oldCount,
+                      let removed = detailInsertedRows(from: rows, to: previousRows) {
+                table.removeRows(at: removed, withAnimation: [])
             } else if !rows.isEmpty {
                 table.reloadData()
             }
@@ -3736,7 +3735,7 @@ private struct ControlledUIListLoader: DirectoryStreaming {
 /// Runs against generated fixtures only; release builds contain no QA entry point.
 extension BrowserWindow {
 #if DEBUG
-    private static func verifyStreamedDetailAppend(at location: URL, preferences: BrowserPreferences) async throws -> Bool {
+    private static func verifyStreamedDetailInsertion(at location: URL, preferences: BrowserPreferences) async throws -> Bool {
         let (stream, continuation) = AsyncThrowingStream<[FileItem], Error>.makeStream()
         let browser = BrowserWindow(preferences: preferences, restoresFrame: false,
             loader: ControlledUIListLoader(stream: stream), makeWatcher: { _ in nil })
@@ -3759,18 +3758,22 @@ extension BrowserWindow {
             return browser.table.numberOfRows == count
         }
         let first = item("first.txt")
-        continuation.yield([first])
-        guard try await waitForRows(1) else { return false }
+        continuation.yield([first, item("third.txt")])
+        guard try await waitForRows(2) else { return false }
         browser.window?.contentView?.layoutSubtreeIfNeeded()
         let column = browser.table.column(withIdentifier: .init("name"))
-        guard column >= 0, let cell = browser.table.view(atColumn: column, row: 0, makeIfNecessary: true) else {
+        guard column >= 0, let cell = browser.table.view(atColumn: column, row: 1, makeIfNecessary: true) else {
             return false
         }
-        browser.table.selectRowIndexes(IndexSet(integer: 0), byExtendingSelection: false)
-        continuation.yield([item("second.txt")])
-        guard try await waitForRows(2) else { return false }
-        return browser.table.view(atColumn: column, row: 0, makeIfNecessary: false) === cell
-            && browser.table.selectedRowIndexes == IndexSet(integer: 0)
+        browser.table.selectRowIndexes(IndexSet(integer: 1), byExtendingSelection: false)
+        continuation.yield([item("second.txt"), item("fourth.txt")])
+        guard try await waitForRows(4) else { return false }
+        return browser.table.view(atColumn: column, row: 3, makeIfNecessary: false) === cell
+            && browser.table.selectedRowIndexes == IndexSet(integer: 3)
+            && browser.detailRows.compactMap { row -> String? in
+                guard case let .item(file) = row else { return nil }
+                return file.name
+            } == ["first.txt", "fourth.txt", "second.txt", "third.txt"]
     }
 
     var qaSidebarVisible: Bool { !sidebarContainer.isHidden }
@@ -5009,7 +5012,7 @@ extension BrowserWindow {
             } else {
                 checks["unchangedDetailsKeepVisibleCell"] = false
             }
-            checks["streamedDetailsAppendKeepsVisibleCell"] = try await verifyStreamedDetailAppend(
+            checks["streamedDetailsInsertionKeepsVisibleCell"] = try await verifyStreamedDetailInsertion(
                 at: fixture, preferences: preferences)
             try capture("files-bottom")
             controller.goHome(nil)

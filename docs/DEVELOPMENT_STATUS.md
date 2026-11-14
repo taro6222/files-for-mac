@@ -8,6 +8,8 @@ M7 출시 검증이 진행 중이다. [유니버설 개발 프리뷰](verificati
 
 ## 이번 구현 단위
 
+정렬된 상세 목록의 행 사이에 새 항목이 들어올 때 기존 셀과 파일 선택을 유지한다. [정렬 및 힙 대조](verification/m7/INCREMENT_175.md)
+
 스트리밍 상세 목록에서 끝에 새 행을 추가할 때 기존 셀과 선택을 보존한다. [스트리밍 목록 회귀](verification/m7/INCREMENT_174.md)
 
 상세 목록이 비워지거나 채워질 때 행 단위 갱신으로 AppKit 관찰 객체의 증가를 줄였다. [메모리 대조](verification/m7/INCREMENT_173.md)

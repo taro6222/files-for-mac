@@ -58,6 +58,28 @@ func detailItem(at row: Int, in rows: [DetailDisplayRow]) -> FileItem? {
     return item
 }
 
+// Match unchanged rows in order, including batches interleaved by the sort order.
+// A changed existing row falls back to a full presentation refresh.
+func detailInsertedRows(from earlier: [DetailDisplayRow], to expanded: [DetailDisplayRow]) -> IndexSet? {
+    let addedCount = expanded.count - earlier.count
+    guard addedCount > 0 else { return nil }
+    if earlier.isEmpty { return IndexSet(integersIn: expanded.indices) }
+
+    var inserted = IndexSet()
+    var earlierIndex = 0
+    var insertedCount = 0
+    for (index, row) in expanded.enumerated() {
+        if earlierIndex < earlier.count && row == earlier[earlierIndex] {
+            earlierIndex += 1
+        } else {
+            insertedCount += 1
+            if insertedCount > addedCount { return nil }
+            inserted.insert(index)
+        }
+    }
+    return earlierIndex == earlier.count ? inserted : nil
+}
+
 func detailSelectionRows(ids: Set<String>, in rows: [DetailDisplayRow]) -> IndexSet {
     guard !ids.isEmpty else { return [] }
     return IndexSet(rows.indices.filter { detailItem(at: $0, in: rows).map { ids.contains($0.id) } == true })
