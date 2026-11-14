@@ -4150,11 +4150,15 @@ extension BrowserWindow {
                         sourceWindow.makeKeyAndOrderFront(nil)
                     }
                     let wasTabbed = target.window?.tabbedWindows?.contains { $0 === source.window } == true
-                    var didCloseSource = false
-                    source.onClose = { didCloseSource = true }
+                    var closedSourceState: SplitTabState?
+                    var hadContentDuringClose = false
+                    source.onClose = { [weak source] in
+                        closedSourceState = source?.workspaceSnapshot()
+                        hadContentDuringClose = source?.window?.contentView != nil
+                    }
                     let dropped = target.splitByDroppingTab(from: source, at: edge)
                     let closeStart = ContinuousClock.now
-                    while !didCloseSource && elapsed(closeStart) < 2 {
+                    while closedSourceState == nil && elapsed(closeStart) < 2 {
                         try await Task.sleep(for: .milliseconds(20))
                     }
                     let state = target.workspaceSnapshot()
@@ -4164,8 +4168,13 @@ extension BrowserWindow {
                         && state.activePane.tab.viewMode == .list
                         && state.activePane.tab.history.forward.map { $0.url?.path } == [columnFolder.path]
                         && !target.canAcceptTabSplit(from: source)
-                        && wasTabbed && didCloseSource && target.window?.isVisible == true
+                        && wasTabbed && target.window?.isVisible == true
                         && target.window?.tabbedWindows?.contains { $0 === source.window } != true
+                    checks["tabClosePreservesWorkspace_\(edge)"] = hadContentDuringClose
+                        && closedSourceState?.activePane.tab.location?.path == gridFolder.path
+                        && closedSourceState?.activePane.tab.viewMode == .list
+                        && closedSourceState?.activePane.tab.history.forward.map { $0.url?.path } == [columnFolder.path]
+                        && source.window?.contentView == nil
                     target.close()
                 }
                 let sameTab = BrowserWindow(preferences: preferences, restoresFrame: false, initialSnapshot: primary.tab)
