@@ -25,7 +25,7 @@ case "$mode" in
   *) echo "Usage: $0 --preview | --release" >&2; exit 64 ;;
 esac
 
-scripts/build-app.sh
+scripts/build-app.sh --universal
 stage=$(mktemp -d "${TMPDIR:-/tmp}/files-dmg.XXXXXX")
 trap 'rm -rf -- "$stage"' EXIT
 app="$stage/contents/Files macOS.app"

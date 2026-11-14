@@ -10,6 +10,8 @@ M7 첫 개발 단위로 로컬 프리뷰 DMG를 빌드하고 마운트·실행�
 
 대형 폴더의 중간 목록 표시를 합쳤고, 이번 10,000항목 전체 AppKit 표시가 1.803초로 측정됐다. [M7 대형 폴더 표시](verification/m7/INCREMENT_03.md)
 
+Apple Silicon과 Intel 슬라이스를 포함한 새 프리뷰 DMG를 생성했다. Apple Silicon에서 마운트·실행을 확인했다. [M7 유니버설 DMG](verification/m7/INCREMENT_04.md) · [남은 출시 검증](verification/m7/RELEASE_GATES.md)
+
 M6 103번째 개발 단위로 사용자가 선택한 파일을 템플릿으로 재사용하는 기능을 추가했다. 명령·설정·화면 인벤토리에서 검토 대기 항목은 0개다. 대응 범위 밖의 동작과 실환경 검증은 계속 추적한다.
 
 | 영역 | 상태 | 내용 |
