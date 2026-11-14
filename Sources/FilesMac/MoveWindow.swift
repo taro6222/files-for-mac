@@ -16,15 +16,13 @@ final class MoveWindow: NSWindowController, NSWindowDelegate {
 
     static func start(sources: [URL], destination: URL, conflictPolicy: MoveConflictPolicy = .skip,
                       flattenPlan: FolderFlattenPlan? = nil,
+                      journalDirectory: URL,
                       completion: @escaping @MainActor () -> Void) {
         guard !isRunning else { return }
         let controller = MoveWindow(sources: sources, destination: destination, conflictPolicy: conflictPolicy)
         operations.append(controller)
         controller.showWindow(nil)
         controller.window?.makeKeyAndOrderFront(nil)
-        let journals = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent(Bundle.main.bundleIdentifier ?? "org.taro6222.files-for-mac")
-            .appendingPathComponent("operations")
         Task { [controller] in
             do {
                 let progress: @Sendable (MoveProgress) -> Void = { [weak controller] update in
@@ -32,11 +30,11 @@ final class MoveWindow: NSWindowController, NSWindowDelegate {
                 }
                 let report: MoveOperationResult
                 if let flattenPlan {
-                    report = try await EntryOperations.flatten(flattenPlan, journalDirectory: journals,
+                    report = try await EntryOperations.flatten(flattenPlan, journalDirectory: journalDirectory,
                         cancellation: controller.cancellation, progress: progress)
                 } else {
                     report = try await EntryOperations.move(sources, to: destination, conflictPolicy: conflictPolicy,
-                        journalDirectory: journals, cancellation: controller.cancellation, progress: progress)
+                        journalDirectory: journalDirectory, cancellation: controller.cancellation, progress: progress)
                 }
                 await MainActor.run { controller.finish(report) }
             } catch {
@@ -81,17 +79,20 @@ final class MoveWindow: NSWindowController, NSWindowDelegate {
         progress.minValue = 0
         progress.maxValue = Double(sources.count)
         progress.style = .bar
+        progress.setAccessibilityLabel(L("이동 진행률", "Move progress"))
         stack.addArrangedSubview(progress)
         let scroll = NSScrollView()
         scroll.hasVerticalScroller = true
         scroll.borderType = .bezelBorder
         details.isEditable = false
         details.isSelectable = true
+        details.setAccessibilityLabel(L("이동 상세 결과", "Move details"))
         details.font = .monospacedSystemFont(ofSize: 12, weight: .regular)
         details.string = sources.map(\.path).joined(separator: "\n")
         scroll.documentView = details
         stack.addArrangedSubview(scroll)
         close.target = self
+        close.keyEquivalent = "\u{1b}"
         close.bezelStyle = .rounded
         stack.addArrangedSubview(close)
         scroll.heightAnchor.constraint(greaterThanOrEqualToConstant: 180).isActive = true
@@ -118,12 +119,16 @@ final class MoveWindow: NSWindowController, NSWindowDelegate {
     private func finish(_ report: MoveOperationResult) {
         running = false
         let completed = report.items.filter { $0.state == "completed" }.count
-        let failed = report.items.filter { $0.state == "failed" || $0.state == "conflict" || $0.state == "notFound" }.count
+        let conflicts = report.items.filter { $0.state == "conflict" }.count
+        let failed = report.items.filter { $0.state == "failed" || $0.state == "notFound" }.count
         label.stringValue = (report.state == "cancelled" ? L("취소됨", "Cancelled") : L("작업 완료", "Finished")) + " · " +
             L("이동 완료 ", "Moved ") + "\(completed)/\(report.items.count)" +
             L("개 항목", " items")
         if failed > 0 {
             label.stringValue += L(" · 실패 ", " · Failed ") + "\(failed)/\(report.items.count)"
+        }
+        if conflicts > 0 {
+            label.stringValue += L(" · 충돌 \(conflicts)", " · Conflicts \(conflicts)")
         }
         progress.doubleValue = Double(report.items.count)
         details.string = report.items.map { item in
@@ -146,16 +151,14 @@ final class MoveWindow: NSWindowController, NSWindowDelegate {
                 (item.message.map { "\n  " + $0 } ?? "")
         }.joined(separator: "\n\n")
         if let error = report.journalError { details.string += "\n\n" + L("저널 저장 오류: ", "Journal error: ") + error }
-        close.title = L("닫기", "Close")
-        close.isEnabled = true
+        showResult()
     }
 
     private func fail(_ error: Error) {
         running = false
         label.stringValue = L("이동 실패", "Move failed")
         details.string = error.localizedDescription
-        close.title = L("닫기", "Close")
-        close.isEnabled = true
+        showResult()
     }
 
     @objc private func cancelMove(_ sender: Any?) {
@@ -164,7 +167,32 @@ final class MoveWindow: NSWindowController, NSWindowDelegate {
         close.isEnabled = false
         label.stringValue = L("취소 요청됨 — 현재 파일 작업이 안전 지점에 도달하면 중단합니다.",
                               "Cancellation requested — stopping when the current file operation reaches a safe point.")
+        announceStatus()
     }
+
+    private func showResult() {
+        close.title = L("닫기", "Close")
+        close.isEnabled = true
+        window?.defaultButtonCell = close.cell as? NSButtonCell
+        announceStatus()
+    }
+
+    private func announceStatus() {
+        guard let window else { return }
+        NSAccessibility.post(element: window, notification: .announcementRequested, userInfo: [
+            .announcement: label.stringValue,
+            .priority: NSAccessibilityPriorityLevel.medium.rawValue,
+        ])
+    }
+
+#if DEBUG
+    var qaAccessibleConflict: Bool {
+        !running && progress.accessibilityLabel() == L("이동 진행률", "Move progress")
+            && details.accessibilityLabel() == L("이동 상세 결과", "Move details")
+            && label.stringValue.contains(L("충돌 1", "Conflicts 1"))
+            && window?.defaultButtonCell === close.cell
+    }
+#endif
     func windowShouldClose(_ sender: NSWindow) -> Bool { !running }
     func windowWillClose(_ notification: Notification) { Self.operations.removeAll { $0 === self } }
 }

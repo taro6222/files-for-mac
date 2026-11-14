@@ -1734,7 +1734,8 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
                                                                          journalDirectory: Self.operationJournalDirectory)
                     Self.entryOperationRunning = false
                     if let warning = result.journalWarning { self.showEntryError(warning) }
-                    MoveWindow.start(sources: sources, destination: result.target, conflictPolicy: .skip) {
+                    MoveWindow.start(sources: sources, destination: result.target, conflictPolicy: .skip,
+                                     journalDirectory: self.undoJournalDirectory) {
                         targetModel.reload()
                     }
                 } catch {
@@ -2043,7 +2044,8 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
                 alert.addButton(withTitle: L("취소", "Cancel"))
                 alert.beginSheetModal(for: window) { [weak self] response in
                     guard response == .alertFirstButtonReturn, let self, !self.fileOperationIsRunning else { return }
-                    MoveWindow.start(sources: plan.sources, destination: plan.destination, flattenPlan: plan) {
+                    MoveWindow.start(sources: plan.sources, destination: plan.destination, flattenPlan: plan,
+                                     journalDirectory: self.undoJournalDirectory) {
                         targetModel.reload()
                     }
                 }
@@ -2322,15 +2324,21 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         alert.messageText = L("이동 시 이름 충돌 처리", "Move conflict policy")
         alert.informativeText = L("대상: ", "Destination: ") + destination.path + "\n" +
             L("\(sources.count)개 항목을 이동합니다. 이번 작업에서 이름이 겹치면 적용할 정책을 선택하세요.", "Moving \(sources.count) items. Choose how this job handles conflicting names.")
-        alert.addButton(withTitle: L("건너뛰기", "Skip Conflicts"))
+        let skip = alert.addButton(withTitle: L("건너뛰기", "Skip Conflicts"))
+        skip.keyEquivalent = "s"
+        skip.keyEquivalentModifierMask = [.command]
         alert.addButton(withTitle: L("교체", "Replace Existing"))
-        alert.addButton(withTitle: L("취소", "Cancel"))
+        let cancel = alert.addButton(withTitle: L("취소", "Cancel"))
+        cancel.keyEquivalent = "\u{1b}"
+        cancel.keyEquivalentModifierMask = []
+        let journals = undoJournalDirectory
         alert.beginSheetModal(for: window) { response in
             guard response == .alertFirstButtonReturn || response == .alertSecondButtonReturn else { return }
             guard validateSources() else { return }
             onStarted?()
             MoveWindow.start(sources: sources, destination: destination,
-                             conflictPolicy: response == .alertSecondButtonReturn ? .replace : .skip) {
+                             conflictPolicy: response == .alertSecondButtonReturn ? .replace : .skip,
+                             journalDirectory: journals) {
                 targetModel.reload()
             }
         }
@@ -4599,6 +4607,29 @@ extension BrowserWindow {
                     checks["copyResultKeyboardClose"] = resultWindow.performKeyEquivalent(with: close) && !resultWindow.isVisible
                 } else { checks["copyResultKeyboardClose"] = false }
             } else { checks["copyConflictKeyboardShortcut"] = false }
+            let moveSource = source.appendingPathComponent("conflict.txt")
+            controller.prepareMove(sources: [moveSource], destination: target)
+            if let sheet = window.attachedSheet,
+               let skip = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: .command,
+                   timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: sheet.windowNumber,
+                   context: nil, characters: "s", charactersIgnoringModifiers: "s", isARepeat: false, keyCode: 1) {
+                checks["moveConflictKeyboardShortcut"] = sheet.performKeyEquivalent(with: skip)
+                let start = ContinuousClock.now
+                var move: MoveWindow?
+                repeat {
+                    try await Task.sleep(for: .milliseconds(20))
+                    move = NSApp.windows.compactMap { $0.windowController as? MoveWindow }.first
+                } while (move == nil || MoveWindow.isRunning) && elapsed(start) < 5
+                checks["moveConflictAccessibleResult"] = move?.qaAccessibleConflict == true
+                    && (try? Data(contentsOf: moveSource)) == Data("source".utf8)
+                    && (try? Data(contentsOf: existing)) == Data("target".utf8)
+                if let resultWindow = move?.window,
+                   let close = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [],
+                       timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: resultWindow.windowNumber,
+                       context: nil, characters: "\r", charactersIgnoringModifiers: "\r", isARepeat: false, keyCode: 36) {
+                    checks["moveResultKeyboardClose"] = resultWindow.performKeyEquivalent(with: close) && !resultWindow.isVisible
+                } else { checks["moveResultKeyboardClose"] = false }
+            } else { checks["moveConflictKeyboardShortcut"] = false }
             let result: [String: Any] = ["checks": checks, "diagnostics": diagnostics,
                 "language": Locale.preferredLanguages.first ?? "unknown", "theme": dark ? "dark" : "light",
                 "os": ProcessInfo.processInfo.operatingSystemVersionString]
