@@ -37,4 +37,8 @@ rm -- "$run_dir/bin-path"
 sw_vers > "$run_dir/macos.txt"
 /bin/df -P "$run_dir" > "$run_dir/filesystem.txt"
 export FILES_SOAK_DIRECTORY="$run_dir" FILES_SOAK_SECONDS="$seconds"
-exec caffeinate -i "$run_dir/FilesMac" >"$run_dir/app.log" 2>&1
+status=0
+caffeinate -i "$run_dir/FilesMac" >"$run_dir/app.log" 2>&1 || status=$?
+printf '%s\n' "$status" > "$run_dir/.exit-status"
+mv "$run_dir/.exit-status" "$run_dir/exit-status"
+exit "$status"
