@@ -16,6 +16,81 @@ import Testing
     }
 }
 
+@Test func mountedVolumeAPFSPreservesFileMetadataThroughCopyMoveAndUndo() async throws {
+    guard let path = ProcessInfo.processInfo.environment["FILES_TEST_APFSX_VOLUME"] else { return }
+    let fm = FileManager.default
+    let root = fm.temporaryDirectory.appendingPathComponent("FilesMac-Metadata-\(UUID())", isDirectory: true)
+    let destination = URL(fileURLWithPath: path, isDirectory: true)
+        .appendingPathComponent(root.lastPathComponent, isDirectory: true)
+    let journal = root.appendingPathComponent("journal", isDirectory: true)
+    defer { try? fm.removeItem(at: root); try? fm.removeItem(at: destination) }
+    try fm.createDirectory(at: root, withIntermediateDirectories: true)
+    try fm.createDirectory(at: destination, withIntermediateDirectories: false)
+
+    let name = "-한글 é 📁\nfixture.txt"
+    let source = root.appendingPathComponent(name)
+    let target = destination.appendingPathComponent(name)
+    let payload = Data("data fork".utf8)
+    let modificationDate = Date(timeIntervalSince1970: 1_700_000_000)
+    let xattrs = [
+        "com.filesmac.fixture": Data("extended attribute".utf8),
+        "com.apple.ResourceFork": Data("resource fork".utf8),
+        "com.apple.metadata:_kMDItemUserTags": try PropertyListSerialization.data(
+            fromPropertyList: ["FilesMac Fixture\n6"], format: .binary, options: 0)
+    ]
+    try payload.write(to: source)
+    for (key, value) in xattrs {
+        let status = value.withUnsafeBytes { setxattr(source.path, key, $0.baseAddress, $0.count, 0, 0) }
+        try #require(status == 0, "Unable to set \(key): \(errno)")
+    }
+    let chmod = Process()
+    chmod.executableURL = URL(fileURLWithPath: "/bin/chmod")
+    chmod.arguments = ["+a", "everyone allow readattr", source.path]
+    try chmod.run()
+    chmod.waitUntilExit()
+    try #require(chmod.terminationStatus == 0)
+    try fm.setAttributes([.posixPermissions: 0o750, .modificationDate: modificationDate], ofItemAtPath: source.path)
+
+    func aclText(_ file: URL) throws -> String {
+        let acl = try #require(acl_get_file(file.path, ACL_TYPE_EXTENDED))
+        defer { acl_free(UnsafeMutableRawPointer(acl)) }
+        let text = try #require(acl_to_text(acl, nil))
+        defer { acl_free(text) }
+        return String(cString: text)
+    }
+    let expectedACL = try aclText(source)
+    func verify(_ file: URL) throws {
+        #expect(try Data(contentsOf: file) == payload)
+        let attrs = try fm.attributesOfItem(atPath: file.path)
+        #expect((attrs[.posixPermissions] as? NSNumber)?.intValue == 0o750)
+        #expect(attrs[.modificationDate] as? Date == modificationDate)
+        #expect(try aclText(file) == expectedACL)
+        for (key, expected) in xattrs {
+            var actual = Data(count: expected.count)
+            let count = actual.withUnsafeMutableBytes { getxattr(file.path, key, $0.baseAddress, $0.count, 0, 0) }
+            #expect(count == expected.count && actual == expected, "Metadata mismatch for \(key)")
+        }
+    }
+
+    let copy = await CopyEngine.run(sources: [source], destination: destination,
+        journalDirectory: journal, cancellation: CopyCancellation())
+    try #require(copy.items.first?.state == "completed")
+    try verify(source)
+    try verify(target)
+    let copyUndo = try #require(CopyEngine.latestUndoCopy(journalDirectory: journal))
+    #expect(await CopyEngine.undoCopy(copyUndo, journalDirectory: journal).state == "completed")
+    #expect(!fm.fileExists(atPath: target.path))
+    let move = try await EntryOperations.move([source], to: destination, journalDirectory: journal)
+    try #require(move.items.first?.state == "completed")
+    #expect(!fm.fileExists(atPath: source.path))
+    try verify(target)
+    let moveUndo = try #require(EntryOperations.latestUndoMove(journalDirectory: journal))
+    #expect(moveUndo.items.first?.crossVolume == true)
+    #expect(await EntryOperations.undoMove(moveUndo, journalDirectory: journal).state == "completed")
+    try verify(source)
+    #expect(!fm.fileExists(atPath: target.path))
+}
+
 @Test func mountedVolumeCopyMoveUndoAndCaseSemantics() async throws {
     let environment = ProcessInfo.processInfo.environment
     let configurations: [(String, Bool)] = [
