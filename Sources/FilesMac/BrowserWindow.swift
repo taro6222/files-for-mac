@@ -1577,13 +1577,14 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         }
     }
     private enum NewItemKind: CaseIterable {
-        case folder, file, symbolicLink
+        case folder, file, symbolicLink, template
 
         var title: String {
             switch self {
             case .folder: L("폴더", "Folder")
             case .file: L("빈 파일", "Empty File")
             case .symbolicLink: L("심볼릭 링크", "Symbolic Link")
+            case .template: L("템플릿으로 파일 만들기", "File from Template")
             }
         }
     }
@@ -1617,6 +1618,66 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
                 case .folder: self.createFolder(nil)
                 case .file: self.createFile(nil)
                 case .symbolicLink: self.createSymbolicLinkFromDialog(nil)
+                case .template: self.chooseFileTemplate(in: parent, model: origin)
+                }
+            }
+        }
+    }
+
+    private func chooseFileTemplate(in parent: URL, model: BrowserModel) {
+        guard let window else { return }
+        let picker = NSOpenPanel()
+        picker.canChooseDirectories = false
+        picker.canChooseFiles = true
+        picker.allowsMultipleSelection = false
+        picker.prompt = L("템플릿 선택", "Choose Template")
+        picker.message = L("새 파일의 내용으로 사용할 파일을 선택하세요.", "Choose an existing file to use as the template.")
+        picker.beginSheetModal(for: window) { [weak self] response in
+            guard response == .OK, let self, let template = picker.url else { return }
+            Task { @MainActor in
+                guard window.isVisible, self.canAddItem, self.activeModel === model, model.location == parent else { return }
+                self.promptForTemplateName(template, in: parent, model: model)
+            }
+        }
+    }
+
+    private func promptForTemplateName(_ template: URL, in parent: URL, model: BrowserModel) {
+        guard let window, let destination = ShelfEntry(parent) else { return }
+        let alert = NSAlert()
+        alert.messageText = L("템플릿으로 파일 만들기", "File from Template")
+        alert.informativeText = parent.path
+        let field = NSTextField(string: template.lastPathComponent)
+        field.frame = NSRect(x: 0, y: 0, width: 360, height: 26)
+        field.setAccessibilityLabel(L("파일 이름", "File name"))
+        alert.accessoryView = field
+        alert.addButton(withTitle: L("만들기", "Create"))
+        alert.addButton(withTitle: L("취소", "Cancel"))
+        alert.window.initialFirstResponder = field
+        alert.beginSheetModal(for: window) { [weak self] response in
+            guard response == .alertFirstButtonReturn, let self, !self.fileOperationIsRunning,
+                  self.activeModel === model, model.location == parent, destination.isCurrent else { return }
+            let name = field.stringValue
+            Self.entryOperationRunning = true
+            Task {
+                defer { Self.entryOperationRunning = false }
+                do {
+                    let report = try await CopyEngine.instantiateTemplate(template, in: parent, name: name,
+                                                                          journalDirectory: self.undoJournalDirectory)
+                    if let item = report.items.first, item.state == "completed" {
+                        if model.location == parent {
+                            if model === self.model { self.pendingEntrySelection = item.target.standardizedFileURL }
+                            if name.hasPrefix(".") { self.preferences.setShowHidden(true) }
+                            model.reload()
+                        }
+                        if let warning = report.journalError { self.showEntryError(warning) }
+                    } else if report.items.first?.state == "conflict" {
+                        self.showEntryError(self.entryOperationMessage(EntryOperationError.conflict))
+                    } else {
+                        self.showEntryError(report.journalError ?? report.items.first?.message
+                            ?? L("템플릿을 복사하지 못했습니다.", "Could not copy the template."))
+                    }
+                } catch {
+                    self.showEntryError(self.entryOperationMessage(error))
                 }
             }
         }
@@ -4464,6 +4525,24 @@ extension BrowserWindow {
             checks["redoMoveCommand"] = replayAvailable && replayed && !fm.fileExists(atPath: redoSource.path)
                 && (try? Data(contentsOf: redoTarget)) == Data("redo".utf8)
                 && controller.availableMoveRedo == nil
+            let template = source.appendingPathComponent("new.txt")
+            controller.promptForTemplateName(template, in: target, model: controller.model)
+            if let templateSheet = window.attachedSheet,
+               let field = templateSheet.initialFirstResponder as? NSTextField {
+                field.stringValue = "from-template.txt"
+                window.endSheet(templateSheet, returnCode: .alertFirstButtonReturn)
+                let templateWait = ContinuousClock.now
+                let output = target.appendingPathComponent("from-template.txt")
+                while (!fm.fileExists(atPath: output.path) || BrowserWindow.entryOperationRunning)
+                    && elapsed(templateWait) < 5 {
+                    try await Task.sleep(for: .milliseconds(20))
+                }
+                checks["templateNameAndContents"] = (try? Data(contentsOf: output)) == Data("new".utf8)
+                    && (try? Data(contentsOf: template)) == Data("new".utf8)
+            } else {
+                checks["templateNameAndContents"] = false
+                if let sheet = window.attachedSheet { window.endSheet(sheet, returnCode: .alertSecondButtonReturn) }
+            }
             let result: [String: Any] = ["checks": checks, "diagnostics": diagnostics,
                 "language": Locale.preferredLanguages.first ?? "unknown", "theme": dark ? "dark" : "light",
                 "os": ProcessInfo.processInfo.operatingSystemVersionString]

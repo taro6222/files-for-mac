@@ -8,7 +8,7 @@ M7 첫 개발 단위로 로컬 프리뷰 DMG를 빌드하고 마운트·실행�
 
 로컬 릴리스 검증에서 실제 APFS·대소문자 구분 APFS·exFAT, 시스템 휴지통 및 루프백 FTP/FTPS/SFTP를 재검증했다. AppKit 20회 왕복·100개 스크롤 표본을 기록했다. [M7 로컬 회귀·성능](verification/m7/INCREMENT_02.md)
 
-M6 102번째 개발 단위로 같은 앱 세션에서 이동 재실행을 추가했다. 명령·설정·화면 인벤토리에서 검토 대기 항목은 0개다. 대응 범위 밖의 동작과 실환경 검증은 계속 추적한다.
+M6 103번째 개발 단위로 사용자가 선택한 파일을 템플릿으로 재사용하는 기능을 추가했다. 명령·설정·화면 인벤토리에서 검토 대기 항목은 0개다. 대응 범위 밖의 동작과 실환경 검증은 계속 추적한다.
 
 | 영역 | 상태 | 내용 |
 |---|---|---|
@@ -37,7 +37,7 @@ M6 102번째 개발 단위로 같은 앱 세션에서 이동 재실행을 추가
 | 클라우드 | 구현 중 | `~/Library/CloudStorage` 공급자 폴더와 iCloud Drive 탐지·사이드바 탐색, ubiquitous resource value 기반 상태 분류, iCloud 지금 다운로드·공간 비우기 메뉴, 일반 File Provider 상태는 unknown·명령 비활성 유지 |
 | 원격 연결 | 구현 중 | FTP/암시적 FTPS·SFTP 원격 pane 탐색·중단·세션·접근성·안전 다운로드, FTPS 인증서·호스트 검증, Keychain 자격 증명 게이트, FTP Unix·Windows/DOS LIST 폴더 metadata와 미지원 형식 차단, unsafe rename 업로드 차단 |
 | Git | 구현 중 | 상태 패널과 clone UI, HTTPS/SSH/file 입력, sibling staging publish, 완료 후 새 탐색 창, fetch/FF-only pull/push/중단, 상세 목록 XY 상태·폴더 하위 변경 표시, 탐색 중 stale 결과 폐기·선택 보존, stage/commit·submodule·LFS·hook 제외와 시스템 인증 위임을 UI에 명시 |
-| 테스트 | 통과 | Swift Testing 198개. 한국어·영어 × 밝게·어둡게 AppKit 기본 회귀 각 217개(100번째 단위), 파일 작업 회귀 각 30개. 실제 확인 창을 통한 이동 재실행과 파일 결과 검증 |
+| 테스트 | 통과 | Swift Testing 199개. 한국어·영어 × 밝게·어둡게 AppKit 기본 회귀 각 217개(100번째 단위), 파일 작업 회귀 각 31개. 템플릿 이름 입력과 원본·생성 파일의 내용 확인 |
 | 파일 복사 | 구현 | 대상 폴더 선택·클립보드·양쪽 유지/건너뛰기·내용 검증·취소·항목별 결과·JSON 저널·안전 실행 취소, 다중 선택 폴더 병합·통합 Undo |
 | 느린 폴더 복구 | 구현 | 읽기 중단·늦은 결과 차단·불완전 목록 안내·명시적 재시도 |
 | 접근 복구 | 부분 검증 | 오류 화면 재시도·폴더 선택, 시스템 선택 후 Desktop fixture 읽기 성공; 재실행 읽기 확인; 감시는 연결 대기 |
@@ -140,3 +140,4 @@ M6 추가 검증: [동기화 상태 정렬·그룹화·열](verification/m6/INCR
 M6 추가 검증: [파일 미리보기 메모리 캐시](verification/m6/INCREMENT_100.md).
 M6 추가 검증: [최근 파일 전송 실행 취소](verification/m6/INCREMENT_101.md).
 M6 추가 검증: [이동 재실행](verification/m6/INCREMENT_102.md).
+M6 추가 검증: [템플릿으로 파일 생성](verification/m6/INCREMENT_103.md).

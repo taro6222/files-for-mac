@@ -93,9 +93,30 @@ public enum CopyEngine {
         } onCancel: { cancellation.cancel() }
     }
 
+    /// Creates a named copy of a user-selected regular template without replacing an entry.
+    public static func instantiateTemplate(_ template: URL, in destination: URL, name: String,
+                                           journalDirectory: URL) async throws -> CopyReport {
+        try EntryOperations.validateName(name)
+        let target = destination.resolvingSymlinksInPath().standardizedFileURL
+        guard template.isFileURL, destination.isFileURL,
+              let targetFolder = ShelfEntry(target), let templateEntry = ShelfEntry(template) else {
+            throw EntryOperationError.sourceChanged
+        }
+        return try await Task.detached(priority: .userInitiated) {
+            guard templateEntry.isCurrent,
+                  try FileManager.default.attributesOfItem(atPath: template.path)[.type] as? FileAttributeType == .typeRegular else {
+                throw EntryOperationError.sourceChanged
+            }
+            return execute(sources: [template], destination: target, journalDirectory: journalDirectory,
+                           cancellation: CopyCancellation(), conflictPolicy: .skip, recordUndo: true,
+                           explicitName: name, expectedDestination: targetFolder, expectedTemplate: templateEntry, progress: { _ in })
+        }.value
+    }
+
     private static func execute(sources: [URL], destination: URL, journalDirectory: URL,
                                 cancellation: CopyCancellation, conflictPolicy: CopyConflictPolicy,
-                                recordUndo: Bool,
+                                recordUndo: Bool, explicitName: String? = nil, expectedDestination: ShelfEntry? = nil,
+                                expectedTemplate: ShelfEntry? = nil,
                                 progress: @Sendable (CopyProgress) -> Void) -> CopyReport {
         let fm = FileManager()
         let delegate = CopyDelegate(cancellation)
@@ -103,7 +124,7 @@ public enum CopyEngine {
         defer { withExtendedLifetime(delegate) {} }
         let destination = destination.resolvingSymlinksInPath().standardizedFileURL
         var report = CopyReport(version: 1, id: UUID(), state: "running", items: sources.map {
-            CopyRecord(source: $0, target: destination.appendingPathComponent($0.lastPathComponent))
+            CopyRecord(source: $0, target: destination.appendingPathComponent(explicitName ?? $0.lastPathComponent))
         })
         let journal = journalDirectory.appendingPathComponent(report.id.uuidString + ".json")
         func save() throws {
@@ -126,11 +147,17 @@ public enum CopyEngine {
                 progress(CopyProgress(index: index, total: sources.count, name: source.lastPathComponent, phase: phase))
             }
             do {
-                guard destinationFD >= 0, matches(destination, descriptor: destinationFD) else {
+                guard destinationFD >= 0, matches(destination, descriptor: destinationFD),
+                      expectedDestination?.isCurrent != false else {
                     throw CopyFailure(text: "Destination is unavailable or has changed.")
                 }
                 report.items[index].state = "planning"; try save(); emit("planning")
                 let attrs = try fm.attributesOfItem(atPath: source.path)
+                let requestedName = explicitName ?? source.lastPathComponent
+                if let expectedTemplate,
+                   !expectedTemplate.isCurrent || attrs[.type] as? FileAttributeType != .typeRegular {
+                    throw EntryOperationError.sourceChanged
+                }
                 if attrs[.type] as? FileAttributeType == .typeDirectory {
                     let root = source.resolvingSymlinksInPath().standardizedFileURL.path
                     let path = destination.path
@@ -139,7 +166,7 @@ public enum CopyEngine {
                     }
                 }
                 var existing = stat()
-                let exists = fstatat(destinationFD, source.lastPathComponent, &existing, AT_SYMLINK_NOFOLLOW) == 0
+                let exists = fstatat(destinationFD, requestedName, &existing, AT_SYMLINK_NOFOLLOW) == 0
                 let lookupError = errno
                 if exists && conflictPolicy == .skip {
                     report.items[index].state = "conflict"
@@ -161,7 +188,13 @@ public enum CopyEngine {
                     }
                     emit("copying"); try cancellation.check()
                     let payload = temporary.appendingPathComponent("payload")
+                    if let expectedTemplate, !expectedTemplate.isCurrent {
+                        throw EntryOperationError.sourceChanged
+                    }
                     try fm.copyItem(at: source, to: payload)
+                    if let expectedTemplate, !expectedTemplate.isCurrent {
+                        throw EntryOperationError.sourceChanged
+                    }
                     try cancellation.check()
                     emit("verifying")
                     guard try contentSnapshot(payload, cancellation: cancellation) == contentBefore,
@@ -169,14 +202,15 @@ public enum CopyEngine {
                         throw CopyFailure(text: "Source changed or copied contents did not match.")
                     }
                     emit("committing"); try cancellation.check()
-                    guard matches(destination, descriptor: destinationFD), matches(temporary, descriptor: stageFD) else {
+                    guard matches(destination, descriptor: destinationFD), matches(temporary, descriptor: stageFD),
+                          expectedDestination?.isCurrent != false else {
                         throw CopyFailure(text: "Destination identity changed before commit.")
                     }
                     // Atomic, descriptor-relative publication: never replace even a racing/broken symlink.
                     var suffix = 0
                     while true {
                         try cancellation.check()
-                        let name = copyName(source, isDirectory: attrs[.type] as? FileAttributeType == .typeDirectory, suffix: suffix)
+                        let name = explicitName ?? copyName(source, isDirectory: attrs[.type] as? FileAttributeType == .typeDirectory, suffix: suffix)
                         report.items[index].target = destination.appendingPathComponent(name)
                         try save() // Persist the actual proposed name before publishing it.
                         do {

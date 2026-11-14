@@ -303,3 +303,26 @@ private struct CopyFixture {
     #expect(report.journalError != nil)
     #expect(try FileManager.default.contentsOfDirectory(atPath: f.destination.path).isEmpty)
 }
+
+@Test func templateCreatesNamedCopyAndPreservesOriginalAndExistingTargets() async throws {
+    let fixture = try CopyFixture()
+    defer { fixture.clean() }
+    let template = try fixture.file("Proposal.txt", text: "template")
+    let target = fixture.destination.appendingPathComponent("New Proposal.txt")
+    let report = try await CopyEngine.instantiateTemplate(template, in: fixture.destination,
+                                                          name: "New Proposal.txt", journalDirectory: fixture.journal)
+    #expect(report.items.first?.state == "completed")
+    #expect(try Data(contentsOf: template) == Data("template".utf8))
+    #expect(try Data(contentsOf: target) == Data("template".utf8))
+    try Data("existing".utf8).write(to: target)
+    let collision = try await CopyEngine.instantiateTemplate(template, in: fixture.destination,
+                                                             name: "New Proposal.txt", journalDirectory: fixture.journal)
+    #expect(collision.items.first?.state == "conflict")
+    #expect(try Data(contentsOf: target) == Data("existing".utf8))
+    let link = fixture.source.appendingPathComponent("Link.txt")
+    try FileManager.default.createSymbolicLink(at: link, withDestinationURL: template)
+    await #expect(throws: EntryOperationError.sourceChanged) {
+        try await CopyEngine.instantiateTemplate(link, in: fixture.destination, name: "Other.txt",
+                                                journalDirectory: fixture.journal)
+    }
+}
