@@ -75,6 +75,7 @@ import Testing
         #expect(try String(contentsOf: replaceTarget, encoding: .utf8) == "old")
 
         try await verifyMountedVolumeReplacementCancellation(local: local, destination: destination, journal: journal)
+        try await verifyMountedVolumeChangedBackupCancellation(local: local, destination: destination, journal: journal)
         try await verifyCrossVolumeMovePreservesReplacedDestination(local: local, destination: destination, journal: journal)
         let folder = root.appendingPathComponent("same-volume-folder", isDirectory: true)
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: false)
@@ -247,6 +248,7 @@ import Testing
     #expect(try String(contentsOf: replacement, encoding: .utf8) == "new")
     #expect(try String(contentsOf: existing, encoding: .utf8) == "old")
     try await verifyMountedVolumeReplacementCancellation(local: local, destination: destination, journal: journal)
+    try await verifyMountedVolumeChangedBackupCancellation(local: local, destination: destination, journal: journal)
     try await verifyCrossVolumeMovePreservesReplacedDestination(local: local, destination: destination, journal: journal)
 }
 
@@ -268,6 +270,40 @@ private func verifyCrossVolumeMovePreservesReplacedDestination(local: URL, desti
     #expect(try Data(contentsOf: source) == contents)
     #expect(try Data(contentsOf: target) == contents)
     #expect(try Data(contentsOf: originalPublication) == contents)
+}
+
+private func verifyMountedVolumeChangedBackupCancellation(local: URL, destination: URL, journal: URL) async throws {
+    let fm = FileManager.default
+    let source = local.appendingPathComponent("changed-backup-folder", isDirectory: true)
+    let target = destination.appendingPathComponent(source.lastPathComponent, isDirectory: true)
+    try fm.createDirectory(at: source, withIntermediateDirectories: false)
+    try fm.createDirectory(at: target, withIntermediateDirectories: false)
+    let sourceChild = source.appendingPathComponent("child.txt")
+    try Data("source".utf8).write(to: sourceChild)
+    try Data("old".utf8).write(to: target.appendingPathComponent("child.txt"))
+
+    let cancellation = CopyCancellation()
+    let move = try await EntryOperations.move([source], to: destination,
+        conflictPolicy: .replace, journalDirectory: journal, cancellation: cancellation) { progress in
+        guard progress.phase == "verifying" else { return }
+        defer { cancellation.cancel() }
+        do {
+            let children = try FileManager.default.contentsOfDirectory(at: destination, includingPropertiesForKeys: nil)
+            let backup = try #require(children.first { $0.lastPathComponent.hasPrefix(".files-move-backup-") })
+            try Data("edited".utf8).write(to: backup.appendingPathComponent("child.txt"))
+        } catch { Issue.record(error) }
+    }
+
+    #expect(move.items.map(\.state) == ["cancelled"])
+    let backup = try #require(move.items.first?.recoveryBackup)
+    #expect(try String(contentsOf: sourceChild, encoding: .utf8) == "source")
+    #expect(try String(contentsOf: backup.appendingPathComponent("child.txt"), encoding: .utf8) == "edited")
+    #expect(!fm.fileExists(atPath: target.path))
+    let data = try Data(contentsOf: journal.appendingPathComponent("move-\(move.id).json"))
+    let record = try #require(JSONSerialization.jsonObject(with: data) as? [String: Any])
+    let items = try #require(record["items"] as? [[String: Any]])
+    #expect(items.first?["backup"] as? String == backup.absoluteString)
+    try fm.removeItem(at: backup)
 }
 
 private func verifyMountedVolumeReplacementCancellation(local: URL, destination: URL, journal: URL) async throws {

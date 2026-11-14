@@ -721,6 +721,7 @@ public enum EntryOperations {
                     let source = normalizedSources[index]
                     let target = normalizedDestination.appendingPathComponent(source.lastPathComponent)
                     var backup: URL?
+                    var backupVerified = false
                     func snapshotForUndo(_ url: URL) throws -> [String: String]? {
                         do {
                             let attributes = try fm.attributesOfItem(atPath: url.path)
@@ -752,6 +753,9 @@ public enum EntryOperations {
                                   opened.st_dev == current.st_dev, opened.st_ino == current.st_ino else {
                                 throw EntryOperationError.sourceChanged
                             }
+                            guard backupVerified, let identity = backupIdentities[index],
+                                  try matchesUndoEntry(backup, identity: identity, snapshot: backupSnapshots[index],
+                                                       fileManager: fm) else { return backup }
                             try CopyEngine.publishNoReplace(payload: backup, target: target,
                                 sourceDirectoryFD: destinationFD, sourceName: backup.lastPathComponent,
                                 destinationDirectoryFD: destinationFD, destinationName: target.lastPathComponent)
@@ -830,6 +834,7 @@ public enum EntryOperations {
                                 backupURLs[index] = proposedBackup
                                 backupIdentities[index] = backupIdentity
                                 backupSnapshots[index] = backupSnapshot
+                                backupVerified = canRecordUndo[index]
                             }
                             if crossVolume {
                                 let sourceIdentity = try snapshotIdentity(source, fileManager: fm)
