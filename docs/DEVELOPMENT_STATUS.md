@@ -4,6 +4,8 @@
 
 ## 이번 구현 단위
 
+Git 열을 숨긴 창에서는 목록용 Git 조회를 생략한다. [M7 Git 조회 검증](verification/m7/INCREMENT_66.md)
+
 장시간 시험의 프로세스 종료 코드를 보고서와 함께 보존하고, 상세 목록 재사용 후보로 8시간 시험을 시작했다. [M7 장시간 종료 증거](verification/m7/INCREMENT_65.md)
 
 상세 행과 표시 상태가 같으면 기존 테이블 셀을 재사용한다. [M7 상세 목록 셀 검증](verification/m7/INCREMENT_64.md)

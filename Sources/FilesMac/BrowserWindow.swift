@@ -839,9 +839,11 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         autoFitObservedLoading = model.isLoading
         let gitLoadCompleted = gitObservedLoading && !model.isLoading
         gitObservedLoading = model.isLoading
-        if model.location == nil {
-            resetGitCommits()
-            gitTask?.cancel(); gitTask = nil; gitGeneration += 1; gitLocation = nil; gitStatuses = [:]; gitChangedPaths = []
+        if model.location == nil || !showsGitColumns {
+            if gitLocation != nil {
+                resetGitCommits()
+                gitTask?.cancel(); gitTask = nil; gitGeneration += 1; gitLocation = nil; gitStatuses = [:]; gitChangedPaths = []
+            }
         } else if !model.isLoading, let location = model.location, gitLocation != location || gitLoadCompleted {
             refreshGitStatuses(for: location)
         }
@@ -1047,6 +1049,11 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
                 gitStatuses = [:]; gitChangedPaths = []
             }
         }
+    }
+    private var showsGitColumns: Bool {
+        preferences.showGitStatusColumn || preferences.showGitCommitDateColumn
+            || preferences.showGitCommitMessageColumn || preferences.showGitCommitAuthorColumn
+            || preferences.showGitCommitSHAColumn
     }
     private func resetGitCommits() {
         gitCommitTask?.cancel()
@@ -3669,13 +3676,19 @@ extension BrowserWindow {
                 try capture("git-clone", view: clonePanel.window?.contentView); clonePanel.close(); window.makeKeyAndOrderFront(nil)
                 let qaGitFile = cloneDestination.appendingPathComponent("qa-untracked.txt")
                 try Data("Git column QA".utf8).write(to: qaGitFile, options: .atomic)
+                let gitList = BrowserWindow(preferences: preferences, restoresFrame: false, initialLocation: cloneDestination, cloudProvider: qaCloudProvider)
+                gitList.showWindow(nil)
+                let hiddenGitWait = ContinuousClock.now
+                while gitList.model.isLoading && hiddenGitWait.duration(to: .now) < .seconds(15) {
+                    try await Task.sleep(for: .milliseconds(20))
+                }
+                let skippedHiddenGit = !gitList.model.isLoading && gitList.gitLocation == nil && !gitList.qaGitLoading
                 preferences.setShowGitStatusColumn(true)
                 preferences.setShowGitCommitDateColumn(true)
                 preferences.setShowGitCommitMessageColumn(true)
                 preferences.setShowGitCommitAuthorColumn(true)
                 preferences.setShowGitCommitSHAColumn(true)
-                let gitList = BrowserWindow(preferences: preferences, restoresFrame: false, initialLocation: cloneDestination, cloudProvider: qaCloudProvider)
-                gitList.showWindow(nil); let gitListWait = ContinuousClock.now
+                let gitListWait = ContinuousClock.now
                 while (gitList.model.isLoading || gitList.qaGitLoading) && gitListWait.duration(to: .now) < .seconds(15) { try await Task.sleep(for: .milliseconds(20)) }
                 checks["gitFileColumn"] = gitList.qaGitColumnVisible && gitList.qaGitMarkedRows > 0
                 let commitColumns = ["gitCommitDate", "gitCommitMessage", "gitCommitAuthor", "gitCommitSHA"]
@@ -3704,12 +3717,15 @@ extension BrowserWindow {
                         && shaCell?.textField?.stringValue == gitList.gitCommitValue("gitCommitSHA", for: tracked)
                         && gitList.table.selectedRowIndexes == IndexSet(integer: row)
                 } else { checks["gitCommitColumns"] = false }
-                try capture("git-file-column", view: gitList.window?.contentView); gitList.close(); window.makeKeyAndOrderFront(nil)
+                try capture("git-file-column", view: gitList.window?.contentView)
                 preferences.setShowGitStatusColumn(false)
                 preferences.setShowGitCommitDateColumn(false)
                 preferences.setShowGitCommitMessageColumn(false)
                 preferences.setShowGitCommitAuthorColumn(false)
                 preferences.setShowGitCommitSHAColumn(false)
+                checks["hiddenGitColumnsSkipMetadata"] = skippedHiddenGit && gitList.gitLocation == nil
+                    && gitList.gitCommitTask == nil && !gitList.qaGitLoading && gitList.qaGitMarkedRows == 0
+                gitList.close(); window.makeKeyAndOrderFront(nil)
             } else { checks["shortcutSettingsWindow"] = false }
             controller.showToolbarSettings(nil); try await Task.sleep(for: .milliseconds(50))
             checks["toolbarSettingsWindow"] = controller.toolbarSettingsWindow?.window?.isVisible == true
