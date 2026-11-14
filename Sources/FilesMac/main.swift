@@ -410,6 +410,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         edit.addItem(withTitle: L("선택 항목을 임시 모음에 추가", "Add Selection to Shelf"), action: #selector(BrowserWindow.addSelectionToShelf(_:)), keyEquivalent: "")
         let goItem = NSMenuItem(); goItem.title = L("이동", "Go"); menu.addItem(goItem)
         let go = NSMenu(title: goItem.title); goItem.submenu = go
+        go.addItem(withTitle: L("시스템 저장 공간 설정 열기", "Open System Storage Settings"),
+                   action: #selector(BrowserWindow.openStorageSettings(_:)), keyEquivalent: "")
         go.addItem(withTitle: L("뒤로", "Back"), action: #selector(BrowserWindow.goBack(_:)), keyEquivalent: "[")
         go.addItem(withTitle: L("앞으로", "Forward"), action: #selector(BrowserWindow.goForward(_:)), keyEquivalent: "]")
         go.addItem(withTitle: L("상위 폴더", "Enclosing Folder"), action: #selector(BrowserWindow.goUp(_:)), keyEquivalent: "\u{f700}")

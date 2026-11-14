@@ -115,6 +115,7 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
     private var autoFitObservedLoading = false
     private var folderSizeTask: Task<Void, Never>?
     private let cloudProvider: CloudLocationProvider
+    private let openSystemURL: (URL) -> Bool
     static private(set) var entryOperationRunning = false
     private static var operationJournalDirectory: URL {
         FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
@@ -158,11 +159,13 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
          initialWorkspace: SplitTabState? = nil,
          loader: any DirectoryLoading = LocalFileSystem(),
          cloudProvider: CloudLocationProvider = CloudLocationProvider(),
-         makeWatcher: @escaping @Sendable (URL) -> DirectoryWatcher? = { DirectoryWatcher(url: $0) }) {
+         makeWatcher: @escaping @Sendable (URL) -> DirectoryWatcher? = { DirectoryWatcher(url: $0) },
+         openSystemURL: @escaping (URL) -> Bool = { NSWorkspace.shared.open($0) }) {
         self.model = BrowserModel(loader: loader)
         self.preferences = preferences
         self.cloudProvider = cloudProvider
         self.makeWatcher = makeWatcher
+        self.openSystemURL = openSystemURL
         let w = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1280, height: 820),
             styleMask: [.titled, .closable, .miniaturizable, .resizable], backing: .buffered, defer: false)
         super.init(window: w)
@@ -495,6 +498,9 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         compressionMenuItems = [archive, createArchive, extractHere, extractSmart, extractChild]
         let cloudDownload = menu.addItem(withTitle: L("지금 다운로드", "Download Now"), action: #selector(downloadCloudSelection(_:)), keyEquivalent: ""); cloudDownload.target = self
         let cloudEvict = menu.addItem(withTitle: L("공간 비우기", "Free Up Space"), action: #selector(evictCloudSelection(_:)), keyEquivalent: ""); cloudEvict.target = self
+        let systemStorage = menu.addItem(withTitle: L("시스템 저장 공간 설정 열기", "Open System Storage Settings"),
+                                         action: #selector(openStorageSettings(_:)), keyEquivalent: "")
+        systemStorage.target = self
         let copy = menu.addItem(withTitle: L("선택 항목 복사…", "Copy Selection To…"), action: #selector(copySelection(_:)), keyEquivalent: ""); copy.target = self
         let move = menu.addItem(withTitle: L("선택 항목 이동…", "Move Selection To…"), action: #selector(moveSelection(_:)), keyEquivalent: ""); move.target = self
         let copyItemPath = menu.addItem(withTitle: L("선택 항목 경로 복사", "Copy Selected Paths"), action: #selector(copyItemPath(_:)), keyEquivalent: ""); copyItemPath.target = self
@@ -617,6 +623,12 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
             if !menu.items.isEmpty { menu.addItem(.separator()) }
             let utility = menu.addItem(withTitle: L("디스크 유틸리티에서 열기", "Open in Disk Utility"), action: #selector(openDiskUtility(_:)), keyEquivalent: "")
             utility.target = self; utility.representedObject = volume.url
+            if volume.isLocal == true {
+                let storage = menu.addItem(withTitle: L("시스템 저장 공간 설정 열기", "Open System Storage Settings"),
+                                           action: #selector(openStorageSettingsForVolume(_:)), keyEquivalent: "")
+                storage.target = self
+                storage.representedObject = volume.url
+            }
             if volume.canRequestEject {
                 let eject = menu.addItem(withTitle: L("추출…", "Eject…"), action: #selector(ejectVolume(_:)), keyEquivalent: "")
                 eject.target = self; eject.representedObject = volume.url
@@ -2615,6 +2627,28 @@ extension BrowserWindow {
         DeletionWindow.isRunning || PermanentDeleteWindow.isRunning || RestoreWindow.isRunning || BatchRenameWindow.isRunning
     }
 
+    private func isLocalVolumeRoot(_ url: URL?) -> Bool {
+        guard let url else { return false }
+        return volumes.contains { $0.isLocal == true && $0.url.path == url.standardizedFileURL.path }
+    }
+    private var canOpenStorageSettings: Bool {
+        activeSelectedItems.isEmpty && isLocalVolumeRoot(activeModel.location)
+    }
+    @objc func openStorageSettings(_ sender: Any?) {
+        guard canOpenStorageSettings else { return }
+        presentStorageSettings()
+    }
+    @objc private func openStorageSettingsForVolume(_ sender: NSMenuItem) {
+        guard isLocalVolumeRoot(sender.representedObject as? URL) else { return }
+        presentStorageSettings()
+    }
+    private func presentStorageSettings() {
+        let storage = URL(string: "x-apple.systempreferences:com.apple.settings.Storage")!
+        guard openSystemURL(storage) else {
+            showEntryError(L("시스템 설정에서 일반 → 저장 공간을 여세요.", "In System Settings, open General → Storage."))
+            return
+        }
+    }
     @objc private func openDiskUtility(_ sender: NSMenuItem) {
         guard let application = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.apple.DiskUtility") else {
             showEntryError(L("디스크 유틸리티를 찾을 수 없습니다.", "Disk Utility could not be found.")); return
@@ -2710,6 +2744,7 @@ extension BrowserWindow {
         case #selector(toggleFolderLayoutSynchronization(_:)):
             menuItem.state = preferences.syncFolderLayouts ? .on : .off
             return activeModel.location != nil
+        case #selector(openStorageSettings(_:)): return canOpenStorageSettings
         case #selector(toggleInfoPane(_:)):
             menuItem.state = preferences.showInfoPane ? .on : .off
             return true
@@ -2925,7 +2960,9 @@ extension BrowserWindow {
             let preferences = BrowserPreferences(defaults: defaults, initialFavorites: [fixture])
             let dark = ProcessInfo.processInfo.environment["FILES_UI_QA_THEME"] == "dark"
             NSApp.appearance = NSAppearance(named: dark ? .darkAqua : .aqua)
-            let controller = BrowserWindow(preferences: preferences, restoresFrame: false, cloudProvider: qaCloudProvider)
+            var storageRequests: [URL] = []
+            let controller = BrowserWindow(preferences: preferences, restoresFrame: false, cloudProvider: qaCloudProvider,
+                                           openSystemURL: { storageRequests.append($0); return true })
             guard let window = controller.window, let root = window.contentView else { throw CocoaError(.coderInvalidValue) }
             window.appearance = NSAppearance(named: dark ? .darkAqua : .aqua)
             window.setFrame(NSRect(x: 80, y: 80, width: 900, height: 600), display: true)
@@ -2945,6 +2982,38 @@ extension BrowserWindow {
             try await Task.sleep(for: .milliseconds(500))
             checks["cloudLocations"] = controller.cloudLocations.count == 3 && controller.cloudLocations.allSatisfy { $0.state == .unknown }
             try capture("home")
+            let sampleVolumes = controller.volumes
+            let local = MountedVolume(url: fixture, name: "QA Local", isLocal: true)
+            let network = MountedVolume(url: gridFolder, name: "QA Network", isLocal: false)
+            controller.volumes = [local, network]
+            controller.buildSidebar()
+            controller.buildHome()
+            let storageAction = #selector(openStorageSettingsForVolume(_:))
+            let homeDrives = controller.homeView.arrangedSubviews.compactMap { $0 as? VolumeCardView }
+                .flatMap { $0.arrangedSubviews.compactMap { $0 as? LocationButton } }
+            let sidebarDrives = controller.sidebar.arrangedSubviews.compactMap { $0 as? LocationButton }
+            let homeCommand = homeDrives.first { $0.url == local.url }?.menu?.items.first { $0.action == storageAction }
+            let sideCommand = sidebarDrives.first { $0.url == local.url }?.menu?.items.first { $0.action == storageAction }
+            for item in [homeCommand, sideCommand].compactMap({ $0 }) {
+                NSApp.sendAction(storageAction, to: item.target, from: item)
+            }
+            checks["storageSettingsVolumeMenus"] = storageRequests.count == 2
+                && !(homeDrives + sidebarDrives).filter { $0.url == network.url }
+                    .contains { $0.menu?.items.contains { $0.action == storageAction } == true }
+            let storageMenu = NSMenuItem(title: "", action: #selector(openStorageSettings(_:)), keyEquivalent: "")
+            controller.openStorageSettings(nil)
+            let homeWasDisabled = !controller.validateMenuItem(storageMenu) && storageRequests.count == 2
+            controller.navigate(fixture)
+            let volumeEnabled = controller.validateMenuItem(storageMenu)
+            controller.openStorageSettings(nil)
+            controller.navigate(gridFolder)
+            controller.openStorageSettings(nil)
+            checks["storageSettingsCurrentVolume"] = homeWasDisabled && volumeEnabled && !controller.validateMenuItem(storageMenu)
+                && storageRequests.map(\.absoluteString) == Array(repeating: "x-apple.systempreferences:com.apple.settings.Storage", count: 3)
+            controller.navigate(nil)
+            controller.volumes = sampleVolumes
+            controller.buildSidebar()
+            controller.buildHome()
             let backgroundFixture = destination.appendingPathComponent("background-fixture.png")
             let backgroundImage = NSImage(size: NSSize(width: 96, height: 64)); backgroundImage.lockFocus()
             NSColor(calibratedRed: 0.12, green: 0.34, blue: 0.62, alpha: 1).setFill(); NSRect(x: 0, y: 0, width: 96, height: 64).fill()
