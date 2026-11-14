@@ -8,6 +8,8 @@ M7 출시 검증이 진행 중이다. [유니버설 개발 프리뷰](verificati
 
 ## 이번 구현 단위
 
+권한·해시를 포함한 유니버설 프리뷰를 갱신했고 동일 소스의 8시간 전체 부하 시험을 시작했다. [프리뷰 및 부하 시험](verification/m7/INCREMENT_157.md)
+
 ACL 편집기에서 macOS 사용자·그룹 선택 목록을 사용한다. [계정 목록 검증](verification/m7/INCREMENT_156.md)
 
 계정의 짧은 이름으로 사용자·그룹 ACL 규칙을 추가한다. [계정 규칙 검증](verification/m7/INCREMENT_155.md)
