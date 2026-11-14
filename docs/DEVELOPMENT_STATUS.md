@@ -4,6 +4,8 @@
 
 ## 이번 구현 단위
 
+상세 행과 표시 상태가 같으면 기존 테이블 셀을 재사용한다. [M7 상세 목록 셀 검증](verification/m7/INCREMENT_64.md)
+
 파일 변경을 감지했을 때 파일 전용 아이콘만 다시 읽고, 공통 아이콘은 재사용한다. [M7 아이콘 갱신 검증](verification/m7/INCREMENT_63.md)
 
 전체 AppKit 회귀 시험도 표준화된 임시 경로에서 실행해 한국어·영어와 밝은·어두운 테마 각 조합의 219개 검사를 통과했다. [M7 전체 AppKit 회귀](verification/m7/INCREMENT_62.md)

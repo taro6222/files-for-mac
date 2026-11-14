@@ -62,6 +62,7 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
     private var primaryPaneID = UUID()
     private var secondaryPaneID: UUID?
     private var detailRows: [DetailDisplayRow] = []
+    private var detailPresentationNeedsReload = true
     private var activeModel: BrowserModel { secondaryActive ? secondaryPane?.model ?? model : model }
     var activeLocation: URL? { activeModel.location }
     private var primarySelectedItems: [FileItem] {
@@ -875,6 +876,7 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         let showsGrid = model.location != nil && primaryRenderedViewMode == .grid
         let showsList = model.location != nil && primaryRenderedViewMode == .list
         let showsColumns = model.location != nil && primaryRenderedViewMode == .columns
+        let detailsWereHidden = scroll.isHidden
         scroll.isHidden = model.location == nil || showsGrid || showsList || showsColumns
         gridView.isHidden = model.location == nil || !showsGrid
         listView.isHidden = model.location == nil || !showsList
@@ -895,8 +897,14 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         }
         let sortDescriptor = NSSortDescriptor(key: model.sortOrder.field.rawValue, ascending: model.sortOrder.ascending)
         if table.sortDescriptors.first != sortDescriptor { table.sortDescriptors = [sortDescriptor] }
-        detailRows = detailDisplayRows(items: model.items, grouping: model.grouping)
-        table.reloadData()
+        let rows = detailDisplayRows(items: model.items, grouping: model.grouping)
+        if detailPresentationNeedsReload || (detailsWereHidden && !scroll.isHidden) || detailRows != rows {
+            detailRows = rows
+            table.reloadData()
+            detailPresentationNeedsReload = false
+        } else if gitLoadCompleted {
+            updateVisibleGitCells()
+        }
         if autoFitLoadCompleted { startFolderSizeCalculationIfNeeded() }
         if autoFitLoadCompleted && preferences.autoSizeColumnsInDetailsLayout && primaryRenderedViewMode == .details && !model.items.isEmpty {
             autoFitColumns(nil)
@@ -1183,6 +1191,7 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
     }
     @objc func refresh(_ sender: Any?) {
         FileIconCache.shared.removeAll()
+        detailPresentationNeedsReload = true
         if secondaryActive { secondaryPane?.refresh() }
         else {
             if model.failure != nil || watcherStatus == .unavailable { updateWatcher(force: true) }
@@ -2522,6 +2531,7 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         if model.isLoading { pendingRefresh = true }
         else {
             FileIconCache.shared.invalidateFileIcons()
+            if preferences.showThumbnails { detailPresentationNeedsReload = true }
             savePosition()
             model.reload()
         }
@@ -2664,6 +2674,7 @@ extension BrowserWindow {
         content.layer?.borderColor = NSColor.controlAccentColor.cgColor
     }
     private func preferencesChanged() {
+        detailPresentationNeedsReload = true
         FileIconCache.shared.configure(enabled: preferences.enableThumbnailCache, limitMiB: preferences.thumbnailCacheLimitMiB)
         updateInfoPane()
         if preferences.syncFolderLayouts || appliedSharedFolderLayout {
@@ -4113,6 +4124,17 @@ extension BrowserWindow {
             metrics["scrollToLastRowDisplaySeconds"] = elapsed(scrollStart)
             checks["lastRowVisible"] = NSLocationInRange(9_999, controller.table.rows(in: controller.table.visibleRect))
             controller.savePosition()
+            let row = 9_999
+            let nameColumn = controller.table.column(withIdentifier: .init("name"))
+            if nameColumn >= 0,
+               let visibleCell = controller.table.view(atColumn: nameColumn, row: row, makeIfNecessary: true) {
+                controller.render()
+                checks["unchangedDetailsKeepVisibleCell"] = controller.table
+                    .view(atColumn: nameColumn, row: row, makeIfNecessary: false) === visibleCell
+                    && controller.table.selectedRowIndexes == IndexSet(integer: row)
+            } else {
+                checks["unchangedDetailsKeepVisibleCell"] = false
+            }
             try capture("files-bottom")
             controller.goHome(nil)
             controller.goBack(nil)

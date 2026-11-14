@@ -40,7 +40,7 @@ func cloudStateTitle(_ state: CloudItemState?) -> String {
     }
 }
 
-enum DetailDisplayRow {
+enum DetailDisplayRow: Equatable {
     case header(String)
     case item(FileItem)
 }
