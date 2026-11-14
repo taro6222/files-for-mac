@@ -72,6 +72,8 @@ public struct BrowserPreferencesArchive: Codable, Equatable, Sendable {
     public let autoSizeColumnsInDetailsLayout: Bool?
     public let openNewTabOnStartup: Bool?
     public let lastSessionSelectedTabIndex: Int?
+    public let alwaysOpenDualPaneInNewTab: Bool?
+    public let alwaysSwitchToNewlyOpenedTab: Bool?
     public let startupLocationPath: String?
     public let developerApplicationPath: String?
     public let appBackgroundPath: String?
@@ -137,6 +139,8 @@ public final class BrowserPreferences {
     public private(set) var autoSizeColumnsInDetailsLayout: Bool
     public private(set) var openNewTabOnStartup: Bool
     public private(set) var lastSessionSelectedTabIndex: Int
+    public private(set) var alwaysOpenDualPaneInNewTab: Bool
+    public private(set) var alwaysSwitchToNewlyOpenedTab: Bool
     public private(set) var startupLocationPath: String?
     public private(set) var developerApplicationPath: String?
     public private(set) var appBackgroundPath: String?
@@ -196,6 +200,8 @@ public final class BrowserPreferences {
         autoSizeColumnsInDetailsLayout = defaults.object(forKey: "autoSizeColumnsInDetailsLayout") as? Bool ?? false
         openNewTabOnStartup = defaults.object(forKey: "openNewTabOnStartup") as? Bool ?? false
         lastSessionSelectedTabIndex = max(-1, defaults.object(forKey: "lastSessionSelectedTabIndex") as? Int ?? -1)
+        alwaysOpenDualPaneInNewTab = defaults.object(forKey: "alwaysOpenDualPaneInNewTab") as? Bool ?? false
+        alwaysSwitchToNewlyOpenedTab = defaults.object(forKey: "alwaysSwitchToNewlyOpenedTab") as? Bool ?? false
         startupLocationPath = defaults.string(forKey: "startupLocationPath").flatMap { $0.hasPrefix("/") ? $0 : nil }
         developerApplicationPath = defaults.string(forKey: "developerApplicationPath")
         appBackgroundPath = defaults.string(forKey: "appBackgroundPath").flatMap { $0.hasPrefix("/") ? $0 : nil }
@@ -323,6 +329,14 @@ public final class BrowserPreferences {
         guard lastSessionSelectedTabIndex != value else { return }
         lastSessionSelectedTabIndex = value; defaults.set(value, forKey: "lastSessionSelectedTabIndex"); changed()
     }
+    public func setAlwaysOpenDualPaneInNewTab(_ value: Bool) {
+        guard alwaysOpenDualPaneInNewTab != value else { return }
+        alwaysOpenDualPaneInNewTab = value; defaults.set(value, forKey: "alwaysOpenDualPaneInNewTab"); changed()
+    }
+    public func setAlwaysSwitchToNewlyOpenedTab(_ value: Bool) {
+        guard alwaysSwitchToNewlyOpenedTab != value else { return }
+        alwaysSwitchToNewlyOpenedTab = value; defaults.set(value, forKey: "alwaysSwitchToNewlyOpenedTab"); changed()
+    }
     public func setStartupLocation(_ url: URL?) {
         let value = url?.standardizedFileURL.path
         guard startupLocationPath != value else { return }
@@ -368,6 +382,8 @@ public final class BrowserPreferences {
             autoSizeColumnsInDetailsLayout: autoSizeColumnsInDetailsLayout,
             openNewTabOnStartup: openNewTabOnStartup,
             lastSessionSelectedTabIndex: lastSessionSelectedTabIndex,
+            alwaysOpenDualPaneInNewTab: alwaysOpenDualPaneInNewTab,
+            alwaysSwitchToNewlyOpenedTab: alwaysSwitchToNewlyOpenedTab,
             startupLocationPath: startupLocationPath, developerApplicationPath: developerApplicationPath, appBackgroundPath: appBackgroundPath, toolbarOrder: toolbarOrder.map(\.rawValue),
             hiddenToolbarItems: hiddenToolbarItems.map(\.rawValue).sorted(), folderViewPreferences: folderViewPreferences)
         let encoder = JSONEncoder(); encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
@@ -430,6 +446,8 @@ public final class BrowserPreferences {
         autoSizeColumnsInDetailsLayout = archive.autoSizeColumnsInDetailsLayout ?? false
         openNewTabOnStartup = archive.openNewTabOnStartup ?? false
         lastSessionSelectedTabIndex = max(-1, archive.lastSessionSelectedTabIndex ?? -1)
+        alwaysOpenDualPaneInNewTab = archive.alwaysOpenDualPaneInNewTab ?? false
+        alwaysSwitchToNewlyOpenedTab = archive.alwaysSwitchToNewlyOpenedTab ?? false
         developerApplicationPath = archive.developerApplicationPath; appBackgroundPath = archive.appBackgroundPath; toolbarOrder = importedToolbar; hiddenToolbarItems = Set(importedHiddenToolbar)
         folderViewPreferences = archive.folderViewPreferences
         defaults.set(sidebarOrder.map(\.rawValue), forKey: "sidebarOrder"); defaults.set(collapsedSidebar.map(\.rawValue).sorted(), forKey: "collapsedSidebar")
@@ -455,6 +473,8 @@ public final class BrowserPreferences {
         defaults.set(autoSizeColumnsInDetailsLayout, forKey: "autoSizeColumnsInDetailsLayout")
         defaults.set(openNewTabOnStartup, forKey: "openNewTabOnStartup")
         defaults.set(lastSessionSelectedTabIndex, forKey: "lastSessionSelectedTabIndex")
+        defaults.set(alwaysOpenDualPaneInNewTab, forKey: "alwaysOpenDualPaneInNewTab")
+        defaults.set(alwaysSwitchToNewlyOpenedTab, forKey: "alwaysSwitchToNewlyOpenedTab")
         if let startupLocationPath { defaults.set(startupLocationPath, forKey: "startupLocationPath") } else { defaults.removeObject(forKey: "startupLocationPath") }
         if let developerApplicationPath { defaults.set(developerApplicationPath, forKey: "developerApplicationPath") } else { defaults.removeObject(forKey: "developerApplicationPath") }
         if let appBackgroundPath { defaults.set(appBackgroundPath, forKey: "appBackgroundPath") } else { defaults.removeObject(forKey: "appBackgroundPath") }

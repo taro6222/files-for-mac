@@ -560,6 +560,19 @@ private struct DelayedLoader: DirectoryLoading {
     preferences.removeObserver(token)
 }
 
+@Test @MainActor func newTabPoliciesPersistAndAvoidDuplicateNotifications() {
+    let suite = "new-tab-policy-tests-\(UUID())", defaults = UserDefaults(suiteName: suite)!
+    defer { defaults.removePersistentDomain(forName: suite) }
+    let preferences = BrowserPreferences(defaults: defaults, initialFavorites: [])
+    #expect(!preferences.alwaysOpenDualPaneInNewTab && !preferences.alwaysSwitchToNewlyOpenedTab)
+    var notifications = 0; let token = preferences.observe { notifications += 1 }
+    preferences.setAlwaysOpenDualPaneInNewTab(true); preferences.setAlwaysSwitchToNewlyOpenedTab(true)
+    preferences.setAlwaysOpenDualPaneInNewTab(true); preferences.setAlwaysSwitchToNewlyOpenedTab(true)
+    let restored = BrowserPreferences(defaults: defaults, initialFavorites: [])
+    #expect(restored.alwaysOpenDualPaneInNewTab && restored.alwaysSwitchToNewlyOpenedTab && notifications == 2)
+    preferences.removeObserver(token)
+}
+
 @Test @MainActor func contextMenuVisibilityDefaultsPersistAndAvoidsDuplicateNotifications() {
     let suite = "context-menu-visibility-tests-\(UUID())", defaults = UserDefaults(suiteName: suite)!
     defer { defaults.removePersistentDomain(forName: suite) }
@@ -630,6 +643,7 @@ private struct DelayedLoader: DirectoryLoading {
     source.setDefaultSortDirectoryPlacement(.filesFirst)
     source.setAutoSizeColumnsInDetailsLayout(true)
     source.setOpenNewTabOnStartup(true); source.setLastSessionSelectedTabIndex(2)
+    source.setAlwaysOpenDualPaneInNewTab(true); source.setAlwaysSwitchToNewlyOpenedTab(true)
     source.setShowCreatedColumn(true); source.setShowDateColumn(false); source.setShowTypeColumn(false); source.setShowSizeColumn(false); source.setShowGitStatusColumn(true)
     source.setShowFileTagColumn(true); source.setShowPathColumn(true)
     source.setShowCompressionOptions(false); source.setShowOpenTerminal(false); source.setShowCreateFolderWithSelection(false)
@@ -652,6 +666,7 @@ private struct DelayedLoader: DirectoryLoading {
     #expect(destination.defaultSortDirectoryPlacement == .filesFirst)
     #expect(destination.autoSizeColumnsInDetailsLayout)
     #expect(destination.openNewTabOnStartup && destination.lastSessionSelectedTabIndex == 2)
+    #expect(destination.alwaysOpenDualPaneInNewTab && destination.alwaysSwitchToNewlyOpenedTab)
     #expect(destination.showCreatedColumn && !destination.showDateColumn && !destination.showTypeColumn && !destination.showSizeColumn && destination.showGitStatusColumn)
     #expect(destination.showFileTagColumn && destination.showPathColumn)
     #expect(!destination.showCompressionOptions && !destination.showOpenTerminal && !destination.showCreateFolderWithSelection)

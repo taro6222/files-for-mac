@@ -63,7 +63,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             }
             if BrowserPreferences.shared.openNewTabOnStartup {
                 let startup = BrowserPreferences.shared.startupLocationPath.map { URL(fileURLWithPath: $0, isDirectory: true) }
-                makeBrowser(location: startup, tabbedTo: first)
+                makeBrowser(location: startup, tabbedTo: first, selectNewTab: true)
             } else if controllers.indices.contains(BrowserPreferences.shared.lastSessionSelectedTabIndex) {
                 controllers[BrowserPreferences.shared.lastSessionSelectedTabIndex].window?.makeKeyAndOrderFront(nil)
             }
@@ -75,7 +75,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     }
     @discardableResult private func makeBrowser(location: URL? = nil, snapshot: TabSnapshot? = nil,
                                                  workspace: SplitTabState? = nil,
-                                                 tabbedTo source: BrowserWindow? = nil) -> BrowserWindow {
+                                                 tabbedTo source: BrowserWindow? = nil,
+                                                 selectNewTab: Bool? = nil) -> BrowserWindow {
         let controller = BrowserWindow(initialLocation: location, initialSnapshot: snapshot, initialWorkspace: workspace)
         windows.append(controller)
         controller.onClose = { [weak self, weak controller] in
@@ -88,12 +89,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         controller.showWindow(nil)
         if let sourceWindow = source?.window, let targetWindow = controller.window {
             sourceWindow.addTabbedWindow(targetWindow, ordered: .above)
-            targetWindow.makeKeyAndOrderFront(nil)
+            if selectNewTab ?? BrowserPreferences.shared.alwaysSwitchToNewlyOpenedTab { targetWindow.makeKeyAndOrderFront(nil) }
+            else { sourceWindow.makeKeyAndOrderFront(nil) }
         }
         return controller
     }
     @objc func newWindow(_ sender: Any?) { makeBrowser() }
-    @objc func newTab(_ sender: Any?) { makeBrowser(tabbedTo: currentBrowser) }
+    @objc func newTab(_ sender: Any?) {
+        let controller = makeBrowser(tabbedTo: currentBrowser)
+        if BrowserPreferences.shared.alwaysOpenDualPaneInNewTab { controller.toggleDualPane(nil) }
+    }
     func openFolderInNewTab(_ url: URL) { makeBrowser(location: url, tabbedTo: currentBrowser) }
     func openFolderInNewWindow(_ url: URL) { makeBrowser(location: url) }
     @objc func duplicateTab(_ sender: Any?) {
@@ -532,6 +537,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     var qaGeneralWidgetStates: (Bool, Bool, Bool)? { generalSettingsWindow?.qaWidgetStates }
     var qaGeneralOpenNewTabOnStartup: Bool? { generalSettingsWindow?.qaOpenNewTabOnStartup }
     func qaToggleGeneralOpenNewTabOnStartup() { generalSettingsWindow?.qaToggleOpenNewTabOnStartup() }
+    var qaGeneralNewTabPolicies: (Bool, Bool)? { generalSettingsWindow?.qaNewTabPolicies }
+    func qaToggleGeneralNewTabPolicies() { generalSettingsWindow?.qaToggleNewTabPolicies() }
     func qaToggleGeneralWidgets() { generalSettingsWindow?.qaToggleWidgets() }
     var qaGeneralSizeUnit: BrowserSizeUnit? { generalSettingsWindow?.qaSizeUnit }
     func qaToggleGeneralSizeUnit() { generalSettingsWindow?.qaToggleSizeUnit() }

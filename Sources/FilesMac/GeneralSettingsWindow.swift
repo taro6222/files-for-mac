@@ -6,6 +6,8 @@ final class GeneralSettingsWindow: NSWindowController {
     private let preferences: BrowserPreferences
     private let continueSession = NSButton(checkboxWithTitle: L("마지막 세션 계속", "Continue Last Session"), target: nil, action: nil)
     private let openNewTabOnStartup = NSButton(checkboxWithTitle: L("시작할 때 새 탭 추가", "Add a New Tab on Startup"), target: nil, action: nil)
+    private let alwaysOpenDualPaneInNewTab = NSButton(checkboxWithTitle: L("새 탭을 dual pane으로 열기", "Open New Tabs with Dual Pane"), target: nil, action: nil)
+    private let alwaysSwitchToNewlyOpenedTab = NSButton(checkboxWithTitle: L("새 탭으로 즉시 전환", "Switch to Newly Opened Tabs"), target: nil, action: nil)
     private let favorites = NSButton(checkboxWithTitle: L("홈에 빠른 접근 표시", "Show Quick Access on Home"), target: nil, action: nil)
     private let volumes = NSButton(checkboxWithTitle: L("홈에 드라이브 표시", "Show Drives on Home"), target: nil, action: nil)
     private let recent = NSButton(checkboxWithTitle: L("홈에 최근 위치 표시", "Show Recent Locations on Home"), target: nil, action: nil)
@@ -40,6 +42,8 @@ final class GeneralSettingsWindow: NSWindowController {
         let startupTitle = NSTextField(labelWithString: L("시작", "Startup")); startupTitle.font = .systemFont(ofSize: 14, weight: .semibold); stack.addArrangedSubview(startupTitle)
         configure(continueSession, action: #selector(changeContinueSession(_:))); stack.addArrangedSubview(continueSession)
         configure(openNewTabOnStartup, action: #selector(changeOpenNewTabOnStartup(_:))); stack.addArrangedSubview(openNewTabOnStartup)
+        configure(alwaysOpenDualPaneInNewTab, action: #selector(changeAlwaysOpenDualPaneInNewTab(_:))); stack.addArrangedSubview(alwaysOpenDualPaneInNewTab)
+        configure(alwaysSwitchToNewlyOpenedTab, action: #selector(changeAlwaysSwitchToNewlyOpenedTab(_:))); stack.addArrangedSubview(alwaysSwitchToNewlyOpenedTab)
         let startupControls = NSStackView(); startupControls.orientation = .horizontal; startupControls.spacing = 8
         startupControls.addArrangedSubview(NSButton(title: L("시작 폴더 선택…", "Choose Startup Folder…"), target: self, action: #selector(chooseStartupLocation(_:))))
         startupControls.addArrangedSubview(NSButton(title: L("홈 사용", "Use Home"), target: self, action: #selector(clearStartupLocation(_:))))
@@ -76,6 +80,8 @@ final class GeneralSettingsWindow: NSWindowController {
     private func sync() {
         continueSession.state = preferences.continueLastSession ? .on : .off
         openNewTabOnStartup.state = preferences.openNewTabOnStartup ? .on : .off
+        alwaysOpenDualPaneInNewTab.state = preferences.alwaysOpenDualPaneInNewTab ? .on : .off
+        alwaysSwitchToNewlyOpenedTab.state = preferences.alwaysSwitchToNewlyOpenedTab ? .on : .off
         startupLocation.stringValue = preferences.startupLocationPath ?? L("시작 위치: 홈", "Startup location: Home")
         sizeUnit.selectItem(at: preferences.sizeUnit == .binary ? 0 : 1)
         defaultSortDirectoryPlacement.selectItem(at: SortDirectoryPlacement.allCases.firstIndex(of: preferences.defaultSortDirectoryPlacement) ?? 0)
@@ -98,6 +104,8 @@ final class GeneralSettingsWindow: NSWindowController {
     }
     @objc private func changeContinueSession(_ sender: Any?) { preferences.setContinueLastSession(continueSession.state == .on) }
     @objc private func changeOpenNewTabOnStartup(_ sender: Any?) { preferences.setOpenNewTabOnStartup(openNewTabOnStartup.state == .on) }
+    @objc private func changeAlwaysOpenDualPaneInNewTab(_ sender: Any?) { preferences.setAlwaysOpenDualPaneInNewTab(alwaysOpenDualPaneInNewTab.state == .on) }
+    @objc private func changeAlwaysSwitchToNewlyOpenedTab(_ sender: Any?) { preferences.setAlwaysSwitchToNewlyOpenedTab(alwaysSwitchToNewlyOpenedTab.state == .on) }
     @objc private func chooseStartupLocation(_ sender: Any?) {
         guard let window else { return }
         let panel = NSOpenPanel(); panel.canChooseFiles = false; panel.canChooseDirectories = true; panel.allowsMultipleSelection = false
@@ -131,6 +139,7 @@ final class GeneralSettingsWindow: NSWindowController {
     var qaVisible: Bool { window?.isVisible == true }
     var qaWidgetStates: (Bool, Bool, Bool) { (preferences.showHomeFavorites, preferences.showHomeVolumes, preferences.showHomeRecent) }
     var qaOpenNewTabOnStartup: Bool { preferences.openNewTabOnStartup }
+    var qaNewTabPolicies: (Bool, Bool) { (preferences.alwaysOpenDualPaneInNewTab, preferences.alwaysSwitchToNewlyOpenedTab) }
     var qaSizeUnit: BrowserSizeUnit { preferences.sizeUnit }
     var qaDefaultSortDirectoryPlacement: SortDirectoryPlacement { preferences.defaultSortDirectoryPlacement }
     var qaAutoSizeColumnsInDetailsLayout: Bool { preferences.autoSizeColumnsInDetailsLayout }
@@ -140,6 +149,7 @@ final class GeneralSettingsWindow: NSWindowController {
     var qaContextMenuStates: [Bool] { [preferences.showCompressionOptions, preferences.showOpenTerminal, preferences.showCreateFolderWithSelection, preferences.showPinToSidebar, preferences.showSendToMenu, preferences.showCopyPath, preferences.showOpenInNewTab, preferences.showOpenInNewWindow, preferences.showOpenInNewPane, preferences.showEditTagsMenu, preferences.showCreateShortcut] }
     func qaToggleWidgets() { favorites.performClick(nil); volumes.performClick(nil); recent.performClick(nil) }
     func qaToggleOpenNewTabOnStartup() { openNewTabOnStartup.performClick(nil) }
+    func qaToggleNewTabPolicies() { alwaysOpenDualPaneInNewTab.performClick(nil); alwaysSwitchToNewlyOpenedTab.performClick(nil) }
     func qaToggleSizeUnit() { sizeUnit.selectItem(at: sizeUnit.indexOfSelectedItem == 0 ? 1 : 0); changeSizeUnit(nil) }
     func qaCycleDefaultSortDirectoryPlacement() {
         defaultSortDirectoryPlacement.selectItem(at: (defaultSortDirectoryPlacement.indexOfSelectedItem + 1) % defaultSortDirectoryPlacement.numberOfItems)
