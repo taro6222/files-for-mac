@@ -319,6 +319,8 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         header.addArrangedSubview(brand); header.addArrangedSubview(titleLabel); header.addArrangedSubview(NSView())
         let choose = button("folder.badge.plus", L("폴더 열기", "Open Folder"), #selector(chooseFolder(_:)))
         header.addArrangedSubview(choose)
+        let tabDrag = WorkspaceTabDragHandle()
+        header.addArrangedSubview(tabDrag)
         main.addArrangedSubview(header)
 
         toolbar.orientation = .horizontal; toolbar.spacing = 8
@@ -2617,13 +2619,125 @@ private final class BrowserFileTable: NSTableView, NSMenuItemValidation {
     }
 }
 
-private final class WorkspaceSplitView: NSSplitView, NSSplitViewDelegate {
-    override init(frame frameRect: NSRect) {
-        super.init(frame: frameRect)
-        delegate = self
+private enum TabSplitEdge {
+    case left, right, top, bottom
+
+    var axis: SplitAxis { self == .left || self == .right ? .vertical : .horizontal }
+    var isPrimary: Bool { self == .left || self == .top }
+
+    static func at(_ point: NSPoint, in bounds: NSRect, flipped: Bool) -> Self? {
+        guard bounds.width > 0, bounds.height > 0, bounds.contains(point) else { return nil }
+        let x = (point.x - bounds.minX) / bounds.width
+        let y = (point.y - bounds.minY) / bounds.height
+        let edges: [(Self, CGFloat)] = [(.left, x), (.right, 1 - x),
+                                       (.top, flipped ? y : 1 - y), (.bottom, flipped ? 1 - y : y)]
+        guard let closest = edges.min(by: { $0.1 < $1.1 }), closest.1 < 0.25 else { return nil }
+        return closest.0
+    }
+}
+
+private final class WorkspaceTabDragHandle: NSView, NSDraggingSource {
+    static let dragType = NSPasteboard.PasteboardType("org.taro6222.files-for-mac.tab")
+    private let symbol = NSImage(systemSymbolName: "rectangle.on.rectangle", accessibilityDescription: nil)
+    private var initialEvent: NSEvent?
+
+    init() {
+        super.init(frame: .zero)
+        let label = L("탭을 끌어 분할", "Drag Tab to Split")
+        toolTip = label
+        setAccessibilityElement(true)
+        setAccessibilityRole(.image)
+        setAccessibilityLabel(label)
+        widthAnchor.constraint(equalToConstant: 26).isActive = true
+        heightAnchor.constraint(equalToConstant: 26).isActive = true
     }
 
     required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
+
+    override func draw(_ dirtyRect: NSRect) {
+        symbol?.draw(in: NSRect(x: 5, y: 5, width: 16, height: 16))
+    }
+
+    override func mouseDown(with event: NSEvent) { initialEvent = event }
+    override func mouseUp(with event: NSEvent) { initialEvent = nil }
+
+    override func mouseDragged(with event: NSEvent) {
+        guard let initialEvent, let symbol,
+              hypot(event.locationInWindow.x - initialEvent.locationInWindow.x,
+                    event.locationInWindow.y - initialEvent.locationInWindow.y) >= 4 else { return }
+        self.initialEvent = nil
+        let payload = NSPasteboardItem()
+        payload.setString("tab", forType: Self.dragType)
+        let item = NSDraggingItem(pasteboardWriter: payload)
+        item.setDraggingFrame(bounds, contents: symbol)
+        beginDraggingSession(with: [item], event: event, source: self)
+    }
+
+    func draggingSession(_ session: NSDraggingSession,
+                         sourceOperationMaskFor context: NSDraggingContext) -> NSDragOperation {
+        context == .withinApplication ? .move : []
+    }
+}
+
+private final class WorkspaceSplitView: NSSplitView, NSSplitViewDelegate {
+    private var dropEdge: TabSplitEdge? {
+        didSet { if oldValue != dropEdge { updateDropIndicator() } }
+    }
+    private let dropIndicator = CALayer()
+
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        delegate = self
+        wantsLayer = true
+        dropIndicator.isHidden = true
+        dropIndicator.zPosition = 1
+        layer?.addSublayer(dropIndicator)
+        registerForDraggedTypes([WorkspaceTabDragHandle.dragType])
+    }
+
+    required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
+
+    private func tabDrop(_ sender: any NSDraggingInfo) -> (BrowserWindow, BrowserWindow, TabSplitEdge)? {
+        guard let handle = sender.draggingSource as? WorkspaceTabDragHandle,
+              let source = handle.window?.windowController as? BrowserWindow,
+              let target = window?.windowController as? BrowserWindow,
+              target.canAcceptTabSplit(from: source),
+              let edge = TabSplitEdge.at(convert(sender.draggingLocation, from: nil), in: bounds, flipped: isFlipped)
+        else { return nil }
+        return (source, target, edge)
+    }
+
+    override func draggingEntered(_ sender: any NSDraggingInfo) -> NSDragOperation { draggingUpdated(sender) }
+
+    override func draggingUpdated(_ sender: any NSDraggingInfo) -> NSDragOperation {
+        dropEdge = tabDrop(sender)?.2
+        return dropEdge == nil ? [] : .move
+    }
+
+    override func draggingExited(_ sender: (any NSDraggingInfo)?) { dropEdge = nil }
+
+    override func performDragOperation(_ sender: any NSDraggingInfo) -> Bool {
+        defer { dropEdge = nil }
+        guard let (source, target, edge) = tabDrop(sender) else { return false }
+        return target.splitByDroppingTab(from: source, at: edge)
+    }
+
+    private func updateDropIndicator() {
+        guard let dropEdge else { dropIndicator.isHidden = true; return }
+        let edge: CGRectEdge = switch dropEdge {
+        case .left: .minXEdge
+        case .right: .maxXEdge
+        case .top: .maxYEdge
+        case .bottom: .minYEdge
+        }
+        let depth = dropEdge.axis == .vertical ? bounds.width : bounds.height
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        dropIndicator.backgroundColor = NSColor.controlAccentColor.cgColor
+        dropIndicator.frame = bounds.divided(atDistance: min(5, depth), from: edge).slice
+        dropIndicator.isHidden = false
+        CATransaction.commit()
+    }
 
     func applyInitialRatio(_ ratio: Double) {
         let ratio = min(0.8, max(0.2, ratio))
@@ -2669,6 +2783,22 @@ private func capacityDescription(_ volume: MountedVolume) -> String {
 }
 
 extension BrowserWindow {
+    fileprivate func canAcceptTabSplit(from source: BrowserWindow) -> Bool {
+        secondaryPane == nil && source.secondaryPane == nil
+            && window?.attachedSheet == nil && source.window?.attachedSheet == nil
+    }
+
+    fileprivate func splitByDroppingTab(from source: BrowserWindow, at edge: TabSplitEdge) -> Bool {
+        guard canAcceptTabSplit(from: source) else { return false }
+        let dragged = source.tabSnapshot()
+        let current = tabSnapshot()
+        installSecondaryPane(axis: edge.axis, snapshot: edge.isPrimary ? current : dragged, activate: !edge.isPrimary)
+        if edge.isPrimary { model.restore(dragged); focusFiles(nil) }
+        window?.makeKeyAndOrderFront(nil)
+        if source !== self { source.close() }
+        return true
+    }
+
     private func embedPane(_ pane: NSView, in host: NSView) {
         // The divider sizes the host independently of its pane's preferred content size.
         pane.translatesAutoresizingMaskIntoConstraints = false
@@ -3791,6 +3921,32 @@ extension BrowserWindow {
                             && restored.secondaryPane?.model.location?.path == columnFolder.path
                     }
                     restored.close()
+                }
+                let dropBounds = NSRect(x: 0, y: 0, width: 400, height: 300)
+                checks["tabSplitRecognizesFourEdges"] =
+                    TabSplitEdge.at(NSPoint(x: 10, y: 150), in: dropBounds, flipped: false) == .left
+                    && TabSplitEdge.at(NSPoint(x: 390, y: 150), in: dropBounds, flipped: false) == .right
+                    && TabSplitEdge.at(NSPoint(x: 200, y: 290), in: dropBounds, flipped: false) == .top
+                    && TabSplitEdge.at(NSPoint(x: 200, y: 10), in: dropBounds, flipped: true) == .top
+                    && TabSplitEdge.at(NSPoint(x: 200, y: 10), in: dropBounds, flipped: false) == .bottom
+                    && TabSplitEdge.at(NSPoint(x: 200, y: 150), in: dropBounds, flipped: false) == nil
+                for (edge, expectedAxis, first, last) in [
+                    (TabSplitEdge.left, SplitAxis.vertical, gridFolder, columnFolder),
+                    (.right, .vertical, columnFolder, gridFolder),
+                    (.top, .horizontal, gridFolder, columnFolder),
+                    (.bottom, .horizontal, columnFolder, gridFolder)
+                ] {
+                    let source = BrowserWindow(preferences: preferences, restoresFrame: false, initialSnapshot: secondary.tab)
+                    let target = BrowserWindow(preferences: preferences, restoresFrame: false, initialSnapshot: primary.tab)
+                    let dropped = target.splitByDroppingTab(from: source, at: edge)
+                    let state = target.workspaceSnapshot()
+                    checks["tabSplitDrop_\(edge)"] = dropped && state.axis == expectedAxis
+                        && state.panes.map { $0.tab.location?.path } == [first.path, last.path]
+                        && state.activePane.tab.location?.path == gridFolder.path
+                        && state.activePane.tab.viewMode == .list
+                        && state.activePane.tab.history.forward.map { $0.url?.path } == [columnFolder.path]
+                        && !target.canAcceptTabSplit(from: source)
+                    target.close()
                 }
                 window.makeKeyAndOrderFront(nil)
                 try capture("general-settings", view: delegate.qaGeneralSettingsContentView)
