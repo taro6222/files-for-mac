@@ -2642,7 +2642,7 @@ extension BrowserWindow {
     @objc func focusOtherPane(_ sender: Any?) {
         guard secondaryPane != nil else { return }
         setSecondaryActive(!secondaryActive)
-        if secondaryActive { secondaryPane?.focusFiles() } else { window?.makeFirstResponder(table) }
+        focusFiles(nil)
     }
     @objc func toggleDualPane(_ sender: Any?) {
         if secondaryPane == nil { installSecondaryPane(axis: .vertical) } else { closeSecondaryPane(sender) }
@@ -2660,7 +2660,7 @@ extension BrowserWindow {
         updateShelf()
         updateInfoPane()
         content.wantsLayer = true; content.layer?.borderWidth = 0
-        window?.makeFirstResponder(table)
+        focusFiles(nil)
     }
     @objc func closeActivePane(_ sender: Any?) {
         guard let secondaryPane else { return }
@@ -3649,7 +3649,48 @@ extension BrowserWindow {
                     && otherPaneState.panes[0].tab.location == otherPaneState.panes[1].tab.location
                 controller.toggleDualPane(nil); checks["toggleDualPaneCloses"] = !controller.workspaceSnapshot().isSplit
                 controller.toggleDualPane(nil); checks["toggleDualPaneOpens"] = controller.workspaceSnapshot().isSplit
+                controller.model.setViewMode(.grid)
+                controller.focusOtherPane(nil)
+                let gridResponder = window.firstResponder as? NSView
+                checks["splitFocusReturnsToVisibleGrid"] = !controller.secondaryActive
+                    && gridResponder?.isDescendant(of: controller.gridView) == true
+                controller.focusOtherPane(nil)
                 controller.closeSecondaryPane(nil)
+                checks["closingSplitFocusesVisibleGrid"] = (window.firstResponder as? NSView)?
+                    .isDescendant(of: controller.gridView) == true
+                controller.model.setViewMode(.details)
+
+                let primaryHistory = NavigationHistory(current: NavigationEntry(url: columnFolder),
+                    back: [NavigationEntry(url: fixture)])
+                let secondaryHistory = NavigationHistory(current: NavigationEntry(url: gridFolder),
+                    forward: [NavigationEntry(url: columnFolder)])
+                let primary = PaneSnapshot(tab: TabSnapshot(history: primaryHistory, viewMode: .grid))
+                let secondary = PaneSnapshot(tab: TabSnapshot(history: secondaryHistory, viewMode: .list))
+                let splitStore = WorkspaceSessionStore(defaults: defaults, key: "qaSplitWorkspace")
+                for axis in SplitAxis.allCases {
+                    try splitStore.save([SplitTabState(primary: primary, secondary: secondary,
+                        axis: axis, ratio: 0.35, activePaneID: secondary.id)])
+                    let restored = BrowserWindow(preferences: preferences, restoresFrame: false,
+                                                initialWorkspace: splitStore.load().first)
+                    restored.showWindow(nil)
+                    let restoreStart = ContinuousClock.now
+                    while (restored.secondaryPane == nil || restored.model.isLoading || restored.secondaryPane?.model.isLoading == true)
+                            && elapsed(restoreStart) < 10 {
+                        try await Task.sleep(for: .milliseconds(20))
+                    }
+                    restored.window?.contentView?.layoutSubtreeIfNeeded()
+                    let actual = restored.workspaceSnapshot()
+                    metrics["restoredSplitRatio_\(axis.rawValue)"] = actual.ratio
+                    checks["splitWorkspaceRestores_\(axis.rawValue)"] = actual.axis == axis
+                        && actual.activePaneID == secondary.id
+                        && actual.panes.map(\.id) == [primary.id, secondary.id]
+                        && actual.panes.map { $0.tab.location?.path } == [columnFolder.path, gridFolder.path]
+                        && actual.panes.map { $0.tab.viewMode } == [.grid, .list]
+                        && actual.panes.first?.tab.history.back.map { $0.url?.path } == [fixture.path]
+                        && actual.panes.last?.tab.history.forward.map { $0.url?.path } == [columnFolder.path]
+                    restored.close()
+                }
+                window.makeKeyAndOrderFront(nil)
                 try capture("general-settings", view: delegate.qaGeneralSettingsContentView)
                 delegate.qaToggleGeneralWidgets(); delegate.qaToggleGeneralOpenNewTabOnStartup(); delegate.qaToggleGeneralNewTabPolicies(); delegate.qaToggleGeneralSizeUnit(); delegate.qaCycleGeneralDefaultSortDirectoryPlacement(); delegate.qaToggleGeneralAutoSizeColumnsInDetailsLayout(); delegate.qaToggleGeneralCalculateFolderSizes(); delegate.qaToggleGeneralShowThumbnails(); delegate.qaToggleGeneralDoubleClickToGoUp(); delegate.qaToggleGeneralReverseTabScrollDirection(); delegate.qaToggleGeneralOpenFoldersInNewTab(); delegate.qaToggleGeneralScrollToPreviousFolderOnUp(); delegate.qaToggleGeneralShowFileExtensionWarning(); delegate.qaToggleGeneralContextMenuItems(); delegate.qaGeneralSettingsContentView?.window?.close(); window.makeKeyAndOrderFront(nil)
                 delegate.showArchiveCapabilities(nil); try await Task.sleep(for: .milliseconds(50))
