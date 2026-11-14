@@ -4,7 +4,7 @@
 |---|---|---|
 | 로컬 설치 이미지 | [최신 유니버설 프리뷰](PREVIEW_0.1.0.md)의 Apple Silicon 마운트, 체크섬, 두 슬라이스의 ad-hoc 서명, 격리 설치·교체·복원 | 깨끗한 Mac에서 다운로드·설치·재실행 |
 | Developer ID·공증 | 공증 응답 검사와 다운로드 DMG 검증 경로, 모의 실패에서 기존 산출물 보존 확인. 자격 증명 준비 중 | 설치된 인증서와 Keychain 프로필로 정식 DMG를 만들고 다운로드 후 검증 및 실행 |
-| OS·CPU 환경 | Apple Silicon macOS 27.2에서 실행, DMG의 arm64·x86_64 최소 대상 macOS 14.0 및 서명 확인. [프리뷰 실제 arm64 실행 확인](INCREMENT_73.md) | Intel 및 최소 지원 macOS 14에서 실행·회귀 |
+| OS·CPU 환경 | Apple Silicon macOS 27.2에서 실행, DMG의 arm64·x86_64 최소 대상 macOS 14.0 및 서명 확인. [프리뷰 실제 arm64 실행 확인](preview-startup-6f876ed.json) | Intel 및 최소 지원 macOS 14에서 실행·회귀 |
 | 로컬·네트워크 볼륨 | APFS·대소문자 구분 APFS·exFAT 파일 작업, 일괄 이름 교환, 교체 중 취소 및 [게시 직후 대상 교체 감지](INCREMENT_43.md), 시스템 휴지통 검증. 루프백 SMB 마운트와 [무응답 검증 종료](INCREMENT_36.md) 확인 | 정상 응답하는 SMB 공유에서 파일 작업, 재연결, 중단, 권한, 갱신 |
 | 외부 서비스 | FTP/FTPS/SFTP 루프백 및 Git 임시 원격 검증 | 실제 클라우드 계정, 외부 서버 인증·오프라인, Git 인증 조합 |
 | 기능·화면 대응 | 명령·설정·화면 378건 분류, 한국어·영어 AppKit 자동화, 복사·이동 충돌과 [홈 탐색](INCREMENT_37.md) 및 [명령 팔레트](INCREMENT_38.md) 키보드 검증, [홈 재사용과 최근 위치 갱신](INCREMENT_60.md), [네 조합의 AppKit 회귀 통과](INCREMENT_61.md), [조합별 219개 전체 AppKit 검사 통과](INCREMENT_62.md), [분할 보기 접근성](INCREMENT_41.md) 검사, [선택부터 복사 충돌까지](INCREMENT_69.md), UI-01~05 원본 XAML과 macOS 구조 대조 | 전체 키보드 동선, 사용자 동선별 적용 기능 검증, Windows 기준 화면 실제 대조 및 VoiceOver |
