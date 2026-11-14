@@ -7,3 +7,5 @@ Apple Silicon macOS 27.2에서 이전·현재 로컬 DMG로 네 단계를 확인
 정식 서명·공증된 배포 이미지의 업데이트 검증은 출시 검증 현황에서 추적한다.
 
 호환 기준 DMG를 이 Mac에서 다시 생성해 동일한 네 단계를 통과했다. [첫 CI 대조](https://github.com/taro6222/files-for-mac/actions/runs/43646703783)의 arm64 잡에서도 교체·복원을 통과했다. Intel 잡은 한국어 밝은 테마 68개 회귀를 통과한 뒤 한국어 어두운 테마 회귀에서 120초를 초과해 설치 단계에 도달하지 못했다. 수동 업데이트 실행은 DMG 설치·기동·교체·복원에 집중하도록 분리했다. 자동 푸시·PR과 기본 수동 실행에서는 기존 Swift·볼륨·AppKit 회귀를 계속 실행한다.
+
+[독립 CI 대조](https://github.com/taro6222/files-for-mac/actions/runs/43648171748)의 소스 `d271de2a183142574f281a2b8417b599ad7156aa`에서 두 잡이 모두 통과했다. macOS 15.8.2의 [arm64 보고서](preview-upgrade-d271de2-arm64.json)와 macOS 15.7.9의 [x86_64 보고서](preview-upgrade-d271de2-x86_64.json)는 이미지 및 시험 실행 파일의 SHA-256과 네 단계의 실행 시각을 담는다. 각 러너에서 설치된 앱이 기대한 CPU로 실행됐고, 설정·사용자 파일과 새 형식으로 저장한 탭을 복원 후에도 확인했다.
