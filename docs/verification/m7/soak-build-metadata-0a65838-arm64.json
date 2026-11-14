@@ -1,0 +1,17 @@
+{
+  "architecture": "arm64",
+  "candidate": {
+    "sha256": "eacbeb63b4d935f3bd853850d166fab2027a3ff73e156389d6bc506a1a8dc04c",
+    "platform": "MACOS",
+    "minimumOS": "14.0",
+    "sdk": "14.0"
+  },
+  "soak": {
+    "sha256": "0d2fdffbfa12f7572f083a46c4d240b98c88935612856f3a2dcc28f2f889cbf9",
+    "platform": "MACOS",
+    "minimumOS": "14.0",
+    "sdk": "14.0"
+  },
+  "differences": [],
+  "matches": true
+}
