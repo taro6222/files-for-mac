@@ -173,8 +173,7 @@ public enum CopyEngine {
                     report.items[index].message = "An item with this name already exists; skipped."
                 } else {
                     guard exists || lookupError == ENOENT else { throw POSIXError(POSIXErrorCode(rawValue: lookupError) ?? .EIO) }
-                    let before = try snapshot(source, cancellation: cancellation)
-                    let contentBefore = try contentSnapshot(source, cancellation: cancellation)
+                    let before = try makeSnapshot(source, cancellation: cancellation)
                     let temporary = destination.appendingPathComponent(".files-copy-" + report.id.uuidString + "-\(index)")
                     report.items[index].temporary = temporary
                     report.items[index].state = "copying"; try save()
@@ -197,10 +196,14 @@ public enum CopyEngine {
                     }
                     try cancellation.check()
                     emit("verifying")
-                    guard try contentSnapshot(payload, cancellation: cancellation) == contentBefore,
-                          try snapshot(source, cancellation: cancellation) == before else {
+                    let verifiedPayload = try makeSnapshot(payload, cancellation: cancellation)
+                    guard verifiedPayload.content == before.content,
+                          try snapshot(source, cancellation: cancellation) == before.withPermissions else {
                         throw CopyFailure(text: "Source changed or copied contents did not match.")
                     }
+                    // Capture the item we verified before publication. A cancellation or an
+                    // external change after publication must not redefine the undo record.
+                    let undoIdentity = try entryIdentity(payload)
                     emit("committing"); try cancellation.check()
                     guard matches(destination, descriptor: destinationFD), matches(temporary, descriptor: stageFD),
                           expectedDestination?.isCurrent != false else {
@@ -219,9 +222,8 @@ public enum CopyEngine {
                                                  sourceDirectoryFD: stageFD, sourceName: "payload",
                                                  destinationDirectoryFD: destinationFD, destinationName: name)
                             report.items[index].state = "completed"
-                            report.items[index].targetIdentity = try entryIdentity(report.items[index].target)
-                            report.items[index].targetSnapshot = try snapshot(report.items[index].target,
-                                                                              cancellation: cancellation)
+                            report.items[index].targetIdentity = undoIdentity
+                            report.items[index].targetSnapshot = verifiedPayload.withPermissions
                             break
                         } catch CopyPublicationError.conflict {}
                         if conflictPolicy == .skip {
@@ -378,26 +380,30 @@ public enum CopyEngine {
     }
 
     private static func snapshot(_ root: URL, cancellation: CopyCancellation) throws -> [String: String] {
-        try makeSnapshot(root, cancellation: cancellation, includePermissions: true)
+        try makeSnapshot(root, cancellation: cancellation).withPermissions
     }
 
     private static func contentSnapshot(_ root: URL, cancellation: CopyCancellation) throws -> [String: String] {
-        try makeSnapshot(root, cancellation: cancellation, includePermissions: false)
+        try makeSnapshot(root, cancellation: cancellation).content
     }
 
-    private static func makeSnapshot(_ root: URL, cancellation: CopyCancellation,
-                                     includePermissions: Bool) throws -> [String: String] {
+    private static func makeSnapshot(_ root: URL, cancellation: CopyCancellation) throws
+        -> (withPermissions: [String: String], content: [String: String]) {
         let fm = FileManager()
-        var result: [String: String] = [:]
+        var withPermissions: [String: String] = [:]
+        var content: [String: String] = [:]
         func visit(_ url: URL, relative: String) throws {
             try cancellation.check()
             let attrs = try fm.attributesOfItem(atPath: url.path)
             let type = attrs[.type] as? FileAttributeType
             switch type {
             case .typeSymbolicLink:
-                result[relative] = "link:" + (try fm.destinationOfSymbolicLink(atPath: url.path))
+                let link = "link:" + (try fm.destinationOfSymbolicLink(atPath: url.path))
+                withPermissions[relative] = link
+                content[relative] = link
             case .typeDirectory:
-                result[relative] = includePermissions ? "directory:\(attrs[.posixPermissions] ?? 0)" : "directory"
+                withPermissions[relative] = "directory:\(attrs[.posixPermissions] ?? 0)"
+                content[relative] = "directory"
                 for child in try fm.contentsOfDirectory(at: url, includingPropertiesForKeys: nil) {
                     try visit(child, relative: relative + "/" + child.lastPathComponent)
                 }
@@ -409,11 +415,12 @@ public enum CopyEngine {
                     try cancellation.check(); hash.update(data: data)
                 }
                 let digest = hash.finalize().map { String(format: "%02x", $0) }.joined()
-                result[relative] = includePermissions ? "file:\(attrs[.posixPermissions] ?? 0):" + digest : "file:" + digest
+                withPermissions[relative] = "file:\(attrs[.posixPermissions] ?? 0):" + digest
+                content[relative] = "file:" + digest
             default: throw CopyFailure(text: "Unsupported special file: " + url.path)
             }
         }
         try visit(root, relative: "")
-        return result
+        return (withPermissions, content)
     }
 }
