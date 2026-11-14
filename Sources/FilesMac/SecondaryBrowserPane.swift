@@ -6,6 +6,7 @@ final class SecondaryBrowserPane: NSView, NSTableViewDataSource, NSTableViewDele
     let model: BrowserModel
     private let preferences: BrowserPreferences
     var onActivate: (() -> Void)?
+    var onLocationChange: (() -> Void)?
     var onFileDrop: (([URL], URL, FileDropIntent) -> Bool)?
     var onOpenFolderInNewTab: ((URL) -> Void)?
     private let pathField = NSTextField()
@@ -324,6 +325,7 @@ final class SecondaryBrowserPane: NSView, NSTableViewDataSource, NSTableViewDele
         }
     }
     private func modelChanged() {
+        onLocationChange?()
         let autoFitLoadCompleted = autoFitObservedLoading && !model.isLoading
         autoFitObservedLoading = model.isLoading
         render()

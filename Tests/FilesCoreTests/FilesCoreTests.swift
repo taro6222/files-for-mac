@@ -331,6 +331,30 @@ private struct DelayedLoader: DirectoryLoading {
     #expect(model.items.map(\.name) == ["elsewhere"])
 }
 
+@Test @MainActor func shelfRejectsReplacedEntriesAndKeepsItemsSessionOnly() throws {
+    let fm = FileManager.default
+    let root = fm.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+    try fm.createDirectory(at: root, withIntermediateDirectories: true)
+    defer { try? fm.removeItem(at: root) }
+    let first = root.appendingPathComponent("item")
+    try Data("original".utf8).write(to: first)
+    let suite = "shelf-tests-\(UUID())"
+    let defaults = try #require(UserDefaults(suiteName: suite))
+    defer { defaults.removePersistentDomain(forName: suite) }
+    let preferences = BrowserPreferences(defaults: defaults, initialFavorites: [])
+    preferences.addToShelf([first, first, root.appendingPathComponent("missing")])
+    #expect(preferences.shelfEntries.count == 1)
+    let entry = try #require(preferences.shelfEntries.first)
+    #expect(entry.isCurrent)
+    try fm.moveItem(at: first, to: root.appendingPathComponent("moved"))
+    try Data("replacement".utf8).write(to: first)
+    #expect(!entry.isCurrent)
+    #expect(BrowserPreferences(defaults: defaults, initialFavorites: []).shelfEntries.isEmpty)
+    preferences.removeFromShelf([entry])
+    #expect(preferences.shelfEntries.isEmpty)
+    #expect(try Data(contentsOf: first) == Data("replacement".utf8))
+}
+
 @Test @MainActor func failedLoadIsNotEmptySuccess() async throws {
     let model = BrowserModel()
     model.navigate(URL(fileURLWithPath: "/tmp/no-such-\(UUID())"))
@@ -749,6 +773,8 @@ private struct DelayedLoader: DirectoryLoading {
     source.setDoubleClickToGoUp(false)
     source.setReverseTabScrollDirection(true)
     source.setShowFilterHeader(true)
+    source.setShowShelfPane(true)
+    source.setShowShelfToggle(true)
     source.setShowCreatedColumn(true); source.setShowDateColumn(false); source.setShowTypeColumn(false); source.setShowSizeColumn(false); source.setShowGitStatusColumn(true)
     source.setShowFileTagColumn(true); source.setShowPathColumn(true)
     source.setShowCompressionOptions(false); source.setShowOpenTerminal(false); source.setShowCreateFolderWithSelection(false)
@@ -779,6 +805,7 @@ private struct DelayedLoader: DirectoryLoading {
     #expect(!destination.doubleClickToGoUp)
     #expect(destination.reverseTabScrollDirection)
     #expect(destination.showFilterHeader)
+    #expect(destination.showShelfPane && destination.showShelfToggle)
     #expect(destination.showCreatedColumn && !destination.showDateColumn && !destination.showTypeColumn && !destination.showSizeColumn && destination.showGitStatusColumn)
     #expect(destination.showFileTagColumn && destination.showPathColumn)
     #expect(!destination.showCompressionOptions && !destination.showOpenTerminal && !destination.showCreateFolderWithSelection)

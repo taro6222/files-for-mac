@@ -5,6 +5,7 @@ import FilesCore
 final class AppearanceSettingsWindow: NSWindowController {
     private let preferences: BrowserPreferences
     private let picker = NSPopUpButton()
+    private let shelfToggle = NSButton(checkboxWithTitle: L("툴바에 임시 모음 버튼 표시", "Show Shelf Button in Toolbar"), target: nil, action: nil)
     private let continueSession = NSButton(checkboxWithTitle: L("마지막 세션 계속", "Continue Last Session"), target: nil, action: nil)
     private let folderSummary = NSTextField(labelWithString: "")
     private let resetFolders = NSButton()
@@ -37,6 +38,9 @@ final class AppearanceSettingsWindow: NSWindowController {
         picker.target = self; picker.action = #selector(changeAppearance(_:)); picker.setAccessibilityLabel(L("앱 테마", "App theme")); stack.addArrangedSubview(picker)
         let material = NSTextField(wrappingLabelWithString: L("사이드바는 macOS 재질을 사용하며 대비 증가 및 투명도 감소 접근성 설정을 자동으로 따릅니다.", "The sidebar uses macOS material and automatically follows Increase Contrast and Reduce Transparency accessibility settings."))
         material.textColor = .secondaryLabelColor; stack.addArrangedSubview(material)
+        shelfToggle.target = self
+        shelfToggle.action = #selector(changeShelfToggle)
+        stack.addArrangedSubview(shelfToggle)
         backgroundSummary.textColor = .secondaryLabelColor; stack.addArrangedSubview(backgroundSummary)
         let presentationTitle = NSTextField(labelWithString: L("배경 이미지 표시", "Background Image Presentation")); presentationTitle.font = .systemFont(ofSize: 14, weight: .semibold); stack.addArrangedSubview(presentationTitle)
         backgroundFit.addItems(withTitles: [L("영역 채우기", "Fill"), L("전체 이미지 맞춤", "Fit"), L("영역에 늘이기", "Stretch")])
@@ -56,6 +60,7 @@ final class AppearanceSettingsWindow: NSWindowController {
     private func sync() {
         picker.selectItem(at: BrowserAppearance.allCases.firstIndex(of: preferences.appearance) ?? 0)
         continueSession.state = preferences.continueLastSession ? .on : .off
+        shelfToggle.state = preferences.showShelfToggle ? .on : .off
         backgroundSummary.stringValue = preferences.appBackgroundPath == nil ? L("사용자 지정 앱 배경 없음", "No custom app background") : L("사용자 지정 앱 배경 사용 중", "Using a custom app background")
         clearBackground.isEnabled = preferences.appBackgroundPath != nil
         backgroundFit.selectItem(at: AppBackgroundFit.allCases.firstIndex(of: preferences.appBackgroundFit) ?? 0)
@@ -73,6 +78,7 @@ final class AppearanceSettingsWindow: NSWindowController {
         preferences.setAppearance(BrowserAppearance.allCases[picker.indexOfSelectedItem])
     }
     @objc private func changeContinueSession(_ sender: Any?) { preferences.setContinueLastSession(continueSession.state == .on) }
+    @objc private func changeShelfToggle() { preferences.setShowShelfToggle(shelfToggle.state == .on) }
     @objc private func resetFolderViews(_ sender: Any?) { preferences.resetFolderViewPreferences(); sync() }
     @objc private func clearAppBackground(_ sender: Any?) { preferences.setAppBackground(nil); let store = AppBackgroundStore(); Task.detached { try? store.remove() }; sync() }
     @objc private func changeBackgroundPresentation(_ sender: Any?) {

@@ -34,6 +34,8 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
     private let refreshButton = NSButton()
     private let favoriteButton = NSButton()
     private let optionsButton = NSButton()
+    private let shelfToggle = NSButton()
+    private let shelf = ShelfPane()
     private let toolbar = NSStackView()
     private let bottom = NSStackView()
     private let toolbarOverflow = NSPopUpButton()
@@ -294,6 +296,7 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         configure(favoriteButton, "pin", L("즐겨찾기 전환", "Toggle Favorite"), #selector(toggleFavorite(_:)))
         optionsMenu.delegate = self
         configure(optionsButton, "slider.horizontal.3", L("보기 옵션", "View Options"), #selector(showOptions(_:)))
+        configure(shelfToggle, "tray", L("임시 파일 모음", "Shelf"), #selector(toggleShelfPane(_:)))
         toolbarViews = [.back: backButton, .forward: forwardButton, .up: upButton, .refresh: refreshButton,
                         .path: pathField, .hidden: hiddenButton, .viewMode: viewModeButton,
                         .favorite: favoriteButton, .options: optionsButton]
@@ -351,11 +354,16 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         bottom.addArrangedSubview(status); bottom.addArrangedSubview(NSView())
         let phase = NSTextField(labelWithString: L("M3 · 보기 및 사용자 지정", "M3 · Views and customization"))
         phase.font = .systemFont(ofSize: 11); phase.textColor = .tertiaryLabelColor
-        bottom.addArrangedSubview(phase); main.addArrangedSubview(bottom)
+        bottom.addArrangedSubview(phase)
+        shelf.onDrop = { [weak self] urls in self?.preferences.addToShelf(urls) }
+        shelf.onOperation = { [weak self] operation, entries in self?.performShelfOperation(operation, entries: entries) }
+        main.addArrangedSubview(shelf)
+        updateShelf()
+        main.addArrangedSubview(bottom)
         toolbar.isHidden = !preferences.showToolbar
         bottom.isHidden = !preferences.showStatusBar
         sidebarContainer.isHidden = !preferences.showSidebar
-        for view in [header, toolbar, divider, folderFilter, content, bottom] { view.widthAnchor.constraint(equalTo: main.widthAnchor).isActive = true }
+        for view in [header, toolbar, divider, folderFilter, content, shelf, bottom] { view.widthAnchor.constraint(equalTo: main.widthAnchor).isActive = true }
     }
 
     private func setupTable(restoresLayout: Bool) {
@@ -522,6 +530,7 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         let overflowItems = compact ? visible.filter { compactOverflow.contains($0) } : []
         configureToolbarOverflow(overflowItems)
         if !overflowItems.isEmpty { toolbar.addArrangedSubview(toolbarOverflow) }
+        if preferences.showShelfToggle { toolbar.addArrangedSubview(shelfToggle) }
     }
     private func configureToolbarOverflow(_ items: [BrowserToolbarItem]) {
         toolbarOverflow.removeAllItems(); toolbarOverflow.pullsDown = true
@@ -745,6 +754,7 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
             }
         }
         folderFilter.synchronize(with: model, visible: preferences.showFilterHeader)
+        updateShelf()
         titleLabel.stringValue = model.location.map(displayName) ?? L("홈", "Home")
         window?.title = "\(titleLabel.stringValue) — Files macOS"
         if pathField.currentEditor() == nil { pathField.stringValue = model.location?.path ?? "" }
@@ -1045,6 +1055,47 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
             else { window?.makeFirstResponder(folderFilter) }
         } else {
             focusFiles(nil)
+        }
+    }
+    @objc func toggleShelfPane(_ sender: Any?) {
+        preferences.setShowShelfPane(!preferences.showShelfPane)
+    }
+    @objc func addSelectionToShelf(_ sender: Any?) {
+        let urls = activeSelectedItems.map(\.url)
+        guard !urls.isEmpty else { return }
+        preferences.addToShelf(urls)
+        preferences.setShowShelfPane(true)
+    }
+    private func updateShelf() {
+        shelf.isHidden = !preferences.showShelfPane
+        shelfToggle.contentTintColor = preferences.showShelfPane ? .systemBlue : .labelColor
+        shelf.update(entries: preferences.shelfEntries, destination: activeModel.location)
+    }
+    private func performShelfOperation(_ operation: ShelfPane.Operation, entries: [ShelfEntry]) {
+        if operation == .remove {
+            preferences.removeFromShelf(entries)
+            return
+        }
+        guard let destination = activeModel.location else { return }
+        let sources = entries.map(\.url)
+        let validate: () -> Bool = { [weak self] in
+            guard let self else { return false }
+            let stale = entries.filter { !$0.isCurrent }
+            guard !stale.isEmpty else { return true }
+            self.preferences.removeFromShelf(stale)
+            guard let window = self.window else { return false }
+            let alert = NSAlert()
+            alert.messageText = L("모음에 담은 항목이 변경되었습니다", "Shelf items have changed")
+            alert.informativeText = stale.map(\.url.path).joined(separator: "\n")
+            alert.beginSheetModal(for: window)
+            return false
+        }
+        guard validate() else { return }
+        switch operation {
+        case .copy: prepareCopy(sources: sources, destination: destination, validateSources: validate)
+        case .move: prepareMove(sources: sources, destination: destination, validateSources: validate)
+        case .trash: confirmTrash(sources, validateSources: validate)
+        case .remove: break
         }
     }
     @objc func showSearch(_ sender: Any?) {
@@ -1530,8 +1581,10 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
     }
     @objc func deleteSelection(_ sender: Any?) {
         guard canDeleteSelection else { return }
+        confirmTrash(activeSelectedItems.map(\.url))
+    }
+    private func confirmTrash(_ selected: [URL], validateSources: @escaping () -> Bool = { true }) {
         guard let window else { return }
-        let selected = activeSelectedItems.map(\.url)
         guard !selected.isEmpty else { return }
         let current = activeModel.location?.standardizedFileURL
         let names = selected.map(\.lastPathComponent).joined(separator: ", ")
@@ -1542,6 +1595,7 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         alert.addButton(withTitle: L("취소", "Cancel"))
         alert.beginSheetModal(for: window) { [weak self] response in
             guard response == .alertFirstButtonReturn else { return }
+            guard validateSources() else { return }
             guard let self else { return }
             DeletionWindow.start(sources: selected) { [weak self] in
                 if self?.activeModel.location?.standardizedFileURL == current {
@@ -1830,9 +1884,9 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
     private func pasteClipboard(to destination: URL) {
         let sources = clipboardFiles
         if clipboardIsCut {
-            prepareMove(sources: sources, destination: destination) {
+            prepareMove(sources: sources, destination: destination, onStarted: {
                 NSPasteboard.general.clearContents()
-            }
+            })
         } else { prepareCopy(sources: sources, destination: destination) }
     }
     private var canPasteToSelection: Bool {
@@ -1857,7 +1911,7 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
             }
         }
     }
-    private func prepareCopy(sources: [URL], destination: URL) {
+    private func prepareCopy(sources: [URL], destination: URL, validateSources: @escaping () -> Bool = { true }) {
         guard !Self.entryOperationRunning, !CopyWindow.isRunning, !FolderMergeWindow.isRunning, let window else { return }
         let targetModel = activeModel
         let canMergeFolders = sources.contains { hasFolderMergeConflict(source: $0, destination: destination) }
@@ -1871,12 +1925,14 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         alert.addButton(withTitle: L("취소", "Cancel"))
         alert.beginSheetModal(for: window) { response in
             if canMergeFolders, response == .alertFirstButtonReturn {
+                guard validateSources() else { return }
                 FolderMergeWindow.start(sources: sources, destination: destination) { targetModel.reload() }
                 return
             }
             let keepResponse: NSApplication.ModalResponse = canMergeFolders ? .alertSecondButtonReturn : .alertFirstButtonReturn
             let skipResponse = NSApplication.ModalResponse(rawValue: keepResponse.rawValue + 1)
             guard response == keepResponse || response == skipResponse else { return }
+            guard validateSources() else { return }
             CopyWindow.start(sources: sources, destination: destination,
                              conflictPolicy: response == keepResponse ? .keepBoth : .skip) {
                 if targetModel.location?.resolvingSymlinksInPath() == destination.resolvingSymlinksInPath() {
@@ -1892,7 +1948,7 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
               lstat(target.path, &targetInfo) == 0, (targetInfo.st_mode & S_IFMT) == S_IFDIR else { return false }
         return true
     }
-    private func prepareMove(sources: [URL], destination: URL, onStarted: (() -> Void)? = nil) {
+    private func prepareMove(sources: [URL], destination: URL, validateSources: @escaping () -> Bool = { true }, onStarted: (() -> Void)? = nil) {
         guard !Self.entryOperationRunning, !MoveWindow.isRunning, let window else { return }
         let targetModel = activeModel
         let alert = NSAlert()
@@ -1904,6 +1960,7 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         alert.addButton(withTitle: L("취소", "Cancel"))
         alert.beginSheetModal(for: window) { response in
             guard response == .alertFirstButtonReturn || response == .alertSecondButtonReturn else { return }
+            guard validateSources() else { return }
             onStarted?()
             MoveWindow.start(sources: sources, destination: destination,
                              conflictPolicy: response == .alertSecondButtonReturn ? .replace : .skip) {
@@ -2100,6 +2157,7 @@ extension BrowserWindow {
         guard let secondaryPane else { return }
         secondaryPane.shutdown(); secondaryPane.removeFromSuperview()
         self.secondaryPane = nil; secondaryPaneID = nil; secondaryActive = false
+        updateShelf()
         content.wantsLayer = true; content.layer?.borderWidth = 0
         window?.makeFirstResponder(table)
     }
@@ -2119,6 +2177,7 @@ extension BrowserWindow {
                                                         viewMode: activeModel.viewMode)
             let pane = SecondaryBrowserPane(snapshot: paneSnapshot, preferences: preferences)
             pane.onActivate = { [weak self] in self?.setSecondaryActive(true) }
+            pane.onLocationChange = { [weak self] in self?.updateShelf() }
             pane.onOpenFolderInNewTab = { (NSApp.delegate as? AppDelegate)?.openFolderInNewTab($0) }
             pane.onFileDrop = { [weak self] sources, destination, intent in
                 guard let self else { return false }
@@ -2145,6 +2204,7 @@ extension BrowserWindow {
     }
     private func setSecondaryActive(_ active: Bool) {
         secondaryActive = active && secondaryPane != nil
+        updateShelf()
         secondaryPane?.setActive(secondaryActive)
         content.wantsLayer = true
         content.layer?.borderWidth = secondaryActive ? 0 : (secondaryPane == nil ? 0 : 2)
@@ -2225,6 +2285,7 @@ extension BrowserWindow {
         guard menu === optionsMenu else { return }
         menu.removeAllItems()
         let entries: [(String, Selector, Bool)] = [
+            (L("임시 파일 모음", "Shelf"), #selector(toggleShelfPane(_:)), preferences.showShelfPane),
             (L("현재 폴더 필터", "Filter Current Folder"), #selector(toggleFilterHeader(_:)), preferences.showFilterHeader),
             (L("사이드바 표시", "Show Sidebar"), #selector(toggleSidebarVisibility(_:)), preferences.showSidebar),
             (L("툴바 표시", "Show Toolbar"), #selector(toggleToolbar(_:)), preferences.showToolbar),
@@ -2477,6 +2538,10 @@ extension BrowserWindow {
         case #selector(splitVertically(_:)), #selector(splitHorizontally(_:)): return true
         case #selector(arrangePanesVertically(_:)), #selector(arrangePanesHorizontally(_:)), #selector(focusOtherPane(_:)), #selector(openCurrentFolderInOtherPane(_:)): return secondaryPane != nil
         case #selector(toggleDualPane(_:)): return true
+        case #selector(toggleShelfPane(_:)):
+            menuItem.state = preferences.showShelfPane ? .on : .off
+            return true
+        case #selector(addSelectionToShelf(_:)): return !activeSelectedItems.isEmpty
         case #selector(toggleFilterHeader(_:)):
             menuItem.state = preferences.showFilterHeader ? .on : .off
             return activeModel.location != nil
@@ -3096,6 +3161,14 @@ extension BrowserWindow {
             checks["searchParentFolderRevealsItem"] = revealedSearchHit && controller.model.location == fixture.standardizedFileURL
                 && controller.primarySelectedItems.map(\.id) == [searchHit.path]
                 && controller.searchWindow?.window?.isVisible == false
+            controller.addSelectionToShelf(nil)
+            controller.addSelectionToShelf(nil)
+            checks["shelfAddsSelectedFileOnce"] = !controller.shelf.isHidden
+                && preferences.shelfEntries.map(\.url.path) == [searchHit.path]
+            controller.shelf.qaRemoveFirst()
+            checks["shelfRemovalPreservesOriginal"] = preferences.shelfEntries.isEmpty && fm.fileExists(atPath: searchHit.path)
+            controller.toggleShelfPane(nil)
+            checks["shelfToggleHidesPane"] = controller.shelf.isHidden
             controller.table.selectRowIndexes([1], byExtendingSelection: false)
             controller.showInfo(nil)
             let infoStart = ContinuousClock.now

@@ -407,6 +407,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         edit.addItem(withTitle: L("현재 위치 검색…", "Search Current Location…"), action: #selector(BrowserWindow.showSearch(_:)), keyEquivalent: "f")
         let filter = edit.addItem(withTitle: L("현재 폴더 필터", "Filter Current Folder"), action: #selector(BrowserWindow.toggleFilterHeader(_:)), keyEquivalent: "f")
         filter.keyEquivalentModifierMask = [.command, .shift]
+        edit.addItem(withTitle: L("선택 항목을 임시 모음에 추가", "Add Selection to Shelf"), action: #selector(BrowserWindow.addSelectionToShelf(_:)), keyEquivalent: "")
         let goItem = NSMenuItem(); goItem.title = L("이동", "Go"); menu.addItem(goItem)
         let go = NSMenu(title: goItem.title); goItem.submenu = go
         go.addItem(withTitle: L("뒤로", "Back"), action: #selector(BrowserWindow.goBack(_:)), keyEquivalent: "[")
@@ -505,6 +506,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         go.addItem(withTitle: L("다른 pane에 초점", "Focus Other Pane"), action: #selector(BrowserWindow.focusOtherPane(_:)), keyEquivalent: "")
         go.addItem(withTitle: L("현재 폴더를 다른 pane에서 열기", "Open Current Folder in Other Pane"), action: #selector(BrowserWindow.openCurrentFolderInOtherPane(_:)), keyEquivalent: "")
         go.addItem(withTitle: L("dual pane 전환", "Toggle Dual Pane"), action: #selector(BrowserWindow.toggleDualPane(_:)), keyEquivalent: "")
+        go.addItem(withTitle: L("임시 파일 모음", "Shelf"), action: #selector(BrowserWindow.toggleShelfPane(_:)), keyEquivalent: "")
         go.addItem(.separator())
         let fullScreen = go.addItem(withTitle: L("전체 화면 전환", "Toggle Full Screen"), action: #selector(BrowserWindow.toggleFullScreen(_:)), keyEquivalent: "f")
         fullScreen.keyEquivalentModifierMask = [.command, .control]

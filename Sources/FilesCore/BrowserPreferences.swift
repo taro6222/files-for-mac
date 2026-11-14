@@ -82,6 +82,8 @@ public struct BrowserPreferencesArchive: Codable, Equatable, Sendable {
     public let doubleClickToGoUp: Bool?
     public let reverseTabScrollDirection: Bool?
     public let showFilterHeader: Bool?
+    public let showShelfPane: Bool?
+    public let showShelfToggle: Bool?
     public let startupLocationPath: String?
     public let developerApplicationPath: String?
     public let appBackgroundPath: String?
@@ -158,6 +160,9 @@ public final class BrowserPreferences {
     public private(set) var doubleClickToGoUp: Bool
     public private(set) var reverseTabScrollDirection: Bool
     public private(set) var showFilterHeader: Bool
+    public private(set) var showShelfPane: Bool
+    public private(set) var showShelfToggle: Bool
+    public private(set) var shelfEntries: [ShelfEntry] = []
     public private(set) var startupLocationPath: String?
     public private(set) var developerApplicationPath: String?
     public private(set) var appBackgroundPath: String?
@@ -228,6 +233,8 @@ public final class BrowserPreferences {
         doubleClickToGoUp = defaults.object(forKey: "doubleClickToGoUp") as? Bool ?? true
         reverseTabScrollDirection = defaults.object(forKey: "reverseTabScrollDirection") as? Bool ?? false
         showFilterHeader = defaults.object(forKey: "showFilterHeader") as? Bool ?? false
+        showShelfPane = defaults.bool(forKey: "showShelfPane")
+        showShelfToggle = defaults.bool(forKey: "showShelfToggle")
         startupLocationPath = defaults.string(forKey: "startupLocationPath").flatMap { $0.hasPrefix("/") ? $0 : nil }
         developerApplicationPath = defaults.string(forKey: "developerApplicationPath")
         appBackgroundPath = defaults.string(forKey: "appBackgroundPath").flatMap { $0.hasPrefix("/") ? $0 : nil }
@@ -385,6 +392,34 @@ public final class BrowserPreferences {
         defaults.set(value, forKey: "showFilterHeader")
         changed()
     }
+    public func setShowShelfPane(_ value: Bool) {
+        guard showShelfPane != value else { return }
+        showShelfPane = value
+        defaults.set(value, forKey: "showShelfPane")
+        changed()
+    }
+    public func setShowShelfToggle(_ value: Bool) {
+        guard showShelfToggle != value else { return }
+        showShelfToggle = value
+        defaults.set(value, forKey: "showShelfToggle")
+        changed()
+    }
+    public func addToShelf(_ urls: [URL]) {
+        var entries = shelfEntries
+        var known = Set(entries.map(\.url))
+        for url in urls {
+            if let entry = ShelfEntry(url), known.insert(entry.url).inserted { entries.append(entry) }
+        }
+        guard entries != shelfEntries else { return }
+        shelfEntries = entries
+        changed()
+    }
+    public func removeFromShelf(_ entries: [ShelfEntry]) {
+        let remaining = shelfEntries.filter { !entries.contains($0) }
+        guard remaining != shelfEntries else { return }
+        shelfEntries = remaining
+        changed()
+    }
     public func setReverseTabScrollDirection(_ value: Bool) {
         guard reverseTabScrollDirection != value else { return }
         reverseTabScrollDirection = value; defaults.set(value, forKey: "reverseTabScrollDirection"); changed()
@@ -456,6 +491,8 @@ public final class BrowserPreferences {
             doubleClickToGoUp: doubleClickToGoUp,
             reverseTabScrollDirection: reverseTabScrollDirection,
             showFilterHeader: showFilterHeader,
+            showShelfPane: showShelfPane,
+            showShelfToggle: showShelfToggle,
             startupLocationPath: startupLocationPath, developerApplicationPath: developerApplicationPath, appBackgroundPath: appBackgroundPath,
             appBackgroundFit: appBackgroundFit.rawValue, appBackgroundOpacity: appBackgroundOpacity,
             appBackgroundHorizontalAlignment: appBackgroundHorizontalAlignment.rawValue, appBackgroundVerticalAlignment: appBackgroundVerticalAlignment.rawValue,
@@ -533,6 +570,8 @@ public final class BrowserPreferences {
         doubleClickToGoUp = archive.doubleClickToGoUp ?? true
         reverseTabScrollDirection = archive.reverseTabScrollDirection ?? false
         showFilterHeader = archive.showFilterHeader ?? false
+        showShelfPane = archive.showShelfPane ?? false
+        showShelfToggle = archive.showShelfToggle ?? false
         developerApplicationPath = archive.developerApplicationPath; appBackgroundPath = archive.appBackgroundPath; toolbarOrder = importedToolbar; hiddenToolbarItems = Set(importedHiddenToolbar)
         appBackgroundFit = importedBackgroundFit; appBackgroundOpacity = importedOpacity
         appBackgroundHorizontalAlignment = importedHorizontal; appBackgroundVerticalAlignment = importedVertical
@@ -567,6 +606,8 @@ public final class BrowserPreferences {
         defaults.set(doubleClickToGoUp, forKey: "doubleClickToGoUp")
         defaults.set(reverseTabScrollDirection, forKey: "reverseTabScrollDirection")
         defaults.set(showFilterHeader, forKey: "showFilterHeader")
+        defaults.set(showShelfPane, forKey: "showShelfPane")
+        defaults.set(showShelfToggle, forKey: "showShelfToggle")
         if let startupLocationPath { defaults.set(startupLocationPath, forKey: "startupLocationPath") } else { defaults.removeObject(forKey: "startupLocationPath") }
         if let developerApplicationPath { defaults.set(developerApplicationPath, forKey: "developerApplicationPath") } else { defaults.removeObject(forKey: "developerApplicationPath") }
         if let appBackgroundPath { defaults.set(appBackgroundPath, forKey: "appBackgroundPath") } else { defaults.removeObject(forKey: "appBackgroundPath") }
