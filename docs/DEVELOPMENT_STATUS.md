@@ -8,6 +8,8 @@ M7 출시 검증이 진행 중이다. [유니버설 개발 프리뷰](verificati
 
 ## 이번 구현 단위
 
+최신 파일 전송 변경을 포함한 유니버설 프리뷰를 빌드해 설치·교체·복원과 Apple Silicon 기동 20회를 검증했다. [프리뷰 검증](verification/m7/PREVIEW_0.1.0.md)
+
 APFS·exFAT 간 파일과 폴더의 접근 시간을 보존한다. [exFAT 접근 시간 검증](verification/m7/INCREMENT_135.md)
 
 APFS 간 파일 전송 결과의 접근 시간을 검증 읽기 이후 복원한다. [접근 시간 검증](verification/m7/INCREMENT_134.md)
