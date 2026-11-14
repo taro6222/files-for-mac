@@ -22,13 +22,6 @@ if [[ "$mode" == --universal ]]; then
     if [[ "$architecture" == arm64 ]]; then arm_app="$bin_path/FilesMac"; else intel_app="$bin_path/FilesMac"; fi
   done
   lipo -create "$arm_app" "$intel_app" -output "$APP/Contents/MacOS/FilesMac"
-  slices=$(lipo -archs "$APP/Contents/MacOS/FilesMac")
-  for architecture in arm64 x86_64; do
-    if [[ " $slices " != *" $architecture "* ]]; then
-      echo "Missing architecture: $architecture" >&2
-      exit 1
-    fi
-  done
 else
   swift build -c release --disable-sandbox
   bin_path=$(swift build -c release --show-bin-path)
@@ -49,4 +42,7 @@ cat > "$APP/Contents/Info.plist" <<'PLIST'
 </dict></plist>
 PLIST
 codesign --force --sign - "$APP"
+if [[ "$mode" == --universal ]]; then
+  bash scripts/verify-universal-app.sh "$APP"
+fi
 printf 'Built: %s\n' "$APP"
