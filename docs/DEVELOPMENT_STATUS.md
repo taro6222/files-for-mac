@@ -8,6 +8,8 @@ M7 출시 검증이 진행 중이다. [유니버설 개발 프리뷰](verificati
 
 ## 이번 구현 단위
 
+마운트된 프리뷰와 장시간 QA 실행 파일의 Mach-O 최소 OS·SDK를 대조한다. [빌드 대조](verification/m7/INCREMENT_182.md)
+
 파일 작업 AppKit 회귀를 호스트 볼륨 조회에서 분리하고 시간 초과 시 마지막 단계와 프로세스 스택을 기록한다. [시간 초과 진단](verification/m7/INCREMENT_181.md)
 
 격리된 개발 프리뷰 설치·교체·복원의 모든 단계에서 앱 아키텍처를 검사한다. [업데이트 검증](verification/m7/INCREMENT_180.md)
