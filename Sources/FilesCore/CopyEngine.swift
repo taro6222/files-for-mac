@@ -70,7 +70,7 @@ struct CopyTransferMetadata: Codable, Equatable, Sendable {
     func matchesRecorded(_ recorded: Self) -> Bool {
         extendedAttributes == recorded.extendedAttributes && accessControlLists == recorded.accessControlLists
             && modificationDates == recorded.modificationDates
-            && (recorded.creationDates == nil || creationDates == recorded.creationDates)
+            && (recorded.creationDates?.allSatisfy { creationDates?[$0.key] == $0.value } ?? true)
     }
 }
 
@@ -475,24 +475,22 @@ public enum CopyEngine {
 
         func restoreCreationTimes(in payload: URL, cancellation: CopyCancellation) throws {
             guard filesystemType == "apfs", let dates = metadata.creationDates, !dates.isEmpty else { return }
+            let parent = open(payload.deletingLastPathComponent().path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
+            guard parent >= 0 else { throw TransferMismatch.creationTime }
+            defer { close(parent) }
             var volume = statfs()
-            guard statfs(payload.deletingLastPathComponent().path, &volume) == 0,
+            guard fstatfs(parent, &volume) == 0 else { throw TransferMismatch.creationTime }
+            guard
                   withUnsafeBytes(of: volume.f_fstypename, { String(decoding: $0.prefix { $0 != 0 }, as: UTF8.self) }) == "apfs" else { return }
-            let stagedPath = payload.deletingLastPathComponent().resolvingSymlinksInPath()
-                .appendingPathComponent(payload.lastPathComponent).path
             for (path, date) in dates {
                 try cancellation.check()
-                let file = path.isEmpty ? payload : payload.appendingPathComponent(String(path.dropFirst()))
-                // Resolve each parent inside the private staging tree, and
-                // reject paths that now lead outside the tree through a symlink.
-                guard file.resolvingSymlinksInPath().path == stagedPath + path else {
-                    throw TransferMismatch.creationTime
-                }
-                let descriptor = open(file.path, O_RDONLY | O_NOFOLLOW | O_NONBLOCK | O_CLOEXEC)
-                guard descriptor >= 0 else { throw TransferMismatch.creationTime }
+                let isDirectory = content[path] == "directory"
+                let descriptor = try openStagedEntry(parent: parent, name: payload.lastPathComponent,
+                                                     path: path, isDirectory: isDirectory)
                 defer { close(descriptor) }
                 var info = stat()
-                guard fstat(descriptor, &info) == 0, info.st_mode & S_IFMT == S_IFREG else {
+                guard fstat(descriptor, &info) == 0,
+                      info.st_mode & S_IFMT == (isDirectory ? S_IFDIR : S_IFREG) else {
                     throw TransferMismatch.creationTime
                 }
                 let seconds = date.timeIntervalSince1970
@@ -507,6 +505,20 @@ public enum CopyEngine {
                     }
                 }
             }
+        }
+
+        private func openStagedEntry(parent: Int32, name: String, path: String, isDirectory: Bool) throws -> Int32 {
+            let components = [name] + path.split(separator: "/").map(String.init)
+            var current = parent
+            for (index, component) in components.enumerated() {
+                let directory = index < components.count - 1 || isDirectory
+                let flags = O_RDONLY | O_NOFOLLOW | O_NONBLOCK | O_CLOEXEC | (directory ? O_DIRECTORY : 0)
+                let next = openat(current, component, flags)
+                if current != parent { close(current) }
+                guard next >= 0 else { throw TransferMismatch.creationTime }
+                current = next
+            }
+            return current
         }
 
         var legacyPermissionsSnapshot: [String: String] {
@@ -603,9 +615,6 @@ public enum CopyEngine {
                 snapshot.metadata.accessControlLists[relative] = try accessControlList(url)
                 if type != .typeSymbolicLink {
                     snapshot.metadata.modificationDates[relative] = attrs[.modificationDate] as? Date
-                }
-                // Foundation can assign a new creation time when copying directories.
-                if type == .typeRegular {
                     snapshot.metadata.creationDates?[relative] = attrs[.creationDate] as? Date
                 }
             }

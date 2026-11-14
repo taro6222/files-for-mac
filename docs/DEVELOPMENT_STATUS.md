@@ -8,6 +8,8 @@ M7 출시 검증이 진행 중이다. [유니버설 개발 프리뷰](verificati
 
 ## 이번 구현 단위
 
+APFS 폴더와 하위 폴더의 생성 시간을 보존하고 복원 중 심볼릭 링크를 거부한다. [폴더 생성 시간 검증](verification/m7/INCREMENT_130.md)
+
 APFS 간 일반 파일의 복사와 이동에서 생성 시간을 보존하고 검증한다. [생성 시간 검증](verification/m7/INCREMENT_129.md)
 
 이동 실행 취소에서 대상 파일을 중복으로 읽던 검증 경로를 통합했다. [이동 실행 취소 성능](verification/m7/INCREMENT_128.md)

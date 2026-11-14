@@ -94,6 +94,40 @@ import Testing
     #expect(!fm.fileExists(atPath: target.path))
 }
 
+@Test func mountedVolumeAPFSPreservesNestedFolderCreationTimes() async throws {
+    guard let path = ProcessInfo.processInfo.environment["FILES_TEST_APFSX_VOLUME"] else { return }
+    let fm = FileManager.default
+    let root = fm.temporaryDirectory.appendingPathComponent("FilesMac-FolderDates-\(UUID())", isDirectory: true)
+    let destination = URL(fileURLWithPath: path, isDirectory: true)
+        .appendingPathComponent(root.lastPathComponent, isDirectory: true)
+    let source = root.appendingPathComponent("folder", isDirectory: true)
+    let target = destination.appendingPathComponent(source.lastPathComponent, isDirectory: true)
+    let journal = root.appendingPathComponent("journal", isDirectory: true)
+    defer { try? fm.removeItem(at: root); try? fm.removeItem(at: destination) }
+    try fm.createDirectory(at: source.appendingPathComponent("nested", isDirectory: true), withIntermediateDirectories: true)
+    try fm.createDirectory(at: destination, withIntermediateDirectories: false)
+    let rootDate = Date(timeIntervalSince1970: 1_600_000_000)
+    let nestedDate = rootDate.addingTimeInterval(60)
+    try fm.setAttributes([.creationDate: rootDate], ofItemAtPath: source.path)
+    try fm.setAttributes([.creationDate: nestedDate], ofItemAtPath: source.appendingPathComponent("nested").path)
+    func verify(_ folder: URL) throws {
+        #expect(try fm.attributesOfItem(atPath: folder.path)[.creationDate] as? Date == rootDate)
+        #expect(try fm.attributesOfItem(atPath: folder.appendingPathComponent("nested").path)[.creationDate] as? Date == nestedDate)
+    }
+    let copy = await CopyEngine.run(sources: [source], destination: destination,
+                                    journalDirectory: journal, cancellation: CopyCancellation())
+    try #require(copy.state == "completed", Comment(rawValue: copy.items.first?.message ?? ""))
+    try verify(target)
+    let copyUndo = try #require(CopyEngine.latestUndoCopy(journalDirectory: journal))
+    try #require(await CopyEngine.undoCopy(copyUndo, journalDirectory: journal).state == "completed")
+    let move = try await EntryOperations.move([source], to: destination, journalDirectory: journal)
+    try #require(move.state == "completed")
+    try verify(target)
+    let undo = try #require(EntryOperations.latestUndoMove(journalDirectory: journal))
+    try #require(await EntryOperations.undoMove(undo, journalDirectory: journal).state == "completed")
+    try verify(source)
+}
+
 @Test func mountedVolumeCopyMoveUndoAndCaseSemantics() async throws {
     let environment = ProcessInfo.processInfo.environment
     let configurations: [(String, Bool)] = [

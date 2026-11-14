@@ -3,6 +3,31 @@ import Darwin
 import Testing
 @testable import FilesCore
 
+@Test func copyCreationTimeRestorationRejectsSymlinkedStagedParent() throws {
+    let f = try CopyFixture(); defer { f.clean() }
+    let fm = FileManager.default
+    let nested = f.source.appendingPathComponent("nested", isDirectory: true)
+    let staged = f.destination.appendingPathComponent("payload", isDirectory: true)
+    let outside = f.root.appendingPathComponent("outside", isDirectory: true)
+    for directory in [nested, staged, outside] {
+        try fm.createDirectory(at: directory, withIntermediateDirectories: false)
+    }
+    let date = Date(timeIntervalSince1970: 1_600_000_000)
+    let outsideDate = date.addingTimeInterval(60)
+    let outsideFile = outside.appendingPathComponent("file")
+    try Data("test".utf8).write(to: nested.appendingPathComponent("file"))
+    try Data("outside".utf8).write(to: outsideFile)
+    try fm.setAttributes([.creationDate: outsideDate], ofItemAtPath: outsideFile.path)
+    try fm.createSymbolicLink(at: staged.appendingPathComponent("nested"), withDestinationURL: outside)
+    let cancellation = CopyCancellation()
+    let snapshot = try CopyEngine.makeSnapshot(f.source, cancellation: cancellation)
+    guard snapshot.filesystemType == "apfs" else { return }
+    #expect(throws: CopyEngine.TransferMismatch.creationTime) {
+        try snapshot.restoreCreationTimes(in: staged, cancellation: cancellation)
+    }
+    #expect(try fm.attributesOfItem(atPath: outsideFile.path)[.creationDate] as? Date == outsideDate)
+}
+
 private struct CopyFixture {
     let root: URL
     let source: URL
