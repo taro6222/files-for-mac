@@ -2,12 +2,13 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 seconds=${1:-28800}
-if [[ $# -gt 2 || ! "$seconds" =~ ^[1-9][0-9]*$ ]]; then
-  echo "Usage: $0 [positive-duration-seconds [existing-run-parent-directory]]" >&2
+workload=${3-full}
+if [[ $# -gt 3 || ! "$seconds" =~ ^[1-9][0-9]*$ || ( "$workload" != full && "$workload" != navigation ) ]]; then
+  echo "Usage: $0 [positive-duration-seconds [existing-run-parent-directory [full|navigation]]]" >&2
   exit 2
 fi
 source_sha=$(git rev-parse --verify HEAD)
-if [[ $# -eq 2 ]]; then
+if [[ $# -ge 2 ]]; then
   if [[ ! -d "$2" ]]; then
     echo "The run parent must be an existing directory: $2" >&2
     exit 2
@@ -36,7 +37,7 @@ rm -rf -- "$snapshot"
 rm -- "$run_dir/bin-path"
 sw_vers > "$run_dir/macos.txt"
 /bin/df -P "$run_dir" > "$run_dir/filesystem.txt"
-export FILES_SOAK_DIRECTORY="$run_dir" FILES_SOAK_SECONDS="$seconds"
+export FILES_SOAK_DIRECTORY="$run_dir" FILES_SOAK_SECONDS="$seconds" FILES_SOAK_WORKLOAD="$workload"
 status=0
 caffeinate -i "$run_dir/FilesMac" >"$run_dir/app.log" 2>&1 || status=$?
 printf '%s\n' "$status" > "$run_dir/.exit-status"

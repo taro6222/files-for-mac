@@ -5067,8 +5067,14 @@ private struct ReleaseSoakSample: Encodable {
     let elapsedSeconds: Double
 }
 
+private enum ReleaseSoakWorkload: String, Encodable {
+    case full
+    case navigation
+}
+
 private struct ReleaseSoakReport: Encodable {
     let state: String
+    let workload: ReleaseSoakWorkload
     let targetSeconds: Int
     let elapsedSeconds: Double
     let cycles: Int
@@ -5201,7 +5207,11 @@ extension BrowserWindow {
 
     static func runReleaseSoak(directory: String) async {
         let environment = ProcessInfo.processInfo.environment
-        guard let duration = environment["FILES_SOAK_SECONDS"].flatMap(Int.init), duration > 0 else { exit(2) }
+        guard let duration = environment["FILES_SOAK_SECONDS"].flatMap(Int.init), duration > 0,
+              let workload = ReleaseSoakWorkload(rawValue: environment["FILES_SOAK_WORKLOAD"] ?? "full") else {
+            fputs("Expected a positive soak duration and workload full or navigation.\n", stderr)
+            exit(2)
+        }
 
         let root = URL(fileURLWithPath: directory, isDirectory: true)
         let fm = FileManager.default
@@ -5230,7 +5240,7 @@ extension BrowserWindow {
         }
 
         func report(state: String, error: String? = nil) throws {
-            let report = ReleaseSoakReport(state: state, targetSeconds: duration,
+            let report = ReleaseSoakReport(state: state, workload: workload, targetSeconds: duration,
                 elapsedSeconds: elapsedSeconds(), cycles: cycles, peakRSSBytes: peakRSS,
                 peakPhysicalFootprintBytes: peakPhysicalFootprint,
                 samples: samples, error: error)
@@ -5261,6 +5271,50 @@ extension BrowserWindow {
             }
         }
 
+        func transferInNewTab(attachedTo window: NSWindow) async throws {
+            var tab: BrowserWindow? = BrowserWindow(preferences: preferences,
+                restoresFrame: false, initialLocation: destination)
+            weak let releasedTab = tab
+            weak var releasedWatcher: DirectoryWatcher?
+            var didClose = false
+            do {
+                guard let tab, let tabWindow = tab.window else { throw ReleaseSoakFailure("Missing tab") }
+                tab.showWindow(nil)
+                window.addTabbedWindow(tabWindow, ordered: .above)
+                guard window.tabbedWindows?.count == 2 else { throw ReleaseSoakFailure("Tab did not attach") }
+                try await tab.waitForSoakListing(at: destination, count: 0)
+                releasedWatcher = tab.watcher
+
+                let copy = await CopyEngine.run(sources: [transferSource], destination: destination,
+                    journalDirectory: journals, cancellation: CopyCancellation(), recordUndo: false)
+                guard copy.state == "completed", copy.journalError == nil else {
+                    throw ReleaseSoakFailure("Copy failed: \(copy.state)")
+                }
+                // Wait for the real directory watcher to surface the published file.
+                try await tab.waitForSoakListing(at: destination, count: 1)
+                let result = destination.appendingPathComponent(transferSource.lastPathComponent)
+                guard try Data(contentsOf: result) == payload else { throw ReleaseSoakFailure("Copy content mismatch") }
+                try fm.removeItem(at: result)
+                try await tab.waitForSoakListing(at: destination, count: 0)
+                tab.onClose = { didClose = true }
+                tab.close()
+                let closeDeadline = clock.now.advanced(by: .seconds(5))
+                while !didClose {
+                    guard clock.now < closeDeadline else { throw ReleaseSoakFailure("Tab close callback did not run") }
+                    try await Task.sleep(for: .milliseconds(20))
+                }
+                tab.onClose = nil
+            }
+            tab = nil
+            let cleanupDeadline = clock.now.advanced(by: .seconds(10))
+            while releasedTab != nil || releasedWatcher != nil {
+                guard clock.now < cleanupDeadline else { throw ReleaseSoakFailure("Closed tab retained: \(releasedTab != nil); watcher retained: \(releasedWatcher != nil)") }
+                try await Task.sleep(for: .milliseconds(20))
+            }
+            guard (window.tabbedWindows?.count ?? 1) == 1 else { throw ReleaseSoakFailure("Closed tab remained in the window group") }
+            try fm.removeItem(at: journals)
+        }
+
         let browser = BrowserWindow(preferences: preferences, restoresFrame: false)
         var exitCode: Int32 = 1
         defer {
@@ -5284,47 +5338,9 @@ extension BrowserWindow {
                 browser.navigate(source)
                 try await browser.waitForSoakListing(at: source, count: 129)
 
-                var tab: BrowserWindow? = BrowserWindow(preferences: preferences,
-                    restoresFrame: false, initialLocation: destination)
-                weak let releasedTab = tab
-                weak var releasedWatcher: DirectoryWatcher?
-                var didClose = false
-                do {
-                    guard let tab, let tabWindow = tab.window else { throw ReleaseSoakFailure("Missing tab") }
-                    tab.showWindow(nil)
-                    window.addTabbedWindow(tabWindow, ordered: .above)
-                    guard window.tabbedWindows?.count == 2 else { throw ReleaseSoakFailure("Tab did not attach") }
-                    try await tab.waitForSoakListing(at: destination, count: 0)
-                    releasedWatcher = tab.watcher
-
-                    let copy = await CopyEngine.run(sources: [transferSource], destination: destination,
-                        journalDirectory: journals, cancellation: CopyCancellation(), recordUndo: false)
-                    guard copy.state == "completed", copy.journalError == nil else {
-                        throw ReleaseSoakFailure("Copy failed: \(copy.state)")
-                    }
-                    // Wait for the real directory watcher to surface the published file.
-                    try await tab.waitForSoakListing(at: destination, count: 1)
-                    let result = destination.appendingPathComponent(transferSource.lastPathComponent)
-                    guard try Data(contentsOf: result) == payload else { throw ReleaseSoakFailure("Copy content mismatch") }
-                    try fm.removeItem(at: result)
-                    try await tab.waitForSoakListing(at: destination, count: 0)
-                    tab.onClose = { didClose = true }
-                    tab.close()
-                    let closeDeadline = clock.now.advanced(by: .seconds(5))
-                    while !didClose {
-                        guard clock.now < closeDeadline else { throw ReleaseSoakFailure("Tab close callback did not run") }
-                        try await Task.sleep(for: .milliseconds(20))
-                    }
-                    tab.onClose = nil
+                if workload == .full {
+                    try await transferInNewTab(attachedTo: window)
                 }
-                tab = nil
-                let cleanupDeadline = clock.now.advanced(by: .seconds(10))
-                while releasedTab != nil || releasedWatcher != nil {
-                    guard clock.now < cleanupDeadline else { throw ReleaseSoakFailure("Closed tab retained: \(releasedTab != nil); watcher retained: \(releasedWatcher != nil)") }
-                    try await Task.sleep(for: .milliseconds(20))
-                }
-                guard (window.tabbedWindows?.count ?? 1) == 1 else { throw ReleaseSoakFailure("Closed tab remained in the window group") }
-                try fm.removeItem(at: journals)
                 // Return through history so the repeated workload keeps one forward
                 // entry instead of retaining two additional entries per cycle.
                 browser.goBack(nil)
