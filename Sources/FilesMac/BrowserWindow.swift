@@ -4276,6 +4276,9 @@ extension BrowserWindow {
                 try capture("git-clone", view: clonePanel.window?.contentView); clonePanel.close(); window.makeKeyAndOrderFront(nil)
                 let qaGitFile = cloneDestination.appendingPathComponent("qa-untracked.txt")
                 try Data("Git column QA".utf8).write(to: qaGitFile, options: .atomic)
+                let unusualName = "  -한글\\name\tline\r\nend.txt"
+                let unusualFile = cloneDestination.appendingPathComponent(unusualName)
+                try Data().write(to: unusualFile)
                 let gitList = BrowserWindow(preferences: preferences, restoresFrame: false, initialLocation: cloneDestination, cloudProvider: qaCloudProvider)
                 gitList.showWindow(nil)
                 let hiddenGitWait = ContinuousClock.now
@@ -4348,6 +4351,9 @@ extension BrowserWindow {
                 }
                 checks["gitConflictPresentation"] = index.terminationStatus == 0 && conflictPanel.qaShowsConflict(code: "AA")
                     && gitList.gitStatuses[qaGitFile.path] == "AA"
+                checks["gitUnusualPathPresentation"] = conflictPanel.qaShowsPath(unusualName,
+                    as: "  -한글\\\\name\\tline\\r\\nend.txt")
+                    && gitList.gitStatuses[unusualFile.path] == "??"
                 try capture("git-conflict", view: conflictPanel.window?.contentView)
                 conflictPanel.close()
                 preferences.setShowGitStatusColumn(false)

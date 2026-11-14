@@ -142,6 +142,12 @@ final class GitWindow: NSWindowController, NSTableViewDataSource, NSTableViewDel
     var qaLoaded: Bool { task == nil && snapshot != nil }
     var qaRowCount: Int { snapshot?.entries.count ?? 0 }
     var qaBranch: String? { snapshot?.branch }
+    func qaShowsPath(_ path: String, as renderedPath: String) -> Bool {
+        guard let row = snapshot?.entries.firstIndex(where: { $0.path == path }),
+              let column = table.tableColumn(withIdentifier: .init("path")),
+              let cell = tableView(table, viewFor: column, row: row) as? NSTableCellView else { return false }
+        return cell.textField?.stringValue == renderedPath
+    }
     func qaShowsConflict(code: String) -> Bool {
         guard let row = snapshot?.entries.firstIndex(where: { $0.kind == .unmerged }),
               let cell = tableView(table, viewFor: table.tableColumns[0], row: row) as? NSTableCellView else { return false }
