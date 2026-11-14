@@ -5519,6 +5519,10 @@ extension BrowserWindow {
             let moveResult = NSApp.windows.filter(\.isVisible).compactMap { $0.windowController as? MoveWindow }.first
             let canRetryMove = moveResult?.qaCanRetry == true && fm.fileExists(atPath: blockedMove.path)
                 && !fm.fileExists(atPath: ordinaryMove.path)
+            let lastItem = L(" · 이후 0개", " · 0 after this item")
+            checks["transferProgressShowsRemainingItems"] =
+                mixedCopy?.qaLastProgress.hasSuffix(missingSource.lastPathComponent + lastItem) == true
+                && moveResult?.qaLastProgress.hasSuffix(blockedMove.lastPathComponent + lastItem) == true
             try fm.setAttributes([.posixPermissions: 0o700], ofItemAtPath: restricted.path)
             moveResult?.qaRetry()
             while moveCompletions < 2 && elapsed(moveRetryStart) < 10 {

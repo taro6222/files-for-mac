@@ -12,6 +12,9 @@ final class CopyWindow: NSWindowController, NSWindowDelegate {
     private let label = NSTextField(wrappingLabelWithString: "")
     private let progress = NSProgressIndicator()
     private let details = NSTextView()
+#if DEBUG
+    private(set) var qaLastProgress = ""
+#endif
     private let cancel = NSButton(title: L("취소", "Cancel"), target: nil, action: #selector(cancelCopy(_:)))
     private let retry = NSButton(title: L("실패 항목 다시 시도", "Retry Failed Items"), target: nil,
                                  action: #selector(retryFailedItems(_:)))
@@ -91,7 +94,12 @@ final class CopyWindow: NSWindowController, NSWindowDelegate {
         case "verifying": phase = L("내용 검증", "Verifying contents")
         default: phase = L("결과 확정", "Committing")
         }
+        let remaining = update.total - update.index - 1
         label.stringValue = "\(update.index + 1)/\(update.total) · \(phase) · \(update.name)"
+            + L(" · 이후 \(remaining)개", " · \(remaining) after this item")
+#if DEBUG
+        qaLastProgress = label.stringValue
+#endif
         progress.doubleValue = Double(update.index)
     }
     @objc private func cancelCopy(_ sender: Any?) {

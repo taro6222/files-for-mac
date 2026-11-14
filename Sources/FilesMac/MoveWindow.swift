@@ -12,6 +12,9 @@ final class MoveWindow: NSWindowController, NSWindowDelegate {
     private let label = NSTextField(wrappingLabelWithString: "")
     private let progress = NSProgressIndicator()
     private let details = NSTextView()
+#if DEBUG
+    private(set) var qaLastProgress = ""
+#endif
     private let close = NSButton(title: L("취소", "Cancel"), target: nil, action: #selector(cancelMove(_:)))
     private let retry = NSButton(title: L("실패 항목 다시 시도", "Retry Failed Items"), target: nil,
                                  action: #selector(retryFailedItems(_:)))
@@ -132,7 +135,12 @@ final class MoveWindow: NSWindowController, NSWindowDelegate {
         case "removingSource": phase = L("원본 정리", "Removing source")
         default: phase = L("결과 확정", "Committing")
         }
+        let remaining = update.total - update.index - 1
         label.stringValue = "\(update.index + 1)/\(update.total) · \(phase) · \(update.name)"
+            + L(" · 이후 \(remaining)개", " · \(remaining) after this item")
+#if DEBUG
+        qaLastProgress = label.stringValue
+#endif
         progress.doubleValue = Double(update.index)
     }
 
