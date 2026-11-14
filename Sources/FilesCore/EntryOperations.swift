@@ -243,10 +243,10 @@ public enum EntryOperations {
         let payload = stage.appendingPathComponent("payload")
         try fm.copyItem(at: source, to: payload)
         let verifiedPayload = try CopyEngine.makeSnapshot(payload, cancellation: CopyCancellation())
-        guard verifiedPayload.matchesTransferredContents(of: before),
-              try CopyEngine.makeSnapshot(source, cancellation: CopyCancellation()).matchesOriginal(before) else {
+        guard try CopyEngine.makeSnapshot(source, cancellation: CopyCancellation()).matchesOriginal(before) else {
             throw MoveFailure(text: LString.crossVolumeVerificationFailed)
         }
+        try verifiedPayload.verifyTransferredContents(of: before)
         let payloadIdentity = try snapshotIdentity(payload, fileManager: fm)
         try checkpointCopy(payloadIdentity, verifiedPayload.withPermissions)
         try fm.moveItem(at: payload, to: target)
@@ -920,10 +920,10 @@ public enum EntryOperations {
                                 }
                                 emit("verifying", stagedTransfer: stagedTransfer)
                                 let verifiedPayload = try CopyEngine.makeSnapshot(payload, cancellation: cancellation)
-                                guard verifiedPayload.matchesTransferredContents(of: before),
-                                      try CopyEngine.makeSnapshot(source, cancellation: cancellation).matchesOriginal(before) else {
+                                guard try CopyEngine.makeSnapshot(source, cancellation: cancellation).matchesOriginal(before) else {
                                     throw MoveFailure(text: LString.crossVolumeVerificationFailed)
                                 }
+                                try verifiedPayload.verifyTransferredContents(of: before)
                                 let payloadIdentity = try snapshotIdentity(payload, fileManager: fm)
                                 let payloadSnapshot = verifiedPayload.content[""] == "directory"
                                     ? verifiedPayload.withPermissions : nil

@@ -219,10 +219,10 @@ public enum CopyEngine {
                     }
                     emit("verifying", stagedTransfer: stagedTransfer)
                     let verifiedPayload = try makeSnapshot(payload, cancellation: cancellation)
-                    guard verifiedPayload.matchesTransferredContents(of: before),
-                          try makeSnapshot(source, cancellation: cancellation).matchesOriginal(before) else {
-                        throw CopyFailure(text: "Source changed or copied contents did not match.")
+                    guard try makeSnapshot(source, cancellation: cancellation).matchesOriginal(before) else {
+                        throw CopyFailure(text: "Source changed during copying.")
                     }
+                    try verifiedPayload.verifyTransferredContents(of: before)
                     // Capture the item we verified before publication. A cancellation or an
                     // external change after publication must not redefine the undo record.
                     let undoIdentity = try entryIdentity(payload)
@@ -411,16 +411,28 @@ public enum CopyEngine {
         var modificationTimeResolution: TimeInterval = 0
         var hasNativePermissions = true
 
-        func matchesTransferredContents(of source: Self) -> Bool {
+        private func transferMismatch(_ source: Self) -> TransferMismatch? {
+            if content != source.content { return .contents }
+            if extendedAttributes != source.extendedAttributes { return .extendedAttributes }
+            if accessControlLists != source.accessControlLists { return .accessControlList }
+            if hasNativePermissions, source.hasNativePermissions, withPermissions != source.withPermissions {
+                return .permissions
+            }
             let resolution = max(modificationTimeResolution, source.modificationTimeResolution)
-            guard content == source.content, extendedAttributes == source.extendedAttributes,
-                  accessControlLists == source.accessControlLists,
-                  !hasNativePermissions || !source.hasNativePermissions || withPermissions == source.withPermissions,
-                  modificationDates.count == source.modificationDates.count else { return false }
-            return modificationDates.allSatisfy { path, date in
+            guard modificationDates.count == source.modificationDates.count else { return .modificationTime }
+            let datesMatch = modificationDates.allSatisfy { path, date in
                 guard let sourceDate = source.modificationDates[path] else { return false }
                 return date == sourceDate || abs(date.timeIntervalSince(sourceDate)) < resolution
             }
+            return datesMatch ? nil : .modificationTime
+        }
+
+        func verifyTransferredContents(of source: Self) throws {
+            if let mismatch = transferMismatch(source) { throw mismatch }
+        }
+
+        func matchesTransferredContents(of source: Self) -> Bool {
+            transferMismatch(source) == nil
         }
 
         func matchesOriginal(_ original: Self) -> Bool {
@@ -433,6 +445,28 @@ public enum CopyEngine {
                 guard value.hasPrefix("file:"), let suffix = value.range(of: ":resource:") else { return value }
                 return String(value[..<suffix.lowerBound])
             }
+        }
+    }
+
+    enum TransferMismatch: String, LocalizedError {
+        case contents, extendedAttributes, accessControlList, permissions, modificationTime
+
+        var errorDescription: String? {
+            message(korean: Locale.preferredLanguages.first?.hasPrefix("ko") == true)
+        }
+
+        func message(korean: Bool) -> String {
+            let property: (english: String, korean: String)
+            switch self {
+            case .contents: property = ("file contents or folder structure", "파일 내용 또는 폴더 구조")
+            case .extendedAttributes: property = ("extended attributes, including tags", "태그 등 확장 속성")
+            case .accessControlList: property = ("access control list (ACL)", "접근 제어 목록(ACL)")
+            case .permissions: property = ("POSIX permissions", "POSIX 권한")
+            case .modificationTime: property = ("modification time", "수정 시간")
+            }
+            return korean
+                ? "복사본의 \(property.korean) 검증에 실패했습니다. 원본을 보존했습니다."
+                : "The copy did not preserve the \(property.english). The original was kept."
         }
     }
 

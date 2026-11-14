@@ -167,10 +167,11 @@ public enum CopyMergeExecutor {
                     try fm.copyItem(at: action.source, to: temporary)
                     defer { try? fm.removeItem(at: temporary) }
                     try cancellation.check()
-                    guard try CopyEngine.makeSnapshot(temporary, cancellation: cancellation).matchesTransferredContents(of: before),
-                          try CopyEngine.makeSnapshot(action.source, cancellation: cancellation).matchesOriginal(before) else {
-                        throw MergeFailure(text: "Source changed or copied contents did not match.")
+                    let copied = try CopyEngine.makeSnapshot(temporary, cancellation: cancellation)
+                    guard try CopyEngine.makeSnapshot(action.source, cancellation: cancellation).matchesOriginal(before) else {
+                        throw MergeFailure(text: "Source changed during copying.")
                     }
+                    try copied.verifyTransferredContents(of: before)
                     guard try identity(parent) == action.expectedParentIdentity else {
                         throw MergeFailure(text: "Destination parent changed before publication.")
                     }

@@ -8,6 +8,8 @@ M7 출시 검증이 진행 중이다. [유니버설 개발 프리뷰](verificati
 
 ## 이번 구현 단위
 
+파일 전송 결과에서 ACL·권한·확장 속성·수정 시간의 검증 실패를 구분한다. [전송 검증 실패 안내](verification/m7/INCREMENT_123.md)
+
 복사와 교차 볼륨 이동에서 수정 시간을 검증하고 exFAT 등 파일 시스템별 기록 정밀도를 반영한다. [수정 시간 검증](verification/m7/INCREMENT_122.md)
 
 복사와 교차 볼륨 이동에서 ACL과 POSIX 권한을 확인한다. [파일 권한 검증](verification/m7/INCREMENT_121.md)

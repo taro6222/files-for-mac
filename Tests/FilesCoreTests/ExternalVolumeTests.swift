@@ -263,6 +263,7 @@ import Testing
     let report = try await EntryOperations.move([source], to: destination,
         journalDirectory: root.appendingPathComponent("journal"))
     #expect(report.items.first?.state == "failed")
+    #expect(report.items.first?.message == CopyEngine.TransferMismatch.accessControlList.localizedDescription)
     #expect(try Data(contentsOf: source) == payload)
     let acl = try #require(acl_get_file(source.path, ACL_TYPE_EXTENDED))
     acl_free(UnsafeMutableRawPointer(acl))

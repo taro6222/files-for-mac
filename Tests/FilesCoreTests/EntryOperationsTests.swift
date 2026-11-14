@@ -854,6 +854,13 @@ func crossVolumeMovePreservesSourceWhenStagedMetadataChanges(_ metadata: String)
     #expect(try fm.attributesOfItem(atPath: source.path)[.posixPermissions] as? Int == 0o640)
     #expect(try fm.attributesOfItem(atPath: source.path)[.modificationDate] as? Date == originalDate)
     #expect(!fm.fileExists(atPath: destination.appendingPathComponent(source.lastPathComponent).path))
+    let reason: CopyEngine.TransferMismatch
+    switch metadata {
+    case "acl": reason = .accessControlList
+    case "mode": reason = .permissions
+    default: reason = .modificationTime
+    }
+    #expect(result.items.first?.message == reason.localizedDescription)
 }
 
 @Test(arguments: [false, true])
