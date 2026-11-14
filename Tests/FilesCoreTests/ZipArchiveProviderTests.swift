@@ -154,6 +154,7 @@ private func makeZip(source: URL, archive: URL) throws {
 }
 
 @Test func archiveCancellationPropagatesToWorkersAndRemovesStagingOutputs() async throws {
+    let cleanupDeadline = Duration.seconds(5)
     let fm = FileManager.default, root = fm.temporaryDirectory.appendingPathComponent("archive-cancel-\(UUID())", isDirectory: true)
     defer { try? fm.removeItem(at: root) }
     let source = root.appendingPathComponent("large.bin"), archive = root.appendingPathComponent("large.7z")
@@ -172,7 +173,8 @@ private func makeZip(source: URL, archive: URL) throws {
     try #require(creationReportedBytes, "Archive creation must report written bytes before cancellation")
     let createCancelStart = ContinuousClock.now; createTask.cancel()
     await #expect(throws: CancellationError.self) { try await createTask.value }
-    #expect(createCancelStart.duration(to: .now) < .seconds(1)); #expect(!fm.fileExists(atPath: archive.path))
+    #expect(createCancelStart.duration(to: .now) < cleanupDeadline)
+    #expect(!fm.fileExists(atPath: archive.path))
     #expect((try fm.contentsOfDirectory(atPath: root.path)).allSatisfy { !$0.hasPrefix(".files-create-") })
 
     _ = try await provider.create(from: [source], at: archive)
@@ -188,6 +190,7 @@ private func makeZip(source: URL, archive: URL) throws {
     try #require(extractionReportedBytes, "Archive extraction must report written bytes before cancellation")
     let extractCancelStart = ContinuousClock.now; extractTask.cancel()
     await #expect(throws: CancellationError.self) { try await extractTask.value }
-    #expect(extractCancelStart.duration(to: .now) < .seconds(1)); #expect(try fm.contentsOfDirectory(atPath: destination.path).isEmpty)
+    #expect(extractCancelStart.duration(to: .now) < cleanupDeadline)
+    #expect(try fm.contentsOfDirectory(atPath: destination.path).isEmpty)
     #expect((try fm.contentsOfDirectory(atPath: destination.path)).allSatisfy { !$0.hasPrefix(".files-extract-") })
 }

@@ -17,3 +17,5 @@ GitHub Actions에서 main 푸시와 main 대상 PR, 수동 실행에 macOS 15의
 [디버그 심볼을 생략한 실행](https://github.com/taro6222/files-for-mac/actions/runs/43633336850)에서 양쪽 빌드를 통과했다. Apple Silicon에서 병렬 Swift 테스트가 5분 제한 시간을 넘겼다. CI 기본 회귀를 순차 실행으로 전환했다. 개별 테스트 내부의 동시 실행 검증은 그대로 실행한다.
 
 [순차 CI 실행](https://github.com/taro6222/files-for-mac/actions/runs/43634140080)의 Apple Silicon Swift 테스트가 끝까지 실행됐다. 200ms 고정 대기 뒤 재탐색 완료를 기대하던 시험에서 실패했다. 재탐색이 끝날 때까지 상태를 확인하고 5초 안에 끝나지 않으면 시험을 실패로 판정하도록 바꿨다.
+
+순차 실행의 Intel 결과는 압축 취소 이후 정리가 1.052초 걸려 기존 1초 단언만 실패했다. 가상 러너의 동작 회귀에서는 완료 후 경과 시간 상한을 5초로 잡고, 취소 오류·공개 파일 부재·임시 파일 정리를 계속 확인한다. 재탐색 수정 직후 [Apple Silicon CI](https://github.com/taro6222/files-for-mac/actions/runs/43634694516/job/132568814420)는 Swift 회귀와 실제 볼륨 시험 6개를 통과했다.
