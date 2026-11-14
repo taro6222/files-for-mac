@@ -97,6 +97,7 @@ fixture 생성 스크립트는 반복 실행 가능하게 만들고 사용자의
 
 ## 6. CI와 증거 저장
 
+- 인벤토리 변경: [고정 SHA·분류·근거 경로 구조 감사](verification/m7/INCREMENT_176.md). 적용 항목의 실제 동작 검증률은 별도 게이트로 판정한다.
 - 변경별: [macOS CI](verification/m7/INCREMENT_172.md)에서 arm64·x86_64 Swift 빌드와 단위·임시 파일 시스템 통합 테스트.
 - UI 변경: macOS UI 자동화와 스냅샷, 실제 창 수동 검토.
 - provider 변경: capability별 계약 테스트와 오류 주입.
