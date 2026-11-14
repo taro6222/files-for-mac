@@ -4596,6 +4596,7 @@ extension BrowserWindow {
                     checks["fileInfoGroupOwnership"] = edited && properties.group == group
                         && saved.ownerID == accountACL.ownerID && saved.accessControlList == accountACL.accessControlList
                 } else { checks["fileInfoGroupOwnership"] = false }
+                checks["fileInfoOwnerPrivileges"] = try await info.qaOwnerControlMatchesPrivileges()
             } else {
                 checks["fileInfoHashComparison"] = false
                 checks["fileInfoHashFileComparison"] = false
@@ -4603,6 +4604,7 @@ extension BrowserWindow {
                 checks["fileInfoACLEditing"] = false
                 checks["fileInfoACLAccountRule"] = false
                 checks["fileInfoGroupOwnership"] = false
+                checks["fileInfoOwnerPrivileges"] = false
             }
             controller.infoWindow?.close(); window.makeKeyAndOrderFront(nil)
             let taggedURL = controller.activeSelectedItems.first?.url

@@ -270,6 +270,15 @@ final class FileInfoWindow: NSWindowController, NSTextFieldDelegate {
     private func cancelTasks() { inspectTask?.cancel(); inspectTask = nil; hashTask?.cancel(); hashTask = nil; signatureTask?.cancel(); signatureTask = nil }
 #if DEBUG
     var qaLoaded: Bool { properties != nil }
+    func qaOwnerControlMatchesPrivileges() async throws -> Bool {
+        guard let sheet = openPermissions() else { return false }
+        defer { sheet.dismissQA() }
+        let deadline = ContinuousClock.now + .seconds(5)
+        while !sheet.qaReady && ContinuousClock.now < deadline {
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        return sheet.qaReady && sheet.qaOwnerEnabled == FilePropertiesInspector.canChangeOwner
+    }
     func qaChangePermissions(to mode: Int, acl: String? = nil, addEveryoneRule: Bool = false, group: String? = nil) async throws -> Bool {
         guard let sheet = openPermissions() else { return false }
         let deadline = ContinuousClock.now + .seconds(5)
@@ -343,6 +352,7 @@ private final class FilePermissionsSheet: NSObject, NSTextViewDelegate {
     private let accountKind = NSPopUpButton(), ruleEffect = NSPopUpButton(), ruleAccess = NSPopUpButton()
     private let accountName = NSTextField(), accountList = NSPopUpButton()
     private let groupList = NSPopUpButton()
+    private let ownerList = NSPopUpButton()
     private var accountListTask: Task<Void, Never>?
     private let ruleControls = NSStackView()
     private let status = NSTextField(wrappingLabelWithString: "")
@@ -435,10 +445,21 @@ private final class FilePermissionsSheet: NSObject, NSTextViewDelegate {
         setRuleControlsEnabled(false)
         let groupRow = NSStackView(views: [NSTextField(labelWithString: L("그룹 소유권", "Group ownership")), groupList])
         groupList.setAccessibilityLabel(L("그룹 소유권", "Group ownership"))
-        groupList.target = self; groupList.action = #selector(changeGroup(_:))
+        groupList.target = self; groupList.action = #selector(changeOwnership(_:))
         groupList.isEnabled = false
         groupList.widthAnchor.constraint(equalToConstant: 156).isActive = true
-        let stack = NSStackView(views: [grid, groupRow, aclHeader, ruleControls, scroll, status])
+        let ownerLabel = L("사용자 소유권", "User ownership")
+        ownerList.setAccessibilityLabel(ownerLabel)
+        ownerList.target = self; ownerList.action = #selector(changeOwnership(_:))
+        ownerList.isEnabled = false
+        ownerList.widthAnchor.constraint(equalToConstant: 156).isActive = true
+        let ownerRow = NSStackView(views: [NSTextField(labelWithString: ownerLabel), ownerList])
+        let ownershipHelp = NSTextField(wrappingLabelWithString: L("사용자 소유권 변경에는 macOS 시스템 권한이 필요합니다.",
+                                                                  "Changing the user owner requires macOS system privileges."))
+        ownershipHelp.textColor = .secondaryLabelColor
+        ownershipHelp.preferredMaxLayoutWidth = 350
+        let stack = NSStackView(views: [grid, ownerRow, groupRow, ownershipHelp, aclHeader, ruleControls, scroll, status])
+        ownershipHelp.isHidden = FilePropertiesInspector.canChangeOwner
         stack.orientation = .vertical
         stack.alignment = .leading
         stack.spacing = 8
@@ -446,7 +467,7 @@ private final class FilePermissionsSheet: NSObject, NSTextViewDelegate {
         scroll.heightAnchor.constraint(equalToConstant: 86).isActive = true
         status.preferredMaxLayoutWidth = 350
         status.stringValue = L("권한을 읽는 중…", "Reading permissions…")
-        stack.frame = NSRect(x: 0, y: 0, width: 360, height: 320)
+        stack.frame = NSRect(x: 0, y: 0, width: 360, height: 383)
         alert.accessoryView = stack
     }
 
@@ -465,6 +486,7 @@ private final class FilePermissionsSheet: NSObject, NSTextViewDelegate {
         aclText.string = snapshot.accessControlList ?? L("확장 ACL 항목이 없습니다.", "No extended ACL entries.")
         status.stringValue = String(format: "%04o", snapshot.mode)
         editACL.isEnabled = true
+        ownerList.addItem(withTitle: L("현재 UID \(snapshot.ownerID)", "Current UID \(snapshot.ownerID)"))
         groupList.addItem(withTitle: L("현재 GID \(snapshot.groupID)", "Current GID \(snapshot.groupID)"))
         Task {
             let groups = await FileACLAccountKind.group.accountNames(memberGroupsOnly: true)
@@ -472,16 +494,28 @@ private final class FilePermissionsSheet: NSObject, NSTextViewDelegate {
             groupList.addItems(withTitles: groups)
             groupList.isEnabled = !groups.isEmpty && !aclText.isEditable && !save.isEnabled
         }
+        if FilePropertiesInspector.canChangeOwner {
+            Task {
+                let users = await FileACLAccountKind.user.accountNames()
+                guard alert.window.sheetParent != nil else { return }
+                ownerList.addItems(withTitles: users)
+                ownerList.isEnabled = !users.isEmpty && !aclText.isEditable && !save.isEnabled
+            }
+        }
     }
 
-    @objc private func changeGroup(_ sender: Any?) {
+    @objc private func changeOwnership(_ sender: Any?) {
+        let pickedOwner = ownerList.indexOfSelectedItem > 0
         let pickedGroup = groupList.indexOfSelectedItem > 0
-        checks.forEach { $0.isEnabled = !pickedGroup }
-        editACL.isEnabled = !pickedGroup
-        save.isEnabled = pickedGroup
-        if pickedGroup {
-            status.stringValue = L("그룹을 변경하면 macOS가 setuid 또는 setgid 비트를 해제할 수 있습니다.",
-                                   "macOS may clear setuid or setgid bits when the group changes.")
+        let pickedOwnership = pickedOwner || pickedGroup
+        checks.forEach { $0.isEnabled = !pickedOwnership }
+        editACL.isEnabled = !pickedOwnership
+        save.isEnabled = pickedOwnership
+        if pickedOwnership {
+            ownerList.isEnabled = !pickedGroup && ownerList.numberOfItems > 1
+            groupList.isEnabled = !pickedOwner && groupList.numberOfItems > 1
+            status.stringValue = L("소유권을 변경하면 macOS가 setuid 또는 setgid 비트를 해제할 수 있습니다.",
+                                   "macOS may clear setuid or setgid bits when ownership changes.")
         } else {
             permissionChanged(nil)
         }
@@ -494,6 +528,7 @@ private final class FilePermissionsSheet: NSObject, NSTextViewDelegate {
         save.isEnabled = requested != initial.mode
         editACL.isEnabled = !save.isEnabled
         groupList.isEnabled = !save.isEnabled && groupList.numberOfItems > 1
+        ownerList.isEnabled = !save.isEnabled && ownerList.numberOfItems > 1
     }
 
     @objc private func beginACLEdit(_ sender: Any?) {
@@ -501,6 +536,7 @@ private final class FilePermissionsSheet: NSObject, NSTextViewDelegate {
         checks.forEach { $0.isEnabled = false }
         editACL.isEnabled = false
         groupList.isEnabled = false
+        ownerList.isEnabled = false
         aclText.string = initial.accessControlList ?? ""
         aclText.isEditable = true
         setRuleControlsEnabled(true)
@@ -587,9 +623,11 @@ private final class FilePermissionsSheet: NSObject, NSTextViewDelegate {
         let requested = selectedMode
         let aclEntries = aclText.isEditable ? aclText.string : nil
         let group = groupList.indexOfSelectedItem > 0 ? groupList.titleOfSelectedItem : nil
+        let owner = ownerList.indexOfSelectedItem > 0 ? ownerList.titleOfSelectedItem : nil
         save.isEnabled = false
         editACL.isEnabled = false
         groupList.isEnabled = false
+        ownerList.isEnabled = false
         aclText.isEditable = false
         setRuleControlsEnabled(false)
         alert.buttons[1].isEnabled = false
@@ -597,7 +635,9 @@ private final class FilePermissionsSheet: NSObject, NSTextViewDelegate {
         Task {
             defer { alert.buttons[1].isEnabled = true }
             do {
-                if let group {
+                if let owner {
+                    _ = try await inspector.setOwner(owner, at: url, expected: initial)
+                } else if let group {
                     _ = try await inspector.setGroup(group, at: url, expected: initial)
                 } else if let aclEntries {
                     _ = try await inspector.setAccessControlList(aclEntries, at: url, expected: initial)
@@ -622,6 +662,7 @@ private final class FilePermissionsSheet: NSObject, NSTextViewDelegate {
     }
 #if DEBUG
     var qaReady: Bool { initial != nil }
+    var qaOwnerEnabled: Bool { ownerList.isEnabled }
     func dismissQA() {
         alert.window.sheetParent?.endSheet(alert.window)
     }
@@ -633,7 +674,7 @@ private final class FilePermissionsSheet: NSObject, NSTextViewDelegate {
         let index = groupList.indexOfItem(withTitle: name)
         guard index > 0, groupList.isEnabled else { return false }
         groupList.selectItem(at: index)
-        changeGroup(nil)
+        changeOwnership(nil)
         save.performClick(nil)
         return true
     }

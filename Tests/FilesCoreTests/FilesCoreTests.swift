@@ -1578,3 +1578,31 @@ private struct ManyBatchLoader: DirectoryStreaming {
         try await inspector.setGroup(UUID().uuidString, at: file, expected: updated)
     }
 }
+
+@Test func userOwnershipRespectsProcessPrivileges() async throws {
+    let root = try fixture()
+    defer { try? FileManager.default.removeItem(at: root) }
+    let file = root.appendingPathComponent("owner.txt")
+    try Data("fixture".utf8).write(to: file)
+    let inspector = FilePropertiesInspector()
+    let initial = try await inspector.permissions(file)
+    let target = FilePropertiesInspector.canChangeOwner ? "nobody" : "root"
+    if FilePropertiesInspector.canChangeOwner {
+        let updated = try await inspector.setOwner(target, at: file, expected: initial)
+        #expect(updated.ownerID != initial.ownerID)
+        #expect(updated.groupID == initial.groupID)
+        #expect(updated.accessControlList == initial.accessControlList)
+        #expect(try await inspector.inspect(file).owner == target)
+    } else {
+        await #expect(throws: POSIXError(.EPERM)) {
+            try await inspector.setOwner(target, at: file, expected: initial)
+        }
+        let unchanged = try await inspector.permissions(file)
+        #expect(unchanged.ownerID == initial.ownerID)
+        #expect(unchanged.groupID == initial.groupID)
+        #expect(unchanged.mode == initial.mode)
+    }
+    await #expect(throws: FilePermissionError.unknownACLAccount) {
+        try await inspector.setOwner(UUID().uuidString, at: file, expected: initial)
+    }
+}

@@ -49,6 +49,7 @@ public enum FilePermissionError: Error, Equatable {
     case invalidAccessControlList
     case unknownACLAccount
     case groupNotApplied
+    case ownerNotApplied
 }
 
 public enum FileACLAccountKind: String, Sendable {
@@ -147,6 +148,7 @@ public enum FileHashAlgorithm: String, CaseIterable, Sendable {
 
 public struct FilePropertiesInspector: Sendable {
     public init() {}
+    public static var canChangeOwner: Bool { geteuid() == 0 }
     public func inspect(_ url: URL) async throws -> FileProperties {
         try await Task.detached(priority: .userInitiated) {
             let standardized = url.standardizedFileURL
@@ -208,6 +210,28 @@ public struct FilePropertiesInspector: Sendable {
                 }
                 let updated = try Self.permissionSnapshot(descriptor)
                 guard updated.groupID == groupID else { throw FilePermissionError.groupNotApplied }
+                return updated
+            }
+        }.value
+    }
+
+    public func setOwner(_ name: String, at url: URL, expected: FilePermissionSnapshot) async throws -> FilePermissionSnapshot {
+        guard !name.isEmpty, !name.utf8.contains(0) else { throw FilePermissionError.unknownACLAccount }
+        return try await Task.detached(priority: .utility) {
+            var record = passwd()
+            var found: UnsafeMutablePointer<passwd>?
+            var buffer = [CChar](repeating: 0, count: 64 * 1024)
+            let code = getpwnam_r(name, &record, &buffer, buffer.count, &found)
+            guard code == 0, found != nil else { throw FilePermissionError.unknownACLAccount }
+            let ownerID = record.pw_uid
+            return try Self.withPermissionDescriptor(url) { descriptor in
+                let current = try Self.permissionSnapshot(descriptor)
+                try Self.checkPermissionSnapshot(current, expected: expected)
+                if ownerID != current.ownerID {
+                    guard fchown(descriptor, ownerID, gid_t.max) == 0 else { throw Self.permissionPOSIXError() }
+                }
+                let updated = try Self.permissionSnapshot(descriptor)
+                guard updated.ownerID == ownerID else { throw FilePermissionError.ownerNotApplied }
                 return updated
             }
         }.value

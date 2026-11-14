@@ -8,6 +8,8 @@ M7 출시 검증이 진행 중이다. [유니버설 개발 프리뷰](verificati
 
 ## 이번 구현 단위
 
+파일 권한 시트에서 사용자 소유권과 macOS 권한을 표시한다. [사용자 소유권 검증](verification/m7/INCREMENT_159.md)
+
 파일 속성에서 단일 항목의 그룹 소유권을 변경한다. [그룹 소유권 검증](verification/m7/INCREMENT_158.md)
 
 권한·해시를 포함한 유니버설 프리뷰를 갱신했고 동일 소스의 8시간 전체 부하 시험을 시작했다. [프리뷰 및 부하 시험](verification/m7/INCREMENT_157.md)
