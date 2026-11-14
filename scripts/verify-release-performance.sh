@@ -5,11 +5,17 @@ name=${1:-release-performance}
 case "$name" in
   *[!a-zA-Z0-9_-]*) echo "Use a report name containing only letters, digits, hyphens and underscores." >&2; exit 2 ;;
 esac
-scratch="$PWD/build/release-performance-swiftpm"
-export CLANG_MODULE_CACHE_PATH="$PWD/.build/ModuleCache"
-swift build --scratch-path "$scratch" -c release --disable-sandbox -Xswiftc -DRELEASE_PERFORMANCE_QA
-bin_path=$(swift build --scratch-path "$scratch" -c release --show-bin-path)
-python3 - "$bin_path/FilesMac" "$PWD/build/$name" <<'PY'
+source_sha=$(git rev-parse --verify HEAD)
+snapshot=$(mktemp -d "${TMPDIR:-/tmp}/files-release-performance.XXXXXX")
+trap 'rm -rf -- "$snapshot"' EXIT
+git archive "$source_sha" | tar -x -C "$snapshot"
+export CLANG_MODULE_CACHE_PATH="$snapshot/.build/ModuleCache"
+(
+  cd "$snapshot"
+  swift build -c release --disable-sandbox -Xswiftc -DRELEASE_PERFORMANCE_QA
+)
+bin_path=$(cd "$snapshot" && swift build -c release --show-bin-path)
+python3 - "$bin_path/FilesMac" "$PWD/build/$name" "$source_sha" <<'PY'
 import hashlib
 import json
 import math
@@ -22,12 +28,12 @@ import sys
 import tempfile
 import time
 
-binary, output_dir = map(pathlib.Path, sys.argv[1:])
+binary, output_dir = map(pathlib.Path, sys.argv[1:3])
+source_sha = sys.argv[3]
 output_dir.mkdir(parents=True, exist_ok=True)
 report_path = output_dir / "report.json"
 report_path.unlink(missing_ok=True)
 binary_hash = hashlib.sha256(binary.read_bytes()).hexdigest()
-source_sha = subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip()
 storage = subprocess.check_output(["df", "-P", str(output_dir)], text=True).splitlines()[-1].split()[0]
 filesystem = plistlib.loads(subprocess.check_output(["diskutil", "info", "-plist", storage]))
 
