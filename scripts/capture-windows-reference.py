@@ -45,12 +45,9 @@ def wait_for(description, read):
     raise RuntimeError(f"Timed out waiting for {description}") from last_error
 
 
-def capture(output, app_id):
-    wait_for("WinAppDriver", lambda: request("GET", "/status"))
-    result = request("POST", "/session", {"desiredCapabilities": {"app": app_id, "deviceName": "WindowsPC"}})
-    session_id = result.get("sessionId") or result["value"]["sessionId"]
-    session = f"/session/{session_id}"
+def capture(output, app_id, window_handle):
     output.mkdir(parents=True, exist_ok=True)
+    session = None
     last_source = None
 
     def screenshot(filename):
@@ -61,6 +58,12 @@ def capture(output, app_id):
         return hashlib.sha256(png).hexdigest()
 
     try:
+        wait_for("WinAppDriver", lambda: request("GET", "/status"))
+        capabilities = {"appTopLevelWindow": window_handle, "deviceName": "WindowsPC"}
+        result = request("POST", "/session", {"desiredCapabilities": capabilities})
+        session_id = result.get("sessionId") or result["value"]["sessionId"]
+        session = f"/session/{session_id}"
+
         def home_source():
             nonlocal last_source
             for handle in request("GET", session + "/window_handles")["value"]:
@@ -97,20 +100,23 @@ def capture(output, app_id):
         (output / "capture-error.txt").write_text(str(error) + "\n", encoding="utf-8")
         if last_source is not None:
             (output / "last-window.xml").write_text(last_source, encoding="utf-8")
-        try:
-            screenshot("last-window.png")
-        except (URLError, TimeoutError, RuntimeError, ValueError) as diagnostic_error:
-            print(f"WinAppDriver error screenshot unavailable: {diagnostic_error}")
+        if session is not None:
+            try:
+                screenshot("last-window.png")
+            except (URLError, TimeoutError, RuntimeError, ValueError) as diagnostic_error:
+                print(f"WinAppDriver error screenshot unavailable: {diagnostic_error}")
         raise
     finally:
-        try:
-            request("DELETE", session)
-        except (URLError, TimeoutError, RuntimeError) as error:
-            print(f"WinAppDriver session cleanup failed: {error}")
+        if session is not None:
+            try:
+                request("DELETE", session)
+            except (URLError, TimeoutError, RuntimeError) as error:
+                print(f"WinAppDriver session cleanup failed: {error}")
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("output", type=Path)
+    parser.add_argument("--window-handle", required=True)
     arguments = parser.parse_args()
-    capture(arguments.output, os.environ["FILES_WINDOWS_APP_ID"])
+    capture(arguments.output, os.environ["FILES_WINDOWS_APP_ID"], arguments.window_handle)

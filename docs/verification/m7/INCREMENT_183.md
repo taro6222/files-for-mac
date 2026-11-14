@@ -9,3 +9,5 @@
 [첫 Windows 실행](https://github.com/taro6222/files-for-mac/actions/runs/43652157860)에서 고정 원본 빌드와 4.2.9.0 패키지 설치가 통과했다. 설치한 MSIX 번들의 SHA-256은 `36519ca95c0178d460aad28c609eb8519f4a3bb08ae14cafb0f16523cf1b9266`이다. WinAppDriver 세션은 열렸고 홈 판정은 제한 시간을 초과했다.
 
 홈 확인을 원본에서 위젯에 직접 지정한 영어 접근성 이름 `Drives`와 `Network locations`로 수정했다. [WinAppDriver API](https://github.com/microsoft/WinAppDriver/blob/master/Docs/SupportedAPIs.md)의 현재 창 최대화 경로를 사용한다. 판정에 실패하면 마지막 창의 트리와 스크린샷을 진단용 이름으로 저장한다. 모의 드라이버에서 홈 판정, 시작 화면 거부, 진단 파일 생성, 세션 정리를 확인했다.
+
+[두 번째 Windows 실행](https://github.com/taro6222/files-for-mac/actions/runs/43653279723)도 빌드와 설치를 통과했다. WinAppDriver의 앱 시작 요청은 프로세스 ID를 얻었으나 창을 찾지 못해 HTTP 500으로 끝났다. 이제 Windows 셸에서 설치한 패키지를 시작하고, 그 패키지의 `Files.exe`가 제목 있는 창을 내놓으면 [WinAppDriver의 창 핸들 연결](https://github.com/microsoft/WinAppDriver/blob/master/Docs/AuthoringTestScripts.md#supported-capabilities)을 사용한다. 창이나 세션을 얻지 못한 실패도 진단 텍스트로 저장한다. 모의 드라이버에서 핸들 연결 요청, 화면 저장, 연결 실패 기록을 각각 확인했다.
