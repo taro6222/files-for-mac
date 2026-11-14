@@ -31,7 +31,7 @@
 | 파일 종류 | 기본 메타데이터와 localizedTypeDescription을 분리; 현재 종류는 폴더/확장자 표시 | 부가 API 실패가 폴더 판별을 훼손하지 않도록 수정 |
 | 변경 감시 | FSEvents 현재 폴더·직접 자식 관찰 | 로컬 파일 편집·rename 통과; 네트워크 볼륨은 검증 대기 |
 | 패키징 | SwiftPM 코어/실행 + 같은 소스를 쓰는 Xcode 앱 타깃 | 정식 배포 전 코어를 별도 패키지 참조로 연결 정리 |
-| 휴지통 전체 복원 | 미확정 | 공개 API 실험 대기 |
+| 휴지통 전체 작업 | 파일 메뉴에서 Finder의 사용자 휴지통 폴더를 열 수 있다. 사용자가 Finder에서 비우기 또는 선택 항목 되돌려 놓기를 실행한다. macOS판에는 전체 복원 명령과 삭제일·원래 경로 열 및 정렬을 제공할 시스템 휴지통 메타데이터가 없다. | [M6 검증 기록](../verification/m6/INCREMENT_97.md) |
 | 클라우드 상태·명령 | CloudStorage/iCloud 위치를 로컬 탐색; ubiquitous resource value가 있는 항목만 상태 표시하고 공개 FileManager API로 지금 다운로드·공간 비우기 제공. 일반 File Provider 상태는 unknown, 영구 오프라인 유지 명령은 미노출 | fixture 위치·unknown·비지원 명령 무변경·UI 4조합 통과; 실제 공급자별 수용 검증 대기 |
 | 원격 연결 | FTP/FTPS는 curl, SFTP는 approved trust+security-scoped identity+username gate 후 OpenSSH 연결, SMB는 Finder | 원격 경로 전용 탐색 모델과 OpenSSH long-listing 디렉터리 metadata 구현; rename overwrite 서버는 업로드 차단 유지 |
 | Git | 시스템 `/usr/bin/git`에 상태·clone·fetch·FF-only pull·비강제 push만 위임한다. 자격 증명은 URL에 저장하지 않고 시스템 Git 설정/credential helper/SSH agent에 위임한다. stage·commit·submodule·LFS·hook 실행은 앱 지원 범위 밖이며 UI에 명시한다. | local bare remote·divergence 보존·취소·staging 정리·상태 열·UI 4조합 통과; 인증 HTTPS/SSH 실환경 대기 |

@@ -388,6 +388,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         move.keyEquivalentModifierMask = [.command, .shift]
         file.addItem(withTitle: L("휴지통으로 이동", "Move to Trash"), action: #selector(BrowserWindow.deleteSelection(_:)), keyEquivalent: "\u{8}")
         file.addItem(withTitle: L("휴지통에서 복원…", "Restore From Trash…"), action: #selector(BrowserWindow.restoreSelection(_:)), keyEquivalent: "")
+        file.addItem(withTitle: L("Finder에서 휴지통 열기", "Open Trash in Finder"), action: #selector(BrowserWindow.openFinderTrash(_:)), keyEquivalent: "")
         file.addItem(withTitle: L("영구 삭제…", "Delete Permanently…"), action: #selector(BrowserWindow.permanentlyDeleteSelection(_:)), keyEquivalent: "")
         file.addItem(withTitle: L("창 닫기", "Close Window"), action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w")
         let editItem = NSMenuItem(); editItem.title = L("편집", "Edit"); menu.addItem(editItem)

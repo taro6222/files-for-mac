@@ -2677,6 +2677,12 @@ extension BrowserWindow {
         guard canOpenStorageSettings else { return }
         presentStorageSettings()
     }
+    @objc func openFinderTrash(_ sender: Any?) {
+        guard openSystemURL(URL.trashDirectory) else {
+            showEntryError(L("Dock의 휴지통을 클릭해 Finder에서 여세요.", "Click Trash in the Dock to open it in Finder."))
+            return
+        }
+    }
     @objc private func openStorageSettingsForVolume(_ sender: NSMenuItem) {
         guard isLocalVolumeRoot(sender.representedObject as? URL) else { return }
         presentStorageSettings()
@@ -3050,6 +3056,12 @@ extension BrowserWindow {
             controller.openStorageSettings(nil)
             checks["storageSettingsCurrentVolume"] = homeWasDisabled && volumeEnabled && !controller.validateMenuItem(storageMenu)
                 && storageRequests.map(\.absoluteString) == Array(repeating: "x-apple.systempreferences:com.apple.settings.Storage", count: 3)
+            let trashEntry = CommandPaletteCatalog.entries(from: NSApp.mainMenu)
+                .first { $0.item.action == #selector(openFinderTrash(_:)) }
+            if let trashEntry {
+                NSApp.sendAction(#selector(openFinderTrash(_:)), to: controller, from: trashEntry.item)
+            }
+            checks["finderTrashHandoff"] = storageRequests.count == 4 && storageRequests.last == URL.trashDirectory
             controller.navigate(nil)
             controller.volumes = sampleVolumes
             controller.buildSidebar()
