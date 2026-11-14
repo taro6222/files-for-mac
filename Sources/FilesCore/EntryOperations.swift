@@ -176,12 +176,6 @@ public enum EntryOperations {
             && (try? snapshotIdentity(url, fileManager: fileManager)) == identity
     }
 
-    private static func directoryUndoSnapshot(_ url: URL, cancellation: CopyCancellation) throws -> [String: String]? {
-        let attributes = try FileManager.default.attributesOfItem(atPath: url.path)
-        guard attributes[.type] as? FileAttributeType == .typeDirectory else { return nil }
-        return try CopyEngine.verifiedSnapshot(url, cancellation: cancellation)
-    }
-
     private static func matchesUndoEntry(_ url: URL, identity: String, snapshot: [String: String]?,
                                          fileManager: FileManager) throws -> Bool {
         guard try snapshotIdentity(url, fileManager: fileManager) == identity else { return false }
@@ -729,7 +723,10 @@ public enum EntryOperations {
                     var backup: URL?
                     func snapshotForUndo(_ url: URL) throws -> [String: String]? {
                         do {
-                            return try directoryUndoSnapshot(url, cancellation: cancellation)
+                            let attributes = try fm.attributesOfItem(atPath: url.path)
+                            guard attributes[.type] as? FileAttributeType == .typeDirectory else { return nil }
+                            emit("verifyingUndo")
+                            return try CopyEngine.verifiedSnapshot(url, cancellation: cancellation)
                         } catch is CancellationError {
                             throw CancellationError()
                         } catch {
@@ -744,7 +741,10 @@ public enum EntryOperations {
                                               name: source.lastPathComponent, phase: phase))
                     }
                     func restoreBackup() -> URL? {
-                        guard let backup else { return nil }
+                        guard let backup else {
+                            backupURLs[index] = nil
+                            return nil
+                        }
                         do {
                             var opened = stat(), current = stat()
                             guard fstat(destinationFD, &opened) == 0,
@@ -814,9 +814,13 @@ public enum EntryOperations {
                                 let proposedBackup = normalizedDestination.appendingPathComponent(".files-move-backup-\(operationId)-\(index)")
                                 backupURLs[index] = proposedBackup
                                 itemStates[index] = MoveItemOperationResult(source: source, target: target, state: "backingUp", message: nil)
-                                try save(state: finalState); emit("backingUp"); try cancellation.check()
+                                try save(state: finalState)
                                 let backupIdentity = try snapshotIdentity(target, fileManager: fm)
                                 let backupSnapshot = try snapshotForUndo(target)
+                                emit("backingUp"); try cancellation.check()
+                                guard try snapshotIdentity(target, fileManager: fm) == backupIdentity else {
+                                    throw EntryOperationError.sourceChanged
+                                }
                                 do {
                                     try CopyEngine.publishNoReplace(payload: target, target: proposedBackup,
                                         sourceDirectoryFD: destinationFD, sourceName: target.lastPathComponent,

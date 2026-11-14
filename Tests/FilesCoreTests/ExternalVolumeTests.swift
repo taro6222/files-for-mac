@@ -79,6 +79,26 @@ import Testing
         let folder = root.appendingPathComponent("same-volume-folder", isDirectory: true)
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: false)
         try Data("original".utf8).write(to: folder.appendingPathComponent("child.txt"))
+        let existingFolder = destination.appendingPathComponent(folder.lastPathComponent, isDirectory: true)
+        try FileManager.default.createDirectory(at: existingFolder, withIntermediateDirectories: false)
+        let existingChild = existingFolder.appendingPathComponent("child.txt")
+        try Data("existing".utf8).write(to: existingChild)
+        let cancellation = CopyCancellation()
+        let cancelledMove = try await EntryOperations.move([folder], to: destination,
+            conflictPolicy: .replace, journalDirectory: journal, cancellation: cancellation) { progress in
+            if progress.phase == "verifyingUndo" { cancellation.cancel() }
+        }
+        #expect(cancelledMove.items.map(\.state) == ["cancelled"])
+        #expect(try String(contentsOf: folder.appendingPathComponent("child.txt"), encoding: .utf8) == "original")
+        #expect(try String(contentsOf: existingChild, encoding: .utf8) == "existing")
+        #expect(try FileManager.default.contentsOfDirectory(atPath: destination.path).allSatisfy {
+            !$0.hasPrefix(".files-move-backup-")
+        })
+        let cancelledJournal = try Data(contentsOf: journal.appendingPathComponent("move-\(cancelledMove.id).json"))
+        let recorded = try #require(JSONSerialization.jsonObject(with: cancelledJournal) as? [String: Any])
+        let recordedItems = try #require(recorded["items"] as? [[String: Any]])
+        #expect(recordedItems.first?["backup"] == nil)
+        try FileManager.default.removeItem(at: existingFolder)
         let folderMove = try await EntryOperations.move([folder], to: destination, journalDirectory: journal)
         #expect(folderMove.items.map(\.state) == ["completed"])
         let folderUndo = try #require(EntryOperations.latestUndoMove(journalDirectory: journal))

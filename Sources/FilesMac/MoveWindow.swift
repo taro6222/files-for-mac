@@ -109,6 +109,7 @@ final class MoveWindow: NSWindowController, NSWindowDelegate {
         case "backingUp": phase = L("기존 항목 백업", "Backing up existing item")
         case "copying": phase = L("교차 볼륨 복사", "Copying across volumes")
         case "verifying": phase = L("내용 검증", "Verifying contents")
+        case "verifyingUndo": phase = L("실행 취소를 위한 폴더 확인", "Checking folder for Undo")
         case "removingSource": phase = L("원본 정리", "Removing source")
         default: phase = L("결과 확정", "Committing")
         }
