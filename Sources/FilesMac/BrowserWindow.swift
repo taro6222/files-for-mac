@@ -551,7 +551,7 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         if let url, favorites.contains(url) {
             for (label, action) in [(L("위로 이동", "Move Up"), #selector(moveFavoriteUp(_:))),
                                     (L("아래로 이동", "Move Down"), #selector(moveFavoriteDown(_:))),
-                                    (L("즐겨찾기에서 제거", "Remove Favorite"), #selector(removeFavorite(_:)))] {
+                                    (L("즐겨찾기에서 제거", "Remove Favorite"), #selector(unpinSidebarLocation(_:)))] {
                 let item = menu.addItem(withTitle: label, action: action, keyEquivalent: "")
                 item.target = self; item.representedObject = url
             }
@@ -570,6 +570,18 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
             }
         }
         if !menu.items.isEmpty { menu.addItem(.separator()) }
+        for (label, action) in [
+            (L("위치 복사", "Copy Location"), #selector(copyLocationItem(_:))),
+            (L("터미널에서 열기", "Open in Terminal"), #selector(openLocationInTerminal(_:)))
+        ] {
+            let item = menu.addItem(withTitle: label, action: action, keyEquivalent: "")
+            item.target = self; item.representedObject = url; item.isEnabled = url != nil
+        }
+        if let url, !favorites.contains(url) {
+            let item = menu.addItem(withTitle: L("사이드바에 고정", "Pin to Sidebar"), action: #selector(pinSidebarLocation(_:)), keyEquivalent: "")
+            item.target = self; item.representedObject = url
+        }
+        menu.addItem(.separator())
         for (label, action) in [
             (L("새 탭에서 열기", "Open in New Tab"), #selector(openLocationInNewTab(_:))),
             (L("새 창에서 열기", "Open in New Window"), #selector(openLocationInNewWindow(_:))),
@@ -1857,6 +1869,9 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
     @objc func openInTerminal(_ sender: Any?) {
         let selected = activeSelectedItems.map { $0.isDirectory ? $0.url : $0.url.deletingLastPathComponent() }
         let urls = Array(Set(selected.isEmpty ? [activeModel.location].compactMap { $0 } : selected)).sorted { $0.path < $1.path }
+        openURLsInTerminal(urls)
+    }
+    private func openURLsInTerminal(_ urls: [URL]) {
         guard !urls.isEmpty, let terminal = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.apple.Terminal") else {
             showEntryError(L("터미널 또는 열 위치를 찾을 수 없습니다.", "Terminal or the location could not be found.")); return
         }
@@ -2085,6 +2100,20 @@ extension BrowserWindow {
     }
     @objc private func removeFavorite(_ sender: NSMenuItem) {
         if let url = sender.representedObject as? URL, favorites.contains(url) { preferences.toggleFavorite(url) }
+    }
+    @objc private func pinSidebarLocation(_ sender: NSMenuItem) {
+        if let url = sender.representedObject as? URL, !favorites.contains(url) { preferences.toggleFavorite(url) }
+    }
+    @objc private func unpinSidebarLocation(_ sender: NSMenuItem) {
+        if let url = sender.representedObject as? URL, favorites.contains(url) { preferences.toggleFavorite(url) }
+    }
+    @objc private func copyLocationItem(_ sender: NSMenuItem) {
+        guard let url = sender.representedObject as? URL else { return }
+        NSPasteboard.general.clearContents(); NSPasteboard.general.writeObjects([url as NSURL])
+    }
+    @objc private func openLocationInTerminal(_ sender: NSMenuItem) {
+        guard let url = sender.representedObject as? URL else { return }
+        openURLsInTerminal([url])
     }
     @objc private func showOptions(_ sender: NSButton) {
         optionsMenu.popUp(positioning: nil, at: NSPoint(x: 0, y: sender.bounds.maxY), in: sender)
@@ -2606,6 +2635,17 @@ extension BrowserWindow {
             checks["closeActivePaneCommand"] = paletteEntries.contains { $0.item.action == #selector(closeActivePane(_:)) }
             checks["locationOpenCommands"] = [#selector(openLocationInNewTab(_:)), #selector(openLocationInNewWindow(_:)),
                 #selector(openLocationInOtherPane(_:))].allSatisfy { controller.qaLocationMenuActions.contains(NSStringFromSelector($0)) }
+            checks["locationContextCommands"] = [#selector(copyLocationItem(_:)), #selector(openLocationInTerminal(_:)),
+                #selector(pinSidebarLocation(_:)), #selector(unpinSidebarLocation(_:))].allSatisfy {
+                    controller.qaLocationMenuActions.contains(NSStringFromSelector($0))
+                }
+            let locationItem = NSMenuItem(); locationItem.representedObject = gridFolder
+            controller.copyLocationItem(locationItem)
+            let copiedLocations = NSPasteboard.general.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL]
+            controller.pinSidebarLocation(locationItem)
+            let pinnedLocation = preferences.favorites.contains(gridFolder)
+            controller.unpinSidebarLocation(locationItem)
+            checks["locationCopyPinCommands"] = copiedLocations == [gridFolder] && pinnedLocation && !preferences.favorites.contains(gridFolder)
             checks["themeCommands"] = [#selector(AppDelegate.setDarkTheme(_:)), #selector(AppDelegate.setLightTheme(_:)), #selector(AppDelegate.setDefaultTheme(_:)), #selector(AppDelegate.toggleAppTheme(_:))].allSatisfy { action in
                 paletteEntries.contains { $0.item.action == action }
             }
