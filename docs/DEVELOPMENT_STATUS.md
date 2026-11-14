@@ -8,6 +8,8 @@ M7 출시 검증이 진행 중이다. [유니버설 개발 프리뷰](verificati
 
 ## 이번 구현 단위
 
+하위 항목의 권한·ACL·소유권 변경을 담은 유니버설 프리뷰를 갱신했다. [설치·기동 검증](verification/m7/PREVIEW_0.1.0.md)
+
 폴더 권한 시트에서 그룹·사용자 소유권에 하위 적용을 선택할 수 있다. [폴더 소유권 검증](verification/m7/INCREMENT_162.md)
 
 폴더 권한 시트에서 확장 ACL을 하위 항목에도 적용한다. [폴더 ACL 검증](verification/m7/INCREMENT_161.md)
