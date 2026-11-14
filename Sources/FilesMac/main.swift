@@ -49,11 +49,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             return
         }
         #endif
-        var restored: [SplitTabState] = []
+        var restored: [(index: Int, workspace: SplitTabState)] = []
         if BrowserPreferences.shared.continueLastSession {
-            restored = workspaceStore.load()
+            restored = workspaceStore.loadEntries()
             if restored.isEmpty {
-                restored = sessionStore.load().map { SplitTabState(primary: PaneSnapshot(tab: $0)) }
+                restored = sessionStore.load().enumerated().map { index, tab in
+                    (index, SplitTabState(primary: PaneSnapshot(tab: tab)))
+                }
             }
         }
         if restored.isEmpty {
@@ -65,17 +67,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         }
         else {
             var first: BrowserWindow?
-            var controllers: [BrowserWindow] = []
-            for workspace in restored {
+            var selected: BrowserWindow?
+            let savedIndex = BrowserPreferences.shared.lastSessionSelectedTabIndex
+            for (index, workspace) in restored {
                 let controller = makeBrowser(workspace: workspace, tabbedTo: first)
                 if first == nil { first = controller }
-                controllers.append(controller)
+                if index == savedIndex { selected = controller }
             }
             if BrowserPreferences.shared.openNewTabOnStartup {
                 let startup = BrowserPreferences.shared.startupLocationPath.map { URL(fileURLWithPath: $0, isDirectory: true) }
                 makeBrowser(location: startup, tabbedTo: first, selectNewTab: true)
-            } else if controllers.indices.contains(BrowserPreferences.shared.lastSessionSelectedTabIndex) {
-                controllers[BrowserPreferences.shared.lastSessionSelectedTabIndex].window?.makeKeyAndOrderFront(nil)
+            } else {
+                (selected ?? first)?.window?.makeKeyAndOrderFront(nil)
             }
         }
         NSApp.activate(ignoringOtherApps: true)

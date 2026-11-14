@@ -107,7 +107,22 @@ public final class WorkspaceSessionStore: @unchecked Sendable {
     }
 
     public func load() -> [SplitTabState] {
+        loadEntries().map(\.workspace)
+    }
+
+    public func loadEntries() -> [(index: Int, workspace: SplitTabState)] {
         guard let data = defaults.data(forKey: key) else { return [] }
-        return (try? JSONDecoder().decode([SplitTabState].self, from: data)) ?? []
+        guard let entries = try? JSONDecoder().decode([SavedWorkspace].self, from: data) else { return [] }
+        return entries.enumerated().compactMap { index, entry in
+            entry.workspace.map { (index, $0) }
+        }
+    }
+
+    private struct SavedWorkspace: Decodable {
+        let workspace: SplitTabState?
+
+        init(from decoder: any Decoder) {
+            workspace = try? SplitTabState(from: decoder)
+        }
     }
 }

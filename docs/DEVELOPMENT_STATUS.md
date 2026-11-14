@@ -4,6 +4,8 @@
 
 ## 이번 구현 단위
 
+저장 세션의 일부가 손상돼도 정상 탭을 복원한다. [M7 부분 세션 복구](verification/m7/INCREMENT_71.md)
+
 손상된 분할 세션이 시작을 막지 않도록 검사하고, 구형 탭 또는 시작 폴더로 복구되는지 실제 앱에서 확인했다. [M7 세션 복구](verification/m7/INCREMENT_70.md)
 
 파일 선택부터 홈 탐색·붙여넣기·충돌 건너뛰기까지 이어지는 AppKit 회귀를 네 언어·테마 조합에서 통과했다. [M7 복사 동선 검증](verification/m7/INCREMENT_69.md)

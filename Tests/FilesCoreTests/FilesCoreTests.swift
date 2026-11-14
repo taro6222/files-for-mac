@@ -273,6 +273,14 @@ private func fixture() throws -> URL {
     #expect(repaired.panes == workspace.panes)
     #expect(repaired.activePaneID == primary.id)
     #expect(repaired.ratio == 0.8)
+
+    let singlePane = SplitTabState(primary: secondary)
+    let singlePaneJSON = try JSONSerialization.jsonObject(with: JSONEncoder().encode(singlePane))
+    defaults.set(try JSONSerialization.data(withJSONObject: [NSNull(), original, ["panes": []], singlePaneJSON]),
+                 forKey: "workspaceSessionV2")
+    let recovered = store.loadEntries()
+    #expect(recovered.map(\.index) == [1, 3])
+    #expect(recovered.map(\.workspace) == [workspace, singlePane])
 }
 
 @Test func fileDropIntentUsesExplicitSafeModifiers() {
