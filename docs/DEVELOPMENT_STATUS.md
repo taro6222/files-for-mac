@@ -4,6 +4,8 @@
 
 ## 이번 구현 단위
 
+교차 볼륨 이동에서 게시 직후 대상 파일이 교체되면 원본을 보존한다. [M7 게시 후 변경 감지](verification/m7/INCREMENT_43.md)
+
 Launch Services에서 유니버설 프리뷰를 열어 메뉴 응답을 20회 측정했다. [M7 Launch Services 시작](verification/m7/INCREMENT_42.md)
 
 분할 보기의 보조 패널에 탐색 버튼의 접근성 이름과 상태, 상세 파일 목록 이름을 추가했다. [M7 보조 패널 접근성](verification/m7/INCREMENT_41.md)

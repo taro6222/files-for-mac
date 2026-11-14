@@ -161,9 +161,17 @@ public enum EntryOperations {
         return lstat(url.path, &info) == 0
     }
 
+    private static func matchesTransfer(_ url: URL, identity: String, contents: [String: String],
+                                        fileManager: FileManager) -> Bool {
+        (try? snapshotIdentity(url, fileManager: fileManager)) == identity
+            && (try? CopyEngine.verifiedContentSnapshot(url)) == contents
+            && (try? snapshotIdentity(url, fileManager: fileManager)) == identity
+    }
+
     private static func transferForUndo(_ source: URL, to target: URL, crossVolume: Bool) throws {
         let fm = FileManager.default
         if !crossVolume { try fm.moveItem(at: source, to: target); return }
+        let sourceIdentity = try snapshotIdentity(source, fileManager: fm)
         let before = try CopyEngine.verifiedSnapshot(source)
         let contentBefore = try CopyEngine.verifiedContentSnapshot(source)
         let stage = target.deletingLastPathComponent().appendingPathComponent(".files-undo-\(UUID().uuidString)")
@@ -175,17 +183,27 @@ public enum EntryOperations {
               try CopyEngine.verifiedSnapshot(source) == before else {
             throw MoveFailure(text: LString.crossVolumeVerificationFailed)
         }
+        let payloadIdentity = try snapshotIdentity(payload, fileManager: fm)
         try fm.moveItem(at: payload, to: target)
         do {
-            guard try CopyEngine.verifiedSnapshot(source) == before else {
+            guard try CopyEngine.verifiedSnapshot(source) == before,
+                  try snapshotIdentity(source, fileManager: fm) == sourceIdentity else {
                 throw MoveFailure(text: LString.crossVolumeSourceChanged)
             }
-            try fm.removeItem(at: source)
         } catch {
             let originalError = error
-            if entryExists(target), (try? CopyEngine.verifiedContentSnapshot(target)) == contentBefore { try? fm.removeItem(at: target) }
+            if matchesTransfer(target, identity: payloadIdentity, contents: contentBefore, fileManager: fm) {
+                try? fm.removeItem(at: target)
+            }
             throw originalError
         }
+        guard matchesTransfer(target, identity: payloadIdentity, contents: contentBefore, fileManager: fm) else {
+            throw MoveFailure(text: LString.crossVolumeDestinationChanged)
+        }
+        guard try snapshotIdentity(source, fileManager: fm) == sourceIdentity else {
+            throw MoveFailure(text: LString.crossVolumeSourceChanged)
+        }
+        try fm.removeItem(at: source)
     }
 
     public static func latestUndoMove(journalDirectory: URL) -> MoveUndoRecord? {
@@ -656,7 +674,7 @@ public enum EntryOperations {
                 MoveItemOperationResult(source: $0, target: normalizedDestination.appendingPathComponent($0.lastPathComponent),
                                        state: "queued", message: nil)
             }
-            var undoEligible = Array(repeating: false, count: normalizedSources.count)
+            var publishedIdentities = Array<String?>(repeating: nil, count: normalizedSources.count)
             var backupURLs = Array<URL?>(repeating: nil, count: normalizedSources.count)
             var crossVolumeItems = Array(repeating: false, count: normalizedSources.count)
             var finalState = "completed"
@@ -766,6 +784,7 @@ public enum EntryOperations {
                                 backupURLs[index] = proposedBackup
                             }
                             if crossVolume {
+                                let sourceIdentity = try snapshotIdentity(source, fileManager: fm)
                                 let before = try CopyEngine.verifiedSnapshot(source, cancellation: cancellation)
                                 if let redoItem, before != redoItem.snapshot { throw EntryOperationError.sourceChanged }
                                 let contentBefore = try CopyEngine.verifiedContentSnapshot(source, cancellation: cancellation)
@@ -783,6 +802,7 @@ public enum EntryOperations {
                                       try CopyEngine.verifiedSnapshot(source, cancellation: cancellation) == before else {
                                     throw MoveFailure(text: LString.crossVolumeVerificationFailed)
                                 }
+                                let payloadIdentity = try snapshotIdentity(payload, fileManager: fm)
                                 try cancellation.check(); emit("committing")
                                 let stageFD = open(stage.path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
                                 guard stageFD >= 0 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
@@ -797,15 +817,29 @@ public enum EntryOperations {
                                 } catch CopyPublicationError.conflict { throw EntryOperationError.conflict }
                                 do {
                                     try cancellation.check(); emit("removingSource")
-                                    guard try CopyEngine.verifiedSnapshot(source, cancellation: cancellation) == before else {
+                                    try cancellation.check()
+                                    guard try CopyEngine.verifiedSnapshot(source, cancellation: cancellation) == before,
+                                          try snapshotIdentity(source, fileManager: fm) == sourceIdentity else {
                                         throw MoveFailure(text: LString.crossVolumeSourceChanged)
                                     }
-                                    try fm.removeItem(at: source)
                                 } catch {
                                     let originalError = error
-                                    if entryExists(target), (try? CopyEngine.verifiedContentSnapshot(target)) == contentBefore { try? fm.removeItem(at: target) }
+                                    if matchesTransfer(target, identity: payloadIdentity, contents: contentBefore, fileManager: fm) {
+                                        try? fm.removeItem(at: target)
+                                    }
                                     throw originalError
                                 }
+                                guard matchesTransfer(target, identity: payloadIdentity, contents: contentBefore, fileManager: fm) else {
+                                    throw MoveFailure(text: LString.crossVolumeDestinationChanged)
+                                }
+                                try cancellation.check()
+                                guard try snapshotIdentity(source, fileManager: fm) == sourceIdentity else {
+                                    throw MoveFailure(text: LString.crossVolumeSourceChanged)
+                                }
+                                // Directory removal can fail after deleting some children.
+                                // Keep the verified destination if source removal was attempted.
+                                try fm.removeItem(at: source)
+                                publishedIdentities[index] = payloadIdentity
                             } else {
                                 try cancellation.check(); emit("committing")
                                 if flattenPlan != nil || redoItem != nil {
@@ -827,7 +861,6 @@ public enum EntryOperations {
                                     try fm.moveItem(at: source, to: target)
                                 }
                             }
-                            undoEligible[index] = true
                             itemStates[index] = MoveItemOperationResult(source: source, target: target, state: "completed", message: nil)
                         } catch is CancellationError {
                             itemStates[index] = MoveItemOperationResult(source: source, target: target, state: "cancelled",
@@ -860,15 +893,13 @@ public enum EntryOperations {
             }
 
             do {
-                let completed = itemStates.enumerated().filter {
-                    $0.element.state == "completed" && undoEligible[$0.offset]
-                }
+                let completed = itemStates.enumerated().filter { $0.element.state == "completed" }
                 if !completed.isEmpty {
                         let undoItems = try completed.map { indexed in
                             let item = indexed.element
                             let backup = backupURLs[indexed.offset]
                             return MoveUndoItem(source: item.source, target: item.target,
-                                targetIdentity: try snapshotIdentity(item.target, fileManager: fm), backup: backup,
+                                targetIdentity: try publishedIdentities[indexed.offset] ?? snapshotIdentity(item.target, fileManager: fm), backup: backup,
                                 backupIdentity: try backup.map { try snapshotIdentity($0, fileManager: fm) },
                                 crossVolume: crossVolumeItems[indexed.offset])
                         }
@@ -1031,6 +1062,7 @@ private enum LString {
     static let undoBackupChanged = "교체 전 백업이 없거나 변경되어 실행 취소하지 않았습니다."
     static let crossVolumeVerificationFailed = "복사 결과가 원본과 일치하지 않거나 복사 중 원본이 변경됐습니다."
     static let crossVolumeSourceChanged = "복사 결과를 확정한 뒤 원본이 변경되어 원본 삭제를 중단했습니다."
+    static let crossVolumeDestinationChanged = "복사 결과를 확정한 뒤 대상이 변경되어 원본 삭제를 중단했습니다."
 }
 
 private struct MoveFailure: LocalizedError {

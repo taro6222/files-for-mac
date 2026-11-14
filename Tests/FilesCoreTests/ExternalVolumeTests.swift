@@ -75,6 +75,7 @@ import Testing
         #expect(try String(contentsOf: replaceTarget, encoding: .utf8) == "old")
 
         try await verifyMountedVolumeReplacementCancellation(local: local, destination: destination, journal: journal)
+        try await verifyCrossVolumeMovePreservesReplacedDestination(local: local, destination: destination, journal: journal)
 
         let entries = try await LocalFileSystem().contents(of: destination, showHidden: true)
         let identity = try #require(entries.first { $0.name == replaceTarget.lastPathComponent }?.identity)
@@ -212,6 +213,27 @@ import Testing
     #expect(try String(contentsOf: replacement, encoding: .utf8) == "new")
     #expect(try String(contentsOf: existing, encoding: .utf8) == "old")
     try await verifyMountedVolumeReplacementCancellation(local: local, destination: destination, journal: journal)
+    try await verifyCrossVolumeMovePreservesReplacedDestination(local: local, destination: destination, journal: journal)
+}
+
+private func verifyCrossVolumeMovePreservesReplacedDestination(local: URL, destination: URL, journal: URL) async throws {
+    let source = local.appendingPathComponent("replaced-after-publish.txt")
+    let target = destination.appendingPathComponent(source.lastPathComponent)
+    let originalPublication = destination.appendingPathComponent("original-publication.txt")
+    let contents = Data("identical contents".utf8)
+    try contents.write(to: source)
+    let report = try await EntryOperations.move([source], to: destination,
+        conflictPolicy: .skip, journalDirectory: journal) { progress in
+        guard progress.phase == "removingSource" else { return }
+        do {
+            try FileManager.default.moveItem(at: target, to: originalPublication)
+            try contents.write(to: target)
+        } catch { Issue.record(error) }
+    }
+    #expect(report.items.map(\.state) == ["failed"])
+    #expect(try Data(contentsOf: source) == contents)
+    #expect(try Data(contentsOf: target) == contents)
+    #expect(try Data(contentsOf: originalPublication) == contents)
 }
 
 private func verifyMountedVolumeReplacementCancellation(local: URL, destination: URL, journal: URL) async throws {
