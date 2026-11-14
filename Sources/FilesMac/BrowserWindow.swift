@@ -4020,11 +4020,19 @@ extension BrowserWindow {
                 checks["directSearchRestoresFolderScope"] = panel.qaReturnToFileNameSearch()
             }
             controller.searchWindow?.close(); window.makeKeyAndOrderFront(nil)
+            controller.model.savePosition(selection: [searchHit.path], scrollOffset: 0)
+            controller.render()
             controller.showQuickLook(nil); try await Task.sleep(for: .milliseconds(500))
             checks["quickLookWindow"] = controller.quickLook.qaVisible
             checks["quickLookItems"] = controller.quickLook.qaItemCount == 1
+            checks["quickLookSelectedFile"] = controller.quickLook.qaCurrentURL?.standardizedFileURL.path == searchHit.path
             try capture("quick-look", view: controller.quickLook.qaContentView)
+            QuickLookController().close()
+            checks["quickLookIgnoresUnrelatedClose"] = controller.quickLook.qaVisible
+                && controller.quickLook.qaCurrentURL?.standardizedFileURL.path == searchHit.path
             controller.quickLook.close(); window.makeKeyAndOrderFront(nil)
+            checks["quickLookClearsItemsOnClose"] = controller.quickLook.qaItemCount == 0
+                && !controller.quickLook.qaProvidesItems
             if let archiveItem = controller.model.items.first(where: { $0.name == archiveFixture.lastPathComponent }) {
                 controller.model.savePosition(selection: [archiveItem.id], scrollOffset: 0); controller.render(); controller.openArchive(nil)
             }

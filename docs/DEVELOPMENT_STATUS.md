@@ -4,6 +4,8 @@
 
 ## 이번 구현 단위
 
+열려 있는 Quick Look을 다른 탐색 컨트롤러의 닫기 요청이 끊지 않도록 했다. [M7 Quick Look 검증](verification/m7/INCREMENT_80.md)
+
 정보 패널에서 다중 선택 항목을 이전·다음으로 미리보고 상세 탭에서 파일과 폴더 개수를 확인할 수 있다. [M7 정보 패널 검증](verification/m7/INCREMENT_79.md)
 
 Spotlight 콘텐츠 검색에 모든 인덱싱된 위치 범위를 추가했다. [M7 인덱스 범위 검색](verification/m7/INCREMENT_78.md)
