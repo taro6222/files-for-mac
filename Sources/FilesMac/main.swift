@@ -369,6 +369,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         go.addItem(withTitle: L("보기 크기 확대", "Increase View Size"), action: #selector(BrowserWindow.increaseViewSize(_:)), keyEquivalent: "+")
         go.addItem(withTitle: L("Finder 태그로 정렬", "Sort by Finder Tag"), action: #selector(BrowserWindow.sortByTag(_:)), keyEquivalent: "")
         go.addItem(withTitle: L("Finder 태그로 그룹화", "Group by Finder Tag"), action: #selector(BrowserWindow.groupByTag(_:)), keyEquivalent: "")
+        go.addItem(withTitle: L("폴더 경로로 정렬", "Sort by Folder Path"), action: #selector(BrowserWindow.sortByPath(_:)), keyEquivalent: "")
+        go.addItem(withTitle: L("폴더 경로로 그룹화", "Group by Folder Path"), action: #selector(BrowserWindow.groupByFolderPath(_:)), keyEquivalent: "")
         go.addItem(withTitle: L("사이드바 표시 전환", "Toggle Sidebar"), action: #selector(BrowserWindow.toggleSidebarVisibility(_:)), keyEquivalent: "")
         go.addItem(withTitle: L("툴바 표시 전환", "Toggle Toolbar"), action: #selector(BrowserWindow.toggleToolbar(_:)), keyEquivalent: "")
         go.addItem(withTitle: L("툴바 사용자 지정…", "Customize Toolbar…"), action: #selector(BrowserWindow.showToolbarSettings(_:)), keyEquivalent: "")

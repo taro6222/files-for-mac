@@ -974,6 +974,7 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
     @objc func sortBySize(_ sender: Any?) { updateSort(field: .size) }
     @objc func sortByKind(_ sender: Any?) { updateSort(field: .kind) }
     @objc func sortByTag(_ sender: Any?) { updateSort(field: .tag) }
+    @objc func sortByPath(_ sender: Any?) { updateSort(field: .path) }
     @objc func sortAscending(_ sender: Any?) { updateSort(ascending: true) }
     @objc func sortDescending(_ sender: Any?) { updateSort(ascending: false) }
     @objc func toggleSortDirection(_ sender: Any?) { updateSort(toggleDirection: true) }
@@ -1260,6 +1261,7 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
     @objc func groupBySize(_ sender: Any?) { updateGrouping(field: .size) }
     @objc func groupByKind(_ sender: Any?) { updateGrouping(field: .kind) }
     @objc func groupByTag(_ sender: Any?) { updateGrouping(field: .tag) }
+    @objc func groupByFolderPath(_ sender: Any?) { updateGrouping(field: .path) }
     @objc func groupByModifiedYear(_ sender: Any?) { updateGrouping(field: .modified, dateUnit: .year) }
     @objc func groupByModifiedMonth(_ sender: Any?) { updateGrouping(field: .modified, dateUnit: .month) }
     @objc func groupByModifiedDay(_ sender: Any?) { updateGrouping(field: .modified, dateUnit: .day) }
@@ -2339,6 +2341,8 @@ extension BrowserWindow {
         case #selector(useCardsLayout(_:)): return activeModel.location != nil
         case #selector(sortByTag(_:)): menuItem.state = activeModel.sortOrder.field == .tag ? .on : .off; return activeModel.location != nil
         case #selector(groupByTag(_:)): menuItem.state = activeModel.grouping.field == .tag ? .on : .off; return activeModel.location != nil
+        case #selector(sortByPath(_:)): menuItem.state = activeModel.sortOrder.field == .path ? .on : .off; return activeModel.location != nil
+        case #selector(groupByFolderPath(_:)): menuItem.state = activeModel.grouping.field == .path ? .on : .off; return activeModel.location != nil
         case #selector(pasteFilesToSelection(_:)): return canPasteToSelection
         case #selector(pasteFilesAsSymbolicLinks(_:)): return canPasteFiles
         case #selector(decreaseViewSize(_:)): return BrowserViewSize.allCases.firstIndex(of: activeEffectiveViewSize) != 0
@@ -3062,6 +3066,12 @@ extension BrowserWindow {
             checks["finderTagSortAndGroupCommands"] = controller.model.sortOrder.field == .tag
                 && controller.model.grouping.field == .tag
                 && [#selector(sortByTag(_:)), #selector(groupByTag(_:))].allSatisfy { action in
+                    paletteEntries.contains { $0.item.action == action }
+                }
+            controller.sortByPath(nil); controller.groupByFolderPath(nil)
+            checks["folderPathSortAndGroupCommands"] = controller.model.sortOrder.field == .path
+                && controller.model.grouping.field == .path
+                && [#selector(sortByPath(_:)), #selector(groupByFolderPath(_:))].allSatisfy { action in
                     paletteEntries.contains { $0.item.action == action }
                 }
             controller.groupByNone(nil)

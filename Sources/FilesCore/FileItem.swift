@@ -31,7 +31,7 @@ public struct FileItem: Identifiable, Sendable, Equatable {
     public var isBrowsable: Bool { isDirectory && !isPackage }
 }
 
-public enum SortField: String, CaseIterable, Codable, Sendable { case name, created, modified, kind, size, tag }
+public enum SortField: String, CaseIterable, Codable, Sendable { case name, created, modified, kind, size, tag, path }
 public enum SortDirectoryPlacement: String, CaseIterable, Codable, Sendable { case foldersFirst, filesFirst, mixed }
 public struct SortOrder: Codable, Equatable, Sendable {
     public var field: SortField
@@ -73,6 +73,7 @@ public struct SortOrder: Codable, Equatable, Sendable {
             case .created: comparison = compare(a.created, b.created)
             case .kind: comparison = a.kind.localizedStandardCompare(b.kind)
             case .tag: comparison = a.tags.joined(separator: "\u{0}").localizedStandardCompare(b.tags.joined(separator: "\u{0}"))
+            case .path: comparison = a.url.deletingLastPathComponent().path.localizedStandardCompare(b.url.deletingLastPathComponent().path)
             case .size:
                 comparison = compare(a.size, b.size)
             case .modified:

@@ -1,7 +1,7 @@
 import Foundation
 
 public enum FileGroupField: String, Codable, CaseIterable, Sendable {
-    case none, name, created, modified, size, kind, tag
+    case none, name, created, modified, size, kind, tag, path
 }
 
 public enum FileGroupDateUnit: String, Codable, CaseIterable, Sendable {
@@ -65,6 +65,7 @@ public enum FileGrouping {
         case .tag:
             guard let value = item.tags.first?.trimmingCharacters(in: .whitespacesAndNewlines), !value.isEmpty else { return "0:untagged" }
             return "1:" + value.folding(options: [.diacriticInsensitive, .caseInsensitive], locale: .current)
+        case .path: return "1:" + item.url.deletingLastPathComponent().standardizedFileURL.path
         }
     }
 }

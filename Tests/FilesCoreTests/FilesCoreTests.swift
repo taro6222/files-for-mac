@@ -273,6 +273,16 @@ private func fixture() throws -> URL {
     #expect(FileGrouping.groups(items, options: .init(field: .tag)).map(\.key) == ["0:untagged", "1:amber", "1:blue"])
 }
 
+@Test func folderPathsSortAndGroupAcrossSearchResults() {
+    let items = [
+        FileItem(url: URL(fileURLWithPath: "/z/item"), name: "item", isDirectory: false),
+        FileItem(url: URL(fileURLWithPath: "/a/item"), name: "item", isDirectory: false),
+        FileItem(url: URL(fileURLWithPath: "/a/second"), name: "second", isDirectory: false)
+    ]
+    #expect(SortOrder(field: .path, directoryPlacement: .mixed).sorted(items).map(\.url.path) == ["/a/item", "/a/second", "/z/item"])
+    #expect(FileGrouping.groups(items, options: .init(field: .path)).map(\.key) == ["1:/a", "1:/z"])
+}
+
 private struct DelayedLoader: DirectoryLoading {
     func contents(of url: URL, showHidden: Bool) async throws -> [FileItem] {
         // Deliberately ignores caller cancellation: model must reject stale generations.
