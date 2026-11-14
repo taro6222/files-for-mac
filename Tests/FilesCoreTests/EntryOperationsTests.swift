@@ -397,6 +397,45 @@ func entryMoveUndoPreservesEditsInsideMovedOrBackedUpFolder(crossVolume: Bool, e
     #expect(EntryOperations.latestUndoMove(journalDirectory: journal)?.items.count == 1)
 }
 
+@Test func entryMoveUndoRetriesOnlyPendingBackupRestoration() async throws {
+    let root = try entryFixture()
+    let fm = FileManager.default
+    defer { try? fm.removeItem(at: root) }
+    let journal = root.appendingPathComponent("journal")
+    let destination = root.appendingPathComponent("dest")
+    let source = root.appendingPathComponent("move.txt")
+    let target = destination.appendingPathComponent("move.txt")
+    try fm.createDirectory(at: destination, withIntermediateDirectories: true)
+    try Data("new".utf8).write(to: source)
+    try Data("old".utf8).write(to: target)
+    let move = try await EntryOperations.move([source], to: destination, conflictPolicy: .replace, journalDirectory: journal)
+    #expect(move.state == "completed")
+    let record = try #require(EntryOperations.latestUndoMove(journalDirectory: journal))
+    let item = try #require(record.items.first)
+    let backup = try #require(item.backup)
+    // Reproduce the state after the original location was restored but backup publication failed.
+    try fm.moveItem(at: target, to: source)
+    let pending = MoveUndoRecord(operationId: record.operationId, items: [item.awaitingBackupRestore()],
+                                 createdAt: record.createdAt)
+    try JSONEncoder().encode(pending).write(to: journal.appendingPathComponent("undo-move-\(record.operationId).json"))
+    try Data("external".utf8).write(to: target)
+
+    let retry = try #require(EntryOperations.latestUndoMove(journalDirectory: journal))
+    let blocked = await EntryOperations.undoMove(retry, journalDirectory: journal)
+    #expect(blocked.items.map(\.state) == ["conflict"])
+    #expect(try String(contentsOf: target, encoding: .utf8) == "external")
+    #expect(try String(contentsOf: backup, encoding: .utf8) == "old")
+    try fm.removeItem(at: target)
+
+    let remaining = try #require(EntryOperations.latestUndoMove(journalDirectory: journal))
+    let completed = await EntryOperations.undoMove(remaining, journalDirectory: journal)
+    #expect(completed.state == "completed")
+    #expect(completed.journalError == nil)
+    #expect(try String(contentsOf: source, encoding: .utf8) == "new")
+    #expect(try String(contentsOf: target, encoding: .utf8) == "old")
+    #expect(EntryOperations.latestUndoMove(journalDirectory: journal) == nil)
+}
+
 @Test func entryCrossVolumeMoveCopiesVerifiesThenRemovesSource() async throws {
     let root = try entryFixture(); defer { try? FileManager.default.removeItem(at: root) }
     let journal = root.appendingPathComponent("journal")

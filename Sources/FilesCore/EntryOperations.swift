@@ -82,17 +82,33 @@ public struct MoveUndoItem: Codable, Sendable {
     public let crossVolume: Bool
     public let targetSnapshot: [String: String]?
     public let backupSnapshot: [String: String]?
+    let backupRestorePending: Bool?
 
     public init(source: URL, target: URL, targetIdentity: String, backup: URL? = nil,
                 backupIdentity: String? = nil, crossVolume: Bool = false,
                 targetSnapshot: [String: String]? = nil, backupSnapshot: [String: String]? = nil) {
+        self.init(source: source, target: target, targetIdentity: targetIdentity, backup: backup,
+                  backupIdentity: backupIdentity, crossVolume: crossVolume, targetSnapshot: targetSnapshot,
+                  backupSnapshot: backupSnapshot, backupRestorePending: nil)
+    }
+
+    private init(source: URL, target: URL, targetIdentity: String, backup: URL?,
+                 backupIdentity: String?, crossVolume: Bool, targetSnapshot: [String: String]?,
+                 backupSnapshot: [String: String]?, backupRestorePending: Bool?) {
         self.source = source; self.target = target; self.targetIdentity = targetIdentity
         self.backup = backup; self.backupIdentity = backupIdentity; self.crossVolume = crossVolume
         self.targetSnapshot = targetSnapshot; self.backupSnapshot = backupSnapshot
+        self.backupRestorePending = backupRestorePending
+    }
+
+    func awaitingBackupRestore() -> Self {
+        Self(source: source, target: target, targetIdentity: targetIdentity, backup: backup,
+             backupIdentity: backupIdentity, crossVolume: crossVolume, targetSnapshot: targetSnapshot,
+             backupSnapshot: backupSnapshot, backupRestorePending: true)
     }
 
     private enum CodingKeys: String, CodingKey {
-        case source, target, targetIdentity, backup, backupIdentity, crossVolume, targetSnapshot, backupSnapshot
+        case source, target, targetIdentity, backup, backupIdentity, crossVolume, targetSnapshot, backupSnapshot, backupRestorePending
     }
     public init(from decoder: Decoder) throws {
         let values = try decoder.container(keyedBy: CodingKeys.self)
@@ -104,6 +120,7 @@ public struct MoveUndoItem: Codable, Sendable {
         crossVolume = try values.decodeIfPresent(Bool.self, forKey: .crossVolume) ?? false
         targetSnapshot = try values.decodeIfPresent([String: String].self, forKey: .targetSnapshot)
         backupSnapshot = try values.decodeIfPresent([String: String].self, forKey: .backupSnapshot)
+        backupRestorePending = try values.decodeIfPresent(Bool.self, forKey: .backupRestorePending)
     }
 }
 
@@ -182,6 +199,23 @@ public enum EntryOperations {
         guard let snapshot else { return true }
         return try CopyEngine.verifiedSnapshot(url) == snapshot
             && snapshotIdentity(url, fileManager: fileManager) == identity
+    }
+
+    private static func restoreUndoBackup(_ backup: URL, to target: URL) throws {
+        let parent = target.deletingLastPathComponent()
+        guard backup.deletingLastPathComponent().standardizedFileURL.path == parent.standardizedFileURL.path else {
+            throw EntryOperationError.sourceChanged
+        }
+        let descriptor = open(parent.path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
+        guard descriptor >= 0 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
+        defer { close(descriptor) }
+        do {
+            try CopyEngine.publishNoReplace(payload: backup, target: target,
+                sourceDirectoryFD: descriptor, sourceName: backup.lastPathComponent,
+                destinationDirectoryFD: descriptor, destinationName: target.lastPathComponent)
+        } catch CopyPublicationError.conflict {
+            throw EntryOperationError.conflict
+        }
     }
 
     private static func transferForUndo(_ source: URL, to target: URL, crossVolume: Bool,
@@ -992,7 +1026,8 @@ public enum EntryOperations {
             let fm = FileManager.default
             var results: [MoveUndoItemResult] = []
             var replay: [MoveRedoRecord.Item] = []
-            for item in record.items.reversed() {
+            var pendingBackupRestorations = Set<Int>()
+            for (index, item) in record.items.enumerated().reversed() {
                 let result: MoveUndoItemResult
                 do {
                     if let backup = item.backup {
@@ -1000,6 +1035,20 @@ public enum EntryOperations {
                               try matchesUndoEntry(backup, identity: expected, snapshot: item.backupSnapshot, fileManager: fm) else {
                             results.append(MoveUndoItemResult(source: item.source, target: item.target, state: "changed", message: LString.undoBackupChanged)); continue
                         }
+                    }
+                    if item.backupRestorePending == true {
+                        guard let backup = item.backup, item.backupIdentity != nil else {
+                            throw MoveFailure(text: LString.undoBackupChanged)
+                        }
+                        guard !entryExists(item.target) else {
+                            results.append(MoveUndoItemResult(source: item.source, target: item.target,
+                                state: "conflict", message: LString.pathConflictMessage))
+                            continue
+                        }
+                        try restoreUndoBackup(backup, to: item.target)
+                        results.append(MoveUndoItemResult(source: item.source, target: item.target,
+                            state: "completed", message: nil))
+                        continue
                     }
                     guard entryExists(item.target) else {
                         results.append(MoveUndoItemResult(source: item.source, target: item.target, state: "notFound", message: LString.undoTargetMissing)); continue
@@ -1023,10 +1072,11 @@ public enum EntryOperations {
                                             snapshot: replaySnapshot, destinationFolder: destinationFolder))
                     }
                     if let backup = item.backup, let identity = item.backupIdentity {
+                        pendingBackupRestorations.insert(index)
                         guard try matchesUndoEntry(backup, identity: identity, snapshot: item.backupSnapshot, fileManager: fm) else {
                             throw MoveFailure(text: LString.undoBackupChanged)
                         }
-                        try fm.moveItem(at: backup, to: item.target)
+                        try restoreUndoBackup(backup, to: item.target)
                     }
                     result = MoveUndoItemResult(source: item.source, target: item.target, state: "completed", message: nil)
                 } catch {
@@ -1051,8 +1101,10 @@ public enum EntryOperations {
                 if state == "completed" {
                     if fm.fileExists(atPath: pending.path) { try fm.moveItem(at: pending, to: consumed) }
                 } else {
-                    let remaining = zip(record.items, results).compactMap { item, result in
-                        result.state == "completed" ? nil : item
+                    let remaining = zip(record.items, results).enumerated().compactMap { index, pair -> MoveUndoItem? in
+                        let (item, result) = pair
+                        guard result.state != "completed" else { return nil }
+                        return pendingBackupRestorations.contains(index) ? item.awaitingBackupRestore() : item
                     }
                     let retryRecord = MoveUndoRecord(operationId: record.operationId, items: remaining, createdAt: record.createdAt)
                     try JSONEncoder().encode(retryRecord).write(to: pending, options: .atomic)
