@@ -2,17 +2,17 @@
 
 ## 설치 이미지
 
-- 앱 소스 `5af4dee32bef20179daf9e88f7c8ef0d32939815`, Apple Silicon·Intel 슬라이스, macOS 14.0 배포 대상.
-- 로컬 경로 `build/Files-macOS-preview.dmg`. SHA-256 `485057aa94bcb0aa9d70b20998f7d8146576885ae1b70bc24b9138ed5200d1af`.
+- 앱 소스 `59df9d7ca8b0e7ba2d140355a1d549e07fa79db5`, Apple Silicon·Intel 슬라이스, macOS 14.0 배포 대상.
+- 로컬 경로 `build/Files-macOS-preview.dmg`. SHA-256 `ecb9e14b95dd967b2b92597e0b3177646769d0bf12b46dd2d9744618ee5515eb`.
 - DMG 내부 체크섬, SHA-256, 읽기 전용 마운트, 모든 슬라이스의 ad-hoc 서명을 검사했다. 마운트한 앱이 Apple Silicon에서 기동했다.
 
 ## 검증
 
 - Swift Testing 201개 통과. 최신 소스에서 한국어·영어 × 밝게·어둡게 AppKit 각 218개를 통과했다. 일반 설정의 맨 아래 옵션도 스크롤로 접근할 수 있었다.
-- 파일 작업 AppKit 회귀는 각 31개를 통과했다. 템플릿 내용과 이름, 이동 실행 취소·재실행, 기존 파일 보존을 확인했다.
+- 파일 작업 AppKit 회귀는 각 32개를 통과했다. 템플릿 내용과 이름, 이동 실행 취소·재실행, 기존 파일 보존을 확인했다.
 - APFS·대소문자 구분 APFS·exFAT, 시스템 휴지통, 루프백 FTP/FTPS/SFTP 수용 검증을 통과했다.
 
-대형 폴더의 최대 메모리는 줄었고 10,000항목 전체 표시 시간은 2초 목표를 넘었다. [Release 실측](INCREMENT_06.md)
+10,000항목 전체 표시 p95는 최적화 QA에서 1.842초였다. 100,000항목 최대 샘플 RSS는 275 MB였다. [Release 실측](INCREMENT_07.md)
 
 ## 포함 기능
 
