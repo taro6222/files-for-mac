@@ -5908,6 +5908,35 @@ extension BrowserWindow {
                     checks["referenceFolderSearchMetadataInputs"] = normalWidths && panel.qaMetadataFieldsHaveUsableWidth
                     panel.close()
                 } else { checks["referenceFolderSearch"] = false }
+
+                let previewFile = reference.appendingPathComponent("preview.txt")
+                if let previewRow = controller.detailRows.indices.first(where: {
+                    detailItem(at: $0, in: controller.detailRows)?.url == previewFile
+                }), let folderRow = controller.detailRows.indices.first(where: {
+                    detailItem(at: $0, in: controller.detailRows)?.url == alpha
+                }) {
+                    controller.table.selectRowIndexes([previewRow], byExtendingSelection: false)
+                    controller.showInfoPaneDetails(nil)
+                    preferences.setShowInfoPane(true)
+                    let inspector = controller.inspector
+                    let detailsStart = ContinuousClock.now
+                    while !inspector.qaDetails.contains(previewFile.path) && elapsed(detailsStart) < 5 {
+                        try await Task.sleep(for: .milliseconds(20))
+                    }
+                    checks["referenceFolderInfoDetails"] = !inspector.isHidden && inspector.qaTitle == previewFile.lastPathComponent
+                        && inspector.qaDetails.contains(previewFile.path) && inspector.qaPreviewURL == nil
+                    if checks["referenceFolderInfoDetails"] == true { try capture("ui-08-reference-details") }
+                    controller.showInfoPanePreview(nil)
+                    checks["referenceFolderInfoPreview"] = inspector.qaPreviewURL?.path == previewFile.path
+                    controller.table.selectRowIndexes([folderRow], byExtendingSelection: false)
+                    checks["referenceFolderInfoUnavailable"] = !inspector.isHidden && inspector.qaTitle == alpha.lastPathComponent
+                        && inspector.qaPreviewURL == nil && inspector.qaDetails == L("미리보기를 표시할 수 없습니다.", "Preview unavailable.")
+                    if checks["referenceFolderInfoUnavailable"] == true { try capture("ui-08-reference-preview-unavailable") }
+                    preferences.setShowInfoPane(false)
+                    controller.showInfoPaneDetails(nil)
+                } else {
+                    checks["referenceFolderInfoDetails"] = false
+                }
             }
             let report: [String: Any] = ["checks": checks, "metrics": metrics,
                 "samples": ["multiwindowCycleSeconds": durations, "scrollStepSeconds": scrollDurations],
