@@ -5973,6 +5973,24 @@ extension BrowserWindow {
                     let openedProperties = inspector.qaOpenProperties()
                     checks["referenceFolderInfoOpensProperties"] = openedProperties && controller.infoWindow?.window?.isVisible == true
                         && controller.infoWindow?.qaItemURLs == [previewFile]
+                    if let properties = controller.infoWindow, let panel = properties.window, let content = panel.contentView {
+                        try await controller.waitForFolderQA { properties.qaLoaded }
+                        checks["referenceFolderGeneralProperties"] = properties.qaLogicalSize == 24
+                        if checks["referenceFolderGeneralProperties"] == true {
+                            try capture("ui-09-reference-general", view: content, backingColor: panel.backgroundColor)
+                        }
+                        properties.qaStartHash(.sha256)
+                        try await controller.waitForFolderQA { !properties.qaHashing }
+                        let expectedHash = "f288c2f02342069c184b6d162f982144eb504f03c2f30c23d1a420f9e5fb780a"
+                        checks["referenceFolderPropertiesSHA256"] = properties.qaDigest == expectedHash
+                        if checks["referenceFolderPropertiesSHA256"] == true {
+                            properties.qaRevealHashControls()
+                            try capture("ui-09-reference-hashes", view: content, backingColor: panel.backgroundColor)
+                        }
+                    } else {
+                        checks["referenceFolderGeneralProperties"] = false
+                        checks["referenceFolderPropertiesSHA256"] = false
+                    }
                     controller.infoWindow?.close()
                     window.makeKeyAndOrderFront(nil)
                     await Task.yield()

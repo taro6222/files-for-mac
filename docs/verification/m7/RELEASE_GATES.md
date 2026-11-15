@@ -70,4 +70,4 @@
 
 [UI-08 정보 패널](INCREMENT_224.md)에서 같은 텍스트 파일의 상세와 미리보기 본문을 두 앱의 실행 화면으로 확인했다. macOS의 [생성일·태그 편집·속성 바로가기](INCREMENT_226.md)와 [선택 항목의 Git 상태](INCREMENT_229.md)를 검증했다. [PNG·PDF 화면 검증](INCREMENT_230.md)은 열린 항목이다.
 
-[UI-09 Windows 속성·해시](INCREMENT_238.md)의 실행 화면을 확인했다. 동일 파일의 macOS 화면과 Windows 보안·서명 상태 대조가 남아 있다.
+[UI-09 속성·해시](INCREMENT_240.md)에서 동일한 24바이트 파일의 속성과 SHA-256을 두 앱의 실행 화면으로 대조했다. 속성 창의 이름 편집과 Windows 보안·서명 상태 대조가 남아 있다.

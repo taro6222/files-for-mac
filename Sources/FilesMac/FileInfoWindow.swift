@@ -281,6 +281,7 @@ final class FileInfoWindow: NSWindowController, NSTextFieldDelegate {
     private func cancelTasks() { inspectTask?.cancel(); inspectTask = nil; hashTask?.cancel(); hashTask = nil; signatureTask?.cancel(); signatureTask = nil }
 #if DEBUG
     var qaLoaded: Bool { properties != nil }
+    var qaLogicalSize: Int64? { properties?.logicalSize }
     func qaApplyFolderMode(acl: String? = nil, group: String? = nil, stopImmediately: Bool = false,
                            watchFiles: [URL] = []) async throws -> Bool {
         guard let sheet = openPermissions() else { return false }
@@ -343,6 +344,13 @@ final class FileInfoWindow: NSWindowController, NSTextFieldDelegate {
         hashAlgorithm.selectItem(withTitle: algorithm.rawValue)
         changeHashAlgorithm(nil)
         startHash(comparing: url)
+    }
+    func qaRevealHashControls() {
+        guard let document = scroll.documentView else { return }
+        scroll.layoutSubtreeIfNeeded()
+        let algorithm = hashAlgorithm.convert(hashAlgorithm.bounds, to: document)
+        let comparison = compareHashButton.convert(compareHashButton.bounds, to: document)
+        document.scrollToVisible(algorithm.union(comparison).insetBy(dx: 0, dy: -12))
     }
     func qaCompareHash(_ value: String) -> String {
         expectedHash.stringValue = value
