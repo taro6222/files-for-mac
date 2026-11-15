@@ -447,11 +447,16 @@ public enum CopyEngine {
     static func identityAfterPublication(of target: URL, handle: Int32?, original: String,
                                          identity: (URL) throws -> String) throws -> String {
         guard let handle else { return original }
-        guard matchesPublicationHandle(target, descriptor: handle) else { throw CopyFailure(text: "Published item identity changed.") }
+        return try checkedPublicationIdentity(at: target, descriptor: handle, identity: identity)
+    }
+
+    static func checkedPublicationIdentity(at target: URL, descriptor: Int32,
+                                           identity: (URL) throws -> String) throws -> String {
+        guard matchesPublicationHandle(target, descriptor: descriptor) else { throw CopyFailure(text: "Item identity changed during publication.") }
         let current = try identity(target)
         var opened = stat()
-        guard fstat(handle, &opened) == 0 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
-        guard matchesPublicationHandle(target, descriptor: handle) else { throw CopyFailure(text: "Published item identity changed.") }
+        guard fstat(descriptor, &opened) == 0 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
+        guard matchesPublicationHandle(target, descriptor: descriptor) else { throw CopyFailure(text: "Item identity changed during publication.") }
         // A path-derived identifier can repeat if a different item is created at
         // the same path. Preserve a separate change-time baseline for Undo.
         return withChangeTime(current, opened)

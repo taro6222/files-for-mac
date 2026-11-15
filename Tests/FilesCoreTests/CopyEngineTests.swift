@@ -13,6 +13,11 @@ import Testing
     let descriptor = open(staged.path, O_RDONLY | O_NOFOLLOW | O_CLOEXEC)
     try #require(descriptor >= 0)
     defer { close(descriptor) }
+    let prepared = try CopyEngine.checkedPublicationIdentity(at: staged, descriptor: descriptor) { _ in "staged" }
+    #expect(try CopyEngine.matchesRecordedIdentity(at: staged, expected: prepared) { _ in "staged" })
+    #expect(throws: (any Error).self) {
+        try CopyEngine.checkedPublicationIdentity(at: target, descriptor: descriptor) { _ in "unpublished" }
+    }
     try FileManager.default.moveItem(at: staged, to: target)
     let recorded = try CopyEngine.identityAfterPublication(of: target, handle: descriptor, original: "old") { url in
         #expect(url == target)

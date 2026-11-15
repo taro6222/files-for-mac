@@ -954,14 +954,21 @@ public enum EntryOperations {
                                 backupURLs[index] = proposedBackup
                                 itemStates[index] = MoveItemOperationResult(source: source, target: target, state: "backingUp", message: nil)
                                 try save(state: finalState)
-                                let backupIdentity = try snapshotIdentity(target, fileManager: fm)
-                                let backupSnapshot = try snapshotForUndo(target)
                                 let backupHandle = try CopyEngine.openPublicationHandle(target, on: destinationFD)
                                 defer { if let backupHandle { close(backupHandle) } }
+                                let backupIdentity: String
+                                if let backupHandle {
+                                    backupIdentity = try CopyEngine.checkedPublicationIdentity(at: target, descriptor: backupHandle) {
+                                        try snapshotIdentity($0, fileManager: fm)
+                                    }
+                                } else {
+                                    backupIdentity = try snapshotIdentity(target, fileManager: fm)
+                                }
+                                let backupSnapshot = try snapshotForUndo(target)
                                 emit("backingUp"); try cancellation.check()
-                                guard try snapshotIdentity(target, fileManager: fm) == backupIdentity,
+                                guard try matchesMoveIdentity(target, expected: backupIdentity, fileManager: fm),
                                       backupHandle.map({ CopyEngine.matchesPublicationHandle(target, descriptor: $0) }) != false else {
-                                    throw EntryOperationError.sourceChanged
+                                    throw MoveFailure(text: LString.replacementTargetChanged)
                                 }
                                 do {
                                     try CopyEngine.publishNoReplace(payload: target, target: proposedBackup,
@@ -1419,6 +1426,9 @@ private enum LString {
     static let crossVolumeVerificationFailed = "복사 결과가 원본과 일치하지 않거나 복사 중 원본이 변경됐습니다."
     static let crossVolumeSourceChanged = "복사 결과를 확정한 뒤 원본이 변경되어 원본 삭제를 중단했습니다."
     static let crossVolumeDestinationChanged = "복사 결과를 확정한 뒤 대상이 변경되어 원본 삭제를 중단했습니다."
+    static let replacementTargetChanged = Locale.preferredLanguages.first?.hasPrefix("ko") == true
+        ? "백업하기 전에 기존 대상이 변경되어 교체를 중단했습니다."
+        : "The existing destination changed before backup. Replacement stopped."
 }
 
 private enum MoveUndoDestinationError: Error {
