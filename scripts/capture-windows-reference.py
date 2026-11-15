@@ -21,6 +21,39 @@ def element_bounds(element):
     return tuple(int(element.attrib[key]) for key in ("x", "y", "width", "height"))
 
 
+def process_is_elevated(pid):
+    import ctypes
+    from ctypes import wintypes
+
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    advapi32 = ctypes.WinDLL("advapi32", use_last_error=True)
+    kernel32.OpenProcess.argtypes = (wintypes.DWORD, wintypes.BOOL, wintypes.DWORD)
+    kernel32.OpenProcess.restype = wintypes.HANDLE
+    kernel32.CloseHandle.argtypes = (wintypes.HANDLE,)
+    kernel32.CloseHandle.restype = wintypes.BOOL
+    advapi32.OpenProcessToken.argtypes = (wintypes.HANDLE, wintypes.DWORD, ctypes.POINTER(wintypes.HANDLE))
+    advapi32.OpenProcessToken.restype = wintypes.BOOL
+    advapi32.GetTokenInformation.argtypes = (wintypes.HANDLE, ctypes.c_int, ctypes.c_void_p,
+                                            wintypes.DWORD, ctypes.POINTER(wintypes.DWORD))
+    advapi32.GetTokenInformation.restype = wintypes.BOOL
+    process = kernel32.OpenProcess(0x1000, False, pid)  # PROCESS_QUERY_LIMITED_INFORMATION
+    if not process:
+        raise ctypes.WinError(ctypes.get_last_error())
+    token = wintypes.HANDLE()
+    try:
+        if not advapi32.OpenProcessToken(process, 0x0008, ctypes.byref(token)):  # TOKEN_QUERY
+            raise ctypes.WinError(ctypes.get_last_error())
+        elevated, size = wintypes.DWORD(), wintypes.DWORD()
+        if not advapi32.GetTokenInformation(token, 20, ctypes.byref(elevated),
+                                            ctypes.sizeof(elevated), ctypes.byref(size)):  # TokenElevation
+            raise ctypes.WinError(ctypes.get_last_error())
+        return bool(elevated.value)
+    finally:
+        if token:
+            kernel32.CloseHandle(token)
+        kernel32.CloseHandle(process)
+
+
 def drag_pointer(start, end):
     import ctypes
     from ctypes import wintypes
@@ -35,6 +68,8 @@ def drag_pointer(start, end):
     user32 = ctypes.WinDLL("user32", use_last_error=True)
     user32.SetCursorPos.argtypes = (ctypes.c_int, ctypes.c_int)
     user32.SetCursorPos.restype = wintypes.BOOL
+    user32.GetCursorPos.argtypes = (ctypes.POINTER(wintypes.POINT),)
+    user32.GetCursorPos.restype = wintypes.BOOL
     user32.SendInput.argtypes = (wintypes.UINT, ctypes.POINTER(Input), ctypes.c_int)
     user32.SendInput.restype = wintypes.UINT
 
@@ -47,8 +82,18 @@ def drag_pointer(start, end):
         if user32.SendInput(1, ctypes.byref(event), ctypes.sizeof(event)) != 1:
             raise RuntimeError("Windows could not inject the drag button event")
 
+    def verify_position(expected):
+        position = wintypes.POINT()
+        if not user32.GetCursorPos(ctypes.byref(position)):
+            raise ctypes.WinError(ctypes.get_last_error())
+        actual = (position.x, position.y)
+        if actual != expected:
+            raise RuntimeError(f"Drag pointer position was {actual}, expected {expected}")
+
     move(*start)
     time.sleep(0.1)
+    verify_position(start)
+    print(f"Tab drag starts at {start}; expected drop point {end}", flush=True)
     button(0x0002)  # MOUSEEVENTF_LEFTDOWN
     try:
         for step in range(1, 25):
@@ -56,6 +101,8 @@ def drag_pointer(start, end):
             move(*(round(a + (b - a) * fraction) for a, b in zip(start, end)))
             time.sleep(0.025)
         time.sleep(0.3)
+        verify_position(end)
+        print(f"Tab drag reached {end}", flush=True)
     finally:
         button(0x0004)  # MOUSEEVENTF_LEFTUP
 
@@ -371,6 +418,10 @@ def capture(output, app_id, window_handle, fixture=None):
             px, py, pw, ph = element_bounds(pane)
             if min(tw, th, pw, ph) <= 0:
                 raise RuntimeError("The tab or the drop target does not have a visible rectangle")
+            app_pid = int(alpha_tab.attrib["ProcessId"])
+            app_elevated = process_is_elevated(app_pid)
+            runner_elevated = process_is_elevated(os.getpid())
+            print(f"Tab drag process elevation: Files={app_elevated}, driver script={runner_elevated}", flush=True)
             drag_pointer((tx + tw // 2, ty + th // 2), (px + round(pw * 0.9), py + ph // 2))
 
             def tab_drop_source():
