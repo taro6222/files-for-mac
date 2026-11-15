@@ -349,6 +349,49 @@ def capture(output, app_id, window_handle, fixture=None, scope="all"):
                 capture_tab_drop()
                 return
 
+            if scope == "properties":
+                file = fixture / "preview.txt"
+                row = wait_for("the properties fixture row", lambda: element_route(
+                    "xpath", "//*[@AutomationId='ItemName' and @Name='preview.txt' and @IsOffscreen='False']"))
+                request("POST", row + "/click", {})
+                button = wait_for("the enabled Properties button", lambda: element_route(
+                    "xpath", "//Button[@AutomationId='InnerNavigationToolbarPropertiesButton' and @IsEnabled='True' and @IsOffscreen='False']"))
+                request("POST", button + "/click", {})
+
+                def general_properties_source():
+                    for handle in request("GET", session + "/window_handles")["value"]:
+                        request("POST", session + "/window", {"name": handle})
+                        tree = read_tree()
+                        visible = [item for item in tree.iter() if item.get("IsOffscreen") == "False"]
+                        title = any(item.get("AutomationId") == "TitlebarFileNameTextBlock"
+                                    and item.get("Name") == "Properties" for item in visible)
+                        if not title or not any(item.get("AutomationId") == "ItemFileName" for item in visible):
+                            continue
+                        name_field = element_route("accessibility id", "ItemFileName")
+                        name = request("GET", name_field + "/text")["value"]
+                        if name in {file.name, file.stem}:
+                            return tree
+                    return None
+
+                tree = wait_for("the Properties window for the selected file", general_properties_source)
+                capture_layout(tree, "UI-09-general", "properties")
+                tab = wait_for("the Hashes navigation item", lambda: element_route(
+                    "xpath", "//*[@Name='Hashes' and @IsOffscreen='False']"))
+                request("POST", tab + "/click", {})
+                expected = hashlib.sha256(file.read_bytes()).hexdigest()
+
+                def hashes_source():
+                    tree = read_tree()
+                    visible = [item for item in tree.iter() if item.get("IsOffscreen") == "False"]
+                    if any(item.get("AutomationId") == "HashValueText" and item.get("Name", "").casefold() == expected
+                           for item in visible):
+                        return tree
+                    return None
+
+                tree = wait_for("the fixture SHA-256 in the Properties window", hashes_source)
+                capture_layout(tree, "UI-09-hashes", "properties")
+                return
+
             def info_pane_source(name, expected_text):
                 tree = read_tree()
                 for panel in tree.iter():
@@ -475,8 +518,8 @@ if __name__ == "__main__":
     parser.add_argument("output", type=Path)
     parser.add_argument("--window-handle", required=True)
     parser.add_argument("--fixture", type=Path)
-    parser.add_argument("--scope", choices=("all", "tab-drop"), default="all")
+    parser.add_argument("--scope", choices=("all", "tab-drop", "properties"), default="all")
     arguments = parser.parse_args()
-    if arguments.scope == "tab-drop" and arguments.fixture is None:
-        parser.error("--scope tab-drop requires --fixture")
+    if arguments.scope != "all" and arguments.fixture is None:
+        parser.error("a specific --scope requires --fixture")
     capture(arguments.output, os.environ["FILES_WINDOWS_APP_ID"], arguments.window_handle, arguments.fixture, arguments.scope)
