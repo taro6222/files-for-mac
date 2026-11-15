@@ -179,7 +179,8 @@ def capture(output, app_id, window_handle, fixture=None):
                         {element.get("Name", "").casefold() for element in blade.iter()}
                         for blade in column_host(tree) if blade.get("ClassName") == "BladeItem"
                     ]
-                    if len(blades) == 2 and "alpha" in blades[0] and {"column-note.txt", "column-note"} & blades[1]:
+                    if any({"alpha", "workshop"} <= parent and {"column-note.txt", "column-note"} & child
+                           for parent, child in zip(blades, blades[1:])):
                         return tree
                 return None
 
