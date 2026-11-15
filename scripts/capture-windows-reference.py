@@ -154,20 +154,17 @@ def capture(output, app_id, window_handle, fixture=None):
                 for name in ([item.name] if item.is_dir() else [item.name, item.stem])
             }
 
-            def path_editor():
-                try:
-                    return element_route("accessibility id", "PART_TextBox")
-                except RuntimeError:
-                    request("POST", session + "/keys", {"value": ["\ue009", "l", "\ue000"]})
-                    return None
+            def submit_omnibar(key, value):
+                request("POST", session + "/keys", {"value": ["\ue009", key, "\ue000"]})
+                editor = wait_for("the Omnibar editor", lambda: element_route("accessibility id", "PART_TextBox"))
+                request("POST", editor + "/clear", {})
+                request("POST", editor + "/value", {"value": list(value)})
+                if request("GET", editor + "/text")["value"] != value:
+                    raise RuntimeError("The Omnibar did not receive the requested input")
+                request("POST", editor + "/value", {"value": ["\ue007"]})
 
             def open_path(path):
-                editor = wait_for("the path editor", path_editor)
-                request("POST", editor + "/clear", {})
-                request("POST", editor + "/value", {"value": list(str(path))})
-                if request("GET", editor + "/text")["value"] != str(path):
-                    raise RuntimeError("The path editor did not receive the requested path")
-                request("POST", editor + "/value", {"value": ["\ue007"]})
+                submit_omnibar("l", str(path))
 
             open_path(fixture)
 
@@ -289,6 +286,22 @@ def capture(output, app_id, window_handle, fixture=None):
             tree = wait_for("left fixture and right Alpha folder", lambda: split_source(secondary_opened=True))
             capture_layout(tree, "UI-06", "dual-pane")
 
+            def search_source():
+                tree = read_tree()
+                visible = [element for element in tree.iter() if element.get("IsOffscreen") == "False"]
+                heading = any(element.get("Name", "").startswith("Search results for")
+                              and "column-note" in element.get("Name", "") for element in visible)
+                names = {element.get("Name", "").casefold() for element in visible
+                         if element.get("AutomationId") == "ItemName"}
+                return tree if heading and names in ({"column-note.txt"}, {"column-note"}) else None
+
+            send_control_shift("s")
+            open_path(fixture)
+            wait_for("the fixture before search", folder_source)
+            submit_omnibar("f", "column-note")
+            tree = wait_for("the single matching file in a child folder", search_source)
+            capture_layout(tree, "UI-07", "search")
+
             def visible_tabs(tree):
                 return [tab for tab in tree.iter("TabItem") if tab.get("IsOffscreen") == "False"]
 
@@ -297,7 +310,6 @@ def capture(output, app_id, window_handle, fixture=None):
                 names = [tab.get("Name") for tab in visible_tabs(tree)]
                 return tree if names == [fixture.name, "Alpha"] else None
 
-            send_control_shift("s")
             open_path(fixture)
             wait_for("the first tab showing the fixture", folder_source)
             request("POST", session + "/keys", {"value": ["\ue009", "t", "\ue000"]})

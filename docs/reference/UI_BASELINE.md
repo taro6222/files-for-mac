@@ -41,6 +41,8 @@ macOS 캡처에서 발견한 상태 표시줄의 개발 단계 문구를 제거�
 
 [UI-06 Windows 탭 드롭 검증 경로](../verification/m7/INCREMENT_210.md)는 두 탭을 연 뒤 원본 탭을 오른쪽 패널로 이동하는 동선을 검사한다.
 
+[UI-07 공통 폴더 검색 검증](../verification/m7/INCREMENT_213.md)은 두 앱에서 하위 폴더의 동일한 파일을 찾는 동선을 대조한다.
+
 [home]: https://github.com/files-community/Files/blob/99951c66928c4da714da8b1dd46039421182cbab/src/Files.App/Views/HomePage.xaml
 [main]: https://github.com/files-community/Files/blob/99951c66928c4da714da8b1dd46039421182cbab/src/Files.App/Views/MainPage.xaml
 [details]: https://github.com/files-community/Files/blob/99951c66928c4da714da8b1dd46039421182cbab/src/Files.App/Views/Layouts/DetailsLayoutPage.xaml

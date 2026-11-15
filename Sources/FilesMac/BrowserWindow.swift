@@ -4120,7 +4120,7 @@ extension BrowserWindow {
             controller.showWindow(nil)
             NSApp.activate(ignoringOtherApps: true)
             var capturesUseRequestedTheme = true
-            func capture(_ name: String, view: NSView? = nil) throws {
+            func capture(_ name: String, view: NSView? = nil, backingColor: NSColor? = nil) throws {
                 let view = view ?? root
                 capturesUseRequestedTheme = capturesUseRequestedTheme
                     && view.effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == expectedAppearance
@@ -4129,6 +4129,14 @@ extension BrowserWindow {
                 guard let bitmap = view.bitmapImageRepForCachingDisplay(in: view.bounds) else { throw CocoaError(.fileWriteUnknown) }
                 view.effectiveAppearance.performAsCurrentDrawingAppearance {
                     view.cacheDisplay(in: view.bounds, to: bitmap)
+                    if let backingColor, let context = NSGraphicsContext(bitmapImageRep: bitmap)?.cgContext {
+                        context.saveGState()
+                        context.setBlendMode(.destinationOver)
+                        context.setFillColor(backingColor.cgColor)
+                        context.fill(CGRect(x: 0, y: 0, width: bitmap.pixelsWide, height: bitmap.pixelsHigh))
+                        context.restoreGState()
+                        context.flush()
+                    }
                 }
                 guard let png = bitmap.representation(using: .png, properties: [:]) else { throw CocoaError(.fileWriteUnknown) }
                 try png.write(to: destination.appendingPathComponent(name + ".png"))
@@ -5879,6 +5887,22 @@ extension BrowserWindow {
                     if checks["referenceFolderSplitStacked"] == true { try capture("ui-06-stacked-reference-dual-pane") }
                     controller.closeSecondaryPane(nil)
                 } else { checks["referenceFolderSplitPanes"] = false }
+
+                controller.searchWindow?.close()
+                controller.searchWindow = nil
+                controller.showSearch(nil)
+                if let panel = controller.searchWindow, let searchView = panel.window?.contentView {
+                    panel.qaSearch("column-note", scope: .descendants)
+                    let searchStart = ContinuousClock.now
+                    while panel.qaIsSearching && elapsed(searchStart) < 5 {
+                        try await Task.sleep(for: .milliseconds(10))
+                    }
+                    checks["referenceFolderSearch"] = !panel.qaIsSearching && panel.qaResultCount == 1 && panel.qaContainsResult(at: child)
+                    if checks["referenceFolderSearch"] == true {
+                        try capture("ui-07-reference-search", view: searchView, backingColor: panel.window?.backgroundColor)
+                    }
+                    panel.close()
+                } else { checks["referenceFolderSearch"] = false }
             }
             let report: [String: Any] = ["checks": checks, "metrics": metrics,
                 "samples": ["multiwindowCycleSeconds": durations, "scrollStepSeconds": scrollDurations],
