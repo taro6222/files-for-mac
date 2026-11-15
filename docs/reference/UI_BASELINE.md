@@ -29,7 +29,7 @@ macOS 캡처에서 발견한 상태 표시줄의 개발 단계 문구를 제거�
 
 [UI-01 홈 실행 화면 대조](../verification/m7/INCREMENT_189.md)에서 Windows와 macOS의 기본 홈 레이아웃과 위젯을 확인했다. 동일 fixture·창 크기의 화면, UI-02~UI-20 및 적용 상태별 시각·동작 검증은 정식 출시 게이트에 남아 있다.
 
-[UI-02·03 공통 폴더 실행 화면](../verification/m7/INCREMENT_191.md)에서 양쪽의 파일 순서·크기·기본 열을 확인했다. Windows 기본 태그 열, 개별 폴더 크기 조회와 탐색 경로의 표현에 차이가 있다. 같은 창 크기와 상호작용 상태의 비교는 남아 있다.
+[UI-02·03 공통 폴더 실행 화면](../verification/m7/INCREMENT_191.md)에서 양쪽의 파일 순서·크기·기본 열을 확인했다. macOS 상세 보기의 크기 열에 [개별 폴더 크기 조회](../verification/m7/INCREMENT_193.md)를 추가했다. Windows 기본 태그 열과 탐색 경로의 표현에 차이가 있다. 같은 창 크기와 상호작용 상태의 비교는 남아 있다.
 
 [home]: https://github.com/files-community/Files/blob/99951c66928c4da714da8b1dd46039421182cbab/src/Files.App/Views/HomePage.xaml
 [main]: https://github.com/files-community/Files/blob/99951c66928c4da714da8b1dd46039421182cbab/src/Files.App/Views/MainPage.xaml

@@ -46,6 +46,9 @@ public enum DirectoryFailure: String, Sendable {
 
 @MainActor
 public final class BrowserModel {
+    public enum DirectorySizeStatus: Equatable {
+        case calculating, available(Int64), unavailable
+    }
     public private(set) var history = NavigationHistory()
     private var folderItems: [FileItem] = [] {
         didSet { updateVisibleItems() }
@@ -67,8 +70,13 @@ public final class BrowserModel {
     private var generation = 0
     private var loadedLocation: URL?
     private var task: Task<Void, Never>?
+    private var directorySizeTasks: [String: Task<Void, Never>] = [:]
+    private var requestedDirectorySizes: [String: DirectorySizeStatus] = [:]
+    private var measuredDirectorySizes: [URL: Int64] = [:]
+    public private(set) var directorySizeRevision = 0
     public init(loader: any DirectoryLoading = LocalFileSystem()) { self.loader = loader }
     public var location: URL? { history.current.url }
+    public var listingRevision: Int { generation }
     public var snapshot: TabSnapshot {
         TabSnapshot(history: history, sortOrder: sortOrder, showHidden: showHidden, viewMode: viewMode, grouping: grouping)
     }
@@ -114,6 +122,11 @@ public final class BrowserModel {
     public func reload(userInitiated: Bool = false) {
         generation += 1
         let request = generation
+        cancelDirectorySizeRequests()
+        if !measuredDirectorySizes.isEmpty {
+            measuredDirectorySizes.removeAll()
+            directorySizeRevision += 1
+        }
         task?.cancel(); error = nil; failure = nil; wasCancelled = false
         if filterLocation != location && !nameFilter.isEmpty {
             nameFilter = ""
@@ -192,14 +205,57 @@ public final class BrowserModel {
         onChange?()
     }
     public func applyDirectorySizes(_ sizes: [URL: Int64], at expectedLocation: URL) {
-        guard location?.standardizedFileURL == expectedLocation.standardizedFileURL, !isLoading else { return }
+        guard location?.standardizedFileURL == expectedLocation.standardizedFileURL,
+              !isLoading, !wasCancelled, !sizes.isEmpty else { return }
+        var measuredChanged = false
         var changed = false
         let updated = folderItems.map { item -> FileItem in
-            guard item.isBrowsable, let size = sizes[item.url.standardizedFileURL], item.size != size else { return item }
+            let url = item.url.standardizedFileURL
+            guard item.isBrowsable, let size = sizes[url] else { return item }
+            if measuredDirectorySizes[url] != size {
+                measuredDirectorySizes[url] = size
+                measuredChanged = true
+            }
+            guard item.size != size else { return item }
             changed = true; return item.replacingSize(size)
         }
-        guard changed else { return }
-        folderItems = sortOrder.sorted(updated); onChange?()
+        guard changed || measuredChanged else { return }
+        if measuredChanged { directorySizeRevision += 1 }
+        if changed { folderItems = sortOrder.sorted(updated) }
+        onChange?()
+    }
+    public func directorySize(of item: FileItem) -> Int64? { measuredDirectorySizes[item.url.standardizedFileURL] }
+    public func requestedDirectorySize(of item: FileItem) -> DirectorySizeStatus? { requestedDirectorySizes[item.id] }
+
+    public func requestDirectorySize(of item: FileItem) {
+        guard !isLoading, !wasCancelled, let location, item.isBrowsable, !item.isSymbolicLink,
+              directorySizeTasks[item.id] == nil,
+              folderItems.contains(where: { $0.id == item.id && $0.identity == item.identity }) else { return }
+        let request = generation
+        requestedDirectorySizes[item.id] = .calculating
+        directorySizeRevision += 1
+        directorySizeTasks[item.id] = Task { [weak self] in
+            let size = try? await FolderSizeCalculator().size(of: item)
+            guard let self, !Task.isCancelled, generation == request else { return }
+            directorySizeTasks[item.id] = nil
+            requestedDirectorySizes[item.id] = size.map { .available($0) } ?? .unavailable
+            directorySizeRevision += 1
+            if let size {
+                let updated = folderItems.map { $0.id == item.id ? $0.replacingSize(size) : $0 }
+                folderItems = sortOrder.sorted(updated)
+                measuredDirectorySizes[item.url.standardizedFileURL] = size
+            }
+            onChange?()
+        }
+        onChange?()
+    }
+
+    public func cancelDirectorySizeRequests() {
+        guard !requestedDirectorySizes.isEmpty else { return }
+        directorySizeTasks.values.forEach { $0.cancel() }
+        directorySizeTasks.removeAll()
+        requestedDirectorySizes.removeAll()
+        directorySizeRevision += 1
     }
     public func setViewMode(_ mode: BrowserViewMode) {
         guard viewMode != mode else { return }

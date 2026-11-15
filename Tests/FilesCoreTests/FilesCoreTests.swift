@@ -765,6 +765,34 @@ private struct DelayedLoader: DirectoryLoading {
     try Data(repeating: 2, count: 11).write(to: nested.appendingPathComponent("two.bin"))
     try FileManager.default.createSymbolicLink(at: root.appendingPathComponent("linked.bin"), withDestinationURL: nested.appendingPathComponent("two.bin"))
     #expect(try FolderSizeCalculator.size(of: root) == 18)
+    #expect(throws: (any Error).self) { try FolderSizeCalculator.size(of: root.appendingPathComponent("missing")) }
+    #expect(throws: (any Error).self) { try FolderSizeCalculator.size(of: root.appendingPathComponent("linked.bin")) }
+}
+
+@Test @MainActor func folderSizeRequestRejectsReplacedDirectoryIdentity() async throws {
+    let root = try fixture()
+    defer { try? FileManager.default.removeItem(at: root) }
+    let folder = root.appendingPathComponent("sample", isDirectory: true)
+    try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: false)
+    let model = BrowserModel()
+    model.navigate(root)
+    let start = ContinuousClock.now
+    while model.isLoading && start.duration(to: .now) < .seconds(3) {
+        try await Task.sleep(for: .milliseconds(10))
+    }
+    let item = try #require(model.loadedItems.first)
+    try FileManager.default.moveItem(at: folder, to: root.appendingPathComponent("original"))
+    try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: false)
+    model.requestDirectorySize(of: item)
+    #expect(model.requestedDirectorySize(of: item) == .calculating)
+    while model.requestedDirectorySize(of: item) == .calculating && start.duration(to: .now) < .seconds(3) {
+        try await Task.sleep(for: .milliseconds(10))
+    }
+    #expect(model.requestedDirectorySize(of: item) == .unavailable)
+    #expect(model.directorySize(of: item) == nil)
+    model.reload()
+    #expect(model.requestedDirectorySize(of: item) == nil)
+    model.cancelLoad()
 }
 
 @Test @MainActor func contextMenuVisibilityDefaultsPersistAndAvoidsDuplicateNotifications() {

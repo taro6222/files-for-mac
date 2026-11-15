@@ -8,6 +8,8 @@ M7 출시 검증이 진행 중이다. [유니버설 개발 프리뷰](verificati
 
 ## 이번 구현 단위
 
+상세 보기에서 전체 폴더 크기 계산을 꺼도 필요한 폴더의 크기만 조회할 수 있다. [개별 폴더 크기](verification/m7/INCREMENT_193.md)
+
 홈에서 앱으로 연 최근 파일을 다시 열고 최근 위치와 별도로 관리한다. [최근 파일](verification/m7/INCREMENT_192.md)
 
 홈의 빠른 접근과 드라이브를 창 너비에 맞춘 카드로 표시하고 방향키로 탐색한다. [홈 카드](verification/m7/INCREMENT_190.md)

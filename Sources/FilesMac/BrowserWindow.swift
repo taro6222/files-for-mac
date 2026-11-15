@@ -135,6 +135,7 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
     private var gitObservedLoading = false
     private var autoFitObservedLoading = false
     private var folderSizeTask: Task<Void, Never>?
+    private var renderedDirectorySizeRevision = 0
     private let cloudProvider: CloudLocationProvider
     private let openSystemURL: (URL) -> Bool
     private let undoJournalDirectory: URL
@@ -247,6 +248,7 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
                 if let watcher = self.watcher { Task.detached { watcher.stop() } }
                 self.watcher = nil
                 self.model.onChange = nil; self.model.cancelLoad()
+                self.model.cancelDirectorySizeRequests()
                 self.completionTask?.cancel(); self.volumeTask?.cancel(); self.cloudTask?.cancel(); self.gitTask?.cancel(); self.folderSizeTask?.cancel()
                 self.resetGitCommits()
                 self.inspector.clear()
@@ -1001,6 +1003,7 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         model.setViewMode(folder.mode)
     }
     private func render() {
+        let loadStateChanged = autoFitObservedLoading != model.isLoading
         let autoFitLoadCompleted = autoFitObservedLoading && !model.isLoading
         autoFitObservedLoading = model.isLoading
         let gitLoadCompleted = gitObservedLoading && !model.isLoading
@@ -1079,11 +1082,13 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         let sortDescriptor = NSSortDescriptor(key: model.sortOrder.field.rawValue, ascending: model.sortOrder.ascending)
         if table.sortDescriptors.first != sortDescriptor { table.sortDescriptors = [sortDescriptor] }
         let rows = detailDisplayRows(items: model.items, grouping: model.grouping)
+        let sizeStatusChanged = renderedDirectorySizeRevision != model.directorySizeRevision
+        renderedDirectorySizeRevision = model.directorySizeRevision
         if detailPresentationNeedsReload || (detailsWereHidden && !scroll.isHidden) || detailRows != rows {
             let previousRows = detailRows
             let oldCount = previousRows.count
             let newCount = rows.count
-            let canReuseRows = oldCount == 0 || newCount == 0 || (!detailPresentationNeedsReload && !detailsWereHidden)
+            let canReuseRows = oldCount == 0 || newCount == 0 || (!detailPresentationNeedsReload && !sizeStatusChanged && !detailsWereHidden)
             detailRows = rows
             if canReuseRows && oldCount < newCount,
                let inserted = detailInsertedRows(from: previousRows, to: rows) {
@@ -1097,6 +1102,18 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
             detailPresentationNeedsReload = false
         } else if gitLoadCompleted {
             updateVisibleGitCells()
+        }
+        if (loadStateChanged || sizeStatusChanged), !scroll.isHidden,
+           let sizeColumn = table.tableColumns.firstIndex(where: { $0.identifier.rawValue == "size" && !$0.isHidden }) {
+            let visible = table.rows(in: table.visibleRect)
+            if visible.location != NSNotFound {
+                let folderRows = IndexSet((visible.location..<NSMaxRange(visible)).filter {
+                    detailItem(at: $0, in: detailRows)?.isBrowsable == true
+                })
+                if !folderRows.isEmpty {
+                    table.reloadData(forRowIndexes: folderRows, columnIndexes: IndexSet(integer: sizeColumn))
+                }
+            }
         }
         if autoFitLoadCompleted { startFolderSizeCalculationIfNeeded() }
         if autoFitLoadCompleted && preferences.autoSizeColumnsInDetailsLayout && primaryRenderedViewMode == .details && !model.items.isEmpty {
@@ -1189,6 +1206,9 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
             label.stringValue = title; label.setAccessibilityLabel(title); return label
         }
         guard let item = detailItem(at: row, in: detailRows) else { return nil }
+        if key == "size", item.isBrowsable, !item.isSymbolicLink {
+            return FolderSizeCell.view(in: tableView, item: item, model: model, preferences: preferences)
+        }
         let id = NSUserInterfaceItemIdentifier(key)
         let cell = (tableView.makeView(withIdentifier: id, owner: self) as? NSTableCellView) ?? makeCell(id, icon: key == "name")
         switch key {
@@ -1827,7 +1847,11 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
             case "created": return item.created.map(dateFormatter.string) ?? "—"
             case "modified": return item.modified.map(dateFormatter.string) ?? "—"
             case "kind": return item.kind == "Folder" ? L("폴더", "Folder") : (item.kind == "File" ? L("파일", "File") : item.kind)
-            case "size": return item.isDirectory && !preferences.calculateFolderSizes ? "—" : item.size.map { formatByteCount($0, unit: preferences.sizeUnit) } ?? "—"
+            case "size":
+                if item.isBrowsable, !item.isSymbolicLink {
+                    return FolderSizeCell.text(for: item, model: model, preferences: preferences)
+                }
+                return item.isDirectory && !preferences.calculateFolderSizes ? "—" : item.size.map { formatByteCount($0, unit: preferences.sizeUnit) } ?? "—"
             default: return ""
             }
         }
@@ -3325,11 +3349,16 @@ extension BrowserWindow {
         guard preferences.calculateFolderSizes, !model.isLoading, let location = model.location else { return }
         let folders = model.loadedItems.filter(\.isBrowsable).map(\.url)
         guard !folders.isEmpty else { return }
+        let revision = model.listingRevision
         folderSizeTask = Task { [weak self] in
             let sizes = await FolderSizeCalculator().sizes(of: folders)
-            guard !Task.isCancelled else { return }
-            self?.model.applyDirectorySizes(sizes, at: location)
-            self?.folderSizeTask = nil
+            guard let self, !Task.isCancelled else { return }
+            folderSizeTask = nil
+            if model.listingRevision == revision {
+                model.applyDirectorySizes(sizes, at: location)
+            } else {
+                startFolderSizeCalculationIfNeeded()
+            }
         }
     }
     @objc private func clearRecent(_ sender: Any?) { preferences.clearRecent() }
@@ -4289,6 +4318,23 @@ extension BrowserWindow {
                 while controller.model.items.first(where: { $0.name == "000-grid-folder" })?.size != 21 && folderSizeWait.duration(to: .now) < .seconds(5) { try await Task.sleep(for: .milliseconds(20)) }
                 checks["folderSizeCalculation"] = controller.model.items.first(where: { $0.name == "000-grid-folder" })?.size == 21
                 preferences.setCalculateFolderSizes(false)
+                if let row = controller.detailRows.indices.first(where: {
+                    detailItem(at: $0, in: controller.detailRows)?.url == gridFolder
+                }), let column = controller.table.tableColumns.firstIndex(where: { $0.identifier.rawValue == "size" }),
+                   let item = detailItem(at: row, in: controller.detailRows),
+                   let cell = controller.table.view(atColumn: column, row: row, makeIfNecessary: true),
+                   let requestSize = cell.subviews.compactMap({ $0 as? NSButton }).first {
+                    let wasAvailable = !requestSize.isHidden && requestSize.title == L("크기 보기", "View Size")
+                    requestSize.performClick(nil)
+                    let wasPending = controller.model.requestedDirectorySize(of: item) == .calculating
+                    let sizeStart = ContinuousClock.now
+                    while controller.model.requestedDirectorySize(of: item) == .calculating && elapsed(sizeStart) < 5 {
+                        try await Task.sleep(for: .milliseconds(20))
+                    }
+                    checks["folderSizeRequestFromDetails"] = wasAvailable && wasPending
+                        && controller.model.requestedDirectorySize(of: item) == .available(21)
+                        && !preferences.calculateFolderSizes
+                } else { checks["folderSizeRequestFromDetails"] = false }
                 preferences.setShowThumbnails(false)
                 checks["thumbnailPolicyPrimary"] = controller.qaThumbnailPolicyApplied
                 controller.clearSelection(nil)

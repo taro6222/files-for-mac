@@ -155,7 +155,11 @@ final class SecondaryBrowserPane: NSView, NSTableViewDataSource, NSTableViewDele
             case "created": return item.created.map(dateFormatter.string) ?? "—"
             case "modified": return item.modified.map(dateFormatter.string) ?? "—"
             case "kind": return item.kind
-            case "size": return item.isDirectory && !preferences.calculateFolderSizes ? "—" : item.size.map { formatByteCount($0, unit: preferences.sizeUnit) } ?? "—"
+            case "size":
+                if item.isBrowsable, !item.isSymbolicLink {
+                    return FolderSizeCell.text(for: item, model: model, preferences: preferences)
+                }
+                return item.isDirectory && !preferences.calculateFolderSizes ? "—" : item.size.map { formatByteCount($0, unit: preferences.sizeUnit) } ?? "—"
             default: return ""
             }
         }
@@ -192,6 +196,7 @@ final class SecondaryBrowserPane: NSView, NSTableViewDataSource, NSTableViewDele
     func open(_ url: URL?) { activate(); navigate(url) }
     func shutdown() {
         folderSizeTask?.cancel()
+        model.cancelDirectorySizeRequests()
         watcherTask?.cancel(); watcherTask = nil
         if let watcher { Task.detached { watcher.stop() } }
         watcher = nil; watchedURL = nil; model.onChange = nil; model.cancelLoad()
@@ -317,11 +322,16 @@ final class SecondaryBrowserPane: NSView, NSTableViewDataSource, NSTableViewDele
         guard preferences.calculateFolderSizes, !model.isLoading, let location = model.location else { return }
         let folders = model.loadedItems.filter(\.isBrowsable).map(\.url)
         guard !folders.isEmpty else { return }
+        let revision = model.listingRevision
         folderSizeTask = Task { [weak self] in
             let sizes = await FolderSizeCalculator().sizes(of: folders)
-            guard !Task.isCancelled else { return }
-            self?.model.applyDirectorySizes(sizes, at: location)
-            self?.folderSizeTask = nil
+            guard let self, !Task.isCancelled else { return }
+            folderSizeTask = nil
+            if model.listingRevision == revision {
+                model.applyDirectorySizes(sizes, at: location)
+            } else {
+                startFolderSizeCalculationIfNeeded()
+            }
         }
     }
     private func configure(_ button: NSButton, symbol: String, title: String, action: Selector) {
@@ -474,6 +484,11 @@ final class SecondaryBrowserPane: NSView, NSTableViewDataSource, NSTableViewDele
             label.stringValue = title; label.setAccessibilityLabel(title); return label
         }
         guard let item = detailItem(at: row, in: detailRows) else { return nil }
+        if id.rawValue == "size", item.isBrowsable, !item.isSymbolicLink {
+            return FolderSizeCell.view(in: tableView, item: item, model: model, preferences: preferences) { [weak self] in
+                self?.activate()
+            }
+        }
         let cell = tableView.makeView(withIdentifier: id, owner: self) as? NSTableCellView ?? makeCell(id)
         switch id.rawValue {
         case "name": cell.textField?.stringValue = item.displayName(showExtensions: true); cell.imageView?.image = fileIcon(for: item, showsThumbnails: preferences.showThumbnails)
