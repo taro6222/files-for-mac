@@ -24,10 +24,12 @@ public enum CodeSignatureInspector {
             let details = run(["-dvv", "--", url.path])
             let verification = run(["--verify", "--deep", "--strict", "--verbose=2", "--", url.path])
             let metadata = parse(details.output)
-            let combined = (details.output + "\n" + verification.output).lowercased()
             let state: CodeSignatureReport.State
+            // Deep verification may report an unsigned component of a signed bundle.
             if verification.status == 0 { state = .valid }
-            else if combined.contains("not signed at all") || combined.contains("code object is not signed") { state = .unsigned }
+            else if details.status != 0, details.output.lowercased().split(whereSeparator: \.isNewline).contains(where: {
+                $0.hasSuffix(": code object is not signed at all") || $0.hasSuffix(": code object is not signed")
+            }) { state = .unsigned }
             else { state = .invalid }
             return CodeSignatureReport(state: state, identifier: metadata.identifier, teamIdentifier: metadata.teamIdentifier,
                                        authorities: metadata.authorities, format: metadata.format,

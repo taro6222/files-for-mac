@@ -854,6 +854,52 @@ private struct DelayedLoader: DirectoryLoading {
     #expect(!result.output.contains("end of diagnostics"))
 }
 
+@Test func codeSignatureDistinguishesUnsignedFilesAndInvalidNestedApps() async throws {
+    let root = try fixture()
+    let manager = FileManager.default
+    defer { try? manager.removeItem(at: root) }
+    let code = try Data(contentsOf: URL(fileURLWithPath: "/usr/bin/true"))
+    let outer = root.appendingPathComponent("Outer.app")
+    let helper = outer.appendingPathComponent("Contents/Helpers/Helper.app")
+    for (bundle, name) in [(outer, "Outer"), (helper, "Helper")] {
+        let executable = bundle.appendingPathComponent("Contents/MacOS/\(name)")
+        try manager.createDirectory(at: executable.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try code.write(to: executable)
+        try manager.setAttributes([.posixPermissions: 0o755], ofItemAtPath: executable.path)
+        let metadata = try PropertyListSerialization.data(fromPropertyList: [
+            "CFBundleIdentifier": "org.taro6222.files.qa.\(name.lowercased())",
+            "CFBundleExecutable": name,
+            "CFBundlePackageType": "APPL",
+            "CFBundleName": name,
+            "CFBundleVersion": "1"
+        ], format: .xml, options: 0)
+        try metadata.write(to: bundle.appendingPathComponent("Contents/Info.plist"))
+    }
+    for bundle in [helper, outer] {
+        let signing = CodeSignatureInspector.run(["--force", "--sign", "-", bundle.path])
+        try #require(signing.status == 0, Comment(rawValue: signing.output))
+    }
+
+    let valid = await CodeSignatureInspector.inspect(outer)
+    #expect(valid.state == .valid)
+    #expect(valid.identifier == "org.taro6222.files.qa.outer")
+    #expect(valid.diagnostic == nil)
+
+    let changed = root.appendingPathComponent("Changed.app")
+    try manager.copyItem(at: outer, to: changed)
+    let changedHelper = changed.appendingPathComponent("Contents/Helpers/Helper.app/Contents/MacOS/Helper")
+    let removal = CodeSignatureInspector.run(["--remove-signature", changedHelper.path])
+    try #require(removal.status == 0, Comment(rawValue: removal.output))
+    let invalid = await CodeSignatureInspector.inspect(changed)
+    #expect(invalid.state == .invalid)
+    #expect(invalid.identifier == valid.identifier)
+    #expect(invalid.diagnostic?.contains("Helper.app") == true)
+
+    let unsigned = root.appendingPathComponent("unsigned.txt")
+    try Data("unsigned fixture".utf8).write(to: unsigned)
+    #expect(await CodeSignatureInspector.inspect(unsigned).state == .unsigned)
+}
+
 @Test @MainActor func developerApplicationPreferencePersistsAndClears() {
     let suite = "developer-app-tests-\(UUID())", defaults = UserDefaults(suiteName: suite)!
     defer { defaults.removePersistentDomain(forName: suite) }
