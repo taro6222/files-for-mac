@@ -205,20 +205,24 @@ public enum EntryOperations {
 
     private static func matchesTransfer(_ url: URL, identity: String, snapshot: CopyEngine.VerificationSnapshot,
                                         fileManager: FileManager) -> Bool {
-        (try? snapshotIdentity(url, fileManager: fileManager)) == identity
+        (try? matchesMoveIdentity(url, expected: identity, fileManager: fileManager)) == true
             && (try? CopyEngine.makeSnapshot(url, cancellation: CopyCancellation()).matchesOriginal(snapshot)) == true
-            && (try? snapshotIdentity(url, fileManager: fileManager)) == identity
+            && (try? matchesMoveIdentity(url, expected: identity, fileManager: fileManager)) == true
+    }
+
+    private static func matchesMoveIdentity(_ url: URL, expected: String, fileManager: FileManager) throws -> Bool {
+        try CopyEngine.matchesRecordedIdentity(at: url, expected: expected) { try snapshotIdentity($0, fileManager: fileManager) }
     }
 
     private static func matchesUndoEntry(_ url: URL, identity: String, snapshot: [String: String]?,
                                          metadata: CopyTransferMetadata? = nil,
                                          fileManager: FileManager) throws -> Bool {
-        guard try snapshotIdentity(url, fileManager: fileManager) == identity else { return false }
+        guard try matchesMoveIdentity(url, expected: identity, fileManager: fileManager) else { return false }
         guard snapshot != nil || metadata != nil else { return true }
         let current = try CopyEngine.makeSnapshot(url, cancellation: CopyCancellation(), includeTransferMetadata: metadata != nil)
         guard snapshot == nil || current.withPermissions == snapshot,
               metadata.map(current.metadata.matchesRecorded) != false else { return false }
-        return try snapshotIdentity(url, fileManager: fileManager) == identity
+        return try matchesMoveIdentity(url, expected: identity, fileManager: fileManager)
     }
 
     private static func restoreUndoBackup(_ backup: URL, to target: URL) throws {
@@ -247,7 +251,9 @@ public enum EntryOperations {
         let source = item.target
         let target = item.source
         let sourceIdentity = try snapshotIdentity(source, fileManager: fm)
-        guard sourceIdentity == item.targetIdentity else { throw EntryOperationError.sourceChanged }
+        guard try CopyEngine.matchesRecordedIdentity(at: source, expected: item.targetIdentity, identity: { _ in sourceIdentity }) else {
+            throw EntryOperationError.sourceChanged
+        }
         let before = try CopyEngine.makeSnapshot(source, cancellation: CopyCancellation())
         let allowsLegacyForks = item.snapshotIncludesResourceForks == nil && item.backup == nil && item.targetMetadata == nil
         guard item.targetSnapshot == nil || before.withPermissions == item.targetSnapshot
@@ -950,8 +956,11 @@ public enum EntryOperations {
                                 try save(state: finalState)
                                 let backupIdentity = try snapshotIdentity(target, fileManager: fm)
                                 let backupSnapshot = try snapshotForUndo(target)
+                                let backupHandle = try CopyEngine.openPublicationHandle(target, on: destinationFD)
+                                defer { if let backupHandle { close(backupHandle) } }
                                 emit("backingUp"); try cancellation.check()
-                                guard try snapshotIdentity(target, fileManager: fm) == backupIdentity else {
+                                guard try snapshotIdentity(target, fileManager: fm) == backupIdentity,
+                                      backupHandle.map({ CopyEngine.matchesPublicationHandle(target, descriptor: $0) }) != false else {
                                     throw EntryOperationError.sourceChanged
                                 }
                                 do {
@@ -961,7 +970,8 @@ public enum EntryOperations {
                                 } catch CopyPublicationError.conflict { throw EntryOperationError.conflict }
                                 backup = proposedBackup
                                 backupURLs[index] = proposedBackup
-                                backupIdentities[index] = backupIdentity
+                                backupIdentities[index] = try CopyEngine.identityAfterPublication(of: proposedBackup,
+                                    handle: backupHandle, original: backupIdentity) { try snapshotIdentity($0, fileManager: fm) }
                                 backupSnapshots[index] = backupSnapshot
                                 backupVerified = canRecordUndo[index]
                             }
@@ -998,6 +1008,14 @@ public enum EntryOperations {
                                 let stageFD = open(stage.path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
                                 guard stageFD >= 0 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
                                 defer { close(stageFD) }
+                                let publicationHandle = try CopyEngine.openPublicationHandle(payload, on: stageFD)
+                                defer { if let publicationHandle { close(publicationHandle) } }
+                                if let publicationHandle {
+                                    guard try snapshotIdentity(payload, fileManager: fm) == payloadIdentity,
+                                          CopyEngine.matchesPublicationHandle(payload, descriptor: publicationHandle) else {
+                                        throw EntryOperationError.sourceChanged
+                                    }
+                                }
                                 if let redoItem, !redoItem.destinationFolder.isCurrent {
                                     throw EntryOperationError.sourceChanged
                                 }
@@ -1006,6 +1024,8 @@ public enum EntryOperations {
                                         sourceDirectoryFD: stageFD, sourceName: "payload",
                                         destinationDirectoryFD: destinationFD, destinationName: target.lastPathComponent)
                                 } catch CopyPublicationError.conflict { throw EntryOperationError.conflict }
+                                let publishedIdentity = try CopyEngine.identityAfterPublication(of: target,
+                                    handle: publicationHandle, original: payloadIdentity) { try snapshotIdentity($0, fileManager: fm) }
                                 do {
                                     try cancellation.check(); emit("removingSource")
                                     try cancellation.check()
@@ -1015,12 +1035,14 @@ public enum EntryOperations {
                                     }
                                 } catch {
                                     let originalError = error
-                                    if matchesTransfer(target, identity: payloadIdentity, snapshot: verifiedPayload, fileManager: fm) {
+                                    if matchesTransfer(target, identity: publishedIdentity, snapshot: verifiedPayload, fileManager: fm),
+                                       publicationHandle.map({ CopyEngine.matchesPublicationHandle(target, descriptor: $0) }) != false {
                                         try? fm.removeItem(at: target)
                                     }
                                     throw originalError
                                 }
-                                guard matchesTransfer(target, identity: payloadIdentity, snapshot: verifiedPayload, fileManager: fm) else {
+                                guard matchesTransfer(target, identity: publishedIdentity, snapshot: verifiedPayload, fileManager: fm),
+                                      publicationHandle.map({ CopyEngine.matchesPublicationHandle(target, descriptor: $0) }) != false else {
                                     throw MoveFailure(text: LString.crossVolumeDestinationChanged)
                                 }
                                 try before.restoreAccessTimes(in: target, verifiedCopy: verifiedPayload, cancellation: cancellation)
@@ -1031,7 +1053,7 @@ public enum EntryOperations {
                                 // Directory removal can fail after deleting some children.
                                 // Keep the verified destination if source removal was attempted.
                                 try fm.removeItem(at: source)
-                                publishedIdentities[index] = payloadIdentity
+                                publishedIdentities[index] = publishedIdentity
                                 publishedSnapshots[index] = verifiedPayload
                             } else {
                                 if conflictPolicy == .skip, flattenPlan == nil, redoItem == nil {
@@ -1214,7 +1236,7 @@ public enum EntryOperations {
                               item.restoredCopyMetadata.map(restored.metadata.matchesRecorded) != false,
                               restored.matchesTransferredContents(of: original),
                               try snapshotIdentity(item.source, fileManager: fm) == restoredIdentity,
-                              try snapshotIdentity(item.target, fileManager: fm) == item.targetIdentity else {
+                              try matchesMoveIdentity(item.target, expected: item.targetIdentity, fileManager: fm) else {
                             results.append(MoveUndoItemResult(source: item.source, target: item.target,
                                 state: "changed", message: LString.undoTargetChanged))
                             continue

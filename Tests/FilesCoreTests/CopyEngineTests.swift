@@ -3,6 +3,31 @@ import Darwin
 import Testing
 @testable import FilesCore
 
+@Test func publishedIdentityRequiresTheOriginalOpenEntry() throws {
+    let fixture = try CopyFixture()
+    defer { fixture.clean() }
+    let staged = fixture.source.appendingPathComponent("staged.txt")
+    let target = fixture.destination.appendingPathComponent("published.txt")
+    let removed = fixture.destination.appendingPathComponent("other.txt")
+    try Data("identical bytes".utf8).write(to: staged)
+    let descriptor = open(staged.path, O_RDONLY | O_NOFOLLOW | O_CLOEXEC)
+    try #require(descriptor >= 0)
+    defer { close(descriptor) }
+    try FileManager.default.moveItem(at: staged, to: target)
+    let recorded = try CopyEngine.identityAfterPublication(of: target, handle: descriptor, original: "old") { url in
+        #expect(url == target)
+        return "published"
+    }
+    #expect(try CopyEngine.matchesRecordedIdentity(at: target, expected: recorded) { _ in "published" })
+    #expect(try CopyEngine.matchesRecordedIdentity(at: target, expected: "published") { _ in "published" })
+    try FileManager.default.moveItem(at: target, to: removed)
+    try Data("identical bytes".utf8).write(to: target)
+    #expect(try !CopyEngine.matchesRecordedIdentity(at: target, expected: recorded) { _ in "published" })
+    #expect(throws: (any Error).self) {
+        try CopyEngine.identityAfterPublication(of: target, handle: descriptor, original: "old") { _ in "replacement" }
+    }
+}
+
 @Test func smbTransferAcceptsAnEmptyResourceForkWhileProtectingMetadata() throws {
     let emptyFork = ":resource:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
     let path = "/payload.bin"

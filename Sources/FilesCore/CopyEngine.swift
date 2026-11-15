@@ -244,10 +244,17 @@ public enum CopyEngine {
                     // Capture the item we verified before publication. A cancellation or an
                     // external change after publication must not redefine the undo record.
                     let undoIdentity = try entryIdentity(payload)
+                    let publicationHandle = try openPublicationHandle(payload, on: stageFD)
+                    defer { if let publicationHandle { close(publicationHandle) } }
                     emit("committing"); try cancellation.check()
                     guard matches(destination, descriptor: destinationFD), matches(temporary, descriptor: stageFD),
                           expectedDestination?.isCurrent != false else {
                         throw CopyFailure(text: "Destination identity changed before commit.")
+                    }
+                    if let publicationHandle {
+                        guard try entryIdentity(payload) == undoIdentity, matchesPublicationHandle(payload, descriptor: publicationHandle) else {
+                            throw CopyFailure(text: "Staged item identity changed before publication.")
+                        }
                     }
                     // Atomic, descriptor-relative publication: never replace even a racing/broken symlink.
                     var suffix = 0
@@ -261,8 +268,10 @@ public enum CopyEngine {
                                                  target: report.items[index].target,
                                                  sourceDirectoryFD: stageFD, sourceName: "payload",
                                                  destinationDirectoryFD: destinationFD, destinationName: name)
+                            let target = report.items[index].target
+                            report.items[index].targetIdentity = try identityAfterPublication(of: target,
+                                handle: publicationHandle, original: undoIdentity, identity: entryIdentity)
                             report.items[index].state = "completed"
-                            report.items[index].targetIdentity = undoIdentity
                             report.items[index].targetSnapshot = verifiedPayload.withPermissions
                             report.items[index].targetMetadata = verifiedPayload.metadata
                             break
@@ -364,12 +373,12 @@ public enum CopyEngine {
     }
 
     private static func matchesUndoTarget(_ item: CopyUndoItem) throws -> Bool {
-        guard try entryIdentity(item.target) == item.targetIdentity else { return false }
+        guard try matchesRecordedIdentity(at: item.target, expected: item.targetIdentity, identity: entryIdentity) else { return false }
         let snapshot = try makeSnapshot(item.target, cancellation: CopyCancellation(),
                                         includeTransferMetadata: item.targetMetadata != nil)
         guard snapshot.withPermissions == item.targetSnapshot,
               item.targetMetadata.map(snapshot.metadata.matchesRecorded) != false else { return false }
-        return try entryIdentity(item.target) == item.targetIdentity
+        return try matchesRecordedIdentity(at: item.target, expected: item.targetIdentity, identity: entryIdentity)
     }
 
     private static func copyName(_ source: URL, isDirectory: Bool, suffix: Int) -> String {
@@ -409,6 +418,66 @@ public enum CopyEngine {
         var pathInfo = stat(); var descriptorInfo = stat()
         return descriptor >= 0 && lstat(url.path, &pathInfo) == 0 && fstat(descriptor, &descriptorInfo) == 0 &&
             pathInfo.st_dev == descriptorInfo.st_dev && pathInfo.st_ino == descriptorInfo.st_ino
+    }
+
+    // Some SMB mounts derive st_ino from the path. Keep the original vnode open so
+    // its new identifier can be checked against the published name after rename.
+    static func openPublicationHandle(_ payload: URL, on directoryFD: Int32) throws -> Int32? {
+        var volume = statfs()
+        guard fstatfs(directoryFD, &volume) == 0 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
+        let filesystem = withUnsafeBytes(of: volume.f_fstypename) {
+            String(decoding: $0.prefix { $0 != 0 }, as: UTF8.self)
+        }
+        guard filesystem == "smbfs" else { return nil }
+        let name = payload.lastPathComponent
+        var info = stat()
+        guard fstatat(directoryFD, name, &info, AT_SYMLINK_NOFOLLOW) == 0 else {
+            throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
+        }
+        let noFollow = info.st_mode & S_IFMT == S_IFLNK ? O_SYMLINK : O_NOFOLLOW
+        let descriptor = openat(directoryFD, name, O_RDONLY | noFollow | O_CLOEXEC)
+        guard descriptor >= 0 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
+        guard matchesPublicationHandle(payload, descriptor: descriptor) else {
+            close(descriptor)
+            throw CopyFailure(text: "Staged item identity changed before publication.")
+        }
+        return descriptor
+    }
+
+    static func identityAfterPublication(of target: URL, handle: Int32?, original: String,
+                                         identity: (URL) throws -> String) throws -> String {
+        guard let handle else { return original }
+        guard matchesPublicationHandle(target, descriptor: handle) else { throw CopyFailure(text: "Published item identity changed.") }
+        let current = try identity(target)
+        var opened = stat()
+        guard fstat(handle, &opened) == 0 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
+        guard matchesPublicationHandle(target, descriptor: handle) else { throw CopyFailure(text: "Published item identity changed.") }
+        // A path-derived identifier can repeat if a different item is created at
+        // the same path. Preserve a separate change-time baseline for Undo.
+        return withChangeTime(current, opened)
+    }
+
+    static func matchesRecordedIdentity(at url: URL, expected: String, identity: (URL) throws -> String) throws -> Bool {
+        let current = try identity(url)
+        guard expected.contains("|ctime=") else { return current == expected }
+        var info = stat()
+        guard lstat(url.path, &info) == 0 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
+        return withChangeTime(current, info) == expected
+    }
+
+    private static func withChangeTime(_ identity: String, _ info: stat) -> String {
+        "\(identity)|ctime=\(info.st_ctimespec.tv_sec):\(info.st_ctimespec.tv_nsec)"
+    }
+
+    static func matchesPublicationHandle(_ url: URL, descriptor: Int32) -> Bool {
+        var path = stat(), opened = stat()
+        guard lstat(url.path, &path) == 0, fstat(descriptor, &opened) == 0 else { return false }
+        return opened.st_nlink > 0 && path.st_dev == opened.st_dev && path.st_ino == opened.st_ino
+            && path.st_mode == opened.st_mode && path.st_size == opened.st_size
+            && path.st_birthtimespec.tv_sec == opened.st_birthtimespec.tv_sec
+            && path.st_birthtimespec.tv_nsec == opened.st_birthtimespec.tv_nsec
+            && path.st_ctimespec.tv_sec == opened.st_ctimespec.tv_sec
+            && path.st_ctimespec.tv_nsec == opened.st_ctimespec.tv_nsec
     }
 
     private static func entryExists(_ url: URL) -> Bool {
