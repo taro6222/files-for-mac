@@ -17,6 +17,49 @@ import xml.etree.ElementTree as ET
 DRIVER = "http://127.0.0.1:4723"
 
 
+def element_bounds(element):
+    return tuple(int(element.attrib[key]) for key in ("x", "y", "width", "height"))
+
+
+def drag_pointer(start, end):
+    import ctypes
+    from ctypes import wintypes
+
+    class MouseInput(ctypes.Structure):
+        _fields_ = [("dx", wintypes.LONG), ("dy", wintypes.LONG), ("data", wintypes.DWORD),
+                    ("flags", wintypes.DWORD), ("time", wintypes.DWORD), ("extra", ctypes.c_size_t)]
+
+    class Input(ctypes.Structure):
+        _fields_ = [("type", wintypes.DWORD), ("mouse", MouseInput)]
+
+    user32 = ctypes.WinDLL("user32", use_last_error=True)
+    user32.SetCursorPos.argtypes = (ctypes.c_int, ctypes.c_int)
+    user32.SetCursorPos.restype = wintypes.BOOL
+    user32.SendInput.argtypes = (wintypes.UINT, ctypes.POINTER(Input), ctypes.c_int)
+    user32.SendInput.restype = wintypes.UINT
+
+    def move(x, y):
+        if not user32.SetCursorPos(x, y):
+            raise ctypes.WinError(ctypes.get_last_error())
+
+    def button(flags):
+        event = Input(mouse=MouseInput(flags=flags))
+        if user32.SendInput(1, ctypes.byref(event), ctypes.sizeof(event)) != 1:
+            raise RuntimeError("Windows could not inject the drag button event")
+
+    move(*start)
+    time.sleep(0.1)
+    button(0x0002)  # MOUSEEVENTF_LEFTDOWN
+    try:
+        for step in range(1, 25):
+            fraction = step / 24
+            move(*(round(a + (b - a) * fraction) for a, b in zip(start, end)))
+            time.sleep(0.025)
+        time.sleep(0.3)
+    finally:
+        button(0x0004)  # MOUSEEVENTF_LEFTUP
+
+
 def request(method, path, body=None):
     data = None if body is None else json.dumps(body).encode()
     command = Request(DRIVER + path, data=data, method=method, headers={"Content-Type": "application/json"})
@@ -118,15 +161,15 @@ def capture(output, app_id, window_handle, fixture=None):
                     request("POST", session + "/keys", {"value": ["\ue009", "l", "\ue000"]})
                     return None
 
-            def open_fixture_path():
+            def open_path(path):
                 editor = wait_for("the path editor", path_editor)
                 request("POST", editor + "/clear", {})
-                request("POST", editor + "/value", {"value": list(str(fixture))})
-                if request("GET", editor + "/text")["value"] != str(fixture):
-                    raise RuntimeError("The path editor did not receive the fixture path")
+                request("POST", editor + "/value", {"value": list(str(path))})
+                if request("GET", editor + "/text")["value"] != str(path):
+                    raise RuntimeError("The path editor did not receive the requested path")
                 request("POST", editor + "/value", {"value": ["\ue007"]})
 
-            open_fixture_path()
+            open_path(fixture)
 
             def has_fixture_items(names):
                 return all(item.name.casefold() in names or (item.is_file() and item.stem.casefold() in names)
@@ -217,7 +260,7 @@ def capture(output, app_id, window_handle, fixture=None):
                 if len(panes) != 2:
                     return None
                 try:
-                    first, second = [tuple(int(pane.attrib[key]) for key in ("x", "y", "width", "height")) for pane in panes]
+                    first, second = map(element_bounds, panes)
                 except (KeyError, ValueError):
                     return None
                 if stacked:
@@ -231,7 +274,7 @@ def capture(output, app_id, window_handle, fixture=None):
                 return tree if has_fixture_items(names[0]) and right_matches else None
 
             send_control_shift("1")
-            open_fixture_path()
+            open_path(fixture)
             wait_for("the fixture in Details before splitting", folder_source)
             send_control_shift("s")
             wait_for("two panes with the fixture folder", split_source)
@@ -246,8 +289,42 @@ def capture(output, app_id, window_handle, fixture=None):
             tree = wait_for("left fixture and right Alpha folder", lambda: split_source(secondary_opened=True))
             capture_layout(tree, "UI-06", "dual-pane")
 
+            def visible_tabs(tree):
+                return [tab for tab in tree.iter("TabItem") if tab.get("IsOffscreen") == "False"]
+
+            def two_tab_source():
+                tree = read_tree()
+                names = [tab.get("Name") for tab in visible_tabs(tree)]
+                return tree if names == [fixture.name, "Alpha"] else None
+
             send_control_shift("s")
-            open_fixture_path()
+            open_path(fixture)
+            wait_for("the first tab showing the fixture", folder_source)
+            request("POST", session + "/keys", {"value": ["\ue009", "t", "\ue000"]})
+            wait_for("the second tab", lambda: len(visible_tabs(read_tree())) == 2)
+            open_path(fixture / "Alpha")
+            wait_for("the fixture and Alpha tab titles", two_tab_source)
+            root_tab = element_route("xpath", "(//TabItem[@IsOffscreen='False'])[1]")
+            request("POST", root_tab + "/click", {})
+            tree = wait_for("the fixture tab as the drop target", folder_source)
+            alpha_tab = next(tab for tab in visible_tabs(tree) if tab.get("Name") == "Alpha")
+            pane = next(element for element in tree.iter() if element.get("AutomationId") == "RootGridZoom"
+                        and element.get("IsOffscreen") == "False")
+            tx, ty, tw, th = element_bounds(alpha_tab)
+            px, py, pw, ph = element_bounds(pane)
+            if min(tw, th, pw, ph) <= 0:
+                raise RuntimeError("The tab or the drop target does not have a visible rectangle")
+            drag_pointer((tx + tw // 2, ty + th // 2), (px + round(pw * 0.9), py + ph // 2))
+
+            def tab_drop_source():
+                tree = split_source(secondary_opened=True)
+                return tree if tree is not None and len(visible_tabs(tree)) == 1 else None
+
+            tree = wait_for("tab drop into the right pane with the source tab closed", tab_drop_source)
+            capture_layout(tree, "UI-06-tab-drop", "dual-pane")
+
+            send_control_shift("s")
+            open_path(fixture)
             wait_for("the fixture before top and bottom split", folder_source)
             request("POST", session + "/keys", {"value": ["\ue00a", "\ue008", "h", "\ue000"]})
             wait_for("two stacked panes with the fixture folder", lambda: split_source(stacked=True))
