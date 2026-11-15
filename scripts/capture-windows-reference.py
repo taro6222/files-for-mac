@@ -351,10 +351,9 @@ def capture(output, app_id, window_handle, fixture=None, scope="all"):
                 capture_tab_drop()
                 return
 
-            if scope == "properties":
-                file = fixture / "preview.txt"
-                row = wait_for("the properties fixture row", lambda: element_route(
-                    "xpath", "//*[@AutomationId='ItemName' and @Name='preview.txt' and @IsOffscreen='False']"))
+            def open_properties(file):
+                row = wait_for(f"the properties row for {file.name}", lambda: element_route(
+                    "xpath", f"//*[@AutomationId='ItemName' and (@Name='{file.name}' or @Name='{file.stem}') and @IsOffscreen='False']"))
                 request("POST", row + "/click", {})
                 button = wait_for("the enabled Properties button", lambda: element_route(
                     "xpath", "//Button[@AutomationId='InnerNavigationToolbarPropertiesButton' and @IsEnabled='True' and @IsOffscreen='False']"))
@@ -375,11 +374,51 @@ def capture(output, app_id, window_handle, fixture=None, scope="all"):
                             return tree
                     return None
 
-                tree = wait_for("the Properties window for the selected file", general_properties_source)
+                return wait_for(f"the Properties window for {file.name}", general_properties_source)
+
+            def click_properties_item(name):
+                item = wait_for(f"the visible {name} control", lambda: element_route(
+                    "xpath", f"//*[@Name='{name}' and @IsOffscreen='False']"))
+                request("POST", item + "/click", {})
+
+            if scope == "security":
+                browser_handle = request("GET", session + "/window_handle")["value"]
+                open_properties(fixture / "preview.txt")
+                click_properties_item("Security")
+
+                def security_source():
+                    tree = read_tree()
+                    visible = {item.get("Name") for item in tree.iter() if item.get("IsOffscreen") == "False"}
+                    return tree if {"Group or user names", "Advanced permissions"} <= visible else None
+
+                capture_layout(wait_for("the Properties access-control list", security_source), "UI-09-security", "properties")
+                click_properties_item("Cancel")
+                request("POST", session + "/window", {"name": browser_handle})
+                signed = json.loads((output / "signed-reference.json").read_text(encoding="utf-8-sig"))
+                sample = fixture / "signature-sample.exe"
+                if (not signed["signer"] or signed["name"] != sample.name
+                        or hashlib.sha256(sample.read_bytes()).hexdigest() != signed["sha256"]):
+                    raise RuntimeError("The signed Properties fixture did not match its recorded hash")
+                open_properties(sample)
+                click_properties_item("Signatures")
+
+                def signatures_source():
+                    tree = read_tree()
+                    match = any(item.get("AutomationId") == "DigitalSignatureIssuedToValue"
+                                and item.get("IsOffscreen") == "False"
+                                and item.get("Name", "").casefold() == signed["signer"].casefold()
+                                for item in tree.iter())
+                    return tree if match else None
+
+                capture_layout(wait_for("the Properties signer from the runner fixture", signatures_source),
+                               "UI-09-signatures", "properties")
+                return
+
+            if scope == "properties":
+                file = fixture / "preview.txt"
+                tree = open_properties(file)
                 capture_layout(tree, "UI-09-general", "properties")
-                tab = wait_for("the Hashes navigation item", lambda: element_route(
-                    "xpath", "//*[@Name='Hashes' and @IsOffscreen='False']"))
-                request("POST", tab + "/click", {})
+                click_properties_item("Hashes")
                 expected = hashlib.sha256(file.read_bytes()).hexdigest()
 
                 def hashes_source():
@@ -520,7 +559,7 @@ if __name__ == "__main__":
     parser.add_argument("output", type=Path)
     parser.add_argument("--window-handle", required=True)
     parser.add_argument("--fixture", type=Path)
-    parser.add_argument("--scope", choices=("all", "tab-drop", "properties"), default="all")
+    parser.add_argument("--scope", choices=("all", "tab-drop", "properties", "security"), default="all")
     arguments = parser.parse_args()
     if arguments.scope != "all" and arguments.fixture is None:
         parser.error("a specific --scope requires --fixture")
