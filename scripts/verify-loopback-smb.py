@@ -29,12 +29,27 @@ def wait_for_server(server):
     raise RuntimeError("Samba did not open its loopback port")
 
 
+def mount_share(name, mount, username, password):
+    try:
+        result = subprocess.run(["/sbin/mount_smbfs", "-N", "-o", "nobrowse",
+                                 f"//{username}:{password}@127.0.0.1:{PORT}/{name}", mount],
+                                capture_output=True, timeout=25)
+    except subprocess.TimeoutExpired:
+        raise RuntimeError(f"Authenticated SMB mount of {name} timed out") from None
+    if result.returncode:
+        raise RuntimeError(f"Authenticated SMB mount of {name} failed with status {result.returncode}")
+    subprocess.run(["/usr/bin/smbutil", "statshares", "-m", mount], check=True, timeout=15)
+
+
 def verify(smbd, smbpasswd, root):
     share, mount, state = (root / name for name in ("share", "mount", "state"))
-    for folder in (share, mount, state):
+    readonly_share, readonly_mount = (root / name for name in ("readonly-share", "readonly-mount"))
+    for folder in (share, mount, state, readonly_share, readonly_mount):
         folder.mkdir()
     root.chmod(0o755)
     share.chmod(0o700)
+    readonly_share.chmod(0o700)
+    (readonly_share / "replace.txt").write_bytes(b"existing read-only SMB destination")
     username = pwd.getpwuid(os.getuid()).pw_name
     if re.fullmatch(r"[A-Za-z0-9_.-]+", username) is None:
         raise ValueError("The runner account cannot be represented in the fixture configuration")
@@ -64,6 +79,11 @@ def verify(smbd, smbpasswd, root):
     vfs objects = fruit streams_xattr
     # The runner's filesystem rejects Samba's temporary directory rename.
     vfs mkdir use tmp name = no
+[files-readonly]
+    path = {readonly_share}
+    read only = yes
+    valid users = {username}
+    vfs objects = fruit streams_xattr
 """, encoding="utf-8")
     with socket.socket() as port:
         port.bind(("127.0.0.1", PORT))
@@ -75,21 +95,23 @@ def verify(smbd, smbpasswd, root):
         server = subprocess.Popen(["sudo", "-n", smbd, "--foreground", "--no-process-group", "--configfile", config],
                                   stdin=subprocess.DEVNULL, start_new_session=True)
         wait_for_server(server)
-        try:
-            result = subprocess.run(["/sbin/mount_smbfs", "-N", "-o", "nobrowse",
-                                     f"//{username}:{password}@127.0.0.1:{PORT}/files-qa", mount],
-                                    capture_output=True, timeout=25)
-        except subprocess.TimeoutExpired:
-            raise RuntimeError("Authenticated SMB mount timed out") from None
-        if result.returncode:
-            raise RuntimeError(f"Authenticated SMB mount failed with status {result.returncode}")
-        subprocess.run(["/usr/bin/smbutil", "statshares", "-m", mount], check=True, timeout=15)
-        subprocess.run(["bash", "scripts/verify-smb-volume.sh", mount, "--skip-build"], check=True, timeout=200)
+        mount_share("files-qa", mount, username, password)
+        mount_share("files-readonly", readonly_mount, username, password)
+        environment = dict(os.environ, FILES_TEST_SMB_READONLY_VOLUME=str(readonly_mount))
+        subprocess.run(["bash", "scripts/verify-smb-volume.sh", mount, "--skip-build"],
+                       env=environment, check=True, timeout=200)
     finally:
         try:
             mounts = subprocess.check_output(["/sbin/mount"], text=True, timeout=10)
-            if f" on {mount} (" in mounts:
-                subprocess.run(["/sbin/umount", "-f", mount], timeout=15, check=True)
+            failed = []
+            for mount_path in (readonly_mount, mount):
+                if f" on {mount_path} (" in mounts:
+                    try:
+                        subprocess.run(["/sbin/umount", "-f", mount_path], timeout=15, check=True)
+                    except (OSError, subprocess.SubprocessError):
+                        failed.append(mount_path.name)
+            if failed:
+                raise RuntimeError("Could not unmount SMB fixture: " + ", ".join(failed))
         finally:
             if server is not None and server.poll() is None:
                 server.terminate()

@@ -90,10 +90,11 @@ echo "SMB verification: running file operation tests" >&2
 export FILES_TEST_SMB_VOLUME="$volume"
 export CLANG_MODULE_CACHE_PATH="$PWD/.build/ModuleCache"
 export SWIFT_TMPDIR=/tmp
+test_filter='mountedSMB(CopyMoveUndoRoundTrip|ReadOnlyRejectsWrites)'
 if [[ "$build_mode" == --skip-build ]]; then
-  exec swift test --skip-build --disable-xctest --no-parallel --filter mountedSMBCopyMoveUndoRoundTrip
+  exec swift test --skip-build --disable-xctest --no-parallel --filter "$test_filter"
 fi
-exec swift test --filter mountedSMBCopyMoveUndoRoundTrip \
+exec swift test --filter "$test_filter" \
   -Xswiftc -load-plugin-library \
   -Xswiftc /Library/Developer/CommandLineTools/usr/lib/swift/host/plugins/testing/libTestingMacros.dylib
 '''

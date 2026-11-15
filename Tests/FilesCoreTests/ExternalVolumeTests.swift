@@ -427,24 +427,22 @@ func systemTrashMoveAndRestoreRoundTrip() async throws {
     trashed = nil
 }
 
-@Test(.enabled(if: hasIntegrationFixture("FILES_TEST_SMB_VOLUME"), "Requires an integration fixture"))
-func mountedSMBCopyMoveUndoRoundTrip() async throws {
-    guard let path = ProcessInfo.processInfo.environment["FILES_TEST_SMB_VOLUME"] else { Issue.record("Integration fixture is incomplete"); return }
-    let fm = FileManager.default
+private func smbFixture(_ key: String) throws -> URL {
+    let path = try #require(ProcessInfo.processInfo.environment[key])
     let volume = URL(fileURLWithPath: path, isDirectory: true).standardizedFileURL
     var fileSystem = statfs()
-    guard statfs(volume.path, &fileSystem) == 0 else {
-        Issue.record("Cannot inspect SMB fixture mount: \(String(cString: strerror(errno)))")
-        return
-    }
+    try #require(statfs(volume.path, &fileSystem) == 0, "Cannot inspect the SMB fixture mount")
     let type = withUnsafePointer(to: &fileSystem.f_fstypename) {
         $0.withMemoryRebound(to: CChar.self, capacity: Int(MFSNAMELEN)) { String(cString: $0) }
     }
-    guard type == "smbfs" else {
-        Issue.record("FILES_TEST_SMB_VOLUME must be on smbfs, got \(type)")
-        return
-    }
+    try #require(type == "smbfs", "\(key) must be on smbfs")
+    return volume
+}
 
+@Test(.enabled(if: hasIntegrationFixture("FILES_TEST_SMB_VOLUME"), "Requires an integration fixture"))
+func mountedSMBCopyMoveUndoRoundTrip() async throws {
+    let fm = FileManager.default
+    let volume = try smbFixture("FILES_TEST_SMB_VOLUME")
     let root = volume.appendingPathComponent("FilesM2-SMB-\(UUID().uuidString)", isDirectory: true)
     let destination = root.appendingPathComponent("destination", isDirectory: true)
     let local = fm.temporaryDirectory.appendingPathComponent("FilesM2-SMB-source-\(UUID().uuidString)", isDirectory: true)
@@ -540,6 +538,58 @@ func mountedSMBCopyMoveUndoRoundTrip() async throws {
     try await verifyMountedVolumeReplacementCancellation(local: local, destination: destination, journal: journal)
     try await verifyMountedVolumeChangedBackupCancellation(local: local, destination: destination, journal: journal)
     try await verifyCrossVolumeMovePreservesReplacedDestination(local: local, destination: destination, journal: journal)
+}
+
+@Test(.enabled(if: hasIntegrationFixture("FILES_TEST_SMB_READONLY_VOLUME"), "Requires a read-only SMB integration fixture"))
+func mountedSMBReadOnlyRejectsWrites() async throws {
+    let volume = try smbFixture("FILES_TEST_SMB_READONLY_VOLUME")
+    let fm = FileManager.default
+    let target = volume.appendingPathComponent("replace.txt")
+    let existingBytes = Data("existing read-only SMB destination".utf8)
+    let entries = try await LocalFileSystem().contents(of: volume, showHidden: true)
+    try #require(entries.map(\.name) == ["replace.txt"])
+    try #require(try Data(contentsOf: target) == existingBytes)
+
+    let probe = volume.appendingPathComponent(".files-smb-write-probe-\(UUID().uuidString)")
+    let descriptor = open(probe.path, O_CREAT | O_EXCL | O_WRONLY | O_CLOEXEC, mode_t(0o600))
+    let writeError = errno
+    if descriptor >= 0 {
+        close(descriptor)
+        try fm.removeItem(at: probe)
+        Issue.record("The read-only fixture allowed file creation")
+        return
+    }
+    try #require([EACCES, EPERM, EROFS].contains(writeError), "Write probe was not denied by permissions")
+
+    let local = fm.temporaryDirectory.appendingPathComponent("Files-SMB-readonly-\(UUID().uuidString)", isDirectory: true)
+    try fm.createDirectory(at: local, withIntermediateDirectories: false)
+    defer { try? fm.removeItem(at: local) }
+    let journal = local.appendingPathComponent("journal", isDirectory: true)
+    let copySource = local.appendingPathComponent("copy.txt")
+    let moveSource = local.appendingPathComponent(target.lastPathComponent)
+    let copyBytes = Data("local copy source".utf8)
+    let moveBytes = Data("local move source".utf8)
+    try copyBytes.write(to: copySource)
+    try moveBytes.write(to: moveSource)
+
+    let copy = await CopyEngine.run(sources: [copySource], destination: volume,
+                                    journalDirectory: journal, cancellation: CopyCancellation())
+    #expect(copy.items.map(\.state) == ["failed"])
+    #expect(copy.items.first?.message?.isEmpty == false)
+    #expect(copy.journalError == nil)
+    #expect(CopyEngine.latestUndoCopy(journalDirectory: journal) == nil)
+
+    let move = try await EntryOperations.move([moveSource], to: volume, conflictPolicy: .replace, journalDirectory: journal)
+    #expect(move.items.map(\.state) == ["failed"])
+    #expect(move.items.first?.message?.isEmpty == false)
+    #expect(move.items.first?.recoveryBackup == nil)
+    #expect(move.journalError == nil)
+    #expect(EntryOperations.latestUndoMove(journalDirectory: journal) == nil)
+
+    #expect(try Data(contentsOf: copySource) == copyBytes)
+    #expect(try Data(contentsOf: moveSource) == moveBytes)
+    #expect(try Data(contentsOf: target) == existingBytes)
+    #expect(try fm.contentsOfDirectory(atPath: volume.path) == ["replace.txt"])
 }
 
 private func smbCopyDiagnostic(source: URL, destination: URL) -> String {
