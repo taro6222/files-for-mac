@@ -46,6 +46,8 @@ def verify(smbd, smbpasswd, root):
     bind interfaces only = yes
     smb ports = {PORT}
     server min protocol = SMB2_10
+    fruit:aapl = yes
+    fruit:nfs_aces = yes
     passdb backend = tdbsam:{state / "passdb.tdb"}
     state directory = {state}
     cache directory = {state}
@@ -59,6 +61,7 @@ def verify(smbd, smbpasswd, root):
     path = {share}
     read only = no
     valid users = {username}
+    vfs objects = fruit streams_xattr
     # The runner's filesystem rejects Samba's temporary directory rename.
     vfs mkdir use tmp name = no
 """, encoding="utf-8")
