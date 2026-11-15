@@ -1650,7 +1650,17 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         let items = activeSelectedItems
         guard !items.isEmpty, !editingTags || items.count == 1 else { return }
         if infoWindow == nil { infoWindow = FileInfoWindow() }
-        infoWindow?.present(items: items, editingTags: editingTags)
+        let targetModel = activeModel
+        guard let parent = targetModel.location else {
+            infoWindow?.present(items: items, editingTags: editingTags)
+            return
+        }
+        infoWindow?.present(items: items, editingTags: editingTags) { [weak self, weak targetModel] source, name, panel in
+            guard let self, let targetModel, source.identity != nil else { return }
+            self.requestEntryNameChange(source: source, name: name, parent: parent, targetModel: targetModel, window: panel) { [weak self] in
+                self?.infoWindow?.closeAfterRenaming(source)
+            }
+        }
     }
     @objc func toggleInfoPane(_ sender: Any?) { preferences.setShowInfoPane(!preferences.showInfoPane) }
     @objc func showInfoPaneDetails(_ sender: Any?) { preferences.setInfoPaneTab(.details) }
@@ -2395,53 +2405,58 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         alert.addButton(withTitle: L("취소", "Cancel"))
         alert.window.initialFirstResponder = field
         alert.beginSheetModal(for: window) { [self] response in
-            guard response == .alertFirstButtonReturn, !Self.entryOperationRunning, !CopyWindow.isRunning else { return }
-            let name = field.stringValue
-            if let source, preferences.showFileExtensionWarning,
-               changesFileExtension(originalName: source.name, newName: name, isDirectory: source.isDirectory) {
-                let warning = NSAlert(); warning.messageText = L("파일 확장자를 변경하시겠습니까?", "Change the file extension?")
-                warning.informativeText = L("확장자를 변경하면 파일을 여는 앱이 달라지거나 파일을 사용하지 못할 수 있습니다.", "Changing the extension may change which app opens the file or make it unusable.")
-                warning.addButton(withTitle: L("확장자 변경", "Change Extension")); warning.addButton(withTitle: L("취소", "Cancel"))
-                warning.beginSheetModal(for: window) { [weak self] response in
-                    if response == .alertFirstButtonReturn { self?.executeEntryNameChange(source: source, name: name, parent: parent, targetModel: targetModel) }
-                }
-            } else {
-                executeEntryNameChange(source: source, name: name, parent: parent, targetModel: targetModel)
+            if response == .alertFirstButtonReturn {
+                requestEntryNameChange(source: source, name: field.stringValue, parent: parent, targetModel: targetModel, window: window)
             }
         }
     }
-    private func executeEntryNameChange(source: FileItem?, name: String, parent: URL, targetModel: BrowserModel) {
+    private func requestEntryNameChange(source: FileItem?, name: String, parent: URL, targetModel: BrowserModel,
+                                        window: NSWindow, onSuccess: (() -> Void)? = nil) {
+        guard !Self.entryOperationRunning, !CopyWindow.isRunning else { return }
+        if let source, preferences.showFileExtensionWarning,
+           changesFileExtension(originalName: source.name, newName: name, isDirectory: source.isDirectory) {
+            let warning = NSAlert(); warning.messageText = L("파일 확장자를 변경하시겠습니까?", "Change the file extension?")
+            warning.informativeText = L("확장자를 변경하면 파일을 여는 앱이 달라지거나 파일을 사용하지 못할 수 있습니다.", "Changing the extension may change which app opens the file or make it unusable.")
+            warning.addButton(withTitle: L("확장자 변경", "Change Extension")); warning.addButton(withTitle: L("취소", "Cancel"))
+            warning.beginSheetModal(for: window) { [weak self] response in
+                if response == .alertFirstButtonReturn {
+                    self?.executeEntryNameChange(source: source, name: name, parent: parent, targetModel: targetModel,
+                                                 window: window, onSuccess: onSuccess)
+                }
+            }
+        } else {
+            executeEntryNameChange(source: source, name: name, parent: parent, targetModel: targetModel,
+                                   window: window, onSuccess: onSuccess)
+        }
+    }
+    private func executeEntryNameChange(source: FileItem?, name: String, parent: URL, targetModel: BrowserModel,
+                                        window: NSWindow, onSuccess: (() -> Void)?) {
         guard !Self.entryOperationRunning, !CopyWindow.isRunning else { return }
         Self.entryOperationRunning = true
         Task {
             defer { Self.entryOperationRunning = false }
             do {
-                let journal = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-                    .appendingPathComponent(Bundle.main.bundleIdentifier ?? "org.taro6222.files-for-mac")
-                    .appendingPathComponent("operations")
                 let result: EntryOperationResult
-                if let source { result = try await EntryOperations.rename(source.url, to: name, expectedIdentity: source.identity, journalDirectory: journal) }
-                else { result = try await EntryOperations.createFolder(in: parent, name: name, journalDirectory: journal) }
+                if let source {
+                    result = try await EntryOperations.rename(source.url, to: name, expectedIdentity: source.identity,
+                                                              journalDirectory: undoJournalDirectory)
+                } else {
+                    result = try await EntryOperations.createFolder(in: parent, name: name, journalDirectory: undoJournalDirectory)
+                }
                 if targetModel.location == parent {
                     if targetModel === model { pendingEntrySelection = result.target.standardizedFileURL }
                     if name.hasPrefix(".") { preferences.setShowHidden(true) }
                     targetModel.reload()
                 }
+                onSuccess?()
                 if let warning = result.journalWarning { showEntryError(warning) }
             } catch {
-                let message: String
-                switch error {
-                case EntryOperationError.invalidName: message = L("이름을 입력하세요. /, :, NUL 및 . 또는 .. 이름은 사용할 수 없습니다.", "Enter a name without /, :, NUL; . and .. are not allowed.")
-                case EntryOperationError.conflict: message = L("같은 이름의 항목이 있습니다. 기존 항목은 변경하지 않았습니다.", "An item with this name exists. It was not changed.")
-                case EntryOperationError.sourceChanged: message = L("원본 또는 상위 폴더가 변경됐습니다. 새로고침 후 다시 시도하세요.", "The source or parent changed. Refresh and try again.")
-                default: message = error.localizedDescription
-                }
-                showEntryError(message)
+                showEntryError(entryOperationMessage(error), in: window)
             }
         }
     }
-    private func showEntryError(_ message: String) {
-        guard let window, window.isVisible else { return }
+    private func showEntryError(_ message: String, in parent: NSWindow? = nil) {
+        guard let window = parent ?? window, window.isVisible else { return }
         let alert = NSAlert(); alert.messageText = L("파일 작업 안내", "File operation notice")
         alert.informativeText = message; alert.beginSheetModal(for: window)
     }
@@ -6132,6 +6147,44 @@ extension BrowserWindow {
             checks["listReflectsCopy"] = controller.model.items.contains { $0.name == "new.txt" }
             checks["mergePreservesConflict"] = (try String(contentsOf: target.appendingPathComponent("conflict.txt"), encoding: .utf8)) == "target"
             checks["mergeAddsNested"] = fm.fileExists(atPath: mergeTarget.appendingPathComponent("nested.txt").path)
+            fputs("File operation QA: rename in file properties\n", stderr)
+            let renameInput = target.appendingPathComponent("rename-input.txt")
+            let renameOutput = target.appendingPathComponent("rename-result.txt")
+            let changedExtension = target.appendingPathComponent("rename-input.md")
+            let renameBytes = Data("rename from properties".utf8)
+            try renameBytes.write(to: renameInput)
+            controller.refresh(nil); try await settle()
+            guard let renameRow = controller.detailRows.indices.first(where: {
+                detailItem(at: $0, in: controller.detailRows)?.url == renameInput
+            }) else { throw CocoaError(.fileNoSuchFile) }
+            controller.table.selectRowIndexes([renameRow], byExtendingSelection: false)
+            controller.showInfo(nil)
+            guard let properties = controller.infoWindow, let panel = properties.window else {
+                throw CocoaError(.validationMissingMandatoryProperty)
+            }
+            checks["propertiesRenameRequiresAChange"] = !properties.qaSubmitRename(renameInput.lastPathComponent)
+            let collisionRequested = properties.qaSubmitRename("conflict.txt")
+            try await controller.waitForFolderQA { panel.attachedSheet != nil }
+            checks["propertiesRenamePreservesCollision"] = collisionRequested
+                && (try? Data(contentsOf: renameInput)) == renameBytes
+                && (try? Data(contentsOf: target.appendingPathComponent("conflict.txt"))) == Data("target".utf8)
+            if let notice = panel.attachedSheet { panel.endSheet(notice) }
+            try await controller.waitForFolderQA { panel.attachedSheet == nil }
+            preferences.setShowFileExtensionWarning(true)
+            let extensionRequested = properties.qaSubmitRename(changedExtension.lastPathComponent)
+            try await controller.waitForFolderQA { panel.attachedSheet != nil }
+            if let warning = panel.attachedSheet { panel.endSheet(warning, returnCode: .alertSecondButtonReturn) }
+            try await controller.waitForFolderQA { panel.attachedSheet == nil }
+            checks["propertiesRenameCanCancelExtensionChange"] = extensionRequested
+                && (try? Data(contentsOf: renameInput)) == renameBytes && !fm.fileExists(atPath: changedExtension.path)
+            let renameRequested = properties.qaSubmitRename(renameOutput.lastPathComponent)
+            try await controller.waitForFolderQA {
+                !panel.isVisible && controller.model.items.contains { $0.url == renameOutput }
+            }
+            checks["propertiesRenameUpdatesBrowser"] = renameRequested
+                && (try? Data(contentsOf: renameOutput)) == renameBytes && !fm.fileExists(atPath: renameInput.path)
+            try fm.removeItem(at: renameOutput)
+            controller.refresh(nil); try await settle()
             fputs("File operation QA: split view and navigation\n", stderr)
             checks["splitWorkspace"] = { controller.splitVertically(nil); return controller.workspaceSnapshot().isSplit }()
             guard let secondary = controller.secondaryPane else { throw CocoaError(.validationMissingMandatoryProperty) }

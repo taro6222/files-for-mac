@@ -6,6 +6,9 @@ final class FileInfoWindow: NSWindowController, NSTextFieldDelegate {
     private let inspector = FilePropertiesInspector()
     private let scroll = NSScrollView()
     private let details = NSStackView(), status = NSTextField(labelWithString: "")
+    private let renameControls = NSStackView()
+    private let nameField = NSTextField(), renameButton = NSButton()
+    private var onRename: ((FileItem, String, NSWindow) -> Void)?
     private let permissionsButton = NSButton()
     private let hashButton = NSButton(), hashProgress = NSProgressIndicator(), digest = NSTextField(wrappingLabelWithString: "")
     private let hashAlgorithm = NSPopUpButton(), expectedHash = NSTextField(), compareHashButton = NSButton()
@@ -47,6 +50,16 @@ final class FileInfoWindow: NSWindowController, NSTextFieldDelegate {
             root.topAnchor.constraint(equalTo: content.topAnchor),
             root.bottomAnchor.constraint(equalTo: content.bottomAnchor)
         ])
+        nameField.setAccessibilityLabel(L("항목 이름", "Item name"))
+        nameField.delegate = self
+        nameField.target = self; nameField.action = #selector(renameItem(_:))
+        renameButton.title = L("이름 변경", "Rename")
+        renameButton.target = self; renameButton.action = #selector(renameItem(_:))
+        renameControls.orientation = .horizontal; renameControls.spacing = 8
+        renameControls.addArrangedSubview(NSTextField(labelWithString: L("이름", "Name")))
+        renameControls.addArrangedSubview(nameField)
+        renameControls.addArrangedSubview(renameButton)
+        root.addArrangedSubview(renameControls)
         details.orientation = .vertical; details.alignment = .leading; details.spacing = 8; root.addArrangedSubview(details)
         permissionsButton.title = L("파일 권한…", "File Permissions…")
         permissionsButton.target = self; permissionsButton.action = #selector(showPermissions(_:))
@@ -89,8 +102,13 @@ final class FileInfoWindow: NSWindowController, NSTextFieldDelegate {
         signatureDetails.isSelectable = true; signatureDetails.textColor = .secondaryLabelColor; root.addArrangedSubview(signatureDetails)
         status.textColor = .secondaryLabelColor; root.addArrangedSubview(status)
     }
-    func present(items: [FileItem], editingTags: Bool = false) {
+    func present(items: [FileItem], editingTags: Bool = false,
+                 onRename: ((FileItem, String, NSWindow) -> Void)? = nil) {
         cancelTasks(); self.items = items; properties = nil; tagIdentity = nil; tagField.stringValue = ""; tagField.isEnabled = false; saveTagsButton.isEnabled = false; digest.stringValue = ""; hashProgress.isHidden = true; signatureDetails.stringValue = ""; signatureButton.isEnabled = items.count == 1; iconStatus.stringValue = ""
+        self.onRename = onRename
+        renameControls.isHidden = onRename == nil || items.count != 1 || items.first?.identity == nil
+        nameField.stringValue = renameControls.isHidden ? "" : items[0].name
+        updateRenameButton()
         let folderIconEnabled = items.count == 1 && items[0].isDirectory
         permissionsButton.isEnabled = items.count == 1 && !items[0].isSymbolicLink
         expectedHash.stringValue = ""; hashStatus.stringValue = ""
@@ -122,7 +140,9 @@ final class FileInfoWindow: NSWindowController, NSTextFieldDelegate {
             row(L("선택", "Selection"), L("\(items.count)개 항목", "\(items.count) items"));
             let bytes = items.reduce(Int64(0)) { $0 + ($1.isDirectory ? 0 : ($1.size ?? 0)) }; row(L("파일 크기 합계", "Total file size"), formatByteCount(bytes, unit: BrowserPreferences.shared.sizeUnit)); hashButton.isEnabled = false; tagField.isEnabled = false; saveTagsButton.isEnabled = false; return
         }
-        let item = items[0]; row(L("이름", "Name"), item.name); row(L("위치", "Location"), item.url.deletingLastPathComponent().path)
+        let item = items[0]
+        if renameControls.isHidden { row(L("이름", "Name"), item.name) }
+        row(L("위치", "Location"), item.url.deletingLastPathComponent().path)
         guard let p = properties else { hashButton.isEnabled = !item.isDirectory; return }
         row(L("종류", "Kind"), p.typeIdentifier ?? item.kind); row(L("논리 크기", "Logical size"), size(p.logicalSize)); row(L("할당 크기", "Allocated size"), size(p.allocatedSize))
         row(L("수정", "Modified"), date(p.modified)); row(L("생성", "Created"), date(p.created)); row(L("추가", "Added"), date(p.added))
@@ -135,6 +155,18 @@ final class FileInfoWindow: NSWindowController, NSTextFieldDelegate {
     private func row(_ label: String, _ value: String) { let field = NSTextField(wrappingLabelWithString: "\(label):  \(value)"); field.lineBreakMode = .byTruncatingMiddle; details.addArrangedSubview(field) }
     private func size(_ value: Int64?) -> String { value.map { formatByteCount($0, unit: BrowserPreferences.shared.sizeUnit) } ?? "—" }
     private func date(_ value: Date?) -> String { value.map { DateFormatter.localizedString(from: $0, dateStyle: .medium, timeStyle: .medium) } ?? "—" }
+    private func updateRenameButton() {
+        renameButton.isEnabled = !renameControls.isHidden && !nameField.stringValue.isEmpty
+            && nameField.stringValue != items.first?.name
+    }
+    @objc private func renameItem(_ sender: Any?) {
+        updateRenameButton()
+        guard renameButton.isEnabled, let item = items.first, let window, window.attachedSheet == nil else { return }
+        onRename?(item, nameField.stringValue, window)
+    }
+    func closeAfterRenaming(_ item: FileItem) {
+        if items == [item] { close() }
+    }
     @objc private func showPermissions(_ sender: Any?) {
         _ = openPermissions()
     }
@@ -143,7 +175,7 @@ final class FileInfoWindow: NSWindowController, NSTextFieldDelegate {
         let item = items[0]
         let sheet = FilePermissionsSheet(url: item.url) { [weak self] in
             guard let self, self.items == [item] else { return }
-            self.present(items: [item])
+            self.present(items: [item], onRename: self.onRename)
         }
         sheet.present(on: window)
         return sheet
@@ -184,7 +216,8 @@ final class FileInfoWindow: NSWindowController, NSTextFieldDelegate {
         if digest.stringValue.isEmpty { startHash() } else { updateHashComparison() }
     }
     func controlTextDidChange(_ notification: Notification) {
-        updateHashComparison()
+        if (notification.object as? NSTextField) === nameField { updateRenameButton() }
+        else { updateHashComparison() }
     }
     private func updateHashComparison() {
         let expected = expectedHash.stringValue.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
@@ -282,6 +315,13 @@ final class FileInfoWindow: NSWindowController, NSTextFieldDelegate {
 #if DEBUG
     var qaLoaded: Bool { properties != nil }
     var qaLogicalSize: Int64? { properties?.logicalSize }
+    func qaSubmitRename(_ name: String) -> Bool {
+        nameField.stringValue = name
+        updateRenameButton()
+        guard renameButton.isEnabled else { return false }
+        renameButton.performClick(nil)
+        return true
+    }
     func qaApplyFolderMode(acl: String? = nil, group: String? = nil, stopImmediately: Bool = false,
                            watchFiles: [URL] = []) async throws -> Bool {
         guard let sheet = openPermissions() else { return false }
