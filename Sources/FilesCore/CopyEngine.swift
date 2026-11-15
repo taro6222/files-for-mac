@@ -431,6 +431,8 @@ public enum CopyEngine {
     }
 
     struct VerificationSnapshot: Sendable {
+        private static let emptyResourceFork = ":resource:" + SHA256.hash(data: Data())
+            .map { String(format: "%02x", $0) }.joined()
         var withPermissions: [String: String] = [:]
         var content: [String: String] = [:]
         var metadata = CopyTransferMetadata()
@@ -456,10 +458,11 @@ public enum CopyEngine {
         }
 
         private func transferMismatch(_ source: Self) -> TransferMismatch? {
-            if content != source.content { return .contents }
+            if !transferEntriesMatch(content, source.content, sourceFilesystem: source.filesystemType) { return .contents }
             if metadata.extendedAttributes != source.metadata.extendedAttributes { return .extendedAttributes }
             if metadata.accessControlLists != source.metadata.accessControlLists { return .accessControlList }
-            if hasNativePermissions, source.hasNativePermissions, withPermissions != source.withPermissions {
+            if hasNativePermissions, source.hasNativePermissions,
+               !transferEntriesMatch(withPermissions, source.withPermissions, sourceFilesystem: source.filesystemType) {
                 return .permissions
             }
             let resolution = max(modificationTimeResolution, source.modificationTimeResolution)
@@ -470,6 +473,21 @@ public enum CopyEngine {
                !datesMatch(metadata.creationDates ?? [:], source.metadata.creationDates ?? [:],
                            resolution: max(resolution, sourceResolution)) { return .creationTime }
             return nil
+        }
+
+        private func transferEntriesMatch(_ staged: [String: String], _ source: [String: String],
+                                          sourceFilesystem: String) -> Bool {
+            if staged == source { return true }
+            guard staged.count == source.count, filesystemType == "smbfs" || sourceFilesystem == "smbfs" else { return false }
+            // SMB can expose an absent resource fork as a zero-byte stream. Compare those
+            // representations only for transfers; keep the recorded fingerprints for undo.
+            return staged.allSatisfy { path, entry in
+                guard let expected = source[path] else { return false }
+                if entry == expected { return true }
+                guard entry.hasPrefix("file:"), expected.hasPrefix("file:") else { return false }
+                return (filesystemType == "smbfs" && entry == expected + Self.emptyResourceFork)
+                    || (sourceFilesystem == "smbfs" && expected == entry + Self.emptyResourceFork)
+            }
         }
 
         private func datesMatch(_ dates: [String: Date], _ sourceDates: [String: Date],

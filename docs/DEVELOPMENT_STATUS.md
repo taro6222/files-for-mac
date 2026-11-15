@@ -8,6 +8,8 @@ M7 출시 검증이 진행 중이다. [유니버설 개발 프리뷰](verificati
 
 ## 이번 구현 단위
 
+SMB가 0바이트 리소스 포크를 보고하는 경우 전송 비교에서 없는 리소스 포크와 같은 내용으로 처리한다. [SMB 진단과 수정](verification/m7/INCREMENT_211.md)
+
 분할 패널에서 같은 폴더를 새로 읽어도 편집 중인 경로가 유지된다. [경로 입력 보호](verification/m7/INCREMENT_209.md)
 
 컬럼 보기에서 각 열의 경계를 드래그해 너비를 조절할 수 있다. [컬럼 너비 조절](verification/m7/INCREMENT_205.md)

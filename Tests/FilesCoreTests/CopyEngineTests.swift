@@ -3,6 +3,33 @@ import Darwin
 import Testing
 @testable import FilesCore
 
+@Test func smbTransferAcceptsAnEmptyResourceForkWhileProtectingMetadata() throws {
+    let emptyFork = ":resource:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    let path = "/payload.bin"
+    var local = CopyEngine.VerificationSnapshot()
+    local.filesystemType = "apfs"
+    local.content = ["": "directory", path: "file:data"]
+    local.withPermissions = ["": "directory:493", path: "file:420:data"]
+    var remote = local
+    remote.filesystemType = "smbfs"
+    remote.content[path] = "file:data" + emptyFork
+    remote.withPermissions[path] = "file:420:data" + emptyFork
+
+    try remote.verifyTransferredContents(of: local)
+    try local.verifyTransferredContents(of: remote)
+    #expect(!remote.matchesOriginal(local))
+
+    var changed = remote
+    changed.withPermissions[path] = "file:384:data" + emptyFork
+    #expect(throws: CopyEngine.TransferMismatch.permissions) { try changed.verifyTransferredContents(of: local) }
+    changed = remote
+    changed.content[path] = "file:data:resource:nonempty"
+    #expect(throws: CopyEngine.TransferMismatch.contents) { try changed.verifyTransferredContents(of: local) }
+    changed = remote
+    changed.filesystemType = "apfs"
+    #expect(throws: CopyEngine.TransferMismatch.contents) { try changed.verifyTransferredContents(of: local) }
+}
+
 @Test func copyCreationTimeRestorationRejectsSymlinkedStagedParent() throws {
     let f = try CopyFixture(); defer { f.clean() }
     let fm = FileManager.default
