@@ -162,7 +162,30 @@ final class FileOperationCenter: NSWindowController, NSTableViewDataSource, NSTa
         case "operation": text = activity.title
         case "status": text = activity.status
         case "destination": text = activity.destination
-        default: text = activity.progress.map { "\($0.processed)/\($0.total)" } ?? ""
+        default:
+            guard let progress = activity.progress, progress.total > 0 else { return nil }
+            let count = NSTextField(labelWithString: "\(progress.processed)/\(progress.total)")
+            count.font = .monospacedDigitSystemFont(ofSize: NSFont.smallSystemFontSize, weight: .regular)
+            count.setContentHuggingPriority(.defaultHigh, for: .horizontal)
+            count.setAccessibilityElement(false)
+
+            let indicator = NSProgressIndicator()
+            indicator.style = .bar
+            indicator.controlSize = .small
+            indicator.isIndeterminate = false
+            indicator.minValue = 0
+            indicator.maxValue = Double(progress.total)
+            indicator.doubleValue = Double(progress.processed)
+            indicator.setAccessibilityLabel(L("처리 항목", "Items Processed"))
+            indicator.setAccessibilityValueDescription(
+                L("\(progress.total)개 중 \(progress.processed)개", "\(progress.processed) of \(progress.total)"))
+
+            let cell = NSStackView(views: [indicator, count])
+            cell.alignment = .centerY
+            cell.spacing = 6
+            cell.edgeInsets = NSEdgeInsets(top: 0, left: 3, bottom: 0, right: 3)
+            indicator.widthAnchor.constraint(greaterThanOrEqualToConstant: 18).isActive = true
+            return cell
         }
         let field = (tableView.makeView(withIdentifier: column.identifier, owner: nil) as? NSTextField)
             ?? NSTextField(labelWithString: "")
@@ -176,6 +199,24 @@ final class FileOperationCenter: NSWindowController, NSTableViewDataSource, NSTa
     func qaStatus(for id: UUID) -> FileOperationActivity? {
         activities.first { $0.id == id }
     }
+
+    private func qaProgressIndicator(for id: UUID) -> NSProgressIndicator? {
+        guard let row = activities.firstIndex(where: { $0.id == id }) else { return nil }
+        let column = table.column(withIdentifier: .init("progress"))
+        let cell = table.view(atColumn: column, row: row, makeIfNecessary: true) as? NSStackView
+        window?.contentView?.layoutSubtreeIfNeeded()
+        return cell?.arrangedSubviews.first as? NSProgressIndicator
+    }
+
+    func qaShowsInitialCopyProgress(_ id: UUID) -> Bool {
+        guard let indicator = qaProgressIndicator(for: id) else { return false }
+        return !indicator.isHidden && indicator.bounds.width >= 18 && !indicator.isIndeterminate
+            && indicator.maxValue == 1 && indicator.doubleValue == 0
+            && indicator.accessibilityLabel() == L("처리 항목", "Items Processed")
+            && indicator.accessibilityValueDescription() == L("1개 중 0개", "0 of 1")
+    }
+
+    func qaHidesProgress(_ id: UUID) -> Bool { qaProgressIndicator(for: id) == nil }
 
     func qaCancel(_ id: UUID) -> Bool {
         guard let row = activities.firstIndex(where: { $0.id == id }) else { return false }

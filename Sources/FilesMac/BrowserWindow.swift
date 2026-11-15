@@ -6510,7 +6510,7 @@ extension BrowserWindow {
                              journalDirectory: journals) { centerCopyFinished = true }
             let centerCopy = NSApp.windows.filter(\.isVisible).compactMap { $0.windowController as? CopyWindow }.first
             let centerCopyID = centerCopy?.operationID
-            let visibleProgress = centerCopyID.flatMap { operationCenter.qaStatus(for: $0) }?.progress?.total == 1
+            let visibleProgress = centerCopyID.map { operationCenter.qaShowsInitialCopyProgress($0) } == true
             let cancelFromCenter = centerCopyID.map { operationCenter.qaCancel($0) } == true
             let centerShowsCancellation = centerCopyID.flatMap { operationCenter.qaStatus(for: $0) }
                 .map { $0.status.hasPrefix(L("취소 요청됨", "Cancellation requested")) && $0.cancel == nil } == true
@@ -6532,8 +6532,10 @@ extension BrowserWindow {
                         && $0.progress == nil && $0.cancel == nil && $0.showDetails == nil
                 } == true
             reopenedCenter.close()
+            let resultHidesProgress = centerCopyID.map { reopenedCenter.qaHidesProgress($0) } == true
             checks["fileOperationCenterCancellationAndResult"] = operationMenu && visibleProgress && cancelFromCenter
                 && centerShowsCancellation && centerCopyFinished && centerShowsResult && retainedClosedResult
+                && resultHidesProgress
                 && (try? Data(contentsOf: availableSource)) == availablePayload
                 && !fm.fileExists(atPath: target.appendingPathComponent(availableSource.lastPathComponent).path)
             var mixedCopyFinished = false
