@@ -5811,6 +5811,21 @@ extension BrowserWindow {
                 checks["referenceFolderAncestorColumn"] = controller.columnView.qaParentColumnURL?.path == reference.deletingLastPathComponent().path
                     && controller.columnView.qaParentSelection == [reference.path]
                 if checks["referenceFolderColumns"] == true { try capture("ui-05-reference-columns") }
+                controller.columnView.qaMoveRightFromBase()
+                checks["referenceFolderRightFocusesOpenColumn"] = controller.columnView.qaFocusedColumnURL?.path == alpha.path
+                    && controller.model.history.current.selection == [child.path]
+                    && controller.columnView.qaBaseSelection == [alpha.path]
+                controller.columnView.qaMoveLeft()
+                checks["referenceFolderLeftRestoresColumnSelection"] = controller.columnView.qaFocusedColumnURL?.path == reference.path
+                    && controller.model.history.current.selection == [alpha.path]
+                    && controller.columnView.qaColumnCount == 1
+                controller.columnView.qaMoveRightFromBase()
+                let rightStart = ContinuousClock.now
+                while controller.columnView.qaFocusedColumnURL?.path != alpha.path && elapsed(rightStart) < 5 {
+                    try await Task.sleep(for: .milliseconds(10))
+                }
+                checks["referenceFolderRightFocusesLoadedColumn"] = controller.columnView.qaFocusedColumnURL?.path == alpha.path
+                    && controller.model.history.current.selection == [child.path]
                 controller.navigate(alpha)
                 try await settleWindows()
                 let parentStart = ContinuousClock.now

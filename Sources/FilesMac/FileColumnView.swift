@@ -46,7 +46,7 @@ final class FileColumnView: NSView {
             table.setAccessibilityLabel(url.path == "/" ? L("루트 폴더", "Root folder") : url.lastPathComponent)
             table.dataSource = self; table.delegate = self; table.target = self; table.doubleAction = #selector(open(_:))
             table.onActivate = { [weak self] in self?.owner?.activate(column: self) }
-            table.onRight = { [weak self] in self?.owner?.expand(column: self) }
+            table.onRight = { [weak self] in self?.owner?.expand(column: self, moveFocus: true) }
             table.onLeft = { [weak self] in self?.owner?.moveLeft(from: self) }
             table.onDoubleClickBackground = { [weak self] in self?.owner?.onDoubleClickBackground?() }
             table.onValidateDrop = { [weak self] info, row in self?.owner?.validateDrop(info, column: self, row: row) ?? [] }
@@ -112,6 +112,9 @@ final class FileColumnView: NSView {
     private var columns: [Column] = []
     private var ancestors: [Column] = []
     private var ancestorTask: Task<Void, Never>?
+    private var expansionTask: Task<Void, Never>?
+    private var expansionItemID: String?
+    private weak var lastFocusedColumn: Column?
     private var focusBaseAfterNavigation = false
     private var customBackgroundEnabled = false
     private var baseURL: URL?
@@ -146,13 +149,17 @@ final class FileColumnView: NSView {
         setAccessibilityLabel(L("컬럼 파일 보기", "Column file view"))
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
-    var selectedItems: [FileItem] { columns.reversed().first(where: { !$0.selectedItems.isEmpty })?.selectedItems ?? [] }
+    private var focusedColumn: Column? { columns.first { $0.table === window?.firstResponder } }
+    private var selectionColumn: Column? {
+        focusedColumn ?? lastFocusedColumn ?? columns.reversed().first { !$0.selectedItems.isEmpty } ?? columns.last
+    }
+    var selectedItems: [FileItem] { selectionColumn?.selectedItems ?? [] }
     func replaceSelection(with ids: Set<String>) {
-        guard let column = columns.reversed().first(where: { !$0.selectedItems.isEmpty }) ?? columns.last else { return }
+        guard let column = selectionColumn else { return }
         column.apply(selection: ids); selectionChanged(column: column)
     }
     func invertSelection() {
-        guard let column = columns.reversed().first(where: { !$0.selectedItems.isEmpty }) ?? columns.last else { return }
+        guard let column = selectionColumn else { return }
         replaceSelection(with: Set(column.items.map(\.id)).subtracting(column.selectedItems.map(\.id)))
     }
     func update(baseURL: URL?, items: [FileItem], selection: Set<String>) {
@@ -170,21 +177,32 @@ final class FileColumnView: NSView {
                 window?.makeFirstResponder(columns.first?.table)
             }
         } else if baseIDs != ids {
-            loadGeneration += 1
+            cancelExpansion()
             removeColumns(after: 0)
             baseIDs = ids
         }
-        columns.first?.items = items
-        columns.first?.apply(selection: selection)
-        if let first = columns.first, !first.selectedItems.isEmpty { expand(column: first) }
+        guard let first = columns.first else { return }
+        first.items = items
+        let targetsBase = items.contains { selection.contains($0.id) }
+        let targetsDescendant = columns.dropFirst().contains { column in
+            column === (focusedColumn ?? lastFocusedColumn) || column.selectedItems.contains { selection.contains($0.id) }
+        }
+        if targetsBase || !targetsDescendant {
+            first.apply(selection: selection)
+            if !first.selectedItems.isEmpty { expand(column: first) }
+        }
     }
-    func focus() { if let table = columns.last?.table { window?.makeFirstResponder(table) } }
+    func focus() {
+        let column = lastFocusedColumn ?? columns.reversed().first { !$0.selectedItems.isEmpty } ?? columns.first
+        if let column { window?.makeFirstResponder(column.table) }
+    }
     func applyBackground(enabled: Bool) {
         customBackgroundEnabled = enabled; scroll.drawsBackground = !enabled
         for column in ancestors + columns { column.scroll.drawsBackground = !enabled; column.table.backgroundColor = enabled ? .clear : .controlBackgroundColor }
     }
     private func reset() {
-        loadGeneration += 1
+        cancelExpansion()
+        lastFocusedColumn = nil
         ancestorTask?.cancel(); ancestorTask = nil
         columns.removeAll(); ancestors.removeAll()
         stack.arrangedSubviews.forEach { $0.removeFromSuperview() }
@@ -241,13 +259,17 @@ final class FileColumnView: NSView {
         DispatchQueue.main.async { [weak self] in self?.scrollToEnd() }
     }
     private func scrollToEnd() { document.layoutSubtreeIfNeeded(); scroll.contentView.scroll(to: NSPoint(x: max(0, document.bounds.width - scroll.contentView.bounds.width), y: 0)); scroll.reflectScrolledClipView(scroll.contentView) }
-    private func activate(column: Column?) { onActivate?() }
+    private func activate(column: Column?) {
+        if let column, columns.contains(where: { $0 === column }) { lastFocusedColumn = column }
+        onActivate?()
+    }
     private func selectionChanged(column: Column) {
         if ancestors.contains(where: { $0 === column }) {
             if let selected = column.selectedItems.first { selectAncestor(column, item: selected.url) }
             return
         }
         guard let index = columns.firstIndex(where: { $0 === column }) else { return }
+        cancelExpansion()
         removeColumns(after: index); onSelectionChange?(Set(column.selectedItems.map(\.id)))
         expand(column: column)
     }
@@ -255,18 +277,47 @@ final class FileColumnView: NSView {
         guard let item = column?.selectedItems.first else { return }
         onOpen?(item)
     }
-    private func expand(column: Column?) {
-        guard let column, let item = column.selectedItems.first, let index = columns.firstIndex(where: { $0 === column }) else { return }
-        guard item.isBrowsable else { return }
-        if columns.indices.contains(index + 1), columns[index + 1].url == item.url { return }
-        let generation = loadGeneration + 1; loadGeneration = generation
-        Task { [weak self] in
+    private func cancelExpansion() {
+        loadGeneration += 1
+        expansionTask?.cancel()
+        expansionTask = nil
+        expansionItemID = nil
+    }
+    private func expand(column: Column?, moveFocus: Bool = false) {
+        guard let column, column.selectedItems.count == 1, let item = column.selectedItems.first,
+              item.isBrowsable, let index = columns.firstIndex(where: { $0 === column }) else { return }
+        if columns.indices.contains(index + 1), columns[index + 1].url == item.url {
+            if moveFocus { focusChild(columns[index + 1]) }
+            return
+        }
+        if !moveFocus, expansionItemID == item.id { return }
+        cancelExpansion()
+        let generation = loadGeneration
+        expansionItemID = item.id
+        expansionTask = Task { [weak self] in
             do {
                 let loaded = try await LocalFileSystem().contents(of: item.url, showHidden: self?.showHidden ?? false)
                 guard let self, self.loadGeneration == generation, self.columns.indices.contains(index),
-                      self.columns[index] === column, column.selectedItems.first?.id == item.id else { return }
+                      self.columns[index] === column, column.selectedItems.map(\.id) == [item.id] else { return }
+                self.expansionTask = nil
+                self.expansionItemID = nil
                 self.removeColumns(after: index); self.append(url: item.url, sortedItems: self.sortOrder.sorted(loaded))
-            } catch { }
+                if moveFocus, self.focusedColumn === column, let child = self.columns.last { self.focusChild(child) }
+            } catch {
+                if let self, self.loadGeneration == generation {
+                    self.expansionTask = nil
+                    self.expansionItemID = nil
+                }
+            }
+        }
+    }
+    private func focusChild(_ column: Column) {
+        guard window?.makeFirstResponder(column.table) == true else { return }
+        if column.selectedItems.isEmpty, !column.items.isEmpty {
+            column.suppress = false
+            column.table.selectRowIndexes([0], byExtendingSelection: false)
+        } else {
+            onSelectionChange?(Set(column.selectedItems.map(\.id)))
         }
     }
     private func moveLeft(from column: Column?) {
@@ -275,7 +326,11 @@ final class FileColumnView: NSView {
             if let parent = ancestors.last { selectAncestor(parent, item: column.url) }
             return
         }
-        removeColumns(after: index - 1); window?.makeFirstResponder(columns[index - 1].table)
+        cancelExpansion()
+        let parent = columns[index - 1]
+        window?.makeFirstResponder(parent.table)
+        onSelectionChange?(Set(parent.selectedItems.map(\.id)))
+        removeColumns(after: index - 1)
     }
     private func selectAncestor(_ column: Column, item: URL) {
         focusBaseAfterNavigation = window?.firstResponder is Table
@@ -283,7 +338,10 @@ final class FileColumnView: NSView {
     }
     private func removeColumns(after index: Int) {
         guard index + 1 < columns.count else { return }
-        for column in columns[(index + 1)...] { column.view.removeFromSuperview() }
+        for column in columns[(index + 1)...] {
+            if column === lastFocusedColumn { lastFocusedColumn = nil }
+            column.view.removeFromSuperview()
+        }
         columns.removeSubrange((index + 1)...)
     }
     private func draggedURLs(_ info: any NSDraggingInfo) -> [URL] {
@@ -307,11 +365,19 @@ final class FileColumnView: NSView {
 
 #if DEBUG
     var qaColumnCount: Int { columns.count }
+    var qaFocusedColumnURL: URL? { focusedColumn?.url }
+    var qaBaseSelection: [String] { columns.first?.selectedItems.map(\.id) ?? [] }
+    func qaMoveRightFromBase() {
+        guard let base = columns.first else { return }
+        window?.makeFirstResponder(base.table)
+        expand(column: base, moveFocus: true)
+    }
     var qaParentColumnURL: URL? { ancestors.last?.url }
     var qaParentSelection: [String] { ancestors.last?.selectedItems.map(\.id) ?? [] }
     func qaMoveLeftFromBase() { moveLeft(from: columns.first) }
     func qaSelect(id: String, column index: Int = 0) {
         guard columns.indices.contains(index), let row = columns[index].items.firstIndex(where: { $0.id == id }) else { return }
+        window?.makeFirstResponder(columns[index].table)
         columns[index].suppress = false
         columns[index].table.selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false)
     }
