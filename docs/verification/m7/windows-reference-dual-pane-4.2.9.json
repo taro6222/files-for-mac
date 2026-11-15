@@ -1,0 +1,13 @@
+{
+  "upstreamSHA": "99951c66928c4da714da8b1dd46039421182cbab",
+  "packageSHA256": "f9c09eed94d51b366cf58c7243a585e0fd82a2d5df3c352c74803817b96a7bc2",
+  "windows": "10.0.26100",
+  "architecture": "AMD64",
+  "appID": "FilesDev_ykqwq8d6ps0ag!App",
+  "run": "https://github.com/taro6222/files-for-mac/actions/runs/43661277607",
+  "screens": {
+    "UI-06": {
+      "screenshotSHA256": "f75c65f346a9fe8ba0b6272fef7d938617f5b9af736f55210f0d1323c1574723"
+    }
+  }
+}
