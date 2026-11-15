@@ -1,6 +1,9 @@
 import AppKit
 import ImageIO
 import UniformTypeIdentifiers
+#if DEBUG
+import Vision
+#endif
 #if canImport(FilesCore)
 import FilesCore
 #endif
@@ -5928,6 +5931,18 @@ extension BrowserWindow {
                     if checks["referenceFolderInfoDetails"] == true { try capture("ui-08-reference-details") }
                     controller.showInfoPanePreview(nil)
                     checks["referenceFolderInfoPreview"] = inspector.qaPreviewURL?.path == previewFile.path
+                    if ProcessInfo.processInfo.environment["FILES_UI_QA_PREVIEW_TEXT"] == "1" {
+                        let previewText = try String(contentsOf: previewFile, encoding: .utf8)
+                            .trimmingCharacters(in: .whitespacesAndNewlines)
+                        let captureName = "ui-08-reference-preview"
+                        let screenshot = destination.appendingPathComponent(captureName + ".png")
+                        let deadline = ContinuousClock.now + .seconds(5)
+                        repeat {
+                            try await Task.sleep(for: .milliseconds(250))
+                            try capture(captureName, view: inspector, backingColor: window.backgroundColor)
+                            checks["referenceFolderInfoPreviewDrawsText"] = try previewCapture(screenshot, contains: previewText)
+                        } while checks["referenceFolderInfoPreviewDrawsText"] == false && ContinuousClock.now < deadline
+                    }
                     controller.table.selectRowIndexes([folderRow], byExtendingSelection: false)
                     checks["referenceFolderInfoUnavailable"] = !inspector.isHidden && inspector.qaTitle == alpha.lastPathComponent
                         && inspector.qaPreviewURL == nil && inspector.qaDetails == L("미리보기를 표시할 수 없습니다.", "Preview unavailable.")
@@ -5953,6 +5968,14 @@ extension BrowserWindow {
             DispatchQueue.main.async { exit(1) }
         }
     }
+    private static func previewCapture(_ screenshot: URL, contains expected: String) throws -> Bool {
+        guard !expected.isEmpty else { return false }
+        let recognizer = VNRecognizeTextRequest()
+        try VNImageRequestHandler(url: screenshot).perform([recognizer])
+        let recognized = recognizer.results?.compactMap { $0.topCandidates(1).first?.string }.joined(separator: " ") ?? ""
+        return recognized.localizedCaseInsensitiveContains(expected)
+    }
+
     static func runM2UIVerification(output: String) async {
         let fm = FileManager.default
         let destination = URL(fileURLWithPath: output, isDirectory: true)
