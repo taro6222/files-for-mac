@@ -528,10 +528,15 @@ private func smbCopyDiagnostic(source: URL, destination: URL) -> String {
             let entry = snapshot.withPermissions[path] ?? "missing"
             let attributes = (snapshot.metadata.extendedAttributes[path] ?? [:]).keys
                 .map { String(decoding: $0, as: UTF8.self) }.sorted()
-            return "\(entry), xattrs=\(attributes)"
+            let modified = snapshot.metadata.modificationDates[path]
+                .map { String(format: "%.9f", $0.timeIntervalSince1970) } ?? "missing"
+            return "\(entry), xattrs=\(attributes), modified=\(modified)"
         }
         return (["SMB diagnostic: Foundation copy \(original.filesystemType) → \(duplicate.filesystemType)"] + paths.map { path in
-            "\(path.isEmpty ? "." : path) source=[\(describe(original, path: path))] staged=[\(describe(duplicate, path: path))]"
+            let delta = original.metadata.modificationDates[path].flatMap { expected in
+                duplicate.metadata.modificationDates[path].map { $0.timeIntervalSince(expected) }
+            }.map { String(format: "%+.9f", $0) } ?? "missing"
+            return "\(path.isEmpty ? "." : path) source=[\(describe(original, path: path))] staged=[\(describe(duplicate, path: path))] modificationDeltaSeconds=\(delta)"
         }).joined(separator: "\n")
     } catch {
         return "SMB diagnostic could not inspect a separate Foundation copy: \(error.localizedDescription)"
