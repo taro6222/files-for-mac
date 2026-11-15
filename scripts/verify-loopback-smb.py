@@ -59,6 +59,8 @@ def verify(smbd, smbpasswd, root):
     path = {share}
     read only = no
     valid users = {username}
+    # The runner's filesystem rejects Samba's temporary directory rename.
+    vfs mkdir use tmp name = no
 """, encoding="utf-8")
     with socket.socket() as port:
         port.bind(("127.0.0.1", PORT))
