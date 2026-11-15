@@ -592,6 +592,68 @@ func mountedSMBReadOnlyRejectsWrites() async throws {
     #expect(try fm.contentsOfDirectory(atPath: volume.path) == ["replace.txt"])
 }
 
+@Test(.enabled(if: hasIntegrationFixture("FILES_TEST_SMB_VOLUME"), "Requires an integration fixture"))
+func mountedSMBTransferTimestamps() async throws {
+    let fm = FileManager.default
+    let volume = try smbFixture("FILES_TEST_SMB_VOLUME")
+    let root = fm.temporaryDirectory.appendingPathComponent("Files-SMB-times-\(UUID().uuidString)", isDirectory: true)
+    let destination = volume.appendingPathComponent(root.lastPathComponent, isDirectory: true)
+    defer { try? fm.removeItem(at: destination); try? fm.removeItem(at: root) }
+    try fm.createDirectory(at: root, withIntermediateDirectories: false)
+    try fm.createDirectory(at: destination, withIntermediateDirectories: false)
+    let payload = Data("SMB timestamp fixture".utf8)
+    let source = root.appendingPathComponent("times.txt")
+    let creation = Date(timeIntervalSince1970: 1_600_000_000)
+    let modification = Date(timeIntervalSince1970: 1_700_000_000)
+    var access = timespec(tv_sec: 1_650_000_000, tv_nsec: 123_456_700)
+    try payload.write(to: source)
+    try fm.setAttributes([.creationDate: creation, .modificationDate: modification], ofItemAtPath: source.path)
+    var timestamps = [access, timespec(tv_sec: 0, tv_nsec: Int(UTIME_OMIT))]
+    try #require(utimensat(AT_FDCWD, source.path, &timestamps, AT_SYMLINK_NOFOLLOW) == 0)
+
+    func sample(_ file: URL, phase: String) throws -> stat {
+        var info = stat()
+        try #require(lstat(file.path, &info) == 0)
+        func format(_ time: timespec) -> String {
+            String(format: "%lld.%09ld", Int64(time.tv_sec), time.tv_nsec)
+        }
+        print("SMB timestamps \(phase): birth=\(format(info.st_birthtimespec)) access=\(format(info.st_atimespec)) modified=\(format(info.st_mtimespec))")
+        return info
+    }
+    let original = try sample(source, phase: "APFS source")
+    try #require(original.st_birthtimespec.tv_sec == Int(creation.timeIntervalSince1970))
+    try #require(original.st_atimespec.tv_sec == access.tv_sec && original.st_atimespec.tv_nsec == access.tv_nsec)
+
+    let journal = root.appendingPathComponent("journal", isDirectory: true)
+    let report = await CopyEngine.run(sources: [source], destination: destination,
+                                      journalDirectory: journal, cancellation: CopyCancellation())
+    try #require(report.items.first?.state == "completed",
+                 Comment(rawValue: report.items.first?.message ?? "SMB timestamp copy failed"))
+    let target = destination.appendingPathComponent(source.lastPathComponent)
+    let copied = try sample(target, phase: "SMB published copy")
+    #expect(copied.st_mtimespec.tv_sec == Int(modification.timeIntervalSince1970))
+    #expect(try Data(contentsOf: target) == payload)
+
+    // Probe explicit timestamp setters on a separate file. The copy result above
+    // remains an observation of the normal product path.
+    let probe = destination.appendingPathComponent("setter-probe.txt")
+    try payload.write(to: probe)
+    let descriptor = open(probe.path, O_RDONLY | O_NOFOLLOW | O_CLOEXEC)
+    try #require(descriptor >= 0)
+    defer { close(descriptor) }
+    var attributes = attrlist()
+    attributes.bitmapcount = UInt16(ATTR_BIT_MAP_COUNT)
+    attributes.commonattr = attrgroup_t(ATTR_CMN_CRTIME)
+    var birth = original.st_birthtimespec
+    let birthStatus = fsetattrlist(descriptor, &attributes, &birth, MemoryLayout<timespec>.size, 0)
+    let birthError = birthStatus == 0 ? 0 : errno
+    attributes.commonattr = attrgroup_t(ATTR_CMN_ACCTIME)
+    let accessStatus = fsetattrlist(descriptor, &attributes, &access, MemoryLayout<timespec>.size, 0)
+    let accessError = accessStatus == 0 ? 0 : errno
+    print("SMB timestamp setters: birth errno=\(birthError) access errno=\(accessError)")
+    _ = try sample(probe, phase: "SMB after setters")
+}
+
 @Test(.enabled(if: hasIntegrationFixture("FILES_TEST_SMB_RECONNECT_VOLUME"), "Requires a reconnected SMB integration fixture"))
 func mountedSMBReconnectSeesServerChanges() async throws {
     let volume = try smbFixture("FILES_TEST_SMB_RECONNECT_VOLUME")
