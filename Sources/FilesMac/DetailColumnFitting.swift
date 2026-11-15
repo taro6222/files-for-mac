@@ -4,6 +4,17 @@ import FilesCore
 func detailTagText(_ tags: [String]) -> String { tags.isEmpty ? "—" : tags.joined(separator: ", ") }
 
 @MainActor
+func restoreDetailScroll(in scroll: NSScrollView, offset: Double) {
+    let clip = scroll.contentView
+    let headerHeight = (scroll.documentView as? NSTableView)?.headerView?.frame.height ?? 0
+    // A new history entry starts at zero. AppKit places the top of the first row below its floating header.
+    let target = NSRect(x: 0, y: offset == 0 ? -headerHeight : offset,
+                        width: clip.bounds.width, height: clip.bounds.height)
+    clip.scroll(to: clip.constrainBoundsRect(target).origin)
+    scroll.reflectScrolledClipView(clip)
+}
+
+@MainActor
 final class FolderSizeCell: NSTableCellView {
     private static let reuseID = NSUserInterfaceItemIdentifier("FolderSizeCell")
     private let button = NSButton()

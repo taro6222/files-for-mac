@@ -118,12 +118,19 @@ def capture(output, app_id, window_handle, fixture=None):
                     request("POST", session + "/keys", {"value": ["\ue009", "l", "\ue000"]})
                     return None
 
-            editor = wait_for("the path editor", path_editor)
-            request("POST", editor + "/clear", {})
-            request("POST", editor + "/value", {"value": list(str(fixture))})
-            if request("GET", editor + "/text")["value"] != str(fixture):
-                raise RuntimeError("The path editor did not receive the fixture path")
-            request("POST", editor + "/value", {"value": ["\ue007"]})
+            def open_fixture_path():
+                editor = wait_for("the path editor", path_editor)
+                request("POST", editor + "/clear", {})
+                request("POST", editor + "/value", {"value": list(str(fixture))})
+                if request("GET", editor + "/text")["value"] != str(fixture):
+                    raise RuntimeError("The path editor did not receive the fixture path")
+                request("POST", editor + "/value", {"value": ["\ue007"]})
+
+            open_fixture_path()
+
+            def has_fixture_items(names):
+                return all(item.name.casefold() in names or (item.is_file() and item.stem.casefold() in names)
+                           for item in fixture.iterdir())
 
             def folder_source():
                 current = element_route("accessibility id", "CurrentPathGet")
@@ -132,8 +139,7 @@ def capture(output, app_id, window_handle, fixture=None):
                     return None
                 tree = read_tree()
                 names = {element.get("Name", "").casefold() for element in tree.iter()}
-                if not all(item.name.casefold() in names or (item.is_file() and item.stem.casefold() in names)
-                           for item in fixture.iterdir()):
+                if not has_fixture_items(names):
                     return None
                 return tree
 
@@ -153,7 +159,7 @@ def capture(output, app_id, window_handle, fixture=None):
             tree.write(output / "UI-02_folder.xml", encoding="utf-8", xml_declaration=True)
             report.write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8")
 
-            def select_layout(key):
+            def send_control_shift(key):
                 request("POST", session + "/keys", {"value": ["\ue009", "\ue008", key, "\ue000"]})
 
             def grid_source():
@@ -192,9 +198,9 @@ def capture(output, app_id, window_handle, fixture=None):
                 }
                 report.write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8")
 
-            select_layout("4")
+            send_control_shift("4")
             capture_layout(wait_for("the fixture grid", grid_source), "UI-04", "grid")
-            select_layout("5")
+            send_control_shift("5")
             wait_for("the fixture column browser", columns_source)
             alpha = wait_for("Alpha in the first column", lambda: element_route(
                 "xpath", "//*[@AutomationId='ItemName' and @Name='Alpha']"))
@@ -203,6 +209,29 @@ def capture(output, app_id, window_handle, fixture=None):
                 request("POST", session + "/keys", {"value": ["\ue007"]})
             tree = wait_for("Alpha and its child in adjacent columns", expanded_columns_source)
             capture_layout(tree, "UI-05", "columns")
+
+            def split_source(secondary_opened=False):
+                tree = read_tree()
+                panes = [element for element in tree.iter() if element.get("AutomationId") == "RootGridZoom"
+                         and element.get("IsOffscreen") == "False"]
+                if len(panes) != 2:
+                    return None
+                names = [{element.get("Name", "").casefold() for element in pane.iter()} for pane in panes]
+                right_matches = ({"column-note.txt", "column-note"} & names[1]) if secondary_opened else has_fixture_items(names[1])
+                return tree if has_fixture_items(names[0]) and right_matches else None
+
+            send_control_shift("1")
+            open_fixture_path()
+            wait_for("the fixture in Details before splitting", folder_source)
+            send_control_shift("s")
+            wait_for("two panes with the fixture folder", split_source)
+            alpha = wait_for("Alpha in the second pane", lambda: element_route(
+                "xpath", "(//*[@AutomationId='RootGridZoom' and @IsOffscreen='False'])[2]"
+                         "//*[@AutomationId='ItemName' and @Name='Alpha']"))
+            request("POST", alpha + "/click", {})
+            request("POST", session + "/keys", {"value": ["\ue007"]})
+            tree = wait_for("left fixture and right Alpha folder", lambda: split_source(secondary_opened=True))
+            capture_layout(tree, "UI-06", "dual-pane")
     except Exception as error:
         (output / "capture-error.txt").write_text(str(error) + "\n", encoding="utf-8")
         if last_source is not None:

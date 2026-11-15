@@ -1225,8 +1225,7 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
             columnView.update(baseURL: nil, items: [], selection: [])
         }
         if !model.isLoading {
-            scroll.contentView.scroll(to: NSPoint(x: 0, y: model.history.current.scrollOffset))
-            scroll.reflectScrolledClipView(scroll.contentView)
+            restoreDetailScroll(in: scroll, offset: model.history.current.scrollOffset)
             if revealEntry, let row = selected.first { table.scrollRowToVisible(row) }
             else if model.history.current.scrollOffset > 0, let row = selected.first,
                     !NSLocationInRange(row, table.rows(in: table.visibleRect)) {
@@ -5823,6 +5822,26 @@ extension BrowserWindow {
                 checks["referenceFolderLeftSelectsFormerFolder"] = controller.model.location?.path == reference.path
                     && controller.model.history.current.selection == [alpha.path]
 
+                controller.model.setViewMode(.details)
+                window.setContentSize(NSSize(width: 1250, height: 600))
+                controller.splitVertically(nil)
+                if let secondary = controller.secondaryPane {
+                    secondary.openLocation(alpha)
+                    secondary.model.setViewMode(.details)
+                    let splitStart = ContinuousClock.now
+                    while secondary.model.isLoading && elapsed(splitStart) < 5 {
+                        try await Task.sleep(for: .milliseconds(10))
+                    }
+                    secondary.focusFiles()
+                    try await Task.sleep(for: .milliseconds(120))
+                    root.layoutSubtreeIfNeeded()
+                    checks["referenceFolderSplitPanes"] = controller.workspaceSplit.isVertical && controller.secondaryActive
+                        && controller.model.location?.path == reference.path && Set(controller.model.items.map(\.name)) == expected
+                        && secondary.model.location?.path == alpha.path && secondary.model.items.map(\.name) == [child.lastPathComponent]
+                    checks["referenceFolderSplitFirstRowBelowHeader"] = secondary.qaFirstDetailRowBelowHeader
+                    if checks["referenceFolderSplitPanes"] == true { try capture("ui-06-reference-dual-pane") }
+                    controller.closeSecondaryPane(nil)
+                } else { checks["referenceFolderSplitPanes"] = false }
             }
             let report: [String: Any] = ["checks": checks, "metrics": metrics,
                 "samples": ["multiwindowCycleSeconds": durations, "scrollStepSeconds": scrollDurations],

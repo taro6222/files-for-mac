@@ -8,6 +8,8 @@ M7 출시 검증이 진행 중이다. [유니버설 개발 프리뷰](verificati
 
 ## 이번 구현 단위
 
+분할 화면의 상세 보기에서 첫 파일 행이 헤더 아래에 표시되도록 수정했다. [분할 보기 검증](verification/m7/INCREMENT_203.md)
+
 컬럼 보기에서 현재 폴더의 상위 경로를 표시하고 왼쪽 방향키로 상위 폴더에 이동한다. [상위 경로 컬럼](verification/m7/INCREMENT_202.md)
 
 상세 보기의 Finder 태그 열을 기본으로 표시하고 분할 패널에도 태그 표시와 정렬을 적용한다. [상세 보기 태그 열](verification/m7/INCREMENT_198.md)

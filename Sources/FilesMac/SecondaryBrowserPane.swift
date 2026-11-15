@@ -466,7 +466,7 @@ final class SecondaryBrowserPane: NSView, NSTableViewDataSource, NSTableViewDele
             columnView.update(baseURL: nil, items: [], selection: [])
         }
         if !model.isLoading {
-            scroll.contentView.scroll(to: NSPoint(x: 0, y: model.history.current.scrollOffset)); scroll.reflectScrolledClipView(scroll.contentView)
+            restoreDetailScroll(in: scroll, offset: model.history.current.scrollOffset)
             if revealEntry, let row = selected.first { table.scrollRowToVisible(row) }
         }
         let refreshTitle = model.isLoading ? L("읽기 중단", "Stop Loading") : L("새로고침", "Refresh")
@@ -678,6 +678,12 @@ final class SecondaryBrowserPane: NSView, NSTableViewDataSource, NSTableViewDele
     }
     var qaColumnCount: Int { columnView.qaColumnCount }
     var qaParentColumnURL: URL? { columnView.qaParentColumnURL }
+    var qaFirstDetailRowBelowHeader: Bool {
+        guard table.numberOfRows > 0, let header = table.headerView else { return false }
+        let rowFrame = table.convert(table.rect(ofRow: 0), to: nil)
+        let headerFrame = header.convert(header.bounds, to: nil)
+        return !rowFrame.isEmpty && !headerFrame.isEmpty && rowFrame.maxY <= headerFrame.minY + 1
+    }
     var qaTagColumnVisible: Bool { table.tableColumn(withIdentifier: .init("tag"))?.isHidden == false }
     func qaSelectColumn(id: String, column: Int = 0) { columnView.qaSelect(id: id, column: column) }
     var qaRenderedViewMode: BrowserViewMode { renderedViewMode }

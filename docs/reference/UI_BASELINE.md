@@ -35,6 +35,8 @@ macOS 캡처에서 발견한 상태 표시줄의 개발 단계 문구를 제거�
 
 [Windows 그리드](../verification/m7/INCREMENT_197.md)와 [컬럼 보기 실행 화면](../verification/m7/INCREMENT_201.md)을 macOS 화면과 대조했다. macOS 컬럼 보기에도 [상위 경로 표시와 왼쪽 방향키 이동](../verification/m7/INCREMENT_202.md)을 적용했다.
 
+[UI-06 좌우 분할](../verification/m7/INCREMENT_203.md)은 공통 폴더와 `Alpha`의 하위 항목을 서로 다른 패널에 표시하는 동선으로 확인한다.
+
 [home]: https://github.com/files-community/Files/blob/99951c66928c4da714da8b1dd46039421182cbab/src/Files.App/Views/HomePage.xaml
 [main]: https://github.com/files-community/Files/blob/99951c66928c4da714da8b1dd46039421182cbab/src/Files.App/Views/MainPage.xaml
 [details]: https://github.com/files-community/Files/blob/99951c66928c4da714da8b1dd46039421182cbab/src/Files.App/Views/Layouts/DetailsLayoutPage.xaml
