@@ -6,7 +6,7 @@ on:
       scope:
         description: Reference capture scope
         type: choice
-        options: [all, tab-drop, properties, security]
+        options: [all, tab-drop, properties, security, advanced-security]
         default: all
 
 permissions:
@@ -111,6 +111,20 @@ jobs:
             $fixture = Join-Path $env:RUNNER_TEMP 'Files Reference'
             python scripts/create-ui-reference-fixture.py $fixture
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            if ($env:FILES_WINDOWS_CAPTURE_SCOPE -eq 'advanced-security') {
+              $acl = Get-Acl -LiteralPath (Join-Path $fixture 'preview.txt')
+              $fullControl = [System.Security.AccessControl.FileSystemRights]::FullControl
+              @{
+                owner = $acl.Owner
+                entries = @($acl.Access | ForEach-Object {
+                  @{
+                    principal = $_.IdentityReference.Value
+                    effect = $_.AccessControlType.ToString()
+                    fullControl = ($_.FileSystemRights -band $fullControl) -eq $fullControl
+                  }
+                })
+              } | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath "$output/acl-reference.json" -Encoding utf8
+            }
             if ($env:FILES_WINDOWS_CAPTURE_SCOPE -eq 'security') {
               $candidates = @($driverPath, (Get-Process -Id $PID).Path, (Get-Command msbuild.exe -ErrorAction SilentlyContinue).Source)
               $signed = foreach ($candidate in $candidates) {

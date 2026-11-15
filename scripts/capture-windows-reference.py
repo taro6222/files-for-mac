@@ -135,6 +135,28 @@ def wait_for(description, read):
     raise RuntimeError(f"Timed out waiting for {description}") from last_error
 
 
+def advanced_security_matches(tree, expected):
+    def short_name(display):
+        return display.partition(" (")[0].rsplit("\\", 1)[-1].strip().casefold()
+
+    visible = [element for element in tree.iter() if element.get("IsOffscreen") == "False"]
+    owner = next((element.get("Name", "") for element in visible if element.get("AutomationId") == "OwnerText"), "")
+    entries = next((element for element in visible if element.get("AutomationId") == "AdvancedPermissionListView"), None)
+    if not owner or not expected["owner"] or short_name(owner) != short_name(expected["owner"]) or entries is None:
+        return False
+
+    for row in entries.iter("ListItem"):
+        if row.get("IsOffscreen") != "False":
+            continue
+        names = [element.get("Name", "") for element in row.iter() if element.get("IsOffscreen") == "False"]
+        principals = {short_name(name) for name in names}
+        labels = {name.casefold() for name in names}
+        if any(short_name(entry["principal"]) in principals and entry["effect"].casefold() in labels
+               and (not entry["fullControl"] or "full control" in labels) for entry in expected["entries"]):
+            return True
+    return False
+
+
 def capture(output, app_id, window_handle, fixture=None, scope="all"):
     output.mkdir(parents=True, exist_ok=True)
     session = None
@@ -381,7 +403,7 @@ def capture(output, app_id, window_handle, fixture=None, scope="all"):
                     "xpath", f"//*[@Name='{name}' and @IsOffscreen='False']"))
                 request("POST", item + "/click", {})
 
-            if scope == "security":
+            if scope in {"security", "advanced-security"}:
                 browser_handle = request("GET", session + "/window_handle")["value"]
                 open_properties(fixture / "preview.txt")
                 click_properties_item("Security")
@@ -392,6 +414,19 @@ def capture(output, app_id, window_handle, fixture=None, scope="all"):
                     return tree if {"Group or user names", "Advanced permissions"} <= visible else None
 
                 capture_layout(wait_for("the Properties access-control list", security_source), "UI-09-security", "properties")
+                if scope == "advanced-security":
+                    expected = json.loads((output / "acl-reference.json").read_text(encoding="utf-8-sig"))
+                    advanced = wait_for("the enabled advanced permissions button", lambda: element_route(
+                        "xpath", "//*[@AutomationId='OpenSecurityAdvancedPageButton' and @IsEnabled='True' and @IsOffscreen='False']"))
+                    request("POST", advanced + "/click", {})
+
+                    def advanced_security_source():
+                        tree = read_tree()
+                        return tree if advanced_security_matches(tree, expected) else None
+
+                    capture_layout(wait_for("the expected owner and permission entry", advanced_security_source),
+                                   "UI-09-advanced-security", "properties")
+                    return
                 click_properties_item("Cancel")
                 request("POST", session + "/window", {"name": browser_handle})
                 signed = json.loads((output / "signed-reference.json").read_text(encoding="utf-8-sig"))
@@ -559,7 +594,7 @@ if __name__ == "__main__":
     parser.add_argument("output", type=Path)
     parser.add_argument("--window-handle", required=True)
     parser.add_argument("--fixture", type=Path)
-    parser.add_argument("--scope", choices=("all", "tab-drop", "properties", "security"), default="all")
+    parser.add_argument("--scope", choices=("all", "tab-drop", "properties", "security", "advanced-security"), default="all")
     arguments = parser.parse_args()
     if arguments.scope != "all" and arguments.fixture is None:
         parser.error("a specific --scope requires --fixture")
