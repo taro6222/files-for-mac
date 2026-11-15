@@ -13,6 +13,7 @@ final class GeneralSettingsWindow: NSWindowController {
     private let volumes = NSButton(checkboxWithTitle: L("홈에 드라이브 표시", "Show Drives on Home"), target: nil, action: nil)
     private let network = NSButton(checkboxWithTitle: L("홈에 네트워크 위치 표시", "Show Network Locations on Home"), target: nil, action: nil)
     private let recent = NSButton(checkboxWithTitle: L("홈에 최근 위치 표시", "Show Recent Locations on Home"), target: nil, action: nil)
+    private let recentFiles = NSButton(checkboxWithTitle: L("홈에 최근 파일 표시", "Show Recent Files on Home"), target: nil, action: nil)
     private let startupLocation = NSTextField(wrappingLabelWithString: "")
     private let sizeUnit = NSPopUpButton()
     private let defaultSortDirectoryPlacement = NSPopUpButton()
@@ -86,8 +87,9 @@ final class GeneralSettingsWindow: NSWindowController {
         let homeTitle = NSTextField(labelWithString: L("홈 위젯", "Home Widgets")); homeTitle.font = .systemFont(ofSize: 14, weight: .semibold); stack.addArrangedSubview(homeTitle)
         configure(favorites, action: #selector(changeFavorites(_:))); configure(volumes, action: #selector(changeVolumes(_:))); configure(recent, action: #selector(changeRecent(_:)))
         configure(network, action: #selector(changeNetwork(_:)))
+        configure(recentFiles, action: #selector(changeRecentFiles(_:)))
         stack.addArrangedSubview(favorites); stack.addArrangedSubview(volumes)
-        stack.addArrangedSubview(network); stack.addArrangedSubview(recent)
+        stack.addArrangedSubview(network); stack.addArrangedSubview(recentFiles); stack.addArrangedSubview(recent)
         scroll.hasVerticalScroller = true
         scroll.autohidesScrollers = true
         scroll.drawsBackground = false
@@ -144,6 +146,7 @@ final class GeneralSettingsWindow: NSWindowController {
         showCreateShortcut.state = preferences.showCreateShortcut ? .on : .off
         favorites.state = preferences.showHomeFavorites ? .on : .off; volumes.state = preferences.showHomeVolumes ? .on : .off; recent.state = preferences.showHomeRecent ? .on : .off
         network.state = preferences.showHomeNetwork ? .on : .off
+        recentFiles.state = preferences.showHomeRecentFiles ? .on : .off
     }
     @objc private func changeContinueSession(_ sender: Any?) { preferences.setContinueLastSession(continueSession.state == .on) }
     @objc private func changeOpenNewTabOnStartup(_ sender: Any?) { preferences.setOpenNewTabOnStartup(openNewTabOnStartup.state == .on) }
@@ -184,6 +187,7 @@ final class GeneralSettingsWindow: NSWindowController {
     @objc private func changeVolumes(_ sender: Any?) { preferences.setSection(.volumes, visible: volumes.state == .on) }
     @objc private func changeNetwork(_ sender: Any?) { preferences.setSection(.network, visible: network.state == .on) }
     @objc private func changeRecent(_ sender: Any?) { preferences.setSection(.recent, visible: recent.state == .on) }
+    @objc private func changeRecentFiles(_ sender: Any?) { preferences.setSection(.recentFiles, visible: recentFiles.state == .on) }
 #if DEBUG
     var qaVisible: Bool { window?.isVisible == true }
     func qaCanReachLastSetting() -> Bool {
@@ -200,8 +204,9 @@ final class GeneralSettingsWindow: NSWindowController {
         return wasBelow && visible
     }
 
-    var qaWidgetStates: (Bool, Bool, Bool, Bool) {
-        (preferences.showHomeFavorites, preferences.showHomeVolumes, preferences.showHomeNetwork, preferences.showHomeRecent)
+    var qaWidgetStates: [Bool] {
+        [preferences.showHomeFavorites, preferences.showHomeVolumes, preferences.showHomeNetwork,
+         preferences.showHomeRecentFiles, preferences.showHomeRecent]
     }
     var qaOpenNewTabOnStartup: Bool { preferences.openNewTabOnStartup }
     var qaNewTabPolicies: (Bool, Bool) { (preferences.alwaysOpenDualPaneInNewTab, preferences.alwaysSwitchToNewlyOpenedTab) }
@@ -216,7 +221,9 @@ final class GeneralSettingsWindow: NSWindowController {
     var qaScrollToPreviousFolderOnUp: Bool { preferences.scrollToPreviousFolderOnUp }
     var qaShowFileExtensionWarning: Bool { preferences.showFileExtensionWarning }
     var qaContextMenuStates: [Bool] { [preferences.showCompressionOptions, preferences.showOpenTerminal, preferences.showCreateFolderWithSelection, preferences.showPinToSidebar, preferences.showSendToMenu, preferences.showCopyPath, preferences.showOpenInNewTab, preferences.showOpenInNewWindow, preferences.showOpenInNewPane, preferences.showEditTagsMenu, preferences.showCreateShortcut] }
-    func qaToggleWidgets() { favorites.performClick(nil); volumes.performClick(nil); network.performClick(nil); recent.performClick(nil) }
+    func qaToggleWidgets() {
+        [favorites, volumes, network, recentFiles, recent].forEach { $0.performClick(nil) }
+    }
     func qaToggleOpenNewTabOnStartup() { openNewTabOnStartup.performClick(nil) }
     func qaToggleNewTabPolicies() { alwaysOpenDualPaneInNewTab.performClick(nil); alwaysSwitchToNewlyOpenedTab.performClick(nil) }
     func qaToggleSizeUnit() { sizeUnit.selectItem(at: sizeUnit.indexOfSelectedItem == 0 ? 1 : 0); changeSizeUnit(nil) }

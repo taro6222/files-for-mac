@@ -39,7 +39,7 @@ final class ArchiveWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         button.widthAnchor.constraint(greaterThanOrEqualToConstant: 72).isActive = true
     }
 
-    func present(archiveURL: URL) {
+    func present(archiveURL: URL, onRead: (() -> Void)? = nil) {
         task?.cancel(); self.archiveURL = archiveURL; entries = []; table.reloadData()
         window?.title = L("압축 파일: ", "Archive: ") + archiveURL.lastPathComponent
         status.stringValue = L("목록을 읽는 중…", "Reading archive…"); setRunning(true)
@@ -49,6 +49,7 @@ final class ArchiveWindow: NSWindowController, NSTableViewDataSource, NSTableVie
                 let loaded = try await Task.detached(priority: .userInitiated) { try provider.entries(at: archiveURL) }.value
                 guard let self, !Task.isCancelled else { return }
                 self.entries = loaded; self.status.stringValue = L("\(loaded.count)개 항목", "\(loaded.count) items"); self.setRunning(false); self.table.reloadData()
+                onRead?()
             } catch is CancellationError { }
             catch { guard let self else { return }; self.status.stringValue = archiveErrorMessage(error); self.setRunning(false) }
         }

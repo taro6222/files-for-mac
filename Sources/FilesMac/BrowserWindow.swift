@@ -62,9 +62,11 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
     private let homeView = NSStackView()
     private let homeFavoriteGrid = HomeCardGrid(minimumCardWidth: 140, cardHeight: 70)
     private let homeDriveGrid = HomeCardGrid(minimumCardWidth: 200, cardHeight: 92)
+    private let homeRecentFilesView = NSStackView()
     private let homeRecentView = NSStackView()
     private var homeNeedsUpdate = true
     private var homeRecentNeedsUpdate = true
+    private var homeRecentFilesNeedsUpdate = true
     private let sidebar = NSStackView()
     private let content = AppBackgroundView()
     private let folderFilter = FolderFilterField()
@@ -94,6 +96,7 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
     private let preferences: BrowserPreferences
     private var preferencesToken: UUID?
     private var recentLocationsToken: UUID?
+    private var recentFilesToken: UUID?
     private var favorites: [URL] { preferences.favorites }
     private var recent: [URL] { preferences.recent }
     private let homeScroll = NSScrollView()
@@ -214,6 +217,11 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
             self.homeRecentNeedsUpdate = true
             if self.model.location == nil { self.updateHomeIfNeeded() }
         }
+        recentFilesToken = preferences.observeRecentFiles { [weak self] in
+            guard let self else { return }
+            self.homeRecentFilesNeedsUpdate = true
+            if self.model.location == nil { self.updateHomeIfNeeded() }
+        }
         let primarySnapshot = initialWorkspace?.panes.first?.tab ?? initialSnapshot
         if let primarySnapshot { model.restore(primarySnapshot) }
         else {
@@ -245,6 +253,7 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
                 self.secondaryPane?.shutdown()
                 if let token = self.preferencesToken { self.preferences.removeObserver(token) }
                 if let token = self.recentLocationsToken { self.preferences.removeObserver(token) }
+                if let token = self.recentFilesToken { self.preferences.removeObserver(token) }
                 for token in self.observerTokens {
                     NotificationCenter.default.removeObserver(token)
                     NSWorkspace.shared.notificationCenter.removeObserver(token)
@@ -380,6 +389,9 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         homeView.edgeInsets = NSEdgeInsets(top: 32, left: 32, bottom: 32, right: 32)
         homeRecentView.orientation = .vertical; homeRecentView.alignment = .leading
         homeRecentView.spacing = homeView.spacing
+        homeRecentFilesView.orientation = .vertical
+        homeRecentFilesView.alignment = .leading
+        homeRecentFilesView.spacing = 4
         homeView.translatesAutoresizingMaskIntoConstraints = false
         homeScroll.drawsBackground = false; homeScroll.hasVerticalScroller = true
         homeScroll.translatesAutoresizingMaskIntoConstraints = false; content.addSubview(homeScroll)
@@ -651,8 +663,9 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         homeView.addArrangedSubview(button); homeView.setCustomSpacing(10, after: button)
     }
     private func locationButton(_ title: String, symbol: String, url: URL?, in stack: NSStackView,
-                                prominent: Bool = false) {
-        let b = LocationButton(title: title, target: self, action: #selector(openLocation(_:)))
+                                prominent: Bool = false, recentFile: Bool = false) {
+        let action = recentFile ? #selector(openRecentFile(_:)) : #selector(openLocation(_:))
+        let b = LocationButton(title: title, target: self, action: action)
         b.url = url; b.bezelStyle = .recessed; b.isBordered = false
         b.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         b.alignment = .left; b.font = .systemFont(ofSize: 13)
@@ -664,7 +677,18 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
             b.image = b.image?.withSymbolConfiguration(.init(pointSize: 20, weight: .regular))
         }
         b.toolTip = url?.path ?? title; b.setAccessibilityLabel(title)
+        stack.addArrangedSubview(b)
+        b.heightAnchor.constraint(equalToConstant: prominent ? 54 : 32).isActive = true
+        b.widthAnchor.constraint(equalTo: stack.widthAnchor, constant: -(stack.edgeInsets.left + stack.edgeInsets.right)).isActive = true
         let menu = NSMenu(); menu.autoenablesItems = false
+        if recentFile {
+            let copy = menu.addItem(withTitle: L("파일 경로 복사", "Copy File Path"), action: #selector(copyLocationItem(_:)), keyEquivalent: "")
+            copy.target = self
+            copy.representedObject = url
+            copy.isEnabled = url != nil
+            b.menu = menu
+            return
+        }
         if let url, favorites.contains(url) {
             for (label, action) in [(L("위로 이동", "Move Up"), #selector(moveFavoriteUp(_:))),
                                     (L("아래로 이동", "Move Down"), #selector(moveFavoriteDown(_:))),
@@ -714,9 +738,6 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
             item.target = self; item.representedObject = url; item.isEnabled = url != nil
         }
         b.menu = menu
-        stack.addArrangedSubview(b)
-        b.heightAnchor.constraint(equalToConstant: prominent ? 54 : 32).isActive = true
-        b.widthAnchor.constraint(equalTo: stack.widthAnchor, constant: -(stack.edgeInsets.left + stack.edgeInsets.right)).isActive = true
     }
     private func buildSidebar() {
         sidebar.arrangedSubviews.forEach { sidebar.removeArrangedSubview($0); $0.removeFromSuperview() }
@@ -762,7 +783,10 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
     }
     private func updateHomeIfNeeded() {
         if homeNeedsUpdate { buildHome() }
-        else if homeRecentNeedsUpdate { updateHomeRecent() }
+        else {
+            if homeRecentFilesNeedsUpdate { updateHomeRecentFiles() }
+            if homeRecentNeedsUpdate { updateHomeRecent() }
+        }
     }
     private func buildHome() {
         homeNeedsUpdate = false
@@ -824,6 +848,14 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
                 }
             }
         }
+        if preferences.showHomeRecentFiles {
+            homeSection(L("최근 파일", "Recent Files"), expanded: preferences.homeRecentFilesExpanded,
+                        action: #selector(toggleHomeRecentFilesExpanded(_:)))
+            if preferences.homeRecentFilesExpanded {
+                homeView.addArrangedSubview(homeRecentFilesView)
+                homeRecentFilesView.widthAnchor.constraint(equalTo: homeView.widthAnchor, constant: -64).isActive = true
+            }
+        }
         if preferences.showHomeRecent {
             homeSection(L("최근 위치", "Recent Locations"), expanded: preferences.homeRecentExpanded, action: #selector(toggleHomeRecentExpanded(_:)))
             if preferences.homeRecentExpanded {
@@ -831,6 +863,7 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
                 homeRecentView.widthAnchor.constraint(equalTo: homeView.widthAnchor, constant: -64).isActive = true
             }
         }
+        updateHomeRecentFiles()
         updateHomeRecent()
         if let focusedButton { restoreHomeFocus(from: focusedButton) }
     }
@@ -855,6 +888,28 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
             let clear = SidebarKeyboardButton(title: L("최근 기록 지우기", "Clear Recent Locations"), target: self, action: #selector(clearRecent(_:)))
             clear.bezelStyle = .rounded
             homeRecentView.addArrangedSubview(clear)
+        }
+        if let focusedButton { restoreHomeFocus(from: focusedButton) }
+    }
+    private func updateHomeRecentFiles() {
+        homeRecentFilesNeedsUpdate = false
+        let focusedButton = (window?.firstResponder as? SidebarKeyboardButton).flatMap {
+            $0.isDescendant(of: homeRecentFilesView) ? $0 : nil
+        }
+        homeRecentFilesView.arrangedSubviews.forEach { homeRecentFilesView.removeArrangedSubview($0); $0.removeFromSuperview() }
+        guard homeRecentFilesView.superview === homeView else { return }
+        if preferences.recentFiles.isEmpty {
+            let message = NSTextField(labelWithString: L("이 앱에서 연 파일이 여기에 표시됩니다.", "Files you open in this app will appear here."))
+            message.textColor = .secondaryLabelColor
+            homeRecentFilesView.addArrangedSubview(message)
+        } else {
+            for url in preferences.recentFiles {
+                locationButton(displayName(url), symbol: "doc", url: url, in: homeRecentFilesView, recentFile: true)
+            }
+            let clear = SidebarKeyboardButton(title: L("최근 파일 지우기", "Clear Recent Files"), target: self,
+                                              action: #selector(clearRecentFiles(_:)))
+            clear.bezelStyle = .rounded
+            homeRecentFilesView.addArrangedSubview(clear)
         }
         if let focusedButton { restoreHomeFocus(from: focusedButton) }
     }
@@ -1613,11 +1668,30 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
     private func openItem(_ item: FileItem) {
         if item.isBrowsable && preferences.openFoldersInNewTab { (NSApp.delegate as? AppDelegate)?.openFolderInNewTab(item.url) }
         else if item.isBrowsable { navigate(item.url) }
-        else if ArchiveFormat.detect(item.url).map({ ArchiveCapabilityMatrix.capabilities(for: $0).browse }) == true { presentArchive(item.url) }
-        else { NSWorkspace.shared.open(item.url) }
+        else { openDocument(item.url) }
+    }
+    @discardableResult private func openDocument(_ url: URL) -> Bool {
+        if ArchiveFormat.detect(url).map({ ArchiveCapabilityMatrix.capabilities(for: $0).browse }) == true {
+            presentArchive(url)
+            return true
+        }
+        return openExternalFile(url)
+    }
+    @discardableResult private func openExternalFile(_ url: URL) -> Bool {
+        guard openSystemURL(url) else { return false }
+        preferences.recordOpenedFile(url)
+        return true
     }
     private func presentArchive(_ url: URL) {
-        let controller = archiveWindow ?? ArchiveWindow(); archiveWindow = controller; controller.present(archiveURL: url)
+        let controller = archiveWindow ?? ArchiveWindow()
+        archiveWindow = controller
+        controller.present(archiveURL: url) { [weak self] in self?.preferences.recordOpenedFile(url) }
+    }
+    @objc private func openRecentFile(_ sender: LocationButton) {
+        guard let url = sender.url else { return }
+        if !openDocument(url) {
+            showEntryError(L("최근 파일을 열지 못했습니다.", "The recent file could not be opened.") + "\n" + url.path)
+        }
     }
     @objc func openArchive(_ sender: Any?) {
         guard activeSelectedItems.count == 1, let item = activeSelectedItems.first,
@@ -1690,7 +1764,7 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         let urls = activeSelectedItems.map(\.url)
         guard !urls.isEmpty, urls.allSatisfy(predicate) else { return }
         var failed = false
-        for url in urls where !NSWorkspace.shared.open(url) { failed = true }
+        for url in urls where !openExternalFile(url) { failed = true }
         if failed { showEntryError(failure) }
     }
     @objc func toggleFocusedSelection(_ sender: Any?) {
@@ -2801,14 +2875,20 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         }
     }
     @objc func openWithApplication(_ sender: Any?) {
-        let urls = activeSelectedItems.map(\.url); guard !urls.isEmpty, let window else { return }
+        let items = activeSelectedItems
+        let urls = items.map(\.url)
+        let files = items.filter { !$0.isDirectory }.map(\.url)
+        guard !urls.isEmpty, let window else { return }
         let panel = NSOpenPanel(); panel.title = L("열 앱 선택", "Choose an Application")
         panel.directoryURL = URL(fileURLWithPath: "/Applications", isDirectory: true); panel.canChooseDirectories = false
         panel.canChooseFiles = true; panel.allowsMultipleSelection = false; panel.allowedContentTypes = [.applicationBundle]
         panel.beginSheetModal(for: window) { [weak self] response in
             guard response == .OK, let application = panel.url, let self else { return }
             Task { @MainActor in
-                do { try await NSWorkspace.shared.open(urls, withApplicationAt: application, configuration: .init()) }
+                do {
+                    try await NSWorkspace.shared.open(urls, withApplicationAt: application, configuration: .init())
+                    for file in files.reversed() { self.preferences.recordOpenedFile(file) }
+                }
                 catch { self.showEntryError(L("선택한 앱으로 열지 못했습니다: ", "Could not open with the selected application: ") + error.localizedDescription) }
             }
         }
@@ -2832,7 +2912,10 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         let urls = activeSelectedItems.filter { !$0.isBrowsable }.map(\.url)
         guard !urls.isEmpty, FileManager.default.fileExists(atPath: application.path) else { return }
         Task { @MainActor in
-            do { try await NSWorkspace.shared.open(urls, withApplicationAt: application, configuration: .init()) }
+            do {
+                try await NSWorkspace.shared.open(urls, withApplicationAt: application, configuration: .init())
+                for file in urls.reversed() { preferences.recordOpenedFile(file) }
+            }
             catch { showEntryError(L("TextEdit에서 열지 못했습니다: ", "Could not open in TextEdit: ") + error.localizedDescription) }
         }
     }
@@ -3158,6 +3241,7 @@ extension BrowserWindow {
             pane.onLocationChange = { [weak self] in self?.updateShelf() }
             pane.onSelectionChange = { [weak self] in self?.updateInfoPane() }
             pane.onOpenFolderInNewTab = { (NSApp.delegate as? AppDelegate)?.openFolderInNewTab($0) }
+            pane.onOpenFile = { [weak self] url in _ = self?.openExternalFile(url) }
             pane.onFileDrop = { [weak self] sources, destination, intent in
                 guard let self else { return false }
                 if intent == .move { self.prepareMove(sources: sources, destination: destination) }
@@ -3249,6 +3333,7 @@ extension BrowserWindow {
         }
     }
     @objc private func clearRecent(_ sender: Any?) { preferences.clearRecent() }
+    @objc private func clearRecentFiles(_ sender: Any?) { preferences.clearRecentFiles() }
     @objc private func moveFavoriteUp(_ sender: NSMenuItem) {
         if let url = sender.representedObject as? URL { preferences.moveFavorite(url, by: -1) }
     }
@@ -3304,6 +3389,7 @@ extension BrowserWindow {
             (L("홈: 빠른 접근", "Home: Quick Access"), #selector(toggleHomeFavorites(_:)), preferences.showHomeFavorites),
             (L("홈: 드라이브", "Home: Drives"), #selector(toggleHomeVolumes(_:)), preferences.showHomeVolumes),
             (L("홈: 네트워크 위치", "Home: Network Locations"), #selector(toggleHomeNetwork(_:)), preferences.showHomeNetwork),
+            (L("홈: 최근 파일", "Home: Recent Files"), #selector(toggleHomeRecentFiles(_:)), preferences.showHomeRecentFiles),
             (L("홈: 최근 위치", "Home: Recent Locations"), #selector(toggleHomeRecent(_:)), preferences.showHomeRecent)
         ]
         for (label, action, selected) in entries {
@@ -3428,10 +3514,12 @@ extension BrowserWindow {
     @objc private func toggleHomeVolumes(_ sender: Any?) { preferences.toggleSection(.volumes) }
     @objc private func toggleHomeNetwork(_ sender: Any?) { preferences.toggleSection(.network) }
     @objc private func toggleHomeRecent(_ sender: Any?) { preferences.toggleSection(.recent) }
+    @objc private func toggleHomeRecentFiles(_ sender: Any?) { preferences.toggleSection(.recentFiles) }
     @objc private func toggleHomeFavoritesExpanded(_ sender: Any?) { preferences.toggleHomeSectionExpanded(.favorites) }
     @objc private func toggleHomeVolumesExpanded(_ sender: Any?) { preferences.toggleHomeSectionExpanded(.volumes) }
     @objc private func toggleHomeNetworkExpanded(_ sender: Any?) { preferences.toggleHomeSectionExpanded(.network) }
     @objc private func toggleHomeRecentExpanded(_ sender: Any?) { preferences.toggleHomeSectionExpanded(.recent) }
+    @objc private func toggleHomeRecentFilesExpanded(_ sender: Any?) { preferences.toggleHomeSectionExpanded(.recentFiles) }
 
     func controlTextDidChange(_ notification: Notification) {
         guard notification.object as? NSComboBox === pathField else { return }
@@ -3898,8 +3986,9 @@ extension BrowserWindow {
             let expectedAppearance: NSAppearance.Name = dark ? .darkAqua : .aqua
             NSApp.appearance = NSAppearance(named: expectedAppearance)
             var storageRequests: [URL] = []
+            let rejectedRecentFile = destination.appendingPathComponent("not-opened.txt")
             let controller = BrowserWindow(preferences: preferences, restoresFrame: false, cloudProvider: qaCloudProvider,
-                                           openSystemURL: { storageRequests.append($0); return true })
+                                           openSystemURL: { storageRequests.append($0); return $0 != rejectedRecentFile })
             guard let window = controller.window, let root = window.contentView else { throw CocoaError(.coderInvalidValue) }
             window.appearance = NSAppearance(named: expectedAppearance)
             window.setFrame(NSRect(x: 80, y: 80, width: 900, height: 600), display: true)
@@ -4160,9 +4249,9 @@ extension BrowserWindow {
                 let contextMenusToggled = contextMenuBefore?.count == contextMenuAfter?.count
                     && zip(contextMenuBefore ?? [], contextMenuAfter ?? []).allSatisfy { $0 != $1 }
                 checks["generalSettingsScrollReachable"] = delegate.qaGeneralSettingsScrollReachable
-                checks["generalSettingsWindow"] = delegate.qaGeneralSettingsVisible && widgetsBefore != nil && widgetsAfter != nil
-                    && widgetsAfter!.0 != widgetsBefore!.0 && widgetsAfter!.1 != widgetsBefore!.1
-                    && widgetsAfter!.2 != widgetsBefore!.2 && widgetsAfter!.3 != widgetsBefore!.3
+                let widgetsToggled = widgetsBefore?.count == 5 && widgetsAfter?.count == 5
+                    && zip(widgetsBefore ?? [], widgetsAfter ?? []).allSatisfy { $0 != $1 }
+                checks["generalSettingsWindow"] = delegate.qaGeneralSettingsVisible && widgetsToggled
                     && delegate.qaGeneralSizeUnit != sizeUnitBefore
                     && delegate.qaGeneralDefaultSortDirectoryPlacement != defaultSortBefore
                     && delegate.qaGeneralAutoSizeColumnsInDetailsLayout != autoSizeColumnsBefore
@@ -4564,11 +4653,13 @@ extension BrowserWindow {
             preferences.setHomeSectionExpanded(.volumes, expanded: false)
             preferences.setHomeSectionExpanded(.network, expanded: false)
             preferences.setHomeSectionExpanded(.recent, expanded: false)
+            preferences.setHomeSectionExpanded(.recentFiles, expanded: false)
             controller.buildHome()
-            checks["homeWidgetExpansion"] = controller.qaCollapsedHomeSectionCount == 4
+            checks["homeWidgetExpansion"] = controller.qaCollapsedHomeSectionCount == 5
             preferences.setHomeSectionExpanded(.favorites, expanded: true)
             preferences.setHomeSectionExpanded(.volumes, expanded: true)
             preferences.setHomeSectionExpanded(.recent, expanded: true)
+            preferences.setHomeSectionExpanded(.recentFiles, expanded: true)
             let optionsIndex = preferences.toolbarOrder.firstIndex(of: .options)!
             preferences.moveToolbarItem(.options, by: -1)
             checks["toolbarOrderPreference"] = preferences.toolbarOrder.firstIndex(of: .options) == optionsIndex - 1
@@ -5496,6 +5587,27 @@ extension BrowserWindow {
                 && secondaryRead.model.items.map(\.name) == ["ready.txt"]
             secondaryRead.shutdown()
             secondaryReadWindow.close()
+            preferences.clearRecentFiles()
+            controller.goHome(nil)
+            let homeHeader = controller.homeView.arrangedSubviews.first
+            let recentFolders = preferences.recent
+            let firstFile = columnFolder.appendingPathComponent("leaf.txt")
+            let secondFile = fixture.appendingPathComponent("00000-한글-é-📁-long-file-name.txt")
+            for url in [firstFile, secondFile, rejectedRecentFile] {
+                controller.openItem(FileItem(url: url, name: url.lastPathComponent, isDirectory: false))
+            }
+            let recentButtons = controller.homeRecentFilesView.arrangedSubviews.compactMap { $0 as? LocationButton }
+            checks["homeRecentFilesShowsSuccessfulOpens"] = recentButtons.compactMap(\.url) == [secondFile, firstFile]
+                && controller.homeView.arrangedSubviews.first === homeHeader && preferences.recent == recentFolders
+            recentButtons.last?.performClick(nil)
+            checks["homeRecentFileReopensAndMovesToFront"] = storageRequests.last == firstFile
+                && preferences.recentFiles.first == firstFile && controller.model.location == nil
+            try capture("home-recent-files")
+            let clearFiles = controller.homeRecentFilesView.arrangedSubviews.compactMap { $0 as? NSButton }
+                .first { $0.action == #selector(clearRecentFiles(_:)) }
+            clearFiles?.performClick(nil)
+            checks["homeRecentFilesClearIsIndependent"] = clearFiles != nil && preferences.recentFiles.isEmpty
+                && preferences.recent == recentFolders
             if let referencePath = ProcessInfo.processInfo.environment["FILES_UI_REFERENCE_FIXTURE"] {
                 let reference = URL(fileURLWithPath: referencePath, isDirectory: true).standardizedFileURL
                 let expected = Set(try fm.contentsOfDirectory(atPath: reference.path))

@@ -1360,6 +1360,43 @@ private struct ManyBatchLoader: DirectoryStreaming {
     #expect(!migratedDefaults.showHomeNetwork && migratedDefaults.homeNetworkExpanded)
 }
 
+@Test @MainActor func recentlyOpenedFilesPersistApartFromVisitedFolders() throws {
+    let suite = "files-recent-opened-\(UUID())", defaults = UserDefaults(suiteName: suite)!
+    defer { defaults.removePersistentDomain(forName: suite) }
+    let preferences = BrowserPreferences(defaults: defaults, initialFavorites: [])
+    let folder = URL(fileURLWithPath: "/tmp/files-recent-fixture", isDirectory: true)
+    let files = (0..<12).map { folder.appendingPathComponent("sample-\($0).txt") }
+    preferences.recordVisit(folder)
+    var notices = 0
+    let token = preferences.observeRecentFiles { notices += 1 }
+    preferences.recordOpenedFile(folder)
+    preferences.recordOpenedFile(URL(string: "https://example.com/not-local")!)
+    for file in files { preferences.recordOpenedFile(file) }
+    preferences.recordOpenedFile(files[11])
+    preferences.recordOpenedFile(files[4])
+    #expect(notices == 13)
+    #expect(preferences.recentFiles.count == 10)
+    #expect(preferences.recentFiles.first == files[4])
+    #expect(!preferences.recentFiles.contains(files[1]))
+    preferences.setSection(.recentFiles, visible: false)
+    preferences.setHomeSectionExpanded(.recentFiles, expanded: false)
+    let reopened = BrowserPreferences(defaults: defaults, initialFavorites: [])
+    #expect(reopened.recentFiles == preferences.recentFiles)
+    #expect(!reopened.showHomeRecentFiles && !reopened.homeRecentFilesExpanded)
+    #expect(reopened.showHomeRecent && reopened.homeRecentExpanded && reopened.recent.map(\.path) == [folder.path])
+    let exported = try preferences.exportData()
+    var json = try #require(JSONSerialization.jsonObject(with: exported) as? [String: Any])
+    #expect(json["recentFiles"] == nil)
+    json.removeValue(forKey: "showHomeRecentFiles")
+    json.removeValue(forKey: "homeRecentFilesExpanded")
+    try reopened.importData(JSONSerialization.data(withJSONObject: json))
+    #expect(reopened.showHomeRecentFiles && reopened.homeRecentFilesExpanded)
+    #expect(reopened.recentFiles == preferences.recentFiles)
+    preferences.removeObserver(token)
+    preferences.clearRecentFiles()
+    #expect(notices == 13 && preferences.recent == [folder])
+}
+
 @Test @MainActor func sidebarOrderRepairsUnknownAndDuplicateSavedValues() {
     let suite = "files-sidebar-invalid-\(UUID())", defaults: UserDefaults
     defaults = UserDefaults(suiteName: suite)!

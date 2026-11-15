@@ -12,6 +12,7 @@ final class SecondaryBrowserPane: NSView, NSTableViewDataSource, NSTableViewDele
     var onSelectionChange: (() -> Void)?
     var onFileDrop: (([URL], URL, FileDropIntent) -> Bool)?
     var onOpenFolderInNewTab: ((URL) -> Void)?
+    var onOpenFile: ((URL) -> Void)?
     private let pathField = NSTextField()
     private let table = ActivatingTableView()
     private let scroll = NSScrollView()
@@ -555,10 +556,17 @@ final class SecondaryBrowserPane: NSView, NSTableViewDataSource, NSTableViewDele
     }
     @objc private func openSelection(_ sender: Any?) {
         activate(); guard let row = table.selectedRowIndexes.first, let item = detailItem(at: row, in: detailRows) else { return }
-        if item.isBrowsable && preferences.openFoldersInNewTab { onOpenFolderInNewTab?(item.url) } else if item.isBrowsable { navigate(item.url) } else { NSWorkspace.shared.open(item.url) }
+        openItem(item)
     }
     private func openGridItem(_ item: FileItem) {
-        activate(); if item.isBrowsable && preferences.openFoldersInNewTab { onOpenFolderInNewTab?(item.url) } else if item.isBrowsable { navigate(item.url) } else { NSWorkspace.shared.open(item.url) }
+        activate()
+        openItem(item)
+    }
+    private func openItem(_ item: FileItem) {
+        if item.isBrowsable && preferences.openFoldersInNewTab { onOpenFolderInNewTab?(item.url) }
+        else if item.isBrowsable { navigate(item.url) }
+        else if let onOpenFile { onOpenFile(item.url) }
+        else { NSWorkspace.shared.open(item.url) }
     }
     private func handleBackgroundDoubleClick() {
         guard preferences.doubleClickToGoUp else { return }

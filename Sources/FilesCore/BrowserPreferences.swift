@@ -83,10 +83,12 @@ public struct BrowserPreferencesArchive: Codable, Equatable, Sendable {
     public let showHomeVolumes: Bool
     public let showHomeNetwork: Bool?
     public let showHomeRecent: Bool
+    public let showHomeRecentFiles: Bool?
     public let homeFavoritesExpanded: Bool?
     public let homeVolumesExpanded: Bool?
     public let homeNetworkExpanded: Bool?
     public let homeRecentExpanded: Bool?
+    public let homeRecentFilesExpanded: Bool?
     public let viewSize: String
     public let syncFolderLayouts: Bool?
     public let showInfoPane: Bool?
@@ -138,11 +140,13 @@ public final class BrowserPreferences {
     private let defaults: UserDefaults
     private var observers: [UUID: (includesRecentLocations: Bool, callback: () -> Void)] = [:]
     private var recentLocationObservers: [UUID: () -> Void] = [:]
+    private var recentFileObservers: [UUID: () -> Void] = [:]
     public enum SidebarSection: String, CaseIterable, Sendable { case favorites, locations }
     public private(set) var sidebarOrder: [SidebarSection]
     public private(set) var collapsedSidebar: Set<SidebarSection>
     public private(set) var favorites: [URL]
     public private(set) var recent: [URL]
+    public private(set) var recentFiles: [URL]
     public private(set) var showHidden: Bool
     public private(set) var showExtensions: Bool
     public private(set) var showToolbar: Bool
@@ -176,10 +180,12 @@ public final class BrowserPreferences {
     public private(set) var showHomeVolumes: Bool
     public private(set) var showHomeNetwork: Bool
     public private(set) var showHomeRecent: Bool
+    public private(set) var showHomeRecentFiles: Bool
     public private(set) var homeFavoritesExpanded: Bool
     public private(set) var homeVolumesExpanded: Bool
     public private(set) var homeNetworkExpanded: Bool
     public private(set) var homeRecentExpanded: Bool
+    public private(set) var homeRecentFilesExpanded: Bool
     public private(set) var viewSize: BrowserViewSize
     public private(set) var syncFolderLayouts: Bool
     public private(set) var showInfoPane: Bool
@@ -232,6 +238,8 @@ public final class BrowserPreferences {
         favorites = (defaults.stringArray(forKey: "favorites")?.map { URL(fileURLWithPath: $0) }
             ?? initialFavorites ?? ["Downloads", "Documents", "Desktop"].map { home.appendingPathComponent($0) })
         recent = (defaults.stringArray(forKey: "recent") ?? []).map { URL(fileURLWithPath: $0) }
+        let recentFilePaths = defaults.stringArray(forKey: "recentFiles") ?? []
+        recentFiles = recentFilePaths.prefix(10).map { URL(fileURLWithPath: $0, isDirectory: false) }
         showHidden = defaults.bool(forKey: "showHidden")
         showExtensions = defaults.object(forKey: "showExtensions") as? Bool ?? true
         showToolbar = defaults.object(forKey: "showToolbar") as? Bool ?? true
@@ -265,11 +273,13 @@ public final class BrowserPreferences {
         showHomeVolumes = defaults.object(forKey: "showHomeVolumes") as? Bool ?? true
         showHomeNetwork = defaults.object(forKey: "showHomeNetwork") as? Bool ?? showHomeVolumes
         showHomeRecent = defaults.object(forKey: "showHomeRecent") as? Bool ?? true
+        showHomeRecentFiles = defaults.object(forKey: "showHomeRecentFiles") as? Bool ?? true
         homeFavoritesExpanded = defaults.object(forKey: "homeFavoritesExpanded") as? Bool ?? true
         homeVolumesExpanded = defaults.object(forKey: "homeVolumesExpanded") as? Bool ?? true
         homeNetworkExpanded = (defaults.object(forKey: "homeNetworkExpanded") as? Bool)
             ?? (defaults.object(forKey: "homeVolumesExpanded") as? Bool) ?? false
         homeRecentExpanded = defaults.object(forKey: "homeRecentExpanded") as? Bool ?? true
+        homeRecentFilesExpanded = defaults.object(forKey: "homeRecentFilesExpanded") as? Bool ?? true
         viewSize = defaults.string(forKey: "viewSize").flatMap(BrowserViewSize.init(rawValue:)) ?? .medium
         sharedFolderLayout = defaults.data(forKey: "sharedFolderLayout").flatMap {
             try? JSONDecoder().decode(SharedFolderLayout.self, from: $0)
@@ -327,9 +337,15 @@ public final class BrowserPreferences {
         recentLocationObservers[id] = callback
         return id
     }
+    @discardableResult public func observeRecentFiles(_ callback: @escaping () -> Void) -> UUID {
+        let id = UUID()
+        recentFileObservers[id] = callback
+        return id
+    }
     public func removeObserver(_ id: UUID) {
         observers.removeValue(forKey: id)
         recentLocationObservers.removeValue(forKey: id)
+        recentFileObservers.removeValue(forKey: id)
     }
     private func changed() {
         for observer in Array(observers.values) { observer.callback() }
@@ -367,6 +383,24 @@ public final class BrowserPreferences {
     }
     public func clearRecent() {
         recent = []; defaults.set([], forKey: "recent"); recentLocationsChanged()
+    }
+    public func recordOpenedFile(_ url: URL) {
+        guard url.isFileURL, !url.hasDirectoryPath else { return }
+        let url = url.standardizedFileURL
+        guard recentFiles.first != url else { return }
+        recentFiles.removeAll { $0 == url }
+        recentFiles.insert(url, at: 0)
+        recentFiles = Array(recentFiles.prefix(10))
+        saveRecentFiles()
+    }
+    public func clearRecentFiles() {
+        guard !recentFiles.isEmpty else { return }
+        recentFiles = []
+        saveRecentFiles()
+    }
+    private func saveRecentFiles() {
+        defaults.set(recentFiles.map(\.path), forKey: "recentFiles")
+        for callback in Array(recentFileObservers.values) { callback() }
     }
     public func setShowHidden(_ value: Bool) {
         showHidden = value; defaults.set(value, forKey: "showHidden"); changed()
@@ -646,8 +680,10 @@ public final class BrowserPreferences {
             showOpenInNewTab: showOpenInNewTab, showOpenInNewWindow: showOpenInNewWindow, showOpenInNewPane: showOpenInNewPane,
             showEditTagsMenu: showEditTagsMenu,
             showCreateShortcut: showCreateShortcut,
-            showHomeFavorites: showHomeFavorites, showHomeVolumes: showHomeVolumes, showHomeNetwork: showHomeNetwork, showHomeRecent: showHomeRecent,
-            homeFavoritesExpanded: homeFavoritesExpanded, homeVolumesExpanded: homeVolumesExpanded, homeNetworkExpanded: homeNetworkExpanded, homeRecentExpanded: homeRecentExpanded,
+            showHomeFavorites: showHomeFavorites, showHomeVolumes: showHomeVolumes, showHomeNetwork: showHomeNetwork,
+            showHomeRecent: showHomeRecent, showHomeRecentFiles: showHomeRecentFiles,
+            homeFavoritesExpanded: homeFavoritesExpanded, homeVolumesExpanded: homeVolumesExpanded, homeNetworkExpanded: homeNetworkExpanded,
+            homeRecentExpanded: homeRecentExpanded, homeRecentFilesExpanded: homeRecentFilesExpanded,
             viewSize: viewSize.rawValue, syncFolderLayouts: syncFolderLayouts, showInfoPane: showInfoPane,
             infoPaneTab: infoPaneTab.rawValue, sharedFolderLayout: sharedFolderLayout,
             appearance: appearance.rawValue, continueLastSession: continueLastSession, sizeUnit: sizeUnit.rawValue,
@@ -740,8 +776,10 @@ public final class BrowserPreferences {
         showCreateShortcut = archive.showCreateShortcut ?? true
         showHomeFavorites = archive.showHomeFavorites; showHomeVolumes = archive.showHomeVolumes; showHomeRecent = archive.showHomeRecent
         showHomeNetwork = archive.showHomeNetwork ?? archive.showHomeVolumes
+        showHomeRecentFiles = archive.showHomeRecentFiles ?? true
         homeFavoritesExpanded = archive.homeFavoritesExpanded ?? true; homeVolumesExpanded = archive.homeVolumesExpanded ?? true; homeRecentExpanded = archive.homeRecentExpanded ?? true
         homeNetworkExpanded = archive.homeNetworkExpanded ?? homeVolumesExpanded
+        homeRecentFilesExpanded = archive.homeRecentFilesExpanded ?? true
         viewSize = size; appearance = importedAppearance; continueLastSession = archive.continueLastSession; sizeUnit = importedSizeUnit
         sharedFolderLayout = archive.sharedFolderLayout
         syncFolderLayouts = archive.syncFolderLayouts == true && sharedFolderLayout != nil
@@ -795,8 +833,10 @@ public final class BrowserPreferences {
         defaults.set(showCreateShortcut, forKey: "showCreateShortcut")
         defaults.set(showHomeFavorites, forKey: "showHomeFavorites"); defaults.set(showHomeVolumes, forKey: "showHomeVolumes"); defaults.set(showHomeRecent, forKey: "showHomeRecent")
         defaults.set(showHomeNetwork, forKey: "showHomeNetwork")
+        defaults.set(showHomeRecentFiles, forKey: "showHomeRecentFiles")
         defaults.set(homeFavoritesExpanded, forKey: "homeFavoritesExpanded"); defaults.set(homeVolumesExpanded, forKey: "homeVolumesExpanded"); defaults.set(homeRecentExpanded, forKey: "homeRecentExpanded")
         defaults.set(homeNetworkExpanded, forKey: "homeNetworkExpanded")
+        defaults.set(homeRecentFilesExpanded, forKey: "homeRecentFilesExpanded")
         defaults.set(viewSize.rawValue, forKey: "viewSize"); defaults.set(appearance.rawValue, forKey: "appearance"); defaults.set(continueLastSession, forKey: "continueLastSession"); defaults.set(sizeUnit.rawValue, forKey: "sizeUnit")
         defaults.set(openFoldersInNewTab, forKey: "openFoldersInNewTab"); defaults.set(scrollToPreviousFolderOnUp, forKey: "scrollToPreviousFolderOnUp"); defaults.set(showFileExtensionWarning, forKey: "showFileExtensionWarning")
         defaults.set(defaultSortDirectoryPlacement.rawValue, forKey: "defaultSortDirectoryPlacement")
@@ -852,7 +892,7 @@ public final class BrowserPreferences {
         toolbarOrder = BrowserToolbarItem.allCases; hiddenToolbarItems = []
         defaults.removeObject(forKey: "toolbarOrder"); defaults.removeObject(forKey: "hiddenToolbarItems"); changed()
     }
-    public enum HomeSection { case favorites, volumes, network, recent }
+    public enum HomeSection { case favorites, volumes, network, recent, recentFiles }
     public func setHomeSectionExpanded(_ section: HomeSection, expanded: Bool) {
         let current: Bool
         switch section {
@@ -860,6 +900,7 @@ public final class BrowserPreferences {
         case .volumes: current = homeVolumesExpanded
         case .network: current = homeNetworkExpanded
         case .recent: current = homeRecentExpanded
+        case .recentFiles: current = homeRecentFilesExpanded
         }
         guard current != expanded else { return }
         switch section {
@@ -870,6 +911,7 @@ public final class BrowserPreferences {
             homeVolumesExpanded = expanded; defaults.set(expanded, forKey: "homeVolumesExpanded")
         case .network: homeNetworkExpanded = expanded; defaults.set(expanded, forKey: "homeNetworkExpanded")
         case .recent: homeRecentExpanded = expanded; defaults.set(expanded, forKey: "homeRecentExpanded")
+        case .recentFiles: homeRecentFilesExpanded = expanded; defaults.set(expanded, forKey: "homeRecentFilesExpanded")
         }
         changed()
     }
@@ -879,6 +921,7 @@ public final class BrowserPreferences {
         case .volumes: setHomeSectionExpanded(section, expanded: !homeVolumesExpanded)
         case .network: setHomeSectionExpanded(section, expanded: !homeNetworkExpanded)
         case .recent: setHomeSectionExpanded(section, expanded: !homeRecentExpanded)
+        case .recentFiles: setHomeSectionExpanded(section, expanded: !homeRecentFilesExpanded)
         }
     }
     public func setSection(_ section: HomeSection, visible: Bool) {
@@ -888,6 +931,7 @@ public final class BrowserPreferences {
         case .volumes: current = showHomeVolumes
         case .network: current = showHomeNetwork
         case .recent: current = showHomeRecent
+        case .recentFiles: current = showHomeRecentFiles
         }
         guard current != visible else { return }
         toggleSection(section)
@@ -900,6 +944,7 @@ public final class BrowserPreferences {
             showHomeVolumes.toggle(); defaults.set(showHomeVolumes, forKey: "showHomeVolumes")
         case .network: showHomeNetwork.toggle(); defaults.set(showHomeNetwork, forKey: "showHomeNetwork")
         case .recent: showHomeRecent.toggle(); defaults.set(showHomeRecent, forKey: "showHomeRecent")
+        case .recentFiles: showHomeRecentFiles.toggle(); defaults.set(showHomeRecentFiles, forKey: "showHomeRecentFiles")
         }
         changed()
     }
