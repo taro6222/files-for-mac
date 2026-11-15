@@ -465,6 +465,11 @@ func mountedSMBCopyMoveUndoRoundTrip() async throws {
     try payload.write(to: copySource.appendingPathComponent("payload.bin"))
     let copy = await CopyEngine.run(sources: [copySource], destination: destination,
                                     journalDirectory: journal, cancellation: CopyCancellation())
+    if copy.state != "completed" {
+        #expect(try Data(contentsOf: copySource.appendingPathComponent("payload.bin")) == payload)
+        #expect(try fm.contentsOfDirectory(atPath: destination.path).isEmpty)
+        print(smbCopyDiagnostic(source: copySource, destination: root))
+    }
     try #require(copy.state == "completed", Comment(rawValue: copy.items.first?.message ?? ""))
     #expect(try await visibleNames(in: destination) == [copySource.lastPathComponent])
     let copiedFolder = destination.appendingPathComponent(copySource.lastPathComponent)
@@ -506,6 +511,31 @@ func mountedSMBCopyMoveUndoRoundTrip() async throws {
     try await verifyMountedVolumeReplacementCancellation(local: local, destination: destination, journal: journal)
     try await verifyMountedVolumeChangedBackupCancellation(local: local, destination: destination, journal: journal)
     try await verifyCrossVolumeMovePreservesReplacedDestination(local: local, destination: destination, journal: journal)
+}
+
+private func smbCopyDiagnostic(source: URL, destination: URL) -> String {
+    let fm = FileManager.default
+    let workspace = destination.appendingPathComponent(".files-smb-diagnostic-\(UUID().uuidString)", isDirectory: true)
+    let copy = workspace.appendingPathComponent("payload", isDirectory: true)
+    defer { try? fm.removeItem(at: workspace) }
+    do {
+        try fm.createDirectory(at: workspace, withIntermediateDirectories: false)
+        try fm.copyItem(at: source, to: copy)
+        let original = try CopyEngine.makeSnapshot(source, cancellation: CopyCancellation())
+        let duplicate = try CopyEngine.makeSnapshot(copy, cancellation: CopyCancellation())
+        let paths = Set(original.content.keys).union(duplicate.content.keys).sorted()
+        func describe(_ snapshot: CopyEngine.VerificationSnapshot, path: String) -> String {
+            let entry = snapshot.withPermissions[path] ?? "missing"
+            let attributes = (snapshot.metadata.extendedAttributes[path] ?? [:]).keys
+                .map { String(decoding: $0, as: UTF8.self) }.sorted()
+            return "\(entry), xattrs=\(attributes)"
+        }
+        return (["SMB diagnostic: Foundation copy \(original.filesystemType) → \(duplicate.filesystemType)"] + paths.map { path in
+            "\(path.isEmpty ? "." : path) source=[\(describe(original, path: path))] staged=[\(describe(duplicate, path: path))]"
+        }).joined(separator: "\n")
+    } catch {
+        return "SMB diagnostic could not inspect a separate Foundation copy: \(error.localizedDescription)"
+    }
 }
 
 private func verifyCrossVolumeMovePreservesReplacedDestination(local: URL, destination: URL, journal: URL) async throws {
