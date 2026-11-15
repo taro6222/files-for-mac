@@ -6,7 +6,7 @@ on:
       scope:
         description: Reference capture scope
         type: choice
-        options: [all, tab-drop, properties, security, advanced-security]
+        options: [all, tab-drop, properties, security, advanced-security, operation-center]
         default: all
 
 permissions:

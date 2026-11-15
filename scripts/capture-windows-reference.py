@@ -157,6 +157,21 @@ def advanced_security_matches(tree, expected):
     return False
 
 
+def completed_copy_card(tree, destination):
+    for listing in tree.iter():
+        if listing.get("AutomationId") != "StatusCenterItemsListView" or listing.get("IsOffscreen") != "False":
+            continue
+        for row in listing.iter("ListItem"):
+            if row.get("IsOffscreen") != "False":
+                continue
+            for element in row.iter():
+                name = element.get("Name", "").strip()
+                if (element.get("IsOffscreen") == "False" and name.casefold().startswith("copied 1 item to ")
+                        and name.casefold().endswith(f'"{destination.casefold()}"')):
+                    return name
+    return None
+
+
 def capture(output, app_id, window_handle, fixture=None, scope="all"):
     output.mkdir(parents=True, exist_ok=True)
     session = None
@@ -373,10 +388,63 @@ def capture(output, app_id, window_handle, fixture=None, scope="all"):
                 capture_tab_drop()
                 return
 
-            def open_properties(file):
-                row = wait_for(f"the properties row for {file.name}", lambda: element_route(
+            def select_file(file):
+                row = wait_for(f"the visible row for {file.name}", lambda: element_route(
                     "xpath", f"//*[@AutomationId='ItemName' and (@Name='{file.name}' or @Name='{file.stem}') and @IsOffscreen='False']"))
                 request("POST", row + "/click", {})
+
+            if scope == "operation-center":
+                source = fixture / "preview.txt"
+                destination = fixture / "Workshop"
+                copied = destination / source.name
+                payload_hash = hashlib.sha256(source.read_bytes()).hexdigest()
+                if copied.exists():
+                    raise RuntimeError("The copy destination is not empty")
+                select_file(source)
+                request("POST", session + "/keys", {"value": ["\ue009", "c", "\ue000"]})
+                open_path(destination)
+
+                def is_at_destination():
+                    route = element_route("accessibility id", "CurrentPathGet")
+                    current = request("GET", route + "/text")["value"]
+                    return current.rstrip("\\").casefold() == str(destination).rstrip("\\").casefold()
+
+                wait_for("the copy destination folder", is_at_destination)
+                request("POST", session + "/keys", {"value": ["\ue009", "v", "\ue000"]})
+                wait_for("the copied fixture bytes", lambda: copied.is_file() and
+                         hashlib.sha256(copied.read_bytes()).hexdigest() == payload_hash)
+                button = wait_for("the Status Center button", lambda: element_route(
+                    "xpath", "//Button[@AutomationId='ShowStatusCenterButton' and @IsOffscreen='False']"))
+                request("POST", button + "/click", {})
+
+                def completed_card_source():
+                    tree = read_tree()
+                    card = completed_copy_card(tree, destination.name)
+                    return (tree, card) if card else None
+
+                tree, card = wait_for("the completed copy in Status Center", completed_card_source)
+                record["completedCopy"] = {"destination": destination.name, "cardTitle": card,
+                                           "copiedSHA256": payload_hash}
+                capture_layout(tree, "UI-10-copy-complete", "status-center")
+                button = element_route("xpath", "//Button[@AutomationId='CloseAllItemsButton' and @IsEnabled='True' and @IsOffscreen='False']")
+                request("POST", button + "/click", {})
+
+                def cleared_source():
+                    tree = read_tree()
+                    buttons = [element for element in tree.iter() if element.get("AutomationId") == "CloseAllItemsButton"
+                               and element.get("IsOffscreen") == "False"]
+                    if any(element.get("IsEnabled") == "False" for element in buttons) and not completed_copy_card(tree, destination.name):
+                        return tree
+                    return None
+
+                tree = wait_for("the cleared Status Center", cleared_source)
+                if any(hashlib.sha256(file.read_bytes()).hexdigest() != payload_hash for file in (source, copied)):
+                    raise RuntimeError("Clearing a completed copy changed the fixture bytes")
+                capture_layout(tree, "UI-10-cleared", "status-center")
+                return
+
+            def open_properties(file):
+                select_file(file)
                 button = wait_for("the enabled Properties button", lambda: element_route(
                     "xpath", "//Button[@AutomationId='InnerNavigationToolbarPropertiesButton' and @IsEnabled='True' and @IsOffscreen='False']"))
                 request("POST", button + "/click", {})
@@ -594,7 +662,8 @@ if __name__ == "__main__":
     parser.add_argument("output", type=Path)
     parser.add_argument("--window-handle", required=True)
     parser.add_argument("--fixture", type=Path)
-    parser.add_argument("--scope", choices=("all", "tab-drop", "properties", "security", "advanced-security"), default="all")
+    parser.add_argument("--scope", choices=("all", "tab-drop", "properties", "security", "advanced-security",
+                                            "operation-center"), default="all")
     arguments = parser.parse_args()
     if arguments.scope != "all" and arguments.fixture is None:
         parser.error("a specific --scope requires --fixture")
