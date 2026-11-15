@@ -336,6 +336,8 @@ def capture(output, app_id, window_handle, fixture=None, scope="all"):
                 app_elevated = process_is_elevated(app_pid)
                 runner_elevated = process_is_elevated(os.getpid())
                 print(f"Tab drag process elevation: Files={app_elevated}, driver script={runner_elevated}", flush=True)
+                if app_elevated:
+                    raise RuntimeError("Files disables tab drag and drop when it runs as administrator")
                 drag_pointer((tx + tw // 2, ty + th // 2), (px + round(pw * 0.9), py + ph // 2))
 
                 def tab_drop_source():

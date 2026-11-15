@@ -86,7 +86,12 @@ jobs:
           $driver = Start-Process $driverPath -PassThru `
             -RedirectStandardOutput "$output/driver-stdout.log" -RedirectStandardError "$output/driver-stderr.log"
           try {
-            Start-Process explorer.exe "shell:AppsFolder\$env:FILES_WINDOWS_APP_ID"
+            if ($env:FILES_WINDOWS_CAPTURE_SCOPE -eq 'tab-drop') {
+              $activationResult = Join-Path (Resolve-Path $output).Path 'activation.json'
+              & ./scripts/start-windows-reference-app.ps1 -AppId $env:FILES_WINDOWS_APP_ID -ResultPath $activationResult
+            } else {
+              Start-Process explorer.exe "shell:AppsFolder\$env:FILES_WINDOWS_APP_ID"
+            }
             $deadline = [DateTime]::UtcNow.AddSeconds(45)
             $installedExecutable = Join-Path $env:FILES_WINDOWS_INSTALL_PATH 'Files.exe'
             do {
