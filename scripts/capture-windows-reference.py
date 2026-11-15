@@ -238,6 +238,34 @@ def capture(output, app_id, window_handle, fixture=None):
                 }
                 report.write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8")
 
+            def info_pane_source(name, expected_text):
+                tree = read_tree()
+                for panel in tree.iter():
+                    if panel.get("Name") != name or panel.get("IsOffscreen") != "False":
+                        continue
+                    texts = {element.get("Name", "").strip() for element in panel.iter()
+                             if element.get("IsOffscreen") == "False"}
+                    if expected_text in texts:
+                        return tree
+                return None
+
+            preview_file = fixture / "preview.txt"
+            preview_row = wait_for("the preview fixture row", lambda: element_route(
+                "xpath", "//*[@AutomationId='ItemName' and @Name='preview.txt' and @IsOffscreen='False']"))
+            request("POST", preview_row + "/click", {})
+            info_button = "//Button[@AutomationId='PreviewPane' and @IsOffscreen='False']"
+            request("POST", element_route("xpath", info_button) + "/click", {})
+            for tab, panel_name, expected_text in (
+                ("Details", "File details", preview_file.name),
+                ("Preview", "File preview", preview_file.read_text(encoding="utf-8").strip()),
+            ):
+                tab_button = wait_for(f"the {tab} tab in the info pane", lambda: element_route(
+                    "xpath", f"//RadioButton[@Name='{tab}' and @IsOffscreen='False']"))
+                request("POST", tab_button + "/click", {})
+                tree = wait_for(f"{panel_name} showing the selected fixture", lambda: info_pane_source(panel_name, expected_text))
+                capture_layout(tree, f"UI-08-{tab.lower()}", "info-pane")
+            request("POST", element_route("xpath", info_button) + "/click", {})
+
             send_control_shift("4")
             capture_layout(wait_for("the fixture grid", grid_source), "UI-04", "grid")
             send_control_shift("5")
