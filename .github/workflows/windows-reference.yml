@@ -2,6 +2,12 @@ name: Windows reference capture
 
 on:
   workflow_dispatch:
+    inputs:
+      scope:
+        description: Reference capture scope
+        type: choice
+        options: [all, tab-drop]
+        default: all
 
 permissions:
   contents: read
@@ -70,6 +76,8 @@ jobs:
           "FILES_WINDOWS_PACKAGE_SHA=$((Get-FileHash $package.FullName -Algorithm SHA256).Hash.ToLowerInvariant())" >> $env:GITHUB_ENV
       - name: Capture Windows Home and folder layouts
         shell: pwsh
+        env:
+          FILES_WINDOWS_CAPTURE_SCOPE: ${{ inputs.scope }}
         run: |
           Set-DisplayResolution -Width 1920 -Height 1080 -Force
           $driverPath = Join-Path ${env:ProgramFiles(x86)} 'Windows Application Driver\WinAppDriver.exe'
@@ -97,7 +105,7 @@ jobs:
             $fixture = Join-Path $env:RUNNER_TEMP 'Files Reference'
             python scripts/create-ui-reference-fixture.py $fixture
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-            python scripts/capture-windows-reference.py $output --window-handle $handle --fixture $fixture
+            python scripts/capture-windows-reference.py $output --window-handle $handle --fixture $fixture --scope $env:FILES_WINDOWS_CAPTURE_SCOPE
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           } finally {
             Stop-Process -Id $driver.Id -ErrorAction SilentlyContinue

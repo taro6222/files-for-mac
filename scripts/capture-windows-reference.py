@@ -135,7 +135,7 @@ def wait_for(description, read):
     raise RuntimeError(f"Timed out waiting for {description}") from last_error
 
 
-def capture(output, app_id, window_handle, fixture=None):
+def capture(output, app_id, window_handle, fixture=None, scope="all"):
     output.mkdir(parents=True, exist_ok=True)
     session = None
     last_source = None
@@ -188,6 +188,7 @@ def capture(output, app_id, window_handle, fixture=None):
             "appID": app_id,
             "windows": platform.version(),
             "architecture": platform.machine(),
+            "scope": scope,
             "screen": "UI-01 Home, initial runner defaults",
             "screenshotSHA256": screenshot_sha,
         }
@@ -285,6 +286,69 @@ def capture(output, app_id, window_handle, fixture=None):
                 }
                 report.write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8")
 
+            def split_source(secondary_opened=False, stacked=False):
+                tree = read_tree()
+                panes = [element for element in tree.iter() if element.get("AutomationId") == "RootGridZoom"
+                         and element.get("IsOffscreen") == "False"]
+                if len(panes) != 2:
+                    return None
+                try:
+                    first, second = map(element_bounds, panes)
+                except (KeyError, ValueError):
+                    return None
+                if stacked:
+                    arranged = first[1] + first[3] <= second[1] + 1 and abs(first[0] - second[0]) <= 1
+                else:
+                    arranged = first[0] + first[2] <= second[0] + 1 and abs(first[1] - second[1]) <= 1
+                if not arranged:
+                    return None
+                names = [{element.get("Name", "").casefold() for element in pane.iter()} for pane in panes]
+                right_matches = ({"column-note.txt", "column-note"} & names[1]) if secondary_opened else has_fixture_items(names[1])
+                return tree if has_fixture_items(names[0]) and right_matches else None
+
+            def visible_tabs(tree):
+                return [tab for tab in tree.iter("TabItem") if tab.get("IsOffscreen") == "False"]
+
+            def verify_tab_selection(tree, active):
+                if tree is None:
+                    return None
+                tabs = visible_tabs(tree)
+                names = [tab.get("Name") for tab in tabs]
+                selected = [tab.get("Name") for tab in tabs if tab.get("IsSelected") == "True"]
+                return tree if names == [fixture.name, "Alpha"] and selected == [active] else None
+
+            def capture_tab_drop():
+                request("POST", session + "/keys", {"value": ["\ue009", "t", "\ue000"]})
+                wait_for("the second tab", lambda: len(visible_tabs(read_tree())) == 2)
+                open_path(fixture / "Alpha")
+                wait_for("the two tabs with Alpha selected", lambda: verify_tab_selection(read_tree(), "Alpha"))
+                # Files binds Ctrl+Shift+Tab to its Previous Tab command.
+                request("POST", session + "/keys", {"value": ["\ue009", "\ue008", "\ue004", "\ue000"]})
+                tree = wait_for("the first tab selected at the fixture", lambda: verify_tab_selection(folder_source(), fixture.name))
+                alpha_tab = next(tab for tab in visible_tabs(tree) if tab.get("Name") == "Alpha")
+                pane = next(element for element in tree.iter() if element.get("AutomationId") == "RootGridZoom"
+                            and element.get("IsOffscreen") == "False")
+                tx, ty, tw, th = element_bounds(alpha_tab)
+                px, py, pw, ph = element_bounds(pane)
+                if min(tw, th, pw, ph) <= 0:
+                    raise RuntimeError("The tab or the drop target does not have a visible rectangle")
+                app_pid = int(alpha_tab.attrib["ProcessId"])
+                app_elevated = process_is_elevated(app_pid)
+                runner_elevated = process_is_elevated(os.getpid())
+                print(f"Tab drag process elevation: Files={app_elevated}, driver script={runner_elevated}", flush=True)
+                drag_pointer((tx + tw // 2, ty + th // 2), (px + round(pw * 0.9), py + ph // 2))
+
+                def tab_drop_source():
+                    tree = split_source(secondary_opened=True)
+                    return tree if tree is not None and len(visible_tabs(tree)) == 1 else None
+
+                tree = wait_for("tab drop into the right pane with the source tab closed", tab_drop_source)
+                capture_layout(tree, "UI-06-tab-drop", "dual-pane")
+
+            if scope == "tab-drop":
+                capture_tab_drop()
+                return
+
             def info_pane_source(name, expected_text):
                 tree = read_tree()
                 for panel in tree.iter():
@@ -332,26 +396,6 @@ def capture(output, app_id, window_handle, fixture=None):
             tree = wait_for("Alpha and its child in adjacent columns", expanded_columns_source)
             capture_layout(tree, "UI-05", "columns")
 
-            def split_source(secondary_opened=False, stacked=False):
-                tree = read_tree()
-                panes = [element for element in tree.iter() if element.get("AutomationId") == "RootGridZoom"
-                         and element.get("IsOffscreen") == "False"]
-                if len(panes) != 2:
-                    return None
-                try:
-                    first, second = map(element_bounds, panes)
-                except (KeyError, ValueError):
-                    return None
-                if stacked:
-                    arranged = first[1] + first[3] <= second[1] + 1 and abs(first[0] - second[0]) <= 1
-                else:
-                    arranged = first[0] + first[2] <= second[0] + 1 and abs(first[1] - second[1]) <= 1
-                if not arranged:
-                    return None
-                names = [{element.get("Name", "").casefold() for element in pane.iter()} for pane in panes]
-                right_matches = ({"column-note.txt", "column-note"} & names[1]) if secondary_opened else has_fixture_items(names[1])
-                return tree if has_fixture_items(names[0]) and right_matches else None
-
             send_control_shift("1")
             open_path(fixture)
             wait_for("the fixture in Details before splitting", folder_source)
@@ -389,47 +433,11 @@ def capture(output, app_id, window_handle, fixture=None):
             tree = wait_for("the single matching file in a child folder", search_source)
             capture_layout(tree, "UI-07", "search")
 
-            def visible_tabs(tree):
-                return [tab for tab in tree.iter("TabItem") if tab.get("IsOffscreen") == "False"]
-
-            def verify_tab_selection(tree, active):
-                if tree is None:
-                    return None
-                tabs = visible_tabs(tree)
-                names = [tab.get("Name") for tab in tabs]
-                selected = [tab.get("Name") for tab in tabs if tab.get("IsSelected") == "True"]
-                return tree if names == [fixture.name, "Alpha"] and selected == [active] else None
-
             back = wait_for("the search page's Back button", lambda: element_route(
                 "xpath", "//Button[@AutomationId='Back' and @IsEnabled='True' and @IsOffscreen='False']"))
             request("POST", back + "/click", {})
             wait_for("the first tab back at the fixture", folder_source)
-            request("POST", session + "/keys", {"value": ["\ue009", "t", "\ue000"]})
-            wait_for("the second tab", lambda: len(visible_tabs(read_tree())) == 2)
-            open_path(fixture / "Alpha")
-            wait_for("the two tabs with Alpha selected", lambda: verify_tab_selection(read_tree(), "Alpha"))
-            # Files binds Ctrl+Shift+Tab to its Previous Tab command.
-            request("POST", session + "/keys", {"value": ["\ue009", "\ue008", "\ue004", "\ue000"]})
-            tree = wait_for("the first tab selected at the fixture", lambda: verify_tab_selection(folder_source(), fixture.name))
-            alpha_tab = next(tab for tab in visible_tabs(tree) if tab.get("Name") == "Alpha")
-            pane = next(element for element in tree.iter() if element.get("AutomationId") == "RootGridZoom"
-                        and element.get("IsOffscreen") == "False")
-            tx, ty, tw, th = element_bounds(alpha_tab)
-            px, py, pw, ph = element_bounds(pane)
-            if min(tw, th, pw, ph) <= 0:
-                raise RuntimeError("The tab or the drop target does not have a visible rectangle")
-            app_pid = int(alpha_tab.attrib["ProcessId"])
-            app_elevated = process_is_elevated(app_pid)
-            runner_elevated = process_is_elevated(os.getpid())
-            print(f"Tab drag process elevation: Files={app_elevated}, driver script={runner_elevated}", flush=True)
-            drag_pointer((tx + tw // 2, ty + th // 2), (px + round(pw * 0.9), py + ph // 2))
-
-            def tab_drop_source():
-                tree = split_source(secondary_opened=True)
-                return tree if tree is not None and len(visible_tabs(tree)) == 1 else None
-
-            tree = wait_for("tab drop into the right pane with the source tab closed", tab_drop_source)
-            capture_layout(tree, "UI-06-tab-drop", "dual-pane")
+            capture_tab_drop()
 
             send_control_shift("s")
             open_path(fixture)
@@ -467,5 +475,8 @@ if __name__ == "__main__":
     parser.add_argument("output", type=Path)
     parser.add_argument("--window-handle", required=True)
     parser.add_argument("--fixture", type=Path)
+    parser.add_argument("--scope", choices=("all", "tab-drop"), default="all")
     arguments = parser.parse_args()
-    capture(arguments.output, os.environ["FILES_WINDOWS_APP_ID"], arguments.window_handle, arguments.fixture)
+    if arguments.scope == "tab-drop" and arguments.fixture is None:
+        parser.error("--scope tab-drop requires --fixture")
+    capture(arguments.output, os.environ["FILES_WINDOWS_APP_ID"], arguments.window_handle, arguments.fixture, arguments.scope)
