@@ -6031,22 +6031,39 @@ extension BrowserWindow {
                         checks["referenceFolderPropertiesUnsigned"] = false
                     }
                     controller.infoWindow?.close()
-                    if let signedPath = ProcessInfo.processInfo.environment["FILES_UI_REFERENCE_SIGNED_FILE"] {
+                    let validSignature = L("상태: 유효", "State: Valid")
+                    let invalidSignature = L("상태: 유효하지 않음", "State: Invalid")
+                    let signatureFixtures: [(variable: String, bundle: Bool, state: String, identifier: String,
+                                             check: String, screenshot: String)] = [
+                        ("FILES_UI_REFERENCE_SIGNED_FILE", false, validSignature, "org.taro6222.files.qa.signed-reference",
+                         "referencePropertiesValidSignature", "ui-09-reference-signatures"),
+                        ("FILES_UI_REFERENCE_SIGNED_BUNDLE", true, validSignature, "org.taro6222.files.qa.outer",
+                         "referencePropertiesValidNestedSignature", "ui-09-reference-nested-signed"),
+                        ("FILES_UI_REFERENCE_INVALID_BUNDLE", true, invalidSignature, "org.taro6222.files.qa.outer",
+                         "referencePropertiesInvalidNestedSignature", "ui-09-reference-nested-invalid")
+                    ]
+                    for fixture in signatureFixtures {
+                        guard let signedPath = ProcessInfo.processInfo.environment[fixture.variable] else { continue }
                         let signedURL = URL(fileURLWithPath: signedPath)
                         let signature = FileInfoWindow()
-                        signature.present(items: [FileItem(url: signedURL, name: signedURL.lastPathComponent, isDirectory: false)])
+                        defer { signature.close() }
+                        signature.present(items: [FileItem(url: signedURL, name: signedURL.lastPathComponent,
+                                                          isDirectory: fixture.bundle, isPackage: fixture.bundle)])
                         signature.qaInspectSignature()
                         try await controller.waitForFolderQA { signature.qaSignatureLoaded }
                         let lines = signature.qaSignatureText.components(separatedBy: .newlines)
-                        checks["referencePropertiesValidSignature"] = lines.first == L("상태: 유효", "State: Valid")
-                            && lines.contains("Identifier: org.taro6222.files.qa.signed-reference")
-                            && lines.contains { $0.hasPrefix("Format: Mach-O") }
-                        if checks["referencePropertiesValidSignature"] == true, let signedPanel = signature.window,
+                        let formatPrefix = fixture.bundle ? "Format: app bundle with Mach-O" : "Format: Mach-O"
+                        checks[fixture.check] = lines.first == fixture.state
+                            && lines.contains("Identifier: \(fixture.identifier)")
+                            && lines.contains { $0.hasPrefix(formatPrefix) }
+                            && (fixture.state != invalidSignature || lines.contains {
+                                $0.hasPrefix("In subcomponent: ") && $0.hasSuffix("/Helper.app")
+                            })
+                        if checks[fixture.check] == true, let signedPanel = signature.window,
                            let signedContent = signedPanel.contentView {
                             signature.qaRevealSignature()
-                            try capture("ui-09-reference-signatures", view: signedContent, backingColor: signedPanel.backgroundColor)
+                            try capture(fixture.screenshot, view: signedContent, backingColor: signedPanel.backgroundColor)
                         }
-                        signature.close()
                     }
                     window.makeKeyAndOrderFront(nil)
                     await Task.yield()
