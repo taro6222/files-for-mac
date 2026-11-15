@@ -64,9 +64,9 @@
 
 [UI-04 그리드](INCREMENT_197.md)와 [UI-05 컬럼](INCREMENT_201.md)의 Windows·macOS 실행 화면을 공통 폴더로 대조했다. 컬럼 보기에서 선택에 따른 하위 항목 표시와 원본의 상위 경로 컬럼을 확인했다.
 
-[UI-06 좌우 분할](INCREMENT_206.md)과 [상하 분할](INCREMENT_212.md)에서 두 앱의 패널별 경로와 하위 항목, 활성 상태를 대조했다. Windows 탭 드롭 실행 검증과 동일 창 크기에서의 시각 대조는 남아 있다.
+[UI-06 좌우 분할](INCREMENT_206.md)과 [상하 분할](INCREMENT_212.md)에서 두 앱의 패널별 경로와 하위 항목, 활성 상태를 대조했다. [제한 실행 수준으로 시작한 Windows 시험도 관리자 권한을 보고해](INCREMENT_236.md) 탭 드롭은 열린 항목이다. 동일 창 크기에서의 시각 대조도 남아 있다.
 
-[UI-07 검색](INCREMENT_217.md)에서 Windows와 macOS의 공통 폴더 검색 결과와 표시 방식을 대조했다. Windows의 검색 복귀와 탭 드롭은 재실행한다.
+[UI-07 검색](INCREMENT_217.md)에서 Windows와 macOS의 공통 폴더 검색 결과와 표시 방식을 대조했다. Windows의 검색 복귀는 재실행한다.
 
 [UI-08 정보 패널](INCREMENT_224.md)에서 같은 텍스트 파일의 상세와 미리보기 본문을 두 앱의 실행 화면으로 확인했다. macOS의 [생성일·태그 편집·속성 바로가기](INCREMENT_226.md)와 [선택 항목의 Git 상태](INCREMENT_229.md)를 검증했다. [PNG·PDF 화면 검증](INCREMENT_230.md)은 열린 항목이다.
 
