@@ -6380,21 +6380,31 @@ extension BrowserWindow {
             CopyWindow.start(sources: [availableSource], destination: target,
                              journalDirectory: journals) { centerCopyFinished = true }
             let centerCopy = NSApp.windows.filter(\.isVisible).compactMap { $0.windowController as? CopyWindow }.first
-            let visibleProgress = centerCopy.flatMap { operationCenter.qaStatus(for: $0) }?.progress?.total == 1
-            let cancelFromCenter = centerCopy.map { operationCenter.qaCancel($0) } == true
-            let centerShowsCancellation = centerCopy.flatMap { operationCenter.qaStatus(for: $0) }
+            let centerCopyID = centerCopy?.operationID
+            let visibleProgress = centerCopyID.flatMap { operationCenter.qaStatus(for: $0) }?.progress?.total == 1
+            let cancelFromCenter = centerCopyID.map { operationCenter.qaCancel($0) } == true
+            let centerShowsCancellation = centerCopyID.flatMap { operationCenter.qaStatus(for: $0) }
                 .map { $0.status.hasPrefix(L("취소 요청됨", "Cancellation requested")) && $0.cancel == nil } == true
             let centerCopyStart = ContinuousClock.now
             while !centerCopyFinished && elapsed(centerCopyStart) < 5 {
                 try await Task.sleep(for: .milliseconds(20))
             }
-            let centerShowsResult = centerCopy.flatMap { operationCenter.qaStatus(for: $0) }
-                .map { $0.status.hasPrefix(L("취소됨", "Cancelled")) && $0.progress == nil && $0.cancel == nil } == true
+            let centerShowsResult = centerCopyID.flatMap { operationCenter.qaStatus(for: $0) }
+                .map {
+                    $0.status.hasPrefix(L("취소됨", "Cancelled")) && $0.progress == nil
+                        && $0.cancel == nil && $0.showDetails != nil
+                } == true
             centerCopy?.close()
-            let removedClosedResult = centerCopy.map { operationCenter.qaStatus(for: $0) == nil } == true
             operationCenter.close()
+            let reopenedCenter = FileOperationCenter.present()
+            let retainedClosedResult = centerCopyID.flatMap { reopenedCenter.qaStatus(for: $0) }
+                .map {
+                    $0.status.hasPrefix(L("취소됨", "Cancelled")) && $0.destination == target.path
+                        && $0.progress == nil && $0.cancel == nil && $0.showDetails == nil
+                } == true
+            reopenedCenter.close()
             checks["fileOperationCenterCancellationAndResult"] = operationMenu && visibleProgress && cancelFromCenter
-                && centerShowsCancellation && centerCopyFinished && centerShowsResult && removedClosedResult
+                && centerShowsCancellation && centerCopyFinished && centerShowsResult && retainedClosedResult
                 && (try? Data(contentsOf: availableSource)) == availablePayload
                 && !fm.fileExists(atPath: target.appendingPathComponent(availableSource.lastPathComponent).path)
             var mixedCopyFinished = false

@@ -8,6 +8,8 @@ final class MoveWindow: NSWindowController, NSWindowDelegate {
     private static var operations: [MoveWindow] = []
     static var isRunning: Bool { operations.contains { $0.running } }
     static var activities: [FileOperationActivity] { operations.map(\.activity) }
+    let operationID = UUID()
+    private let destinationPath: String
     private var running = true
     private let cancellation = CopyCancellation()
     private let label = NSTextField(wrappingLabelWithString: "")
@@ -68,6 +70,7 @@ final class MoveWindow: NSWindowController, NSWindowDelegate {
     }
 
     private init(sources: [URL], destination: URL, conflictPolicy: MoveConflictPolicy) {
+        destinationPath = destination.path
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 680, height: 360),
                               styleMask: [.titled, .closable, .miniaturizable, .resizable], backing: .buffered, defer: false)
         super.init(window: window)
@@ -221,7 +224,8 @@ final class MoveWindow: NSWindowController, NSWindowDelegate {
         FileOperationCenter.activityChanged()
     }
     private var activity: FileOperationActivity {
-        fileOperationActivity(status: label.stringValue, progress: progress, running: running,
+        fileOperationActivity(id: operationID, destination: destinationPath, status: label.stringValue,
+                              progress: progress, running: running,
                               cancel: running && close.isEnabled ? { [weak self] in self?.cancelMove(nil) } : nil)
     }
 
@@ -259,6 +263,7 @@ final class MoveWindow: NSWindowController, NSWindowDelegate {
     func windowShouldClose(_ sender: NSWindow) -> Bool { !running }
     func windowWillClose(_ notification: Notification) {
         Self.operations.removeAll { $0 === self }
+        FileOperationCenter.retainResult(activity)
         FileOperationCenter.activityChanged()
     }
 }

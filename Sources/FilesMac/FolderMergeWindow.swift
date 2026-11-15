@@ -8,6 +8,8 @@ final class FolderMergeWindow: NSWindowController, NSWindowDelegate {
     private static var operations: [FolderMergeWindow] = []
     static var isRunning: Bool { operations.contains { $0.running } }
     static var activities: [FileOperationActivity] { operations.map(\.activity) }
+    let operationID = UUID()
+    private let destinationPath: String
     private var running = true
     private let cancellation = CopyCancellation()
     private let label = NSTextField(wrappingLabelWithString: L("병합 계획 준비 중…", "Preparing merge plan…"))
@@ -35,6 +37,7 @@ final class FolderMergeWindow: NSWindowController, NSWindowDelegate {
     }
 
     private init(sources: [URL], destination: URL) {
+        destinationPath = destination.path
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 680, height: 420),
                               styleMask: [.titled, .closable, .miniaturizable, .resizable],
                               backing: .buffered, defer: false)
@@ -92,12 +95,14 @@ final class FolderMergeWindow: NSWindowController, NSWindowDelegate {
         FileOperationCenter.activityChanged()
     }
     private var activity: FileOperationActivity {
-        fileOperationActivity(status: label.stringValue, progress: progress, running: running,
+        fileOperationActivity(id: operationID, destination: destinationPath, status: label.stringValue,
+                              progress: progress, running: running,
                               cancel: running && cancel.isEnabled ? { [weak self] in self?.cancelMerge(nil) } : nil)
     }
     func windowShouldClose(_ sender: NSWindow) -> Bool { if running { NSSound.beep(); return false }; return true }
     func windowWillClose(_ notification: Notification) {
         Self.operations.removeAll { $0 === self }
+        FileOperationCenter.retainResult(activity)
         FileOperationCenter.activityChanged()
     }
 }

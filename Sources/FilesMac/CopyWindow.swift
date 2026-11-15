@@ -8,6 +8,8 @@ final class CopyWindow: NSWindowController, NSWindowDelegate {
     private static var operations: [CopyWindow] = []
     static var isRunning: Bool { operations.contains { $0.running } }
     static var activities: [FileOperationActivity] { operations.map(\.activity) }
+    let operationID = UUID()
+    private let destinationPath: String
     private var running = true
     private let cancellation = CopyCancellation()
     private let label = NSTextField(wrappingLabelWithString: "")
@@ -52,6 +54,7 @@ final class CopyWindow: NSWindowController, NSWindowDelegate {
     }
 
     private init(sources: [URL], destination: URL, conflictPolicy: CopyConflictPolicy) {
+        destinationPath = destination.path
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 640, height: 380),
                               styleMask: [.titled, .closable, .miniaturizable, .resizable], backing: .buffered, defer: false)
         super.init(window: window)
@@ -157,7 +160,8 @@ final class CopyWindow: NSWindowController, NSWindowDelegate {
         FileOperationCenter.activityChanged()
     }
     private var activity: FileOperationActivity {
-        fileOperationActivity(status: label.stringValue, progress: progress, running: running,
+        fileOperationActivity(id: operationID, destination: destinationPath, status: label.stringValue,
+                              progress: progress, running: running,
                               cancel: running && cancel.isEnabled ? { [weak self] in self?.cancelCopy(nil) } : nil)
     }
     private func announceStatus(journalError: String? = nil) {
@@ -274,6 +278,7 @@ final class CopyWindow: NSWindowController, NSWindowDelegate {
     }
     func windowWillClose(_ notification: Notification) {
         Self.operations.removeAll { $0 === self }
+        FileOperationCenter.retainResult(activity)
         FileOperationCenter.activityChanged()
     }
 }
