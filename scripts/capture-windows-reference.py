@@ -345,10 +345,13 @@ def capture(output, app_id, window_handle, fixture=None):
             def visible_tabs(tree):
                 return [tab for tab in tree.iter("TabItem") if tab.get("IsOffscreen") == "False"]
 
-            def two_tab_source():
-                tree = read_tree()
-                names = [tab.get("Name") for tab in visible_tabs(tree)]
-                return tree if names == [fixture.name, "Alpha"] else None
+            def verify_tab_selection(tree, active):
+                if tree is None:
+                    return None
+                tabs = visible_tabs(tree)
+                names = [tab.get("Name") for tab in tabs]
+                selected = [tab.get("Name") for tab in tabs if tab.get("IsSelected") == "True"]
+                return tree if names == [fixture.name, "Alpha"] and selected == [active] else None
 
             back = wait_for("the search page's Back button", lambda: element_route(
                 "xpath", "//Button[@AutomationId='Back' and @IsEnabled='True' and @IsOffscreen='False']"))
@@ -357,10 +360,10 @@ def capture(output, app_id, window_handle, fixture=None):
             request("POST", session + "/keys", {"value": ["\ue009", "t", "\ue000"]})
             wait_for("the second tab", lambda: len(visible_tabs(read_tree())) == 2)
             open_path(fixture / "Alpha")
-            wait_for("the fixture and Alpha tab titles", two_tab_source)
-            root_tab = element_route("xpath", "(//TabItem[@IsOffscreen='False'])[1]")
-            request("POST", root_tab + "/click", {})
-            tree = wait_for("the fixture tab as the drop target", folder_source)
+            wait_for("the two tabs with Alpha selected", lambda: verify_tab_selection(read_tree(), "Alpha"))
+            # Files binds Ctrl+Shift+Tab to its Previous Tab command.
+            request("POST", session + "/keys", {"value": ["\ue009", "\ue008", "\ue004", "\ue000"]})
+            tree = wait_for("the first tab selected at the fixture", lambda: verify_tab_selection(folder_source(), fixture.name))
             alpha_tab = next(tab for tab in visible_tabs(tree) if tab.get("Name") == "Alpha")
             pane = next(element for element in tree.iter() if element.get("AutomationId") == "RootGridZoom"
                         and element.get("IsOffscreen") == "False")
