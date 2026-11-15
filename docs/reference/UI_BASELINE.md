@@ -37,7 +37,7 @@ macOS 캡처에서 발견한 상태 표시줄의 개발 단계 문구를 제거�
 
 [UI-06 좌우 분할 실행 화면](../verification/m7/INCREMENT_206.md)은 Windows와 macOS에서 공통 폴더와 `Alpha` 하위 항목을 서로 다른 패널에 표시한다. 양쪽의 도구 모음 구성과 초점 표시를 대조했다.
 
-[UI-06 상하 분할](../verification/m7/INCREMENT_208.md)은 같은 공통 폴더에서 두 패널의 배치와 파일 목록을 함께 검사한다.
+[UI-06 상하 분할 실행 화면](../verification/m7/INCREMENT_212.md)은 두 앱에서 공통 폴더와 `Alpha` 하위 항목을 위아래로 표시하는 동작을 대조한다.
 
 [UI-06 Windows 탭 드롭 검증 경로](../verification/m7/INCREMENT_210.md)는 두 탭을 연 뒤 원본 탭을 오른쪽 패널로 이동하는 동선을 검사한다.
 
