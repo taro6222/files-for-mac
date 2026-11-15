@@ -46,13 +46,27 @@ public enum CodeSignatureInspector {
         return (identifier, team, authorities, format)
     }
 
-    private static func run(_ arguments: [String]) -> (status: Int32, output: String) {
+    static func run(_ arguments: [String], executable: URL = URL(fileURLWithPath: "/usr/bin/codesign")) -> (status: Int32, output: String) {
         let process = Process(), pipe = Pipe()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/codesign")
+        process.executableURL = executable
         process.arguments = arguments; process.standardOutput = pipe; process.standardError = pipe
-        do { try process.run(); process.waitUntilExit() }
+        do { try process.run() }
         catch { return (-1, error.localizedDescription) }
-        let data = pipe.fileHandleForReading.readDataToEndOfFile()
-        return (process.terminationStatus, String(decoding: data.prefix(256 * 1024), as: UTF8.self))
+        let reader = pipe.fileHandleForReading
+        defer { try? reader.close() }
+        let limit = 256 * 1024
+        var output = Data()
+        do {
+            // The child can fill the pipe before exiting. Drain the entire stream
+            // and retain only the diagnostics that this inspector can display.
+            while let chunk = try reader.read(upToCount: 16 * 1024), !chunk.isEmpty {
+                if output.count < limit { output.append(chunk.prefix(limit - output.count)) }
+            }
+        } catch {
+            if process.isRunning { process.terminate() }
+            return (-1, error.localizedDescription)
+        }
+        process.waitUntilExit()
+        return (process.terminationStatus, String(decoding: output, as: UTF8.self))
     }
 }

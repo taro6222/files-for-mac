@@ -840,6 +840,20 @@ private struct DelayedLoader: DirectoryLoading {
     #expect(parsed.authorities == ["Developer ID Application: Example", "Developer ID Certification Authority"])
 }
 
+@Test func codeSignatureCommandDrainsLargeOutputBeforeWaitingForExit() {
+    let command = """
+    printf 'signature diagnostic\n' >&2
+    /usr/bin/yes detail | /usr/bin/head -c 1048576
+    printf 'end of diagnostics\n' >&2
+    exit 7
+    """
+    let result = CodeSignatureInspector.run(["-c", command], executable: URL(fileURLWithPath: "/bin/sh"))
+    #expect(result.status == 7)
+    #expect(result.output.hasPrefix("signature diagnostic\n"))
+    #expect(result.output.utf8.count == 256 * 1024)
+    #expect(!result.output.contains("end of diagnostics"))
+}
+
 @Test @MainActor func developerApplicationPreferencePersistsAndClears() {
     let suite = "developer-app-tests-\(UUID())", defaults = UserDefaults(suiteName: suite)!
     defer { defaults.removePersistentDomain(forName: suite) }
