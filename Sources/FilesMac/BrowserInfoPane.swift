@@ -14,6 +14,8 @@ final class BrowserInfoPane: NSView {
     private let next = NSButton()
     private let position = NSTextField(labelWithString: "")
     private let navigation = NSStackView()
+    private let propertiesButton = NSButton()
+    private let tagsButton = NSButton()
     private var preview: QLPreviewView?
     private var previewIndex = 0
     private var task: Task<Void, Never>?
@@ -21,6 +23,8 @@ final class BrowserInfoPane: NSView {
     private var tab: InfoPaneTab?
     private var sizeUnit: BrowserSizeUnit?
     var onTabChange: ((InfoPaneTab) -> Void)?
+    var onOpenProperties: (() -> Void)?
+    var onEditTags: (() -> Void)?
 
     init() {
         super.init(frame: .zero)
@@ -54,8 +58,16 @@ final class BrowserInfoPane: NSView {
         navigation.orientation = .horizontal
         navigation.isHidden = true
         previewHost.isHidden = true
+        propertiesButton.title = L("속성…", "Properties…")
+        propertiesButton.target = self
+        propertiesButton.action = #selector(openProperties)
+        tagsButton.title = L("Finder 태그 편집…", "Edit Finder Tags…")
+        tagsButton.target = self
+        tagsButton.action = #selector(editTags)
+        propertiesButton.isHidden = true
+        tagsButton.isHidden = true
         for view in [previous, position, next] { navigation.addArrangedSubview(view) }
-        for view in [title, text, navigation, previewHost] { stack.addArrangedSubview(view) }
+        for view in [title, text, tagsButton, propertiesButton, navigation, previewHost] { stack.addArrangedSubview(view) }
         addSubview(tabs)
         addSubview(scroll)
         document.addSubview(stack)
@@ -83,6 +95,8 @@ final class BrowserInfoPane: NSView {
     @objc private func selectTab() { onTabChange?(tabs.selectedSegment == 1 ? .preview : .details) }
     @objc private func previousPreview() { showPreview(at: previewIndex - 1) }
     @objc private func nextPreview() { showPreview(at: previewIndex + 1) }
+    @objc private func openProperties() { onOpenProperties?() }
+    @objc private func editTags() { onEditTags?() }
 
     func update(items: [FileItem], tab: InfoPaneTab, sizeUnit: BrowserSizeUnit) {
         guard items != self.items || tab != self.tab || sizeUnit != self.sizeUnit else { return }
@@ -100,6 +114,8 @@ final class BrowserInfoPane: NSView {
             showPreview(at: 0)
             return
         }
+        propertiesButton.isHidden = false
+        tagsButton.isHidden = items.count != 1
         guard items.count == 1 else {
             title.stringValue = L("\(items.count)개 항목 선택", "\(items.count) items selected")
             let folders = items.count(where: \.isDirectory)
@@ -117,11 +133,13 @@ final class BrowserInfoPane: NSView {
                 return
             }
             let size = properties.isDirectory ? item.size : properties.logicalSize
-            let date = properties.modified?.formatted(date: .abbreviated, time: .shortened) ?? "—"
+            let created = properties.created?.formatted(date: .abbreviated, time: .shortened) ?? "—"
+            let modified = properties.modified?.formatted(date: .abbreviated, time: .shortened) ?? "—"
             self.text.stringValue = [
                 properties.typeIdentifier ?? item.kind,
                 size.map { formatByteCount($0, unit: sizeUnit) } ?? "—",
-                L("수정일: ", "Modified: ") + date,
+                L("생성일: ", "Created: ") + created,
+                L("수정일: ", "Modified: ") + modified,
                 L("소유자: ", "Owner: ") + (properties.owner ?? "—"),
                 L("태그: ", "Tags: ") + (properties.tags.isEmpty ? "—" : properties.tags.joined(separator: ", ")),
                 item.url.path
@@ -172,6 +190,8 @@ final class BrowserInfoPane: NSView {
         preview = nil
         previewHost.isHidden = true
         navigation.isHidden = true
+        propertiesButton.isHidden = true
+        tagsButton.isHidden = true
         items = []
         tab = nil
         title.stringValue = ""
@@ -195,6 +215,16 @@ final class BrowserInfoPane: NSView {
     }
     func qaNextPreview() { next.performClick(nil) }
     func qaPreviousPreview() { previous.performClick(nil) }
+    func qaOpenProperties() -> Bool {
+        guard !propertiesButton.isHiddenOrHasHiddenAncestor else { return false }
+        propertiesButton.performClick(nil)
+        return true
+    }
+    func qaEditTags() -> Bool {
+        guard !tagsButton.isHiddenOrHasHiddenAncestor else { return false }
+        tagsButton.performClick(nil)
+        return true
+    }
     func qaCanScrollToDetailEnd() -> Bool {
         layoutSubtreeIfNeeded()
         guard let document = scroll.documentView else { return false }

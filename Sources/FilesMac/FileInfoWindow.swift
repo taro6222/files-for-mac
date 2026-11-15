@@ -21,7 +21,12 @@ final class FileInfoWindow: NSWindowController, NSTextFieldDelegate {
         super.init(window: panel); panel.title = L("정보", "Info"); panel.isReleasedWhenClosed = false
         panel.contentMinSize = NSSize(width: 420, height: 280)
         buildUI()
-        NotificationCenter.default.addObserver(forName: NSWindow.willCloseNotification, object: panel, queue: .main) { [weak self] _ in Task { @MainActor in self?.cancelTasks() } }
+        NotificationCenter.default.addObserver(forName: NSWindow.willCloseNotification, object: panel, queue: .main) { [weak self] _ in
+            Task { @MainActor in
+                guard self?.window?.isVisible == false else { return }
+                self?.cancelTasks()
+            }
+        }
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
     private func buildUI() {
@@ -48,6 +53,7 @@ final class FileInfoWindow: NSWindowController, NSTextFieldDelegate {
         root.addArrangedSubview(permissionsButton)
         let tagTitle = NSTextField(labelWithString: L("Finder 태그", "Finder Tags")); tagTitle.font = .systemFont(ofSize: 14, weight: .semibold); root.addArrangedSubview(tagTitle)
         let tagControls = NSStackView(); tagControls.orientation = .horizontal; tagControls.spacing = 8
+        tagField.isEditable = true
         tagField.placeholderString = L("쉼표로 태그 구분", "Separate tags with commas"); tagField.setAccessibilityLabel(L("Finder 태그", "Finder Tags")); tagControls.addArrangedSubview(tagField)
         saveTagsButton.title = L("태그 저장", "Save Tags"); saveTagsButton.target = self; saveTagsButton.action = #selector(saveTags(_:)); tagControls.addArrangedSubview(saveTagsButton); root.addArrangedSubview(tagControls)
         let iconTitle = NSTextField(labelWithString: L("폴더 아이콘", "Folder Icon")); iconTitle.font = .systemFont(ofSize: 14, weight: .semibold); root.addArrangedSubview(iconTitle)
@@ -83,7 +89,7 @@ final class FileInfoWindow: NSWindowController, NSTextFieldDelegate {
         signatureDetails.isSelectable = true; signatureDetails.textColor = .secondaryLabelColor; root.addArrangedSubview(signatureDetails)
         status.textColor = .secondaryLabelColor; root.addArrangedSubview(status)
     }
-    func present(items: [FileItem]) {
+    func present(items: [FileItem], editingTags: Bool = false) {
         cancelTasks(); self.items = items; properties = nil; tagIdentity = nil; tagField.stringValue = ""; tagField.isEnabled = false; saveTagsButton.isEnabled = false; digest.stringValue = ""; hashProgress.isHidden = true; signatureDetails.stringValue = ""; signatureButton.isEnabled = items.count == 1; iconStatus.stringValue = ""
         let folderIconEnabled = items.count == 1 && items[0].isDirectory
         permissionsButton.isEnabled = items.count == 1 && !items[0].isSymbolicLink
@@ -101,6 +107,11 @@ final class FileInfoWindow: NSWindowController, NSTextFieldDelegate {
                 let value = try await inspector.inspect(items[0].url), tags = try FileTagService().snapshot(items[0].url)
                 guard let self, !Task.isCancelled else { return }; self.properties = value; self.tagIdentity = tags.identity
                 self.tagField.stringValue = tags.tags.joined(separator: ", "); self.status.stringValue = ""; self.rebuildDetails()
+                if editingTags, self.window?.isVisible == true {
+                    self.scroll.layoutSubtreeIfNeeded()
+                    self.tagField.scrollToVisible(self.tagField.bounds)
+                    self.tagField.selectText(nil)
+                }
             }
             catch { guard let self, !Task.isCancelled else { return }; self.status.stringValue = L("속성을 읽지 못했습니다: ", "Unable to load properties: ") + error.localizedDescription }
         }
@@ -340,6 +351,8 @@ final class FileInfoWindow: NSWindowController, NSTextFieldDelegate {
     }
     var qaHashStatus: String { hashStatus.stringValue }
     func qaSetTags(_ value: String) { tagField.stringValue = value; saveTags(nil) }
+    var qaTagFieldFocused: Bool { tagField.currentEditor() != nil }
+    var qaItemURLs: [URL] { items.map(\.url) }
     var qaTags: [String] { (try? FileTagService().snapshot(items[0].url).tags) ?? [] }
     func qaInspectSignature() { inspectSignature(nil) }
     var qaSignatureLoaded: Bool { signatureTask == nil && !signatureDetails.stringValue.isEmpty }

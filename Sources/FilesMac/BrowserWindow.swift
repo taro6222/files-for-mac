@@ -329,6 +329,8 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         split.addArrangedSubview(workspaceSplit)
         inspector.isHidden = true
         inspector.onTabChange = { [weak self] tab in self?.preferences.setInfoPaneTab(tab) }
+        inspector.onOpenProperties = { [weak self] in self?.showInfo(nil) }
+        inspector.onEditTags = { [weak self] in self?.presentInfo(editingTags: true) }
         split.addArrangedSubview(inspector)
         inspectorWidth = inspector.widthAnchor.constraint(equalToConstant: 240)
         split.setHoldingPriority(.defaultHigh, forSubviewAt: 2)
@@ -1641,10 +1643,13 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         }
     }
     @objc func showInfo(_ sender: Any?) {
+        presentInfo(editingTags: false)
+    }
+    private func presentInfo(editingTags: Bool) {
         let items = activeSelectedItems
-        guard !items.isEmpty else { return }
+        guard !items.isEmpty, !editingTags || items.count == 1 else { return }
         if infoWindow == nil { infoWindow = FileInfoWindow() }
-        infoWindow?.present(items: items)
+        infoWindow?.present(items: items, editingTags: editingTags)
     }
     @objc func toggleInfoPane(_ sender: Any?) { preferences.setShowInfoPane(!preferences.showInfoPane) }
     @objc func showInfoPaneDetails(_ sender: Any?) { preferences.setInfoPaneTab(.details) }
@@ -5928,7 +5933,30 @@ extension BrowserWindow {
                     }
                     checks["referenceFolderInfoDetails"] = !inspector.isHidden && inspector.qaTitle == previewFile.lastPathComponent
                         && inspector.qaDetails.contains(previewFile.path) && inspector.qaPreviewURL == nil
+                    let fileAttributes = try fm.attributesOfItem(atPath: previewFile.path)
+                    let creationDate = (fileAttributes[.creationDate] as? Date)?.formatted(date: .abbreviated, time: .shortened)
+                    checks["referenceFolderInfoCreationDate"] = creationDate.map {
+                        inspector.qaDetails.contains(L("생성일: ", "Created: ") + $0)
+                    } == true
                     if checks["referenceFolderInfoDetails"] == true { try capture("ui-08-reference-details") }
+                    let openedProperties = inspector.qaOpenProperties()
+                    checks["referenceFolderInfoOpensProperties"] = openedProperties && controller.infoWindow?.window?.isVisible == true
+                        && controller.infoWindow?.qaItemURLs == [previewFile]
+                    controller.infoWindow?.close()
+                    window.makeKeyAndOrderFront(nil)
+                    await Task.yield()
+                    let openedTagEditor = inspector.qaEditTags()
+                    let tagEditorStart = ContinuousClock.now
+                    while controller.infoWindow?.qaTagFieldFocused != true && elapsed(tagEditorStart) < 5 {
+                        try await Task.sleep(for: .milliseconds(20))
+                    }
+                    checks["referenceFolderInfoFocusesTagEditor"] = openedTagEditor && controller.infoWindow?.qaTagFieldFocused == true
+                        && controller.infoWindow?.qaItemURLs == [previewFile]
+                    if checks["referenceFolderInfoFocusesTagEditor"] == true, let infoContent = controller.infoWindow?.window?.contentView {
+                        try capture("ui-08-reference-tag-editor", view: infoContent)
+                    }
+                    controller.infoWindow?.close()
+                    window.makeKeyAndOrderFront(nil)
                     controller.showInfoPanePreview(nil)
                     checks["referenceFolderInfoPreview"] = inspector.qaPreviewURL?.path == previewFile.path
                     if ProcessInfo.processInfo.environment["FILES_UI_QA_PREVIEW_TEXT"] == "1" {
