@@ -462,6 +462,8 @@ func mountedSMBCopyMoveUndoRoundTrip() async throws {
     for directory in [copyDestination, listingDestination] {
         try fm.createDirectory(at: directory, withIntermediateDirectories: false)
     }
+    do { print(try smbRenameIdentityDiagnostic(in: root)) }
+    catch { print("SMB rename identity probe failed: \(error.localizedDescription)") }
     #expect(try await visibleNames(in: listingDestination).isEmpty)
 
     let copySource = local.appendingPathComponent("복사-é-📁", isDirectory: true)
@@ -569,7 +571,10 @@ private func smbUndoCopyDiagnostic(_ item: CopyUndoItem) -> String {
         let actual = try CopyEngine.makeSnapshot(item.target, cancellation: CopyCancellation())
         guard let recorded = item.targetMetadata else { return "SMB undo diagnostic: no recorded metadata" }
         let paths = Set(item.targetSnapshot.keys).union(actual.withPermissions.keys).sorted()
-        return (["SMB undo diagnostic: recorded stage compared with published copy"] + paths.map { path in
+        var info = stat()
+        let currentIdentity = lstat(item.target.path, &info) == 0 ? "\(info.st_dev):\(info.st_ino):\(info.st_mode & S_IFMT)" : "missing"
+        let identity = "recordedIdentity=\(item.targetIdentity) publishedIdentity=\(currentIdentity)"
+        return (["SMB undo diagnostic: recorded stage compared with published copy", identity] + paths.map { path in
             let originalDate = recorded.modificationDates[path]
             let currentDate = actual.metadata.modificationDates[path]
             let delta = originalDate.flatMap { expected in
@@ -584,6 +589,29 @@ private func smbUndoCopyDiagnostic(_ item: CopyUndoItem) -> String {
     } catch {
         return "SMB undo diagnostic could not inspect the published copy: \(error.localizedDescription)"
     }
+}
+
+private func smbRenameIdentityDiagnostic(in root: URL) throws -> String {
+    let original = root.appendingPathComponent(".rename-identity-original")
+    let published = root.appendingPathComponent(".rename-identity-published")
+    let fm = FileManager.default
+    try Data("identity probe".utf8).write(to: original)
+    defer {
+        try? fm.removeItem(at: original)
+        try? fm.removeItem(at: published)
+    }
+    let fd = open(original.path, O_RDONLY | O_NOFOLLOW | O_CLOEXEC)
+    guard fd >= 0 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
+    defer { close(fd) }
+    var before = stat(), after = stat(), handleBefore = stat(), handleAfter = stat()
+    guard lstat(original.path, &before) == 0, fstat(fd, &handleBefore) == 0 else {
+        throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
+    }
+    try fm.moveItem(at: original, to: published)
+    guard lstat(published.path, &after) == 0, fstat(fd, &handleAfter) == 0 else {
+        throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
+    }
+    return "SMB rename identity: path \(before.st_dev):\(before.st_ino) → \(after.st_dev):\(after.st_ino); open handle \(handleBefore.st_dev):\(handleBefore.st_ino) → \(handleAfter.st_dev):\(handleAfter.st_ino)"
 }
 
 private func verifyCrossVolumeMovePreservesReplacedDestination(local: URL, destination: URL, journal: URL) async throws {
