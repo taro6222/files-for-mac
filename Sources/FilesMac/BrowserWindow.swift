@@ -5867,6 +5867,16 @@ extension BrowserWindow {
                         && secondary.model.location?.path == alpha.path && secondary.model.items.map(\.name) == [child.lastPathComponent]
                     checks["referenceFolderSplitFirstRowBelowHeader"] = secondary.qaFirstDetailRowBelowHeader
                     if checks["referenceFolderSplitPanes"] == true { try capture("ui-06-reference-dual-pane") }
+                    controller.arrangePanesHorizontally(nil)
+                    root.layoutSubtreeIfNeeded()
+                    let top = controller.primaryPaneHost.convert(controller.primaryPaneHost.bounds, to: nil)
+                    let bottom = controller.secondaryPaneHost.convert(controller.secondaryPaneHost.bounds, to: nil)
+                    checks["referenceFolderSplitStacked"] = !controller.workspaceSplit.isVertical && controller.secondaryActive
+                        && top.minY >= bottom.maxY - 1 && abs(top.minX - bottom.minX) <= 1 && !top.isEmpty && !bottom.isEmpty
+                        && controller.model.location?.path == reference.path && Set(controller.model.items.map(\.name)) == expected
+                        && secondary.model.location?.path == alpha.path && secondary.model.items.map(\.name) == [child.lastPathComponent]
+                        && secondary.qaFirstDetailRowBelowHeader
+                    if checks["referenceFolderSplitStacked"] == true { try capture("ui-06-stacked-reference-dual-pane") }
                     controller.closeSecondaryPane(nil)
                 } else { checks["referenceFolderSplitPanes"] = false }
             }

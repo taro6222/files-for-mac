@@ -210,11 +210,21 @@ def capture(output, app_id, window_handle, fixture=None):
             tree = wait_for("Alpha and its child in adjacent columns", expanded_columns_source)
             capture_layout(tree, "UI-05", "columns")
 
-            def split_source(secondary_opened=False):
+            def split_source(secondary_opened=False, stacked=False):
                 tree = read_tree()
                 panes = [element for element in tree.iter() if element.get("AutomationId") == "RootGridZoom"
                          and element.get("IsOffscreen") == "False"]
                 if len(panes) != 2:
+                    return None
+                try:
+                    first, second = [tuple(int(pane.attrib[key]) for key in ("x", "y", "width", "height")) for pane in panes]
+                except (KeyError, ValueError):
+                    return None
+                if stacked:
+                    arranged = first[1] + first[3] <= second[1] + 1 and abs(first[0] - second[0]) <= 1
+                else:
+                    arranged = first[0] + first[2] <= second[0] + 1 and abs(first[1] - second[1]) <= 1
+                if not arranged:
                     return None
                 names = [{element.get("Name", "").casefold() for element in pane.iter()} for pane in panes]
                 right_matches = ({"column-note.txt", "column-note"} & names[1]) if secondary_opened else has_fixture_items(names[1])
@@ -225,13 +235,25 @@ def capture(output, app_id, window_handle, fixture=None):
             wait_for("the fixture in Details before splitting", folder_source)
             send_control_shift("s")
             wait_for("two panes with the fixture folder", split_source)
-            alpha = wait_for("Alpha in the second pane", lambda: element_route(
-                "xpath", "(//*[@AutomationId='RootGridZoom' and @IsOffscreen='False'])[2]"
-                         "//*[@AutomationId='ItemName' and @Name='Alpha']"))
-            request("POST", alpha + "/click", {})
-            request("POST", session + "/keys", {"value": ["\ue007"]})
+            def open_alpha_in_secondary():
+                alpha = wait_for("Alpha in the second pane", lambda: element_route(
+                    "xpath", "(//*[@AutomationId='RootGridZoom' and @IsOffscreen='False'])[2]"
+                             "//*[@AutomationId='ItemName' and @Name='Alpha']"))
+                request("POST", alpha + "/click", {})
+                request("POST", session + "/keys", {"value": ["\ue007"]})
+
+            open_alpha_in_secondary()
             tree = wait_for("left fixture and right Alpha folder", lambda: split_source(secondary_opened=True))
             capture_layout(tree, "UI-06", "dual-pane")
+
+            send_control_shift("s")
+            open_fixture_path()
+            wait_for("the fixture before top and bottom split", folder_source)
+            request("POST", session + "/keys", {"value": ["\ue00a", "\ue008", "h", "\ue000"]})
+            wait_for("two stacked panes with the fixture folder", lambda: split_source(stacked=True))
+            open_alpha_in_secondary()
+            tree = wait_for("top fixture and bottom Alpha folder", lambda: split_source(secondary_opened=True, stacked=True))
+            capture_layout(tree, "UI-06-stacked", "dual-pane")
     except Exception as error:
         (output / "capture-error.txt").write_text(str(error) + "\n", encoding="utf-8")
         if last_source is not None:
