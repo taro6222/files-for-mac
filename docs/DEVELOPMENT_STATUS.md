@@ -8,6 +8,8 @@ M7 출시 검증이 진행 중이다. [유니버설 개발 프리뷰](verificati
 
 ## 이번 구현 단위
 
+검색 창에서 최소·최대 크기 입력란의 표시 너비를 확보했다. [검색 크기 필터](verification/m7/INCREMENT_215.md)
+
 SMB가 0바이트 리소스 포크를 보고하는 경우 전송 비교에서 없는 리소스 포크와 같은 내용으로 처리한다. [SMB 진단과 수정](verification/m7/INCREMENT_211.md)
 
 분할 패널에서 같은 폴더를 새로 읽어도 편집 중인 경로가 유지된다. [경로 입력 보호](verification/m7/INCREMENT_209.md)

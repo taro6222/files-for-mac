@@ -5891,16 +5891,21 @@ extension BrowserWindow {
                 controller.searchWindow?.close()
                 controller.searchWindow = nil
                 controller.showSearch(nil)
-                if let panel = controller.searchWindow, let searchView = panel.window?.contentView {
+                if let panel = controller.searchWindow, let searchWindow = panel.window, let searchView = searchWindow.contentView {
                     panel.qaSearch("column-note", scope: .descendants)
                     let searchStart = ContinuousClock.now
                     while panel.qaIsSearching && elapsed(searchStart) < 5 {
                         try await Task.sleep(for: .milliseconds(10))
                     }
                     checks["referenceFolderSearch"] = !panel.qaIsSearching && panel.qaResultCount == 1 && panel.qaContainsResult(at: child)
+                    searchView.layoutSubtreeIfNeeded()
+                    let normalWidths = panel.qaMetadataFieldsHaveUsableWidth
                     if checks["referenceFolderSearch"] == true {
-                        try capture("ui-07-reference-search", view: searchView, backingColor: panel.window?.backgroundColor)
+                        try capture("ui-07-reference-search", view: searchView, backingColor: searchWindow.backgroundColor)
                     }
+                    searchWindow.setContentSize(NSSize(width: 720, height: 450))
+                    searchView.layoutSubtreeIfNeeded()
+                    checks["referenceFolderSearchMetadataInputs"] = normalWidths && panel.qaMetadataFieldsHaveUsableWidth
                     panel.close()
                 } else { checks["referenceFolderSearch"] = false }
             }

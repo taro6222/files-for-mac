@@ -9,6 +9,8 @@ final class SearchWindow: NSWindowController, NSTableViewDataSource, NSTableView
     private let reveal = NSButton()
     private let search = NSSearchField(), method = NSPopUpButton(), scope = NSPopUpButton(), kind = NSPopUpButton(), hidden = NSButton(checkboxWithTitle: L("숨김 포함", "Include Hidden"), target: nil, action: nil)
     private let tag = NSSearchField(), minimumSize = NSTextField(), maximumSize = NSTextField(), sizeUnit = NSPopUpButton()
+    private static let minimumTagFieldWidth: CGFloat = 140
+    private static let sizeFieldWidth: CGFloat = 104
     private let afterEnabled = NSButton(checkboxWithTitle: L("수정일 이후", "Modified after"), target: nil, action: nil)
     private let beforeEnabled = NSButton(checkboxWithTitle: L("수정일 이전", "Modified before"), target: nil, action: nil)
     private let afterDate = NSDatePicker(), beforeDate = NSDatePicker()
@@ -37,6 +39,10 @@ final class SearchWindow: NSWindowController, NSTableViewDataSource, NSTableView
         tag.placeholderString = L("Finder 태그", "Finder tags"); tag.setAccessibilityLabel(L("Finder 태그 필터", "Finder tag filter")); tagsAndSize.addArrangedSubview(tag)
         minimumSize.placeholderString = L("최소 크기", "Min size"); minimumSize.setAccessibilityLabel(L("최소 파일 크기", "Minimum file size")); tagsAndSize.addArrangedSubview(minimumSize)
         maximumSize.placeholderString = L("최대 크기", "Max size"); maximumSize.setAccessibilityLabel(L("최대 파일 크기", "Maximum file size")); tagsAndSize.addArrangedSubview(maximumSize)
+        tag.widthAnchor.constraint(greaterThanOrEqualToConstant: Self.minimumTagFieldWidth).isActive = true
+        for field in [minimumSize, maximumSize] {
+            field.widthAnchor.constraint(equalToConstant: Self.sizeFieldWidth).isActive = true
+        }
         sizeUnit.addItems(withTitles: SearchSizeUnit.allCases.map(\.rawValue)); sizeUnit.setAccessibilityLabel(L("파일 크기 단위", "File size unit")); tagsAndSize.addArrangedSubview(sizeUnit)
         metadata.addArrangedSubview(tagsAndSize)
         let dates = NSStackView(); dates.orientation = .horizontal; dates.spacing = 8
@@ -188,6 +194,11 @@ final class SearchWindow: NSWindowController, NSTableViewDataSource, NSTableView
     var qaIsSearching: Bool { model.isSearching }
     var qaResultCount: Int { model.results.count }
     var qaTagFilter: String { tag.stringValue }
+    var qaMetadataFieldsHaveUsableWidth: Bool {
+        tag.bounds.width >= Self.minimumTagFieldWidth && [tag, minimumSize, maximumSize].allSatisfy {
+            $0.isEditable && !$0.isHiddenOrHasHiddenAncestor && $0.bounds.width >= Self.sizeFieldWidth
+        }
+    }
     var qaShowsDirectEnumeration: Bool { status.stringValue.contains(L("직접 열거", "direct enumeration")) }
     var qaShowsSpotlight: Bool { status.stringValue.contains("Spotlight") }
     func qaContainsResult(named name: String) -> Bool { model.results.contains { $0.name == name } }
