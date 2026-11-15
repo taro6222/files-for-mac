@@ -315,6 +315,17 @@ final class FileInfoWindow: NSWindowController, NSTextFieldDelegate {
 #if DEBUG
     var qaLoaded: Bool { properties != nil }
     var qaLogicalSize: Int64? { properties?.logicalSize }
+    func qaCapturePermissions(mode: Int, aclSuffix: String, capture: (NSView) throws -> Void) async throws -> Bool {
+        guard let sheet = openPermissions() else { return false }
+        defer { sheet.dismissQA() }
+        let deadline = ContinuousClock.now + .seconds(5)
+        while !sheet.qaReady && ContinuousClock.now < deadline {
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        guard let content = sheet.qaContentView, sheet.qaRendersPermissions(mode: mode, aclSuffix: aclSuffix) else { return false }
+        try capture(content)
+        return true
+    }
     func qaSubmitRename(_ name: String) -> Bool {
         nameField.stringValue = name
         updateRenameButton()
@@ -386,11 +397,17 @@ final class FileInfoWindow: NSWindowController, NSTextFieldDelegate {
         startHash(comparing: url)
     }
     func qaRevealHashControls() {
+        qaReveal(hashAlgorithm, through: compareHashButton)
+    }
+    func qaRevealSignature() {
+        qaReveal(signatureButton, through: signatureDetails)
+    }
+    private func qaReveal(_ first: NSView, through last: NSView) {
         guard let document = scroll.documentView else { return }
         scroll.layoutSubtreeIfNeeded()
-        let algorithm = hashAlgorithm.convert(hashAlgorithm.bounds, to: document)
-        let comparison = compareHashButton.convert(compareHashButton.bounds, to: document)
-        document.scrollToVisible(algorithm.union(comparison).insetBy(dx: 0, dy: -12))
+        let start = first.convert(first.bounds, to: document)
+        let end = last.convert(last.bounds, to: document)
+        document.scrollToVisible(start.union(end).insetBy(dx: 0, dy: -12))
     }
     func qaCompareHash(_ value: String) -> String {
         expectedHash.stringValue = value
@@ -404,6 +421,7 @@ final class FileInfoWindow: NSWindowController, NSTextFieldDelegate {
     var qaTags: [String] { (try? FileTagService().snapshot(items[0].url).tags) ?? [] }
     func qaInspectSignature() { inspectSignature(nil) }
     var qaSignatureLoaded: Bool { signatureTask == nil && !signatureDetails.stringValue.isEmpty }
+    var qaSignatureText: String { signatureDetails.stringValue }
     func qaApplyFolderIcon(_ image: NSImage?) { applyFolderIcon(image) }
     var qaIconOperationSucceeded: Bool { iconStatus.stringValue.contains(L("저장했습니다", "saved")) || iconStatus.stringValue.contains(L("복원했습니다", "restored")) }
 #endif
@@ -804,6 +822,11 @@ private final class FilePermissionsSheet: NSObject, NSTextViewDelegate {
     }
 #if DEBUG
     var qaReady: Bool { initial != nil }
+    var qaContentView: NSView? { alert.window.contentView }
+    func qaRendersPermissions(mode: Int, aclSuffix: String) -> Bool {
+        selectedMode == mode && status.stringValue == String(format: "%04o", mode)
+            && aclText.string.hasSuffix(aclSuffix) && checks.allSatisfy(\.isEnabled)
+    }
     var qaOwnerEnabled: Bool { ownerList.isEnabled }
     func qaApplyDescendants(acl: String?, group: String?, stopImmediately: Bool, watchFiles: [URL]) async throws -> Bool {
         guard includeDescendants.isEnabled else { return false }

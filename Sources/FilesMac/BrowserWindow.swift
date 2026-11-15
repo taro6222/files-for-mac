@@ -6002,11 +6002,52 @@ extension BrowserWindow {
                             properties.qaRevealHashControls()
                             try capture("ui-09-reference-hashes", view: content, backingColor: panel.backgroundColor)
                         }
+                        let securityDirectory = destination.appendingPathComponent("reference-security", isDirectory: true)
+                        try fm.createDirectory(at: securityDirectory, withIntermediateDirectories: false)
+                        let securityFile = securityDirectory.appendingPathComponent(previewFile.lastPathComponent)
+                        try fm.copyItem(at: previewFile, to: securityFile)
+                        try fm.setAttributes([.posixPermissions: 0o644], ofItemAtPath: securityFile.path)
+                        let permissionInspector = FilePropertiesInspector()
+                        let initial = try await permissionInspector.permissions(securityFile)
+                        _ = try await permissionInspector.setAccessControlList("group::everyone::allow:read",
+                                                                               at: securityFile, expected: initial)
+                        let security = FileInfoWindow()
+                        security.present(items: [FileItem(url: securityFile, name: securityFile.lastPathComponent, isDirectory: false)])
+                        checks["referenceFolderPropertiesPermissions"] = try await security.qaCapturePermissions(
+                            mode: 0o644, aclSuffix: ":allow:read"
+                        ) { view in
+                            try capture("ui-09-reference-security", view: view, backingColor: security.window?.backgroundColor)
+                        }
+                        security.close()
+                        properties.qaInspectSignature()
+                        try await controller.waitForFolderQA { properties.qaSignatureLoaded }
+                        checks["referenceFolderPropertiesUnsigned"] = properties.qaSignatureText.hasPrefix(
+                            L("상태: 서명되지 않음", "State: Unsigned")
+                        )
                     } else {
                         checks["referenceFolderGeneralProperties"] = false
                         checks["referenceFolderPropertiesSHA256"] = false
+                        checks["referenceFolderPropertiesPermissions"] = false
+                        checks["referenceFolderPropertiesUnsigned"] = false
                     }
                     controller.infoWindow?.close()
+                    if let signedPath = ProcessInfo.processInfo.environment["FILES_UI_REFERENCE_SIGNED_FILE"] {
+                        let signedURL = URL(fileURLWithPath: signedPath)
+                        let signature = FileInfoWindow()
+                        signature.present(items: [FileItem(url: signedURL, name: signedURL.lastPathComponent, isDirectory: false)])
+                        signature.qaInspectSignature()
+                        try await controller.waitForFolderQA { signature.qaSignatureLoaded }
+                        let lines = signature.qaSignatureText.components(separatedBy: .newlines)
+                        checks["referencePropertiesValidSignature"] = lines.first == L("상태: 유효", "State: Valid")
+                            && lines.contains("Identifier: org.taro6222.files.qa.signed-reference")
+                            && lines.contains { $0.hasPrefix("Format: Mach-O") }
+                        if checks["referencePropertiesValidSignature"] == true, let signedPanel = signature.window,
+                           let signedContent = signedPanel.contentView {
+                            signature.qaRevealSignature()
+                            try capture("ui-09-reference-signatures", view: signedContent, backingColor: signedPanel.backgroundColor)
+                        }
+                        signature.close()
+                    }
                     window.makeKeyAndOrderFront(nil)
                     await Task.yield()
                     let openedTagEditor = inspector.qaEditTags()
