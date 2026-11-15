@@ -107,11 +107,11 @@ def drag_pointer(start, end):
         button(0x0004)  # MOUSEEVENTF_LEFTUP
 
 
-def request(method, path, body=None):
+def request(method, path, body=None, *, timeout=12):
     data = None if body is None else json.dumps(body).encode()
     command = Request(DRIVER + path, data=data, method=method, headers={"Content-Type": "application/json"})
     try:
-        with urlopen(command, timeout=12) as response:
+        with urlopen(command, timeout=timeout) as response:
             payload = response.read()
             result = json.loads(payload) if payload else {}
     except HTTPError as error:
@@ -150,7 +150,7 @@ def capture(output, app_id, window_handle, fixture=None, scope="all"):
     try:
         wait_for("WinAppDriver", lambda: request("GET", "/status"))
         capabilities = {"appTopLevelWindow": window_handle, "deviceName": "WindowsPC"}
-        result = request("POST", "/session", {"desiredCapabilities": capabilities})
+        result = request("POST", "/session", {"desiredCapabilities": capabilities}, timeout=45)
         session_id = result.get("sessionId") or result["value"]["sessionId"]
         session = f"/session/{session_id}"
 
