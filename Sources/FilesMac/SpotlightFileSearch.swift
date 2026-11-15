@@ -102,3 +102,74 @@ private final class SpotlightSearchSession: NSObject {
         if let error { continuation.finish(throwing: error) } else { continuation.finish() }
     }
 }
+
+struct HomeFileTagGroup: Equatable {
+    let name: String
+    let items: [URL]
+}
+
+@MainActor
+final class HomeFileTagSearch {
+    private static let tagsAttribute = "kMDItemUserTags"
+    private let query = NSMetadataQuery()
+    private var observation: NSObjectProtocol?
+    private var response: CheckedContinuation<[HomeFileTagGroup]?, Never>?
+    private var timeout: Task<Void, Never>?
+
+    func load() async -> [HomeFileTagGroup]? {
+        await withTaskCancellationHandler {
+            guard !Task.isCancelled else { return nil }
+            return await withCheckedContinuation { response in
+                self.response = response
+                query.searchScopes = [NSMetadataQueryUserHomeScope, NSMetadataQueryLocalComputerScope]
+                query.predicate = NSPredicate(format: "%K LIKE %@", Self.tagsAttribute, "*")
+                query.sortDescriptors = [NSSortDescriptor(key: NSMetadataItemFSContentChangeDateKey, ascending: false)]
+                observation = NotificationCenter.default.addObserver(forName: .NSMetadataQueryDidFinishGathering,
+                                                                     object: query, queue: .main) { [weak self] _ in
+                    MainActor.assumeIsolated { self?.readResults() }
+                }
+                guard query.start() else { finish(nil); return }
+                timeout = Task { [weak self] in
+                    do { try await Task.sleep(for: .seconds(5)) } catch { return }
+                    self?.finish(nil)
+                }
+            }
+        } onCancel: {
+            Task { @MainActor in self.finish(nil) }
+        }
+    }
+
+    private func readResults() {
+        query.disableUpdates()
+        var itemsByTag: [String: [URL]] = [:]
+        var seen = Set<URL>()
+        // Home shows a bounded recent sample even when the index contains many tagged files.
+        for index in 0..<min(query.resultCount, 1_000) {
+            guard let result = query.result(at: index) as? NSMetadataItem else { continue }
+            let itemURL = (result.value(forAttribute: NSMetadataItemURLKey) as? URL)
+                ?? (result.value(forAttribute: NSMetadataItemPathKey) as? String).map { URL(fileURLWithPath: $0) }
+            guard let url = itemURL?.standardizedFileURL,
+                  url.isFileURL, !url.lastPathComponent.hasPrefix("."), seen.insert(url).inserted,
+                  let tags = result.value(forAttribute: Self.tagsAttribute) as? [String] else { continue }
+            for tag in Set(tags) where !tag.isEmpty {
+                if itemsByTag[tag, default: []].count < 4 { itemsByTag[tag, default: []].append(url) }
+            }
+        }
+        query.enableUpdates()
+        let names = itemsByTag.keys.sorted { $0.localizedStandardCompare($1) == .orderedAscending }
+        finish(names.prefix(20).compactMap { name in itemsByTag[name].map { HomeFileTagGroup(name: name, items: $0) } })
+    }
+
+    private func finish(_ groups: [HomeFileTagGroup]?) {
+        guard let response else { return }
+        self.response = nil
+        timeout?.cancel()
+        timeout = nil
+        if let observation {
+            NotificationCenter.default.removeObserver(observation)
+            self.observation = nil
+        }
+        query.stop()
+        response.resume(returning: groups)
+    }
+}

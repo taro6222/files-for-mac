@@ -82,11 +82,13 @@ public struct BrowserPreferencesArchive: Codable, Equatable, Sendable {
     public let showHomeFavorites: Bool
     public let showHomeVolumes: Bool
     public let showHomeNetwork: Bool?
+    public let showHomeFileTags: Bool?
     public let showHomeRecent: Bool
     public let showHomeRecentFiles: Bool?
     public let homeFavoritesExpanded: Bool?
     public let homeVolumesExpanded: Bool?
     public let homeNetworkExpanded: Bool?
+    public let homeFileTagsExpanded: Bool?
     public let homeRecentExpanded: Bool?
     public let homeRecentFilesExpanded: Bool?
     public let viewSize: String
@@ -179,11 +181,13 @@ public final class BrowserPreferences {
     public private(set) var showHomeFavorites: Bool
     public private(set) var showHomeVolumes: Bool
     public private(set) var showHomeNetwork: Bool
+    public private(set) var showHomeFileTags: Bool
     public private(set) var showHomeRecent: Bool
     public private(set) var showHomeRecentFiles: Bool
     public private(set) var homeFavoritesExpanded: Bool
     public private(set) var homeVolumesExpanded: Bool
     public private(set) var homeNetworkExpanded: Bool
+    public private(set) var homeFileTagsExpanded: Bool
     public private(set) var homeRecentExpanded: Bool
     public private(set) var homeRecentFilesExpanded: Bool
     public private(set) var viewSize: BrowserViewSize
@@ -272,12 +276,14 @@ public final class BrowserPreferences {
         showHomeFavorites = defaults.object(forKey: "showHomeFavorites") as? Bool ?? true
         showHomeVolumes = defaults.object(forKey: "showHomeVolumes") as? Bool ?? true
         showHomeNetwork = defaults.object(forKey: "showHomeNetwork") as? Bool ?? showHomeVolumes
+        showHomeFileTags = defaults.object(forKey: "showHomeFileTags") as? Bool ?? false
         showHomeRecent = defaults.object(forKey: "showHomeRecent") as? Bool ?? true
         showHomeRecentFiles = defaults.object(forKey: "showHomeRecentFiles") as? Bool ?? true
         homeFavoritesExpanded = defaults.object(forKey: "homeFavoritesExpanded") as? Bool ?? true
         homeVolumesExpanded = defaults.object(forKey: "homeVolumesExpanded") as? Bool ?? true
         homeNetworkExpanded = (defaults.object(forKey: "homeNetworkExpanded") as? Bool)
             ?? (defaults.object(forKey: "homeVolumesExpanded") as? Bool) ?? false
+        homeFileTagsExpanded = defaults.object(forKey: "homeFileTagsExpanded") as? Bool ?? true
         homeRecentExpanded = defaults.object(forKey: "homeRecentExpanded") as? Bool ?? true
         homeRecentFilesExpanded = defaults.object(forKey: "homeRecentFilesExpanded") as? Bool ?? true
         viewSize = defaults.string(forKey: "viewSize").flatMap(BrowserViewSize.init(rawValue:)) ?? .medium
@@ -681,8 +687,10 @@ public final class BrowserPreferences {
             showEditTagsMenu: showEditTagsMenu,
             showCreateShortcut: showCreateShortcut,
             showHomeFavorites: showHomeFavorites, showHomeVolumes: showHomeVolumes, showHomeNetwork: showHomeNetwork,
+            showHomeFileTags: showHomeFileTags,
             showHomeRecent: showHomeRecent, showHomeRecentFiles: showHomeRecentFiles,
             homeFavoritesExpanded: homeFavoritesExpanded, homeVolumesExpanded: homeVolumesExpanded, homeNetworkExpanded: homeNetworkExpanded,
+            homeFileTagsExpanded: homeFileTagsExpanded,
             homeRecentExpanded: homeRecentExpanded, homeRecentFilesExpanded: homeRecentFilesExpanded,
             viewSize: viewSize.rawValue, syncFolderLayouts: syncFolderLayouts, showInfoPane: showInfoPane,
             infoPaneTab: infoPaneTab.rawValue, sharedFolderLayout: sharedFolderLayout,
@@ -776,9 +784,11 @@ public final class BrowserPreferences {
         showCreateShortcut = archive.showCreateShortcut ?? true
         showHomeFavorites = archive.showHomeFavorites; showHomeVolumes = archive.showHomeVolumes; showHomeRecent = archive.showHomeRecent
         showHomeNetwork = archive.showHomeNetwork ?? archive.showHomeVolumes
+        showHomeFileTags = archive.showHomeFileTags ?? false
         showHomeRecentFiles = archive.showHomeRecentFiles ?? true
         homeFavoritesExpanded = archive.homeFavoritesExpanded ?? true; homeVolumesExpanded = archive.homeVolumesExpanded ?? true; homeRecentExpanded = archive.homeRecentExpanded ?? true
         homeNetworkExpanded = archive.homeNetworkExpanded ?? homeVolumesExpanded
+        homeFileTagsExpanded = archive.homeFileTagsExpanded ?? true
         homeRecentFilesExpanded = archive.homeRecentFilesExpanded ?? true
         viewSize = size; appearance = importedAppearance; continueLastSession = archive.continueLastSession; sizeUnit = importedSizeUnit
         sharedFolderLayout = archive.sharedFolderLayout
@@ -833,9 +843,11 @@ public final class BrowserPreferences {
         defaults.set(showCreateShortcut, forKey: "showCreateShortcut")
         defaults.set(showHomeFavorites, forKey: "showHomeFavorites"); defaults.set(showHomeVolumes, forKey: "showHomeVolumes"); defaults.set(showHomeRecent, forKey: "showHomeRecent")
         defaults.set(showHomeNetwork, forKey: "showHomeNetwork")
+        defaults.set(showHomeFileTags, forKey: "showHomeFileTags")
         defaults.set(showHomeRecentFiles, forKey: "showHomeRecentFiles")
         defaults.set(homeFavoritesExpanded, forKey: "homeFavoritesExpanded"); defaults.set(homeVolumesExpanded, forKey: "homeVolumesExpanded"); defaults.set(homeRecentExpanded, forKey: "homeRecentExpanded")
         defaults.set(homeNetworkExpanded, forKey: "homeNetworkExpanded")
+        defaults.set(homeFileTagsExpanded, forKey: "homeFileTagsExpanded")
         defaults.set(homeRecentFilesExpanded, forKey: "homeRecentFilesExpanded")
         defaults.set(viewSize.rawValue, forKey: "viewSize"); defaults.set(appearance.rawValue, forKey: "appearance"); defaults.set(continueLastSession, forKey: "continueLastSession"); defaults.set(sizeUnit.rawValue, forKey: "sizeUnit")
         defaults.set(openFoldersInNewTab, forKey: "openFoldersInNewTab"); defaults.set(scrollToPreviousFolderOnUp, forKey: "scrollToPreviousFolderOnUp"); defaults.set(showFileExtensionWarning, forKey: "showFileExtensionWarning")
@@ -892,13 +904,14 @@ public final class BrowserPreferences {
         toolbarOrder = BrowserToolbarItem.allCases; hiddenToolbarItems = []
         defaults.removeObject(forKey: "toolbarOrder"); defaults.removeObject(forKey: "hiddenToolbarItems"); changed()
     }
-    public enum HomeSection { case favorites, volumes, network, recent, recentFiles }
+    public enum HomeSection { case favorites, volumes, network, fileTags, recent, recentFiles }
     public func setHomeSectionExpanded(_ section: HomeSection, expanded: Bool) {
         let current: Bool
         switch section {
         case .favorites: current = homeFavoritesExpanded
         case .volumes: current = homeVolumesExpanded
         case .network: current = homeNetworkExpanded
+        case .fileTags: current = homeFileTagsExpanded
         case .recent: current = homeRecentExpanded
         case .recentFiles: current = homeRecentFilesExpanded
         }
@@ -910,6 +923,7 @@ public final class BrowserPreferences {
             defaults.set(homeNetworkExpanded, forKey: "homeNetworkExpanded")
             homeVolumesExpanded = expanded; defaults.set(expanded, forKey: "homeVolumesExpanded")
         case .network: homeNetworkExpanded = expanded; defaults.set(expanded, forKey: "homeNetworkExpanded")
+        case .fileTags: homeFileTagsExpanded = expanded; defaults.set(expanded, forKey: "homeFileTagsExpanded")
         case .recent: homeRecentExpanded = expanded; defaults.set(expanded, forKey: "homeRecentExpanded")
         case .recentFiles: homeRecentFilesExpanded = expanded; defaults.set(expanded, forKey: "homeRecentFilesExpanded")
         }
@@ -920,6 +934,7 @@ public final class BrowserPreferences {
         case .favorites: setHomeSectionExpanded(section, expanded: !homeFavoritesExpanded)
         case .volumes: setHomeSectionExpanded(section, expanded: !homeVolumesExpanded)
         case .network: setHomeSectionExpanded(section, expanded: !homeNetworkExpanded)
+        case .fileTags: setHomeSectionExpanded(section, expanded: !homeFileTagsExpanded)
         case .recent: setHomeSectionExpanded(section, expanded: !homeRecentExpanded)
         case .recentFiles: setHomeSectionExpanded(section, expanded: !homeRecentFilesExpanded)
         }
@@ -930,6 +945,7 @@ public final class BrowserPreferences {
         case .favorites: current = showHomeFavorites
         case .volumes: current = showHomeVolumes
         case .network: current = showHomeNetwork
+        case .fileTags: current = showHomeFileTags
         case .recent: current = showHomeRecent
         case .recentFiles: current = showHomeRecentFiles
         }
@@ -943,6 +959,7 @@ public final class BrowserPreferences {
             defaults.set(showHomeNetwork, forKey: "showHomeNetwork")
             showHomeVolumes.toggle(); defaults.set(showHomeVolumes, forKey: "showHomeVolumes")
         case .network: showHomeNetwork.toggle(); defaults.set(showHomeNetwork, forKey: "showHomeNetwork")
+        case .fileTags: showHomeFileTags.toggle(); defaults.set(showHomeFileTags, forKey: "showHomeFileTags")
         case .recent: showHomeRecent.toggle(); defaults.set(showHomeRecent, forKey: "showHomeRecent")
         case .recentFiles: showHomeRecentFiles.toggle(); defaults.set(showHomeRecentFiles, forKey: "showHomeRecentFiles")
         }

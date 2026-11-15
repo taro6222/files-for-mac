@@ -62,6 +62,10 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
     private let homeView = NSStackView()
     private let homeFavoriteGrid = HomeCardGrid(minimumCardWidth: 140, cardHeight: 70)
     private let homeDriveGrid = HomeCardGrid(minimumCardWidth: 200, cardHeight: 92)
+    private let homeFileTagsView = NSStackView()
+    private var homeFileTagGroups: [HomeFileTagGroup]?
+    private var homeFileTagTask: Task<Void, Never>?
+    private var readHomeFileTags: () async -> [HomeFileTagGroup]? = { await HomeFileTagSearch().load() }
     private let homeRecentFilesView = NSStackView()
     private let homeRecentView = NSStackView()
     private var homeNeedsUpdate = true
@@ -249,6 +253,7 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
                 self.watcher = nil
                 self.model.onChange = nil; self.model.cancelLoad()
                 self.model.cancelDirectorySizeRequests()
+                self.homeFileTagTask?.cancel()
                 self.completionTask?.cancel(); self.volumeTask?.cancel(); self.cloudTask?.cancel(); self.gitTask?.cancel(); self.folderSizeTask?.cancel()
                 self.resetGitCommits()
                 self.inspector.clear()
@@ -394,6 +399,9 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         homeRecentFilesView.orientation = .vertical
         homeRecentFilesView.alignment = .leading
         homeRecentFilesView.spacing = 4
+        homeFileTagsView.orientation = .vertical
+        homeFileTagsView.alignment = .leading
+        homeFileTagsView.spacing = 4
         homeView.translatesAutoresizingMaskIntoConstraints = false
         homeScroll.drawsBackground = false; homeScroll.hasVerticalScroller = true
         homeScroll.translatesAutoresizingMaskIntoConstraints = false; content.addSubview(homeScroll)
@@ -665,8 +673,9 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         homeView.addArrangedSubview(button); homeView.setCustomSpacing(10, after: button)
     }
     private func locationButton(_ title: String, symbol: String, url: URL?, in stack: NSStackView,
-                                prominent: Bool = false, recentFile: Bool = false) {
-        let action = recentFile ? #selector(openRecentFile(_:)) : #selector(openLocation(_:))
+                                prominent: Bool = false, recentFile: Bool = false, taggedItem: Bool = false) {
+        let action = taggedItem ? #selector(openTaggedHomeItem(_:))
+            : (recentFile ? #selector(openRecentFile(_:)) : #selector(openLocation(_:)))
         let b = LocationButton(title: title, target: self, action: action)
         b.url = url; b.bezelStyle = .recessed; b.isBordered = false
         b.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
@@ -683,7 +692,7 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         b.heightAnchor.constraint(equalToConstant: prominent ? 54 : 32).isActive = true
         b.widthAnchor.constraint(equalTo: stack.widthAnchor, constant: -(stack.edgeInsets.left + stack.edgeInsets.right)).isActive = true
         let menu = NSMenu(); menu.autoenablesItems = false
-        if recentFile {
+        if recentFile || taggedItem {
             let copy = menu.addItem(withTitle: L("파일 경로 복사", "Copy File Path"), action: #selector(copyLocationItem(_:)), keyEquivalent: "")
             copy.target = self
             copy.representedObject = url
@@ -850,6 +859,14 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
                 }
             }
         }
+        if preferences.showHomeFileTags {
+            homeSection(L("파일 태그", "File Tags"), expanded: preferences.homeFileTagsExpanded,
+                        action: #selector(toggleHomeFileTagsExpanded(_:)))
+            if preferences.homeFileTagsExpanded {
+                homeView.addArrangedSubview(homeFileTagsView)
+                homeFileTagsView.widthAnchor.constraint(equalTo: homeView.widthAnchor, constant: -64).isActive = true
+            }
+        }
         if preferences.showHomeRecentFiles {
             homeSection(L("최근 파일", "Recent Files"), expanded: preferences.homeRecentFilesExpanded,
                         action: #selector(toggleHomeRecentFilesExpanded(_:)))
@@ -867,6 +884,10 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         }
         updateHomeRecentFiles()
         updateHomeRecent()
+        if homeFileTagsView.superview === homeView {
+            if homeFileTagGroups == nil && homeFileTagTask == nil { reloadHomeFileTags() }
+            else { updateHomeFileTags() }
+        } else { cancelHomeFileTagLoad() }
         if let focusedButton { restoreHomeFocus(from: focusedButton) }
     }
     private func placeHomeCards(_ cards: [NSView], in grid: HomeCardGrid) {
@@ -915,6 +936,54 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         }
         if let focusedButton { restoreHomeFocus(from: focusedButton) }
     }
+    private func reloadHomeFileTags() {
+        cancelHomeFileTagLoad()
+        guard homeFileTagsView.superview === homeView else { return }
+        let read = readHomeFileTags
+        homeFileTagTask = Task { [weak self] in
+            let groups = await read()
+            guard let self, !Task.isCancelled else { return }
+            homeFileTagTask = nil
+            homeFileTagGroups = groups
+            updateHomeFileTags()
+        }
+        updateHomeFileTags()
+    }
+    private func cancelHomeFileTagLoad() {
+        homeFileTagTask?.cancel()
+        homeFileTagTask = nil
+    }
+    private func updateHomeFileTags() {
+        let focusedButton = (window?.firstResponder as? SidebarKeyboardButton).flatMap {
+            $0.isDescendant(of: homeFileTagsView) ? $0 : nil
+        }
+        homeFileTagsView.arrangedSubviews.forEach { homeFileTagsView.removeArrangedSubview($0); $0.removeFromSuperview() }
+        if homeFileTagTask != nil {
+            homeFileTagsView.addArrangedSubview(NSTextField(labelWithString: L("파일 태그 읽는 중…", "Loading file tags…")))
+        } else if let groups = homeFileTagGroups {
+            if groups.isEmpty {
+                homeFileTagsView.addArrangedSubview(NSTextField(labelWithString: L("색인에서 태그가 지정된 파일을 찾지 못했습니다.", "No tagged files were found in the index.")))
+            }
+            for group in groups {
+                let label = NSTextField(labelWithString: group.name)
+                label.font = .systemFont(ofSize: 12, weight: .semibold)
+                label.lineBreakMode = .byTruncatingTail
+                label.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+                homeFileTagsView.addArrangedSubview(label)
+                label.widthAnchor.constraint(lessThanOrEqualTo: homeFileTagsView.widthAnchor).isActive = true
+                for url in group.items {
+                    locationButton(displayName(url), symbol: "tag", url: url, in: homeFileTagsView, taggedItem: true)
+                }
+            }
+        } else {
+            homeFileTagsView.addArrangedSubview(NSTextField(labelWithString: L("파일 태그를 읽지 못했습니다.", "File tags couldn’t be loaded.")))
+            let retry = SidebarKeyboardButton(title: L("다시 시도", "Try Again"), target: self,
+                                              action: #selector(retryHomeFileTags(_:)))
+            homeFileTagsView.addArrangedSubview(retry)
+        }
+        if let focusedButton { restoreHomeFocus(from: focusedButton) }
+    }
+    @objc private func retryHomeFileTags(_ sender: Any?) { reloadHomeFileTags() }
     private func restoreHomeFocus(from previous: SidebarKeyboardButton) {
         let buttons = homeKeyboardButtons
         let replacement = buttons.first {
@@ -1065,10 +1134,16 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         gridView.isHidden = model.location == nil || !showsGrid
         listView.isHidden = model.location == nil || !showsList
         columnView.isHidden = model.location == nil || !showsColumns
+        let enteringHome = homeScroll.isHidden && model.location == nil
         homeScroll.isHidden = model.location != nil
         if model.location == nil {
             lastRecordedLocation = nil
+            if enteringHome { homeFileTagGroups = nil }
             updateHomeIfNeeded()
+            if enteringHome && homeFileTagTask == nil { reloadHomeFileTags() }
+        } else if homeFileTagTask != nil {
+            cancelHomeFileTagLoad()
+            homeNeedsUpdate = true
         }
         var revealEntry = false
         if let target = pendingEntrySelection, !model.isLoading {
@@ -1415,6 +1490,7 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         detailPresentationNeedsReload = true
         if secondaryActive { secondaryPane?.refresh() }
         else {
+            if model.location == nil { reloadHomeFileTags() }
             if model.failure != nil || watcherStatus == .unavailable { updateWatcher(force: true) }
             savePosition()
             model.reload(userInitiated: true)
@@ -1711,6 +1787,16 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         guard let url = sender.url else { return }
         if !openDocument(url) {
             showEntryError(L("최근 파일을 열지 못했습니다.", "The recent file could not be opened.") + "\n" + url.path)
+        }
+    }
+    @objc private func openTaggedHomeItem(_ sender: LocationButton) {
+        guard let url = sender.url else { return }
+        do {
+            let values = try url.resourceValues(forKeys: [.isDirectoryKey, .isPackageKey])
+            if values.isDirectory == true && values.isPackage != true { navigate(url) }
+            else if !openDocument(url) { throw CocoaError(.fileReadUnknown) }
+        } catch {
+            showEntryError(L("태그가 지정된 항목을 열지 못했습니다.", "The tagged item could not be opened.") + "\n" + url.path)
         }
     }
     @objc func openArchive(_ sender: Any?) {
@@ -3418,6 +3504,7 @@ extension BrowserWindow {
             (L("홈: 빠른 접근", "Home: Quick Access"), #selector(toggleHomeFavorites(_:)), preferences.showHomeFavorites),
             (L("홈: 드라이브", "Home: Drives"), #selector(toggleHomeVolumes(_:)), preferences.showHomeVolumes),
             (L("홈: 네트워크 위치", "Home: Network Locations"), #selector(toggleHomeNetwork(_:)), preferences.showHomeNetwork),
+            (L("홈: 파일 태그", "Home: File Tags"), #selector(toggleHomeFileTags(_:)), preferences.showHomeFileTags),
             (L("홈: 최근 파일", "Home: Recent Files"), #selector(toggleHomeRecentFiles(_:)), preferences.showHomeRecentFiles),
             (L("홈: 최근 위치", "Home: Recent Locations"), #selector(toggleHomeRecent(_:)), preferences.showHomeRecent)
         ]
@@ -3542,11 +3629,13 @@ extension BrowserWindow {
     @objc private func toggleHomeFavorites(_ sender: Any?) { preferences.toggleSection(.favorites) }
     @objc private func toggleHomeVolumes(_ sender: Any?) { preferences.toggleSection(.volumes) }
     @objc private func toggleHomeNetwork(_ sender: Any?) { preferences.toggleSection(.network) }
+    @objc private func toggleHomeFileTags(_ sender: Any?) { preferences.toggleSection(.fileTags) }
     @objc private func toggleHomeRecent(_ sender: Any?) { preferences.toggleSection(.recent) }
     @objc private func toggleHomeRecentFiles(_ sender: Any?) { preferences.toggleSection(.recentFiles) }
     @objc private func toggleHomeFavoritesExpanded(_ sender: Any?) { preferences.toggleHomeSectionExpanded(.favorites) }
     @objc private func toggleHomeVolumesExpanded(_ sender: Any?) { preferences.toggleHomeSectionExpanded(.volumes) }
     @objc private func toggleHomeNetworkExpanded(_ sender: Any?) { preferences.toggleHomeSectionExpanded(.network) }
+    @objc private func toggleHomeFileTagsExpanded(_ sender: Any?) { preferences.toggleHomeSectionExpanded(.fileTags) }
     @objc private func toggleHomeRecentExpanded(_ sender: Any?) { preferences.toggleHomeSectionExpanded(.recent) }
     @objc private func toggleHomeRecentFilesExpanded(_ sender: Any?) { preferences.toggleHomeSectionExpanded(.recentFiles) }
 
@@ -5654,6 +5743,27 @@ extension BrowserWindow {
             clearFiles?.performClick(nil)
             checks["homeRecentFilesClearIsIndependent"] = clearFiles != nil && preferences.recentFiles.isEmpty
                 && preferences.recent == recentFolders
+            controller.readHomeFileTags = {
+                [HomeFileTagGroup(name: "QA", items: [firstFile, secondFile]),
+                 HomeFileTagGroup(name: "Review", items: [firstFile])]
+            }
+            preferences.setHomeSectionExpanded(.fileTags, expanded: true)
+            preferences.setSection(.fileTags, visible: true)
+            let tagStart = ContinuousClock.now
+            while controller.homeFileTagTask != nil && elapsed(tagStart) < 5 {
+                try await Task.sleep(for: .milliseconds(10))
+            }
+            let tagButtons = controller.homeFileTagsView.arrangedSubviews.compactMap { $0 as? LocationButton }
+            let tagNames = controller.homeFileTagsView.arrangedSubviews.compactMap { ($0 as? NSTextField)?.stringValue }
+            tagButtons.first?.performClick(nil)
+            checks["homeFileTagsGroupedAndOpen"] = tagNames == ["QA", "Review"]
+                && tagButtons.compactMap(\.url) == [firstFile, secondFile, firstFile] && storageRequests.last == firstFile
+            root.layoutSubtreeIfNeeded()
+            controller.homeFileTagsView.scrollToVisible(controller.homeFileTagsView.bounds)
+            try capture("home-file-tags")
+            preferences.setSection(.fileTags, visible: false)
+            checks["homeFileTagsSettingsIndependent"] = controller.homeFileTagsView.superview == nil
+                && preferences.homeFileTagsExpanded && preferences.showHomeRecentFiles && preferences.showHomeNetwork
             if let referencePath = ProcessInfo.processInfo.environment["FILES_UI_REFERENCE_FIXTURE"] {
                 let reference = URL(fileURLWithPath: referencePath, isDirectory: true).standardizedFileURL
                 let expected = Set(try fm.contentsOfDirectory(atPath: reference.path))

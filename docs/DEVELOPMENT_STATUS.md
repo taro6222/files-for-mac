@@ -8,6 +8,8 @@ M7 출시 검증이 진행 중이다. [유니버설 개발 프리뷰](verificati
 
 ## 이번 구현 단위
 
+홈의 파일 태그 위젯에서 Spotlight에 색인된 항목을 Finder 태그별로 보고 연다. [파일 태그 위젯](verification/m7/INCREMENT_196.md)
+
 상세 보기에서 전체 폴더 크기 계산을 꺼도 필요한 폴더의 크기만 조회할 수 있다. [개별 폴더 크기](verification/m7/INCREMENT_193.md)
 
 홈에서 앱으로 연 최근 파일을 다시 열고 최근 위치와 별도로 관리한다. [최근 파일](verification/m7/INCREMENT_192.md)

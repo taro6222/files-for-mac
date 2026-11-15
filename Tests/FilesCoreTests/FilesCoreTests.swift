@@ -1425,6 +1425,27 @@ private struct ManyBatchLoader: DirectoryStreaming {
     #expect(notices == 13 && preferences.recent == [folder])
 }
 
+@Test @MainActor func homeFileTagWidgetSettingsRoundTrip() throws {
+    let suite = "files-tag-widget-\(UUID())", defaults = UserDefaults(suiteName: suite)!
+    defer { defaults.removePersistentDomain(forName: suite) }
+    let preferences = BrowserPreferences(defaults: defaults, initialFavorites: [])
+    #expect(!preferences.showHomeFileTags && preferences.homeFileTagsExpanded)
+    preferences.setSection(.fileTags, visible: true)
+    preferences.setHomeSectionExpanded(.fileTags, expanded: false)
+    let reopened = BrowserPreferences(defaults: defaults, initialFavorites: [])
+    #expect(reopened.showHomeFileTags && !reopened.homeFileTagsExpanded)
+    #expect(reopened.showHomeRecentFiles && reopened.homeRecentFilesExpanded)
+    let exported = try preferences.exportData()
+    reopened.setSection(.fileTags, visible: false)
+    try reopened.importData(exported)
+    #expect(reopened.showHomeFileTags && !reopened.homeFileTagsExpanded)
+    var legacy = try #require(JSONSerialization.jsonObject(with: exported) as? [String: Any])
+    legacy.removeValue(forKey: "showHomeFileTags")
+    legacy.removeValue(forKey: "homeFileTagsExpanded")
+    try reopened.importData(JSONSerialization.data(withJSONObject: legacy))
+    #expect(!reopened.showHomeFileTags && reopened.homeFileTagsExpanded)
+}
+
 @Test @MainActor func sidebarOrderRepairsUnknownAndDuplicateSavedValues() {
     let suite = "files-sidebar-invalid-\(UUID())", defaults: UserDefaults
     defaults = UserDefaults(suiteName: suite)!
