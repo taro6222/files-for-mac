@@ -1,0 +1,36 @@
+{
+  "upstreamSHA": "99951c66928c4da714da8b1dd46039421182cbab",
+  "packageSHA256": "a28e58ad592d62144a55c92af63737015ab0d8a9a2e6aeec8d1358f03bc42afa",
+  "appID": "FilesDev_ykqwq8d6ps0ag!App",
+  "windows": "10.0.26100",
+  "architecture": "AMD64",
+  "screen": "UI-01 Home, initial runner defaults",
+  "screenshotSHA256": "337a6f1ea2f4e7684b61a6b9a9c61ec214eaea9f6411b34316e625e84c85c61c",
+  "folder": {
+    "screens": [
+      "UI-02",
+      "UI-03"
+    ],
+    "entries": [
+      "Alpha",
+      "Workshop",
+      "notes.txt",
+      "preview.txt",
+      "readme.md"
+    ],
+    "visibleEntryNames": [
+      "Alpha",
+      "Workshop",
+      "notes.txt",
+      "preview.txt",
+      "readme.md"
+    ],
+    "detailColumnNames": [
+      "Date modified",
+      "Name",
+      "Size",
+      "Type"
+    ],
+    "screenshotSHA256": "20e46a1d20e706eb0bc7490395195c82e04b71621b15861ae638492719d4f045"
+  }
+}
