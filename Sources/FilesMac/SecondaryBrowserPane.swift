@@ -14,6 +14,7 @@ final class SecondaryBrowserPane: NSView, NSTableViewDataSource, NSTableViewDele
     var onOpenFolderInNewTab: ((URL) -> Void)?
     var onOpenFile: ((URL) -> Void)?
     private let pathField = NSTextField()
+    private var renderedPathLocation: URL?
     private let table = ActivatingTableView()
     private let scroll = NSScrollView()
     private let gridView = FileGridView()
@@ -409,7 +410,11 @@ final class SecondaryBrowserPane: NSView, NSTableViewDataSource, NSTableViewDele
             onSelectionChange?()
         }
         folderFilter.synchronize(with: model, visible: preferences.showFilterHeader)
-        pathField.stringValue = model.location?.path ?? ""
+        let location = model.location
+        if renderedPathLocation != location || pathField.currentEditor() == nil {
+            pathField.stringValue = location?.path ?? ""
+        }
+        renderedPathLocation = location
         var revealEntry = false
         if let target = pendingEntrySelection, !model.isLoading {
             pendingEntrySelection = nil
@@ -648,6 +653,24 @@ final class SecondaryBrowserPane: NSView, NSTableViewDataSource, NSTableViewDele
         pathField.stringValue = url.path
         submitPath(nil)
         return true
+    }
+
+    func qaKeepsPathDraftDuringReload() async throws -> Bool {
+        guard let location = model.location else { return false }
+        focusPath()
+        guard let editor = pathField.currentEditor() as? NSTextView else { return false }
+        let draft = location.appendingPathComponent("unfinished-path").path
+        editor.insertText(draft, replacementRange: NSRange(location: 0, length: (editor.string as NSString).length))
+        guard editor.string == draft else { return false }
+        model.reload()
+        let start = ContinuousClock.now
+        while model.isLoading && start.duration(to: .now) < .seconds(5) {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        let preserved = !model.isLoading && pathField.currentEditor() === editor && editor.string == draft
+        window?.makeFirstResponder(table)
+        render()
+        return preserved && pathField.stringValue == location.path
     }
 
     func qaNavigationAccessibility() -> Bool {

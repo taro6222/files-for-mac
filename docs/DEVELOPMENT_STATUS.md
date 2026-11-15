@@ -8,6 +8,8 @@ M7 출시 검증이 진행 중이다. [유니버설 개발 프리뷰](verificati
 
 ## 이번 구현 단위
 
+분할 패널에서 같은 폴더를 새로 읽어도 편집 중인 경로가 유지된다. [경로 입력 보호](verification/m7/INCREMENT_209.md)
+
 컬럼 보기에서 각 열의 경계를 드래그해 너비를 조절할 수 있다. [컬럼 너비 조절](verification/m7/INCREMENT_205.md)
 
 컬럼 보기에서 좌우 방향키로 초점을 옮기면 작업 선택도 해당 컬럼에 맞춰 갱신된다. [컬럼 키보드 탐색](verification/m7/INCREMENT_204.md)

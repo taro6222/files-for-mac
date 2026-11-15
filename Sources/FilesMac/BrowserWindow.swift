@@ -5969,6 +5969,7 @@ extension BrowserWindow {
             let secondaryStart = ContinuousClock.now
             while secondary.model.isLoading && elapsed(secondaryStart) < 10 { try await Task.sleep(for: .milliseconds(10)) }
             checks["secondaryNavigationAccessibilityLabels"] = secondary.qaNavigationAccessibility()
+            checks["secondaryPathDraftSurvivesReload"] = try await secondary.qaKeepsPathDraftDuringReload()
             let initialNavigation = secondary.qaNavigationEnabled
             checks["secondaryHiddenAccessibilityPress"] = secondary.qaPressHiddenAccessibility()
             try await controller.waitForFolderQA { !secondary.model.isLoading }
