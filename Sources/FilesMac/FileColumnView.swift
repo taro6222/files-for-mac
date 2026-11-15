@@ -3,6 +3,63 @@ import FilesCore
 
 @MainActor
 final class FileColumnView: NSView {
+    @MainActor private final class WidthHandle: NSView {
+        static let defaultWidth: CGFloat = 230
+        private static let widths: ClosedRange<CGFloat> = 150...620
+        weak var columnWidth: NSLayoutConstraint?
+        private var dragStart: (x: CGFloat, width: CGFloat)?
+
+        init(folder: String) {
+            super.init(frame: .zero)
+            translatesAutoresizingMaskIntoConstraints = false
+            let title = L("컬럼 너비 조절", "Resize column")
+            toolTip = title
+            setAccessibilityElement(true)
+            setAccessibilityRole(.slider)
+            setAccessibilityLabel(title + " — " + folder)
+            setAccessibilityMinValue(NSNumber(value: Double(Self.widths.lowerBound)))
+            setAccessibilityMaxValue(NSNumber(value: Double(Self.widths.upperBound)))
+            setAccessibilityValue(NSNumber(value: Double(Self.defaultWidth)))
+        }
+        required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
+
+        override func resetCursorRects() { addCursorRect(bounds, cursor: .resizeLeftRight) }
+        override func draw(_ dirtyRect: NSRect) {
+            NSColor.separatorColor.setFill()
+            NSRect(x: floor(bounds.midX), y: dirtyRect.minY, width: 1, height: dirtyRect.height).fill()
+        }
+        override func mouseDown(with event: NSEvent) {
+            guard let columnWidth else { return }
+            if event.clickCount == 2 {
+                dragStart = nil
+                _ = resize(to: Self.defaultWidth)
+            } else {
+                dragStart = (event.locationInWindow.x, columnWidth.constant)
+            }
+        }
+        override func mouseDragged(with event: NSEvent) {
+            guard let dragStart else { return }
+            _ = resize(to: dragStart.width + event.locationInWindow.x - dragStart.x)
+        }
+        override func mouseUp(with event: NSEvent) { dragStart = nil }
+        override func accessibilityPerformIncrement() -> Bool { adjust(by: 20) }
+        override func accessibilityPerformDecrement() -> Bool { adjust(by: -20) }
+
+        private func adjust(by delta: CGFloat) -> Bool {
+            guard let columnWidth else { return false }
+            return resize(to: columnWidth.constant + delta)
+        }
+        private func resize(to proposal: CGFloat) -> Bool {
+            guard let columnWidth else { return false }
+            let width = min(Self.widths.upperBound, max(Self.widths.lowerBound, proposal.rounded()))
+            guard width != columnWidth.constant else { return false }
+            columnWidth.constant = width
+            setAccessibilityValue(NSNumber(value: Double(width)))
+            NSAccessibility.post(element: self, notification: .valueChanged)
+            return true
+        }
+    }
+
     @MainActor private final class Table: NSTableView {
         var onActivate: (() -> Void)?
         var onRight: (() -> Void)?
@@ -38,12 +95,18 @@ final class FileColumnView: NSView {
         let table = Table()
         let scroll = NSScrollView()
         let view = NSView()
+        let widthHandle: WidthHandle
+        private(set) lazy var width = view.widthAnchor.constraint(equalToConstant: WidthHandle.defaultWidth)
         var suppress = false
         init(owner: FileColumnView, url: URL, items: [FileItem], pathChildID: String?) {
-            self.owner = owner; self.url = url; self.items = items; self.pathChildID = pathChildID; super.init()
+            let folder = url.path == "/" ? L("루트 폴더", "Root folder") : url.lastPathComponent
+            self.owner = owner; self.url = url; self.items = items; self.pathChildID = pathChildID
+            widthHandle = WidthHandle(folder: folder)
+            super.init()
             view.translatesAutoresizingMaskIntoConstraints = false
             table.headerView = nil; table.rowHeight = 28; table.style = .fullWidth; table.allowsMultipleSelection = true
-            table.setAccessibilityLabel(url.path == "/" ? L("루트 폴더", "Root folder") : url.lastPathComponent)
+            table.setAccessibilityLabel(folder)
+            table.columnAutoresizingStyle = .lastColumnOnlyAutoresizingStyle
             table.dataSource = self; table.delegate = self; table.target = self; table.doubleAction = #selector(open(_:))
             table.onActivate = { [weak self] in self?.owner?.activate(column: self) }
             table.onRight = { [weak self] in self?.owner?.expand(column: self, moveFocus: true) }
@@ -55,12 +118,18 @@ final class FileColumnView: NSView {
             let name = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("name")); name.resizingMask = .autoresizingMask; table.addTableColumn(name)
             scroll.documentView = table; scroll.hasVerticalScroller = true; scroll.translatesAutoresizingMaskIntoConstraints = false
             view.addSubview(scroll)
+            view.addSubview(widthHandle)
+            widthHandle.columnWidth = width
             NSLayoutConstraint.activate([
                 scroll.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-                scroll.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+                scroll.trailingAnchor.constraint(equalTo: widthHandle.leadingAnchor),
                 scroll.topAnchor.constraint(equalTo: view.topAnchor),
                 scroll.bottomAnchor.constraint(equalTo: view.bottomAnchor),
-                view.widthAnchor.constraint(equalToConstant: 230)
+                widthHandle.topAnchor.constraint(equalTo: view.topAnchor),
+                widthHandle.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+                widthHandle.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+                widthHandle.widthAnchor.constraint(equalToConstant: 7),
+                width
             ])
         }
         var selectedItems: [FileItem] { table.selectedRowIndexes.compactMap { items.indices.contains($0) ? items[$0] : nil } }
@@ -365,6 +434,32 @@ final class FileColumnView: NSView {
 
 #if DEBUG
     var qaColumnCount: Int { columns.count }
+    var qaColumnWidths: [CGFloat] {
+        document.layoutSubtreeIfNeeded()
+        return columns.map { $0.view.frame.width }
+    }
+    func qaDragBaseWidth(by delta: CGFloat) {
+        guard let column = columns.first,
+              let down = qaWidthEvent(.leftMouseDown, on: column.widthHandle, delta: 0, clicks: 1),
+              let drag = qaWidthEvent(.leftMouseDragged, on: column.widthHandle, delta: delta, clicks: 1),
+              let up = qaWidthEvent(.leftMouseUp, on: column.widthHandle, delta: delta, clicks: 1) else { return }
+        column.widthHandle.mouseDown(with: down)
+        column.widthHandle.mouseDragged(with: drag)
+        column.widthHandle.mouseUp(with: up)
+    }
+    func qaIncreaseBaseWidth() -> Bool { columns.first?.widthHandle.accessibilityPerformIncrement() ?? false }
+    func qaResetBaseWidth() {
+        guard let handle = columns.first?.widthHandle,
+              let event = qaWidthEvent(.leftMouseDown, on: handle, delta: 0, clicks: 2) else { return }
+        handle.mouseDown(with: event)
+    }
+    private func qaWidthEvent(_ type: NSEvent.EventType, on handle: WidthHandle, delta: CGFloat, clicks: Int) -> NSEvent? {
+        guard let window else { return nil }
+        let origin = handle.convert(NSPoint(x: handle.bounds.midX, y: handle.bounds.midY), to: nil)
+        return NSEvent.mouseEvent(with: type, location: NSPoint(x: origin.x + delta, y: origin.y),
+                                  modifierFlags: [], timestamp: 0, windowNumber: window.windowNumber,
+                                  context: nil, eventNumber: 0, clickCount: clicks, pressure: 1)
+    }
     var qaFocusedColumnURL: URL? { focusedColumn?.url }
     var qaBaseSelection: [String] { columns.first?.selectedItems.map(\.id) ?? [] }
     func qaMoveRightFromBase() {

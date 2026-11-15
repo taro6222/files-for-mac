@@ -33,7 +33,7 @@ macOS 캡처에서 발견한 상태 표시줄의 개발 단계 문구를 제거�
 
 [UI-04·05 공통 폴더의 그리드·컬럼 검증](../verification/m7/INCREMENT_195.md)에서 macOS의 다섯 항목과 `Alpha` 선택으로 열린 두 번째 컬럼을 확인했다. Windows 캡처에도 같은 시험 항목과 컬럼 확인을 추가했다.
 
-[Windows 그리드](../verification/m7/INCREMENT_197.md)와 [컬럼 보기 실행 화면](../verification/m7/INCREMENT_201.md)을 macOS 화면과 대조했다. macOS 컬럼 보기에도 [상위 경로 표시](../verification/m7/INCREMENT_202.md)와 [좌우 방향키 이동 및 선택 복원](../verification/m7/INCREMENT_204.md)을 적용했다.
+[Windows 그리드](../verification/m7/INCREMENT_197.md)와 [컬럼 보기 실행 화면](../verification/m7/INCREMENT_201.md)을 macOS 화면과 대조했다. macOS 컬럼 보기에도 [상위 경로 표시](../verification/m7/INCREMENT_202.md), [좌우 방향키 이동 및 선택 복원](../verification/m7/INCREMENT_204.md), [개별 컬럼 너비 조절](../verification/m7/INCREMENT_205.md)을 적용했다.
 
 [UI-06 좌우 분할](../verification/m7/INCREMENT_203.md)은 공통 폴더와 `Alpha`의 하위 항목을 서로 다른 패널에 표시하는 동선으로 확인한다.
 

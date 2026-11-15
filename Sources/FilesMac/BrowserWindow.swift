@@ -5826,6 +5826,18 @@ extension BrowserWindow {
                 }
                 checks["referenceFolderRightFocusesLoadedColumn"] = controller.columnView.qaFocusedColumnURL?.path == alpha.path
                     && controller.model.history.current.selection == [child.path]
+                let columnWidths = controller.columnView.qaColumnWidths
+                controller.columnView.qaDragBaseWidth(by: 80)
+                let widened = controller.columnView.qaColumnWidths
+                checks["referenceFolderColumnWidthDrag"] = widened == [310, 230] && columnWidths == [230, 230]
+                    && controller.model.history.current.selection == [child.path]
+                let incremented = controller.columnView.qaIncreaseBaseWidth()
+                checks["referenceFolderColumnWidthAccessibility"] = incremented && controller.columnView.qaColumnWidths == [330, 230]
+                if checks["referenceFolderColumnWidthDrag"] == true { try capture("ui-05-resized-column") }
+                controller.columnView.qaDragBaseWidth(by: -1_000)
+                let minimum = controller.columnView.qaColumnWidths
+                controller.columnView.qaResetBaseWidth()
+                checks["referenceFolderColumnWidthLimitAndReset"] = minimum == [150, 230] && controller.columnView.qaColumnWidths == columnWidths
                 controller.navigate(alpha)
                 try await settleWindows()
                 let parentStart = ContinuousClock.now
