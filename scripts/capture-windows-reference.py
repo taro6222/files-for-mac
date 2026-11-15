@@ -242,9 +242,16 @@ def capture(output, app_id, window_handle, fixture=None):
             capture_layout(wait_for("the fixture grid", grid_source), "UI-04", "grid")
             send_control_shift("5")
             wait_for("the fixture column browser", columns_source)
-            alpha = wait_for("Alpha in the first column", lambda: element_route(
-                "xpath", "//*[@AutomationId='ItemName' and @Name='Alpha']"))
-            request("POST", alpha + "/click", {})
+
+            def click_column_alpha():
+                if expanded_columns_source() is not None:
+                    return True
+                alpha = element_route("xpath", "//*[@AutomationId='ColumnHost']"
+                                      "//*[@AutomationId='ItemName' and @Name='Alpha' and @IsOffscreen='False']")
+                request("POST", alpha + "/click", {})
+                return True
+
+            wait_for("a successful click on visible Alpha in the column browser", click_column_alpha)
             if expanded_columns_source() is None:
                 request("POST", session + "/keys", {"value": ["\ue007"]})
             tree = wait_for("Alpha and its child in adjacent columns", expanded_columns_source)
