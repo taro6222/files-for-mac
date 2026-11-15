@@ -55,6 +55,33 @@ import Testing
     #expect(throws: CopyEngine.TransferMismatch.contents) { try changed.verifyTransferredContents(of: local) }
 }
 
+@Test func smbTransferAcceptsFileTimeRoundingOnlyWhenVerifyingTheCopy() throws {
+    let path = "/payload.bin"
+    let baseline = Date(timeIntervalSinceReferenceDate: 816_404_686)
+    let dateStep = baseline.timeIntervalSinceReferenceDate.ulp
+    var local = CopyEngine.VerificationSnapshot()
+    local.filesystemType = "apfs"
+    local.metadata.modificationDates[path] = baseline
+    var remote = local
+    remote.filesystemType = "smbfs"
+    remote.metadata.modificationDates[path] = baseline.addingTimeInterval(-dateStep)
+
+    try remote.verifyTransferredContents(of: local)
+    try local.verifyTransferredContents(of: remote)
+    #expect(!remote.matchesOriginal(local))
+    #expect(!remote.metadata.matchesRecorded(local.metadata))
+
+    var updatedLocal = remote
+    updatedLocal.filesystemType = "apfs"
+    #expect(throws: CopyEngine.TransferMismatch.modificationTime) {
+        try updatedLocal.verifyTransferredContents(of: local)
+    }
+    remote.metadata.modificationDates[path] = baseline.addingTimeInterval(0.000001)
+    #expect(throws: CopyEngine.TransferMismatch.modificationTime) {
+        try remote.verifyTransferredContents(of: local)
+    }
+}
+
 @Test func copyCreationTimeRestorationRejectsSymlinkedStagedParent() throws {
     let f = try CopyFixture(); defer { f.clean() }
     let fm = FileManager.default

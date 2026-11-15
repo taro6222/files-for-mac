@@ -526,7 +526,13 @@ func mountedSMBCopyMoveUndoRoundTrip() async throws {
     try Data("old".utf8).write(to: existing)
     let replace = try await EntryOperations.move([replacement], to: destination,
         conflictPolicy: .replace, journalDirectory: journal)
-    #expect(replace.state == "completed")
+    if replace.state != "completed" {
+        #expect(try String(contentsOf: replacement, encoding: .utf8) == "new")
+        let preservedDestination = replace.items.first?.recoveryBackup ?? existing
+        #expect(try String(contentsOf: preservedDestination, encoding: .utf8) == "old")
+    }
+    try #require(replace.state == "completed",
+                 Comment(rawValue: replace.items.first?.message ?? replace.journalError ?? "SMB replacement did not complete"))
     let replaceUndo = try #require(EntryOperations.latestUndoMove(journalDirectory: journal))
     #expect(await EntryOperations.undoMove(replaceUndo, journalDirectory: journal).state == "completed")
     #expect(try String(contentsOf: replacement, encoding: .utf8) == "new")

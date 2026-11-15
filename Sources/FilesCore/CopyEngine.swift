@@ -535,8 +535,9 @@ public enum CopyEngine {
                 return .permissions
             }
             let resolution = max(modificationTimeResolution, source.modificationTimeResolution)
+            let usesSMB = filesystemType == "smbfs" || source.filesystemType == "smbfs"
             guard datesMatch(metadata.modificationDates, source.metadata.modificationDates,
-                             resolution: resolution) else { return .modificationTime }
+                             resolution: resolution, usesSMB: usesSMB) else { return .modificationTime }
             if let resolution = Self.creationTimeResolution(for: filesystemType),
                let sourceResolution = Self.creationTimeResolution(for: source.filesystemType),
                !datesMatch(metadata.creationDates ?? [:], source.metadata.creationDates ?? [:],
@@ -560,10 +561,16 @@ public enum CopyEngine {
         }
 
         private func datesMatch(_ dates: [String: Date], _ sourceDates: [String: Date],
-                                resolution: TimeInterval) -> Bool {
+                                resolution: TimeInterval, usesSMB: Bool = false) -> Bool {
             dates.count == sourceDates.count && dates.allSatisfy { path, date in
                 guard let sourceDate = sourceDates[path] else { return false }
-                return date == sourceDate || abs(date.timeIntervalSince(sourceDate)) < resolution
+                let difference = abs(date.timeIntervalSince(sourceDate))
+                if difference == 0 || difference < resolution { return true }
+                guard usesSMB else { return false }
+                // SMB FILETIME has 100 ns ticks. Account for one rounding step
+                // when the two times are represented as Foundation Dates.
+                let dateStep = max(date.timeIntervalSinceReferenceDate.ulp, sourceDate.timeIntervalSinceReferenceDate.ulp)
+                return difference <= 0.0000001 + dateStep
             }
         }
 
