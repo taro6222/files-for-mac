@@ -68,7 +68,7 @@ jobs:
           "FILES_WINDOWS_APP_ID=$($installed.PackageFamilyName)!App" >> $env:GITHUB_ENV
           "FILES_WINDOWS_INSTALL_PATH=$($installed.InstallLocation)" >> $env:GITHUB_ENV
           "FILES_WINDOWS_PACKAGE_SHA=$((Get-FileHash $package.FullName -Algorithm SHA256).Hash.ToLowerInvariant())" >> $env:GITHUB_ENV
-      - name: Capture the running Windows Home page
+      - name: Capture Windows Home and folder navigation
         shell: pwsh
         run: |
           Set-DisplayResolution -Width 1920 -Height 1080 -Force
@@ -94,7 +94,10 @@ jobs:
             }
             $handle = '0x{0:X}' -f $instance.MainWindowHandle.ToInt64()
             Write-Output "Attaching to Files PID $($instance.Id), window $handle"
-            python scripts/capture-windows-reference.py $output --window-handle $handle
+            $fixture = Join-Path $env:RUNNER_TEMP 'Files Reference'
+            python scripts/create-ui-reference-fixture.py $fixture
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            python scripts/capture-windows-reference.py $output --window-handle $handle --fixture $fixture
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           } finally {
             Stop-Process -Id $driver.Id -ErrorAction SilentlyContinue

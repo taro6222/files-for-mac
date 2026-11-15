@@ -29,6 +29,8 @@ macOS 캡처에서 발견한 상태 표시줄의 개발 단계 문구를 제거�
 
 [UI-01 홈 실행 화면 대조](../verification/m7/INCREMENT_189.md)에서 Windows와 macOS의 기본 홈 레이아웃과 위젯을 확인했다. 동일 fixture·창 크기의 화면, UI-02~UI-20 및 적용 상태별 시각·동작 검증은 정식 출시 게이트에 남아 있다.
 
+[공통 폴더 fixture](../verification/m7/INCREMENT_191.md)로 UI-02와 UI-03의 macOS 화면을 확보했다. 같은 파일을 사용하는 Windows 실행 캡처는 검증 중이다.
+
 [home]: https://github.com/files-community/Files/blob/99951c66928c4da714da8b1dd46039421182cbab/src/Files.App/Views/HomePage.xaml
 [main]: https://github.com/files-community/Files/blob/99951c66928c4da714da8b1dd46039421182cbab/src/Files.App/Views/MainPage.xaml
 [details]: https://github.com/files-community/Files/blob/99951c66928c4da714da8b1dd46039421182cbab/src/Files.App/Views/Layouts/DetailsLayoutPage.xaml

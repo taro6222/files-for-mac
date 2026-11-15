@@ -5496,6 +5496,20 @@ extension BrowserWindow {
                 && secondaryRead.model.items.map(\.name) == ["ready.txt"]
             secondaryRead.shutdown()
             secondaryReadWindow.close()
+            if let referencePath = ProcessInfo.processInfo.environment["FILES_UI_REFERENCE_FIXTURE"] {
+                let reference = URL(fileURLWithPath: referencePath, isDirectory: true).standardizedFileURL
+                let expected = Set(try fm.contentsOfDirectory(atPath: reference.path))
+                preferences.setShowExtensions(true)
+                controller.navigate(reference)
+                controller.model.setViewMode(.details)
+                try await settleWindows()
+                checks["referenceFolderDetails"] = controller.model.location == reference
+                    && !expected.isEmpty && Set(controller.model.items.map(\.name)) == expected
+                    && Set(controller.table.tableColumns.map { $0.identifier.rawValue }).isSuperset(of: ["name", "modified", "kind", "size"])
+                if checks["referenceFolderDetails"] == true {
+                    try capture("ui-02-03-reference-folder")
+                }
+            }
             let report: [String: Any] = ["checks": checks, "metrics": metrics,
                 "samples": ["multiwindowCycleSeconds": durations, "scrollStepSeconds": scrollDurations],
                 "cycles": cycleChecks,

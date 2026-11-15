@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Capture the pinned Windows Files Home page through WinAppDriver."""
+"""Capture the pinned Windows Files app through WinAppDriver."""
 
 import argparse
 import base64
@@ -45,7 +45,7 @@ def wait_for(description, read):
     raise RuntimeError(f"Timed out waiting for {description}") from last_error
 
 
-def capture(output, app_id, window_handle):
+def capture(output, app_id, window_handle, fixture=None):
     output.mkdir(parents=True, exist_ok=True)
     session = None
     last_source = None
@@ -64,18 +64,23 @@ def capture(output, app_id, window_handle):
         session_id = result.get("sessionId") or result["value"]["sessionId"]
         session = f"/session/{session_id}"
 
-        def home_source():
+        def read_tree():
             nonlocal last_source
+            last_source = request("GET", session + "/source")["value"]
+            return ET.ElementTree(ET.fromstring(last_source))
+
+        def element_route(strategy, value):
+            element = request("POST", session + "/element", {"using": strategy, "value": value})["value"]
+            identifier = element.get("ELEMENT") or element["element-6066-11e4-a52e-4f735466cecf"]
+            return f"{session}/element/{identifier}"
+
+        def home_source():
             for handle in request("GET", session + "/window_handles")["value"]:
                 request("POST", session + "/window", {"name": handle})
-                xml = request("GET", session + "/source")["value"]
-                last_source = xml
-                tree = ET.ElementTree(ET.fromstring(xml))
+                tree = read_tree()
                 elements = list(tree.iter())
                 if any(element.get("Name") == "Disclaimer" for element in elements):
-                    button = request("POST", session + "/element", {"using": "name", "value": "Accept"})["value"]
-                    identifier = button.get("ELEMENT") or button["element-6066-11e4-a52e-4f735466cecf"]
-                    request("POST", f"{session}/element/{identifier}/click", {})
+                    request("POST", element_route("name", "Accept") + "/click", {})
                     continue
                 names = {element.get("Name", "").casefold() for element in elements}
                 if {"drives", "network locations"} <= names:
@@ -96,7 +101,57 @@ def capture(output, app_id, window_handle):
             "screen": "UI-01 Home, initial runner defaults",
             "screenshotSHA256": screenshot_sha,
         }
-        (output / "capture.json").write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8")
+        report = output / "capture.json"
+        report.write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8")
+        if fixture is not None:
+            fixture = fixture.resolve(strict=True)
+            entries = sorted(item.name for item in fixture.iterdir())
+            normalized_names = {
+                name.casefold() for item in fixture.iterdir()
+                for name in ([item.name] if item.is_dir() else [item.name, item.stem])
+            }
+
+            def path_editor():
+                try:
+                    return element_route("accessibility id", "PART_TextBox")
+                except RuntimeError:
+                    request("POST", session + "/keys", {"value": ["\ue009", "l", "\ue000"]})
+                    return None
+
+            editor = wait_for("the path editor", path_editor)
+            request("POST", editor + "/clear", {})
+            request("POST", editor + "/value", {"value": list(str(fixture))})
+            if request("GET", editor + "/text")["value"] != str(fixture):
+                raise RuntimeError("The path editor did not receive the fixture path")
+            request("POST", editor + "/value", {"value": ["\ue007"]})
+
+            def folder_source():
+                current = element_route("accessibility id", "CurrentPathGet")
+                text = request("GET", current + "/text")["value"]
+                if text.rstrip("\\").casefold() != str(fixture).rstrip("\\").casefold():
+                    return None
+                tree = read_tree()
+                names = {element.get("Name", "").casefold() for element in tree.iter()}
+                if not all(item.name.casefold() in names or (item.is_file() and item.stem.casefold() in names)
+                           for item in fixture.iterdir()):
+                    return None
+                return tree
+
+            tree = wait_for("the fixture folder and its entries", folder_source)
+            columns = sorted({element.get("Name", "") for element in tree.iter()
+                              if element.get("Name", "").casefold() in {"name", "date modified", "type", "size"}})
+            record["folder"] = {
+                "screens": ["UI-02"],
+                "entries": entries,
+                "visibleEntryNames": sorted({element.get("Name", "") for element in tree.iter()
+                                            if element.get("Name", "").casefold() in normalized_names}),
+                "detailColumnNames": columns,
+                "screenshotSHA256": screenshot("UI-02_folder.png"),
+            }
+            if {"name", "date modified", "type", "size"} <= {column.casefold() for column in columns}:
+                record["folder"]["screens"].append("UI-03")
+            tree.write(output / "UI-02_folder.xml", encoding="utf-8", xml_declaration=True)
+            report.write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8")
     except Exception as error:
         (output / "capture-error.txt").write_text(str(error) + "\n", encoding="utf-8")
         if last_source is not None:
@@ -124,5 +179,6 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("output", type=Path)
     parser.add_argument("--window-handle", required=True)
+    parser.add_argument("--fixture", type=Path)
     arguments = parser.parse_args()
-    capture(arguments.output, os.environ["FILES_WINDOWS_APP_ID"], arguments.window_handle)
+    capture(arguments.output, os.environ["FILES_WINDOWS_APP_ID"], arguments.window_handle, arguments.fixture)
