@@ -5947,8 +5947,25 @@ extension BrowserWindow {
                     checks["referenceFolderInfoUnavailable"] = !inspector.isHidden && inspector.qaTitle == alpha.lastPathComponent
                         && inspector.qaPreviewURL == nil && inspector.qaDetails == L("미리보기를 표시할 수 없습니다.", "Preview unavailable.")
                     if checks["referenceFolderInfoUnavailable"] == true { try capture("ui-08-reference-preview-unavailable") }
-                    preferences.setShowInfoPane(false)
+
+                    let longDirectory = (0..<4).reduce(fixture) { parent, _ in
+                        parent.appendingPathComponent(String(repeating: "W", count: 210), isDirectory: true)
+                    }
+                    try fm.createDirectory(at: longDirectory, withIntermediateDirectories: true)
+                    let longPathFile = longDirectory.appendingPathComponent("inspect.txt")
+                    try Data("information pane".utf8).write(to: longPathFile)
+                    let item = FileItem(url: longPathFile, name: longPathFile.lastPathComponent, isDirectory: false)
+                    inspector.update(items: [item], tab: .details, sizeUnit: preferences.sizeUnit)
+                    let scrollStart = ContinuousClock.now
+                    while !inspector.qaDetails.contains(longPathFile.path) && elapsed(scrollStart) < 5 {
+                        try await Task.sleep(for: .milliseconds(20))
+                    }
+                    checks["referenceFolderInfoScrollsLongPath"] = inspector.qaDetails.contains(longPathFile.path)
+                        && inspector.qaScrollStartsAtTop && inspector.qaCanScrollToDetailEnd()
                     controller.showInfoPaneDetails(nil)
+                    checks["referenceFolderInfoResetsScroll"] = inspector.qaTitle == alpha.lastPathComponent
+                        && inspector.qaScrollStartsAtTop
+                    preferences.setShowInfoPane(false)
                 } else {
                     checks["referenceFolderInfoDetails"] = false
                 }

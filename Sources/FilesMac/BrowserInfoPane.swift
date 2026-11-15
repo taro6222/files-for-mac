@@ -6,6 +6,7 @@ import FilesCore
 final class BrowserInfoPane: NSView {
     private let tabs = NSSegmentedControl(labels: [L("상세", "Details"), L("미리보기", "Preview")],
                                           trackingMode: .selectOne, target: nil, action: nil)
+    private let scroll = NSScrollView()
     private let title = NSTextField(wrappingLabelWithString: "")
     private let text = NSTextField(wrappingLabelWithString: "")
     private let previewHost = NSView()
@@ -31,7 +32,16 @@ final class BrowserInfoPane: NSView {
         stack.translatesAutoresizingMaskIntoConstraints = false
         tabs.target = self
         tabs.action = #selector(selectTab)
+        tabs.translatesAutoresizingMaskIntoConstraints = false
         tabs.setAccessibilityLabel(L("정보 보기", "Information View"))
+        scroll.translatesAutoresizingMaskIntoConstraints = false
+        scroll.drawsBackground = false
+        scroll.hasVerticalScroller = true
+        scroll.autohidesScrollers = true
+        scroll.setAccessibilityLabel(L("항목 정보", "Item information"))
+        let document = FlippedView()
+        document.translatesAutoresizingMaskIntoConstraints = false
+        scroll.documentView = document
         title.font = .boldSystemFont(ofSize: 13)
         text.isSelectable = true
         text.textColor = .secondaryLabelColor
@@ -45,13 +55,22 @@ final class BrowserInfoPane: NSView {
         navigation.isHidden = true
         previewHost.isHidden = true
         for view in [previous, position, next] { navigation.addArrangedSubview(view) }
-        for view in [tabs, title, text, navigation, previewHost] { stack.addArrangedSubview(view) }
-        addSubview(stack)
+        for view in [title, text, navigation, previewHost] { stack.addArrangedSubview(view) }
+        addSubview(tabs)
+        addSubview(scroll)
+        document.addSubview(stack)
         NSLayoutConstraint.activate([
-            stack.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 10),
-            stack.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -10),
-            stack.topAnchor.constraint(equalTo: topAnchor, constant: 12),
-            stack.bottomAnchor.constraint(lessThanOrEqualTo: bottomAnchor, constant: -10),
+            tabs.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 10),
+            tabs.topAnchor.constraint(equalTo: topAnchor, constant: 12),
+            scroll.leadingAnchor.constraint(equalTo: leadingAnchor),
+            scroll.trailingAnchor.constraint(equalTo: trailingAnchor),
+            scroll.topAnchor.constraint(equalTo: tabs.bottomAnchor, constant: 4),
+            scroll.bottomAnchor.constraint(equalTo: bottomAnchor),
+            document.widthAnchor.constraint(equalTo: scroll.contentView.widthAnchor),
+            stack.leadingAnchor.constraint(equalTo: document.leadingAnchor, constant: 10),
+            stack.trailingAnchor.constraint(equalTo: document.trailingAnchor, constant: -10),
+            stack.topAnchor.constraint(equalTo: document.topAnchor, constant: 6),
+            stack.bottomAnchor.constraint(equalTo: document.bottomAnchor, constant: -10),
             title.widthAnchor.constraint(equalTo: stack.widthAnchor),
             text.widthAnchor.constraint(equalTo: stack.widthAnchor),
             previewHost.widthAnchor.constraint(equalTo: stack.widthAnchor),
@@ -112,6 +131,7 @@ final class BrowserInfoPane: NSView {
 
     private func showPreview(at index: Int) {
         guard items.indices.contains(index) else { return }
+        resetScroll()
         previewIndex = index
         let item = items[index]
         title.stringValue = item.name
@@ -156,6 +176,14 @@ final class BrowserInfoPane: NSView {
         tab = nil
         title.stringValue = ""
         text.stringValue = ""
+        resetScroll()
+    }
+
+    private func resetScroll() {
+        let clip = scroll.contentView
+        guard clip.bounds.origin != .zero else { return }
+        clip.scroll(to: .zero)
+        scroll.reflectScrolledClipView(clip)
     }
 
 #if DEBUG
@@ -167,5 +195,14 @@ final class BrowserInfoPane: NSView {
     }
     func qaNextPreview() { next.performClick(nil) }
     func qaPreviousPreview() { previous.performClick(nil) }
+    func qaCanScrollToDetailEnd() -> Bool {
+        layoutSubtreeIfNeeded()
+        guard let document = scroll.documentView else { return false }
+        let frame = text.convert(text.bounds, to: document)
+        guard frame.maxY > scroll.documentVisibleRect.maxY else { return false }
+        document.scrollToVisible(NSRect(x: frame.minX, y: frame.maxY - 1, width: 1, height: 1))
+        return scroll.documentVisibleRect.maxY >= frame.maxY - 1
+    }
+    var qaScrollStartsAtTop: Bool { scroll.contentView.bounds.minY == 0 }
 #endif
 }

@@ -8,6 +8,8 @@ M7 출시 검증이 진행 중이다. [유니버설 개발 프리뷰](verificati
 
 ## 이번 구현 단위
 
+정보 패널의 탭을 유지한 채 긴 파일 속성과 미리보기 본문을 세로로 스크롤할 수 있다. [정보 패널 스크롤](verification/m7/INCREMENT_222.md)
+
 검색 창에서 최소·최대 크기 입력란의 표시 너비를 확보했다. [검색 크기 필터](verification/m7/INCREMENT_215.md)
 
 SMB가 0바이트 리소스 포크를 보고하는 경우 전송 비교에서 없는 리소스 포크와 같은 내용으로 처리한다. [SMB 진단과 수정](verification/m7/INCREMENT_211.md)
