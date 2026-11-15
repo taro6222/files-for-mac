@@ -67,3 +67,5 @@
 [UI-07 검색](INCREMENT_217.md)에서 Windows와 macOS의 공통 폴더 검색 결과와 표시 방식을 대조했다. Windows의 검색 복귀와 탭 드롭은 재실행한다.
 
 [UI-08 정보 패널](INCREMENT_224.md)에서 같은 텍스트 파일의 상세와 미리보기 본문을 두 앱의 실행 화면으로 확인했다. macOS의 [생성일·태그 편집·속성 바로가기](INCREMENT_226.md)와 [선택 항목의 Git 상태](INCREMENT_229.md)를 검증했다. [PNG·PDF 화면 검증](INCREMENT_230.md)은 열린 항목이다.
+
+[UI-09 Windows 속성·해시](INCREMENT_238.md)의 실행 화면을 확인했다. 동일 파일의 macOS 화면과 Windows 보안·서명 상태 대조가 남아 있다.
