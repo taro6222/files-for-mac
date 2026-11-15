@@ -198,6 +198,7 @@ final class SecondaryBrowserPane: NSView, NSTableViewDataSource, NSTableViewDele
     func shutdown() {
         folderSizeTask?.cancel()
         model.cancelDirectorySizeRequests()
+        columnView.update(baseURL: nil, items: [], selection: [])
         watcherTask?.cancel(); watcherTask = nil
         if let watcher { Task.detached { watcher.stop() } }
         watcher = nil; watchedURL = nil; model.onChange = nil; model.cancelLoad()
@@ -289,6 +290,11 @@ final class SecondaryBrowserPane: NSView, NSTableViewDataSource, NSTableViewDele
             self.model.savePosition(selection: selection, scrollOffset: 0); self.render()
         }
         columnView.onActivate = { [weak self] in self?.activate() }
+        columnView.onSelectAncestor = { [weak self] directory, item in
+            guard let self else { return }
+            self.pendingEntrySelection = item.standardizedFileURL
+            self.navigate(directory)
+        }
         columnView.onOpen = { [weak self] item in self?.openGridItem(item) }
         columnView.onDoubleClickBackground = { [weak self] in self?.handleBackgroundDoubleClick() }
         columnView.onFileDrop = { [weak self] sources, item, columnURL, intent in
@@ -671,6 +677,7 @@ final class SecondaryBrowserPane: NSView, NSTableViewDataSource, NSTableViewDele
         (gridView.contextMenu != nil, gridView.qaHasDropHandler, gridView.qaPasteboardURL(at: 0))
     }
     var qaColumnCount: Int { columnView.qaColumnCount }
+    var qaParentColumnURL: URL? { columnView.qaParentColumnURL }
     var qaTagColumnVisible: Bool { table.tableColumn(withIdentifier: .init("tag"))?.isHidden == false }
     func qaSelectColumn(id: String, column: Int = 0) { columnView.qaSelect(id: id, column: column) }
     var qaRenderedViewMode: BrowserViewMode { renderedViewMode }

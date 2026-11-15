@@ -24,6 +24,7 @@ final class FileColumnView: NSView {
             super.keyDown(with: event)
         }
         override func menu(for event: NSEvent) -> NSMenu? {
+            guard menu != nil else { return nil }
             onActivate?(); let target = row(at: convert(event.locationInWindow, from: nil))
             if target >= 0 && !selectedRowIndexes.contains(target) { selectRowIndexes([target], byExtendingSelection: false) }
             return super.menu(for: event)
@@ -32,15 +33,17 @@ final class FileColumnView: NSView {
     @MainActor private final class Column: NSObject, NSTableViewDataSource, NSTableViewDelegate {
         weak var owner: FileColumnView?
         let url: URL
+        let pathChildID: String?
         var items: [FileItem]
         let table = Table()
         let scroll = NSScrollView()
         let view = NSView()
         var suppress = false
-        init(owner: FileColumnView, url: URL, items: [FileItem]) {
-            self.owner = owner; self.url = url; self.items = items; super.init()
+        init(owner: FileColumnView, url: URL, items: [FileItem], pathChildID: String?) {
+            self.owner = owner; self.url = url; self.items = items; self.pathChildID = pathChildID; super.init()
             view.translatesAutoresizingMaskIntoConstraints = false
             table.headerView = nil; table.rowHeight = 28; table.style = .fullWidth; table.allowsMultipleSelection = true
+            table.setAccessibilityLabel(url.path == "/" ? L("루트 폴더", "Root folder") : url.lastPathComponent)
             table.dataSource = self; table.delegate = self; table.target = self; table.doubleAction = #selector(open(_:))
             table.onActivate = { [weak self] in self?.owner?.activate(column: self) }
             table.onRight = { [weak self] in self?.owner?.expand(column: self) }
@@ -52,7 +55,13 @@ final class FileColumnView: NSView {
             let name = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("name")); name.resizingMask = .autoresizingMask; table.addTableColumn(name)
             scroll.documentView = table; scroll.hasVerticalScroller = true; scroll.translatesAutoresizingMaskIntoConstraints = false
             view.addSubview(scroll)
-            NSLayoutConstraint.activate([scroll.leadingAnchor.constraint(equalTo: view.leadingAnchor), scroll.trailingAnchor.constraint(equalTo: view.trailingAnchor), scroll.topAnchor.constraint(equalTo: view.topAnchor), scroll.bottomAnchor.constraint(equalTo: view.bottomAnchor), view.widthAnchor.constraint(equalToConstant: 250)])
+            NSLayoutConstraint.activate([
+                scroll.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+                scroll.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+                scroll.topAnchor.constraint(equalTo: view.topAnchor),
+                scroll.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+                view.widthAnchor.constraint(equalToConstant: 230)
+            ])
         }
         var selectedItems: [FileItem] { table.selectedRowIndexes.compactMap { items.indices.contains($0) ? items[$0] : nil } }
         func apply(selection: Set<String>) {
@@ -74,7 +83,12 @@ final class FileColumnView: NSView {
                 return cell
             }()
             let item = items[row]; cell.imageView?.image = fileIcon(for: item, showsThumbnails: owner?.showsThumbnails ?? true); cell.textField?.stringValue = item.name
-            (cell.subviews.first { $0.identifier?.rawValue == "arrow" } as? NSTextField)?.stringValue = item.isBrowsable ? "›" : ""
+            let isPathChild = item.id == pathChildID
+            cell.textField?.font = .systemFont(ofSize: NSFont.systemFontSize, weight: isPathChild ? .semibold : .regular)
+            if let arrow = cell.subviews.first(where: { $0.identifier?.rawValue == "arrow" }) as? NSTextField {
+                arrow.stringValue = item.isBrowsable || isPathChild ? "›" : ""
+                arrow.textColor = isPathChild ? .controlAccentColor : .secondaryLabelColor
+            }
             return cell
         }
         func tableViewSelectionDidChange(_ notification: Notification) {
@@ -96,17 +110,30 @@ final class FileColumnView: NSView {
     private let document = NSView()
     private let stack = NSStackView()
     private var columns: [Column] = []
+    private var ancestors: [Column] = []
+    private var ancestorTask: Task<Void, Never>?
+    private var focusBaseAfterNavigation = false
     private var customBackgroundEnabled = false
     private var baseURL: URL?
     private var baseIDs: [String] = []
     private var loadGeneration = 0
-    var showHidden = false
-    var showsThumbnails = true { didSet { if oldValue != showsThumbnails { columns.forEach { $0.table.reloadData() } } } }
-    var sortOrder = SortOrder()
+    var showHidden = false { didSet { if oldValue != showHidden { reloadAncestors() } } }
+    var showsThumbnails = true { didSet { if oldValue != showsThumbnails { (ancestors + columns).forEach { $0.table.reloadData() } } } }
+    var sortOrder = SortOrder() {
+        didSet {
+            guard oldValue != sortOrder else { return }
+            for column in ancestors {
+                let selection = Set(column.selectedItems.map(\.id))
+                column.items = sortOrder.sorted(column.items)
+                column.apply(selection: selection)
+            }
+        }
+    }
     var onSelectionChange: ((Set<String>) -> Void)?
     var onOpen: ((FileItem) -> Void)?
     var onDoubleClickBackground: (() -> Void)?
     var onActivate: (() -> Void)?
+    var onSelectAncestor: ((URL, URL) -> Void)?
     var onFileDrop: (([URL], FileItem?, URL, FileDropIntent) -> Bool)?
     var contextMenu: NSMenu? { didSet { columns.forEach { $0.table.menu = contextMenu } } }
 
@@ -131,31 +158,95 @@ final class FileColumnView: NSView {
     func update(baseURL: URL?, items: [FileItem], selection: Set<String>) {
         guard let baseURL else {
             if self.baseURL != nil { reset() }
+            focusBaseAfterNavigation = false
             return
         }
         let ids = items.map(\.id)
-        if self.baseURL != baseURL || baseIDs != ids {
+        if self.baseURL != baseURL {
             reset(); self.baseURL = baseURL; baseIDs = ids; append(url: baseURL, sortedItems: items)
+            reloadAncestors()
+            if focusBaseAfterNavigation {
+                focusBaseAfterNavigation = false
+                window?.makeFirstResponder(columns.first?.table)
+            }
+        } else if baseIDs != ids {
+            loadGeneration += 1
+            removeColumns(after: 0)
+            baseIDs = ids
         }
+        columns.first?.items = items
         columns.first?.apply(selection: selection)
         if let first = columns.first, !first.selectedItems.isEmpty { expand(column: first) }
     }
     func focus() { if let table = columns.last?.table { window?.makeFirstResponder(table) } }
     func applyBackground(enabled: Bool) {
         customBackgroundEnabled = enabled; scroll.drawsBackground = !enabled
-        for column in columns { column.scroll.drawsBackground = !enabled; column.table.backgroundColor = enabled ? .clear : .controlBackgroundColor }
+        for column in ancestors + columns { column.scroll.drawsBackground = !enabled; column.table.backgroundColor = enabled ? .clear : .controlBackgroundColor }
     }
-    private func reset() { loadGeneration += 1; columns.removeAll(); stack.arrangedSubviews.forEach { $0.removeFromSuperview() }; baseURL = nil; baseIDs = [] }
-    private func append(url: URL, sortedItems: [FileItem]) {
-        let column = Column(owner: self, url: url, items: sortedItems); column.table.menu = contextMenu
+    private func reset() {
+        loadGeneration += 1
+        ancestorTask?.cancel(); ancestorTask = nil
+        columns.removeAll(); ancestors.removeAll()
+        stack.arrangedSubviews.forEach { $0.removeFromSuperview() }
+        baseURL = nil; baseIDs = []
+    }
+    private func reloadAncestors() {
+        ancestorTask?.cancel(); ancestorTask = nil
+        ancestors.forEach { $0.view.removeFromSuperview() }
+        ancestors.removeAll()
+        guard let baseURL else { return }
+        let showHidden = showHidden
+        ancestorTask = Task { [weak self] in
+            let listings = await Self.loadAncestors(of: baseURL, showHidden: showHidden)
+            guard let self, !Task.isCancelled, self.baseURL == baseURL else { return }
+            ancestorTask = nil
+            for listing in listings.reversed() {
+                let column = makeColumn(url: listing.url, sortedItems: sortOrder.sorted(listing.items), pathChildID: listing.child.path)
+                stack.insertArrangedSubview(column.view, at: ancestors.count)
+                ancestors.append(column)
+                column.apply(selection: [listing.child.path])
+            }
+            scrollToEnd()
+        }
+    }
+
+    nonisolated private static func loadAncestors(of baseURL: URL, showHidden: Bool)
+        async -> [(url: URL, child: URL, items: [FileItem])] {
+        let base = baseURL.standardizedFileURL
+        let volumePath = (try? base.resourceValues(forKeys: [.volumeURLKey]))?.volume?.standardizedFileURL.path
+        // APFS firmlinks can expose the data volume through paths rooted at `/`.
+        let root = volumePath.flatMap { base.path == $0 || base.path.hasPrefix($0 + "/") ? $0 : nil } ?? "/"
+        let filesystem = LocalFileSystem()
+        var child = base
+        var listings: [(url: URL, child: URL, items: [FileItem])] = []
+        while child.path != root && !Task.isCancelled {
+            let parent = child.deletingLastPathComponent()
+            guard parent.path != child.path, !parent.path.isEmpty,
+                  let items = try? await filesystem.contents(of: parent, showHidden: true),
+                  items.contains(where: { $0.id == child.path }) else { break }
+            listings.append((parent, child, items.filter { showHidden || !$0.isHidden || $0.id == child.path }))
+            child = parent
+        }
+        return listings
+    }
+    private func makeColumn(url: URL, sortedItems: [FileItem], pathChildID: String? = nil) -> Column {
+        let column = Column(owner: self, url: url, items: sortedItems, pathChildID: pathChildID)
         column.scroll.drawsBackground = !customBackgroundEnabled
         column.table.backgroundColor = customBackgroundEnabled ? .clear : .controlBackgroundColor
+        return column
+    }
+    private func append(url: URL, sortedItems: [FileItem]) {
+        let column = makeColumn(url: url, sortedItems: sortedItems); column.table.menu = contextMenu
         columns.append(column); stack.addArrangedSubview(column.view)
         DispatchQueue.main.async { [weak self] in self?.scrollToEnd() }
     }
     private func scrollToEnd() { document.layoutSubtreeIfNeeded(); scroll.contentView.scroll(to: NSPoint(x: max(0, document.bounds.width - scroll.contentView.bounds.width), y: 0)); scroll.reflectScrolledClipView(scroll.contentView) }
     private func activate(column: Column?) { onActivate?() }
     private func selectionChanged(column: Column) {
+        if ancestors.contains(where: { $0 === column }) {
+            if let selected = column.selectedItems.first { selectAncestor(column, item: selected.url) }
+            return
+        }
         guard let index = columns.firstIndex(where: { $0 === column }) else { return }
         removeColumns(after: index); onSelectionChange?(Set(column.selectedItems.map(\.id)))
         expand(column: column)
@@ -172,14 +263,23 @@ final class FileColumnView: NSView {
         Task { [weak self] in
             do {
                 let loaded = try await LocalFileSystem().contents(of: item.url, showHidden: self?.showHidden ?? false)
-                guard let self, self.loadGeneration == generation, column.selectedItems.first?.id == item.id else { return }
+                guard let self, self.loadGeneration == generation, self.columns.indices.contains(index),
+                      self.columns[index] === column, column.selectedItems.first?.id == item.id else { return }
                 self.removeColumns(after: index); self.append(url: item.url, sortedItems: self.sortOrder.sorted(loaded))
             } catch { }
         }
     }
     private func moveLeft(from column: Column?) {
-        guard let column, let index = columns.firstIndex(where: { $0 === column }), index > 0 else { return }
+        guard let column, let index = columns.firstIndex(where: { $0 === column }) else { return }
+        if index == 0 {
+            if let parent = ancestors.last { selectAncestor(parent, item: column.url) }
+            return
+        }
         removeColumns(after: index - 1); window?.makeFirstResponder(columns[index - 1].table)
+    }
+    private func selectAncestor(_ column: Column, item: URL) {
+        focusBaseAfterNavigation = window?.firstResponder is Table
+        onSelectAncestor?(column.url, item)
     }
     private func removeColumns(after index: Int) {
         guard index + 1 < columns.count else { return }
@@ -207,6 +307,9 @@ final class FileColumnView: NSView {
 
 #if DEBUG
     var qaColumnCount: Int { columns.count }
+    var qaParentColumnURL: URL? { ancestors.last?.url }
+    var qaParentSelection: [String] { ancestors.last?.selectedItems.map(\.id) ?? [] }
+    func qaMoveLeftFromBase() { moveLeft(from: columns.first) }
     func qaSelect(id: String, column index: Int = 0) {
         guard columns.indices.contains(index), let row = columns[index].items.firstIndex(where: { $0.id == id }) else { return }
         columns[index].suppress = false

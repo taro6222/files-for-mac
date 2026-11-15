@@ -254,6 +254,7 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
                 self.model.onChange = nil; self.model.cancelLoad()
                 self.model.cancelDirectorySizeRequests()
                 self.homeFileTagTask?.cancel()
+                self.columnView.update(baseURL: nil, items: [], selection: [])
                 self.completionTask?.cancel(); self.volumeTask?.cancel(); self.cloudTask?.cancel(); self.gitTask?.cancel(); self.folderSizeTask?.cancel()
                 self.resetGitCommits()
                 self.inspector.clear()
@@ -525,6 +526,11 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
             self.model.savePosition(selection: selection, scrollOffset: 0); self.render()
         }
         columnView.onActivate = { [weak self] in self?.setSecondaryActive(false) }
+        columnView.onSelectAncestor = { [weak self] directory, item in
+            guard let self else { return }
+            self.pendingEntrySelection = item.standardizedFileURL
+            self.navigate(directory)
+        }
         columnView.onOpen = { [weak self] item in self?.openRenderedItem(item) }
         columnView.onDoubleClickBackground = { [weak self] in self?.handleBackgroundDoubleClick() }
         columnView.onFileDrop = { [weak self] sources, item, columnURL, intent in
@@ -5795,14 +5801,28 @@ extension BrowserWindow {
                 controller.render()
                 controller.columnView.qaSelect(id: alpha.path)
                 let columnsStart = ContinuousClock.now
-                while controller.columnView.qaPasteboardURL(column: 1)?.path != child.path && elapsed(columnsStart) < 5 {
+                while (controller.columnView.qaPasteboardURL(column: 1)?.path != child.path ||
+                       controller.columnView.qaParentColumnURL == nil) && elapsed(columnsStart) < 5 {
                     try await Task.sleep(for: .milliseconds(10))
                 }
                 checks["referenceFolderColumns"] = !controller.columnView.isHidden
                     && controller.columnView.qaColumnCount == 2
                     && controller.columnView.selectedItems.map(\.id) == [alpha.path]
                     && controller.columnView.qaPasteboardURL(column: 1)?.path == child.path
+                checks["referenceFolderAncestorColumn"] = controller.columnView.qaParentColumnURL?.path == reference.deletingLastPathComponent().path
+                    && controller.columnView.qaParentSelection == [reference.path]
                 if checks["referenceFolderColumns"] == true { try capture("ui-05-reference-columns") }
+                controller.navigate(alpha)
+                try await settleWindows()
+                let parentStart = ContinuousClock.now
+                while controller.columnView.qaParentColumnURL?.path != reference.path && elapsed(parentStart) < 5 {
+                    try await Task.sleep(for: .milliseconds(10))
+                }
+                controller.columnView.qaMoveLeftFromBase()
+                try await settleWindows()
+                checks["referenceFolderLeftSelectsFormerFolder"] = controller.model.location?.path == reference.path
+                    && controller.model.history.current.selection == [alpha.path]
+
             }
             let report: [String: Any] = ["checks": checks, "metrics": metrics,
                 "samples": ["multiwindowCycleSeconds": durations, "scrollStepSeconds": scrollDurations],
@@ -5952,10 +5972,15 @@ extension BrowserWindow {
             content.layoutSubtreeIfNeeded(); content.displayIfNeeded()
             secondary.qaSelectColumn(id: secondaryColumnFolder.id)
             let secondaryColumnStart = ContinuousClock.now
-            while secondary.qaColumnCount < 2 && elapsed(secondaryColumnStart) < 10 { try await Task.sleep(for: .milliseconds(10)) }
+            while (secondary.qaColumnCount < 2 || secondary.qaParentColumnURL == nil) && elapsed(secondaryColumnStart) < 10 {
+                try await Task.sleep(for: .milliseconds(10))
+            }
             checks["secondaryColumnsHierarchy"] = secondary.qaColumnCount == 2
                 && secondary.selectedItems.map(\.id) == [secondaryColumnFolder.id]
             checks["secondaryColumnsSession"] = secondary.snapshot().viewMode == .columns
+            if let location = secondary.model.location {
+                checks["secondaryAncestorColumn"] = secondary.qaParentColumnURL?.path == location.deletingLastPathComponent().path
+            } else { checks["secondaryAncestorColumn"] = false }
             controller.model.setViewMode(.columns)
             let primaryColumnIntegration = (controller.columnView.qaHasDropHandler, controller.columnView.qaPasteboardURL())
             let secondaryColumnIntegration = secondary.qaColumnIntegration
