@@ -41,7 +41,47 @@ def mount_share(name, mount, username, password):
     subprocess.run(["/usr/bin/smbutil", "statshares", "-m", mount], check=True, timeout=15)
 
 
-def verify(smbd, smbpasswd, root):
+def reconnect_count(mount):
+    output = subprocess.check_output(["/usr/bin/smbutil", "statshares", "-m", mount], text=True, timeout=6)
+    count = re.search(r"^\s*SESSION_RECONNECT_COUNT\s+(\d+)\s*$", output, re.MULTILINE)
+    if count is None:
+        raise RuntimeError("SMB mount did not report a session reconnect count")
+    return int(count.group(1))
+
+
+def verify_reconnect(smbcontrol, config, share, mount):
+    before = share / "reconnect-before.txt"
+    after = share / "reconnect-after.txt"
+    before_payload = b"before Samba disconnect"
+    after_payload = b"after Samba disconnect"
+    before.write_bytes(before_payload)
+    if subprocess.check_output(["/bin/cat", mount / before.name], timeout=8) != before_payload:
+        raise RuntimeError("The mounted share did not return the initial reconnect fixture")
+    device = mount.stat().st_dev
+    count = reconnect_count(mount)
+    subprocess.run(["sudo", "-n", smbcontrol, "--configfile", config, "smbd", "kill-client-ip", "127.0.0.1"],
+                   check=True, timeout=10)
+    after.write_bytes(after_payload)
+    before.unlink()
+
+    deadline = time.monotonic() + 35
+    while time.monotonic() < deadline:
+        try:
+            contents = subprocess.check_output(["/bin/cat", mount / after.name], stderr=subprocess.DEVNULL, timeout=6)
+            reconnected = reconnect_count(mount)
+        except subprocess.SubprocessError:
+            time.sleep(0.5)
+            continue
+        if contents == after_payload and reconnected > count:
+            if mount.stat().st_dev != device:
+                raise RuntimeError("SMB reconnected on a different mount device")
+            print(f"SMB verification: reconnect count {count} -> {reconnected} on the original mount", flush=True)
+            return
+        time.sleep(0.5)
+    raise RuntimeError("The original SMB mount did not reconnect and read the new server fixture")
+
+
+def verify(smbd, smbpasswd, root, smbcontrol=None):
     share, mount, state = (root / name for name in ("share", "mount", "state"))
     readonly_share, readonly_mount = (root / name for name in ("readonly-share", "readonly-mount"))
     for folder in (share, mount, state, readonly_share, readonly_mount):
@@ -98,6 +138,9 @@ def verify(smbd, smbpasswd, root):
         mount_share("files-qa", mount, username, password)
         mount_share("files-readonly", readonly_mount, username, password)
         environment = dict(os.environ, FILES_TEST_SMB_READONLY_VOLUME=str(readonly_mount))
+        if smbcontrol is not None:
+            verify_reconnect(smbcontrol, config, share, mount)
+            environment["FILES_TEST_SMB_RECONNECT_VOLUME"] = str(mount)
         subprocess.run(["bash", "scripts/verify-smb-volume.sh", mount, "--skip-build"],
                        env=environment, check=True, timeout=200)
     finally:
@@ -126,7 +169,9 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("smbd", type=Path)
     parser.add_argument("smbpasswd", type=Path)
+    parser.add_argument("--smbcontrol", type=Path)
     arguments = parser.parse_args()
     # Keep Samba's Unix-domain socket paths under the macOS length limit.
     with tempfile.TemporaryDirectory(prefix="files-smb-", dir="/private/tmp") as directory:
-        verify(arguments.smbd.resolve(strict=True), arguments.smbpasswd.resolve(strict=True), Path(directory).resolve())
+        control = arguments.smbcontrol.resolve(strict=True) if arguments.smbcontrol else None
+        verify(arguments.smbd.resolve(strict=True), arguments.smbpasswd.resolve(strict=True), Path(directory).resolve(), control)

@@ -592,6 +592,15 @@ func mountedSMBReadOnlyRejectsWrites() async throws {
     #expect(try fm.contentsOfDirectory(atPath: volume.path) == ["replace.txt"])
 }
 
+@Test(.enabled(if: hasIntegrationFixture("FILES_TEST_SMB_RECONNECT_VOLUME"), "Requires a reconnected SMB integration fixture"))
+func mountedSMBReconnectSeesServerChanges() async throws {
+    let volume = try smbFixture("FILES_TEST_SMB_RECONNECT_VOLUME")
+    let entries = try await LocalFileSystem().contents(of: volume, showHidden: false)
+    let current = try #require(entries.first { $0.name == "reconnect-after.txt" })
+    #expect(!entries.contains { $0.name == "reconnect-before.txt" })
+    #expect(try Data(contentsOf: current.url) == Data("after Samba disconnect".utf8))
+}
+
 private func smbCopyDiagnostic(source: URL, destination: URL) -> String {
     let fm = FileManager.default
     let workspace = destination.appendingPathComponent(".files-smb-diagnostic-\(UUID().uuidString)", isDirectory: true)
