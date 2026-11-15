@@ -40,6 +40,12 @@ public struct GitRepositorySnapshot: Sendable, Equatable {
     public let entries: [GitStatusEntry]
 }
 
+public enum GitItemStatus: Sendable, Equatable {
+    case clean
+    case changed(GitStatusEntry)
+    case directoryChanges(Int)
+}
+
 public struct GitBranch: Sendable, Equatable, Identifiable {
     public let name: String
     public let upstream: String?
@@ -136,6 +142,32 @@ public struct GitProvider: Sendable {
                              author: String(fields[2]), sha: String(fields[0]))
     }
     public func snapshot(at location: URL, fileManager: FileManager = .default) async throws -> GitRepositorySnapshot {
+        let root = try await repositoryRoot(at: location, fileManager: fileManager)
+        let status = try await run(["-C", root.path, "status", "--porcelain=v2", "--branch", "-z", "--untracked-files=all"], at: root)
+        return try GitStatusParser().parse(status, root: root)
+    }
+
+    public func status(for item: FileItem) async throws -> GitItemStatus? {
+        guard item.url.isFileURL else { throw GitBackendError.invalidLocation }
+        let isDirectory = item.isDirectory && !item.isSymbolicLink
+        let parent = item.url.deletingLastPathComponent().resolvingSymlinksInPath()
+        let path = parent.appendingPathComponent(item.url.lastPathComponent).path
+        let location = isDirectory ? item.url.resolvingSymlinksInPath() : parent
+        let root = try await repositoryRoot(at: location)
+        let rootPath = root.resolvingSymlinksInPath().path
+        let prefix = rootPath.hasSuffix("/") ? rootPath : rootPath + "/"
+        guard path == rootPath || path.hasPrefix(prefix) else { throw GitBackendError.invalidLocation }
+        let relativePath = path == rootPath ? "." : String(path.dropFirst(prefix.count))
+        let base = ["--literal-pathspecs", "-C", rootPath]
+        let data = try await run(base + ["status", "--porcelain=v2", "-z", "--untracked-files=all", "--", relativePath], at: root)
+        let entries = try GitStatusParser().parse(data, root: root).entries
+        if isDirectory, !entries.isEmpty { return .directoryChanges(entries.count) }
+        if let entry = entries.first(where: { $0.path == relativePath }) { return .changed(entry) }
+        let tracked = try await run(base + ["ls-files", "-z", "--", relativePath], at: root)
+        return tracked.isEmpty ? nil : .clean
+    }
+
+    private func repositoryRoot(at location: URL, fileManager: FileManager = .default) async throws -> URL {
         guard location.isFileURL, fileManager.fileExists(atPath: location.path), fileManager.isExecutableFile(atPath: executable.path) else {
             throw fileManager.isExecutableFile(atPath: executable.path) ? GitBackendError.invalidLocation : GitBackendError.gitUnavailable
         }
@@ -145,9 +177,7 @@ public struct GitProvider: Sendable {
               let rootPath = String(data: rootResult.dropLast(), encoding: .utf8), rootPath.hasPrefix("/") else {
             throw GitBackendError.notRepository
         }
-        let root = URL(fileURLWithPath: rootPath, isDirectory: true).standardizedFileURL
-        let status = try await run(["-C", root.path, "status", "--porcelain=v2", "--branch", "-z", "--untracked-files=all"], at: root)
-        return try GitStatusParser().parse(status, root: root)
+        return URL(fileURLWithPath: rootPath, isDirectory: true).standardizedFileURL
     }
     public func branches(at repository: URL) async throws -> [GitBranch] {
         let data = try await run(["-C", repository.path, "for-each-ref", "--format=%(refname:short)%09%(upstream:short)", "refs/heads"], at: repository)

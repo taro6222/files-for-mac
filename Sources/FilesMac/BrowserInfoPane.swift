@@ -9,6 +9,7 @@ final class BrowserInfoPane: NSView {
     private let scroll = NSScrollView()
     private let title = NSTextField(wrappingLabelWithString: "")
     private let text = NSTextField(wrappingLabelWithString: "")
+    private let git = NSTextField(wrappingLabelWithString: "")
     private let previewHost = NSView()
     private let previous = NSButton()
     private let next = NSButton()
@@ -19,6 +20,7 @@ final class BrowserInfoPane: NSView {
     private var preview: QLPreviewView?
     private var previewIndex = 0
     private var task: Task<Void, Never>?
+    private var gitTask: Task<Void, Never>?
     private var items: [FileItem] = []
     private var tab: InfoPaneTab?
     private var sizeUnit: BrowserSizeUnit?
@@ -49,6 +51,8 @@ final class BrowserInfoPane: NSView {
         title.font = .boldSystemFont(ofSize: 13)
         text.isSelectable = true
         text.textColor = .secondaryLabelColor
+        git.textColor = .secondaryLabelColor
+        git.isHidden = true
         previous.title = L("이전", "Previous")
         previous.target = self
         previous.action = #selector(previousPreview)
@@ -67,7 +71,7 @@ final class BrowserInfoPane: NSView {
         propertiesButton.isHidden = true
         tagsButton.isHidden = true
         for view in [previous, position, next] { navigation.addArrangedSubview(view) }
-        for view in [title, text, tagsButton, propertiesButton, navigation, previewHost] { stack.addArrangedSubview(view) }
+        for view in [title, text, git, tagsButton, propertiesButton, navigation, previewHost] { stack.addArrangedSubview(view) }
         addSubview(tabs)
         addSubview(scroll)
         document.addSubview(stack)
@@ -85,6 +89,7 @@ final class BrowserInfoPane: NSView {
             stack.bottomAnchor.constraint(equalTo: document.bottomAnchor, constant: -10),
             title.widthAnchor.constraint(equalTo: stack.widthAnchor),
             text.widthAnchor.constraint(equalTo: stack.widthAnchor),
+            git.widthAnchor.constraint(equalTo: stack.widthAnchor),
             previewHost.widthAnchor.constraint(equalTo: stack.widthAnchor),
             previewHost.heightAnchor.constraint(equalToConstant: 260)
         ])
@@ -125,6 +130,7 @@ final class BrowserInfoPane: NSView {
         }
         title.stringValue = item.name
         text.stringValue = L("정보 읽는 중…", "Loading information…")
+        refreshGitStatus()
         task = Task { [weak self] in
             let properties = try? await FilePropertiesInspector().inspect(item.url)
             guard !Task.isCancelled, let self else { return }
@@ -133,17 +139,47 @@ final class BrowserInfoPane: NSView {
                 return
             }
             let size = properties.isDirectory ? item.size : properties.logicalSize
+            let sizeLabel = size.map { formatByteCount($0, unit: sizeUnit) } ?? "—"
             let created = properties.created?.formatted(date: .abbreviated, time: .shortened) ?? "—"
             let modified = properties.modified?.formatted(date: .abbreviated, time: .shortened) ?? "—"
-            self.text.stringValue = [
+            let tags = properties.tags.isEmpty ? "—" : properties.tags.joined(separator: ", ")
+            let lines: [String] = [
                 properties.typeIdentifier ?? item.kind,
-                size.map { formatByteCount($0, unit: sizeUnit) } ?? "—",
+                sizeLabel,
                 L("생성일: ", "Created: ") + created,
                 L("수정일: ", "Modified: ") + modified,
                 L("소유자: ", "Owner: ") + (properties.owner ?? "—"),
-                L("태그: ", "Tags: ") + (properties.tags.isEmpty ? "—" : properties.tags.joined(separator: ", ")),
+                L("태그: ", "Tags: ") + tags,
                 item.url.path
-            ].joined(separator: "\n")
+            ]
+            self.text.stringValue = lines.joined(separator: "\n")
+        }
+    }
+
+    func refreshGitStatus() {
+        guard tab == .details, items.count == 1, let item = items.first else { return }
+        gitTask?.cancel()
+        gitTask = Task { [weak self] in
+            let state = try? await GitProvider().status(for: item)
+            guard let self, !Task.isCancelled else { return }
+            guard let state else {
+                self.git.isHidden = true
+                self.git.stringValue = ""
+                return
+            }
+            let value: String
+            switch state {
+            case .clean: value = L("변경 없음", "No changes")
+            case .changed(let entry):
+                switch entry.kind {
+                case .untracked: value = L("추적되지 않음", "Untracked")
+                case .unmerged: value = L("병합 충돌 (\(entry.statusCode))", "Merge conflict (\(entry.statusCode))")
+                default: value = entry.statusCode
+                }
+            case .directoryChanges(let count): value = L("항목 \(count)개 변경", "\(count) changed entries")
+            }
+            self.git.stringValue = L("Git 상태: ", "Git status: ") + value
+            self.git.isHidden = false
         }
     }
 
@@ -185,6 +221,8 @@ final class BrowserInfoPane: NSView {
     func clear() {
         task?.cancel()
         task = nil
+        gitTask?.cancel()
+        gitTask = nil
         preview?.close()
         preview?.removeFromSuperview()
         preview = nil
@@ -196,6 +234,8 @@ final class BrowserInfoPane: NSView {
         tab = nil
         title.stringValue = ""
         text.stringValue = ""
+        git.isHidden = true
+        git.stringValue = ""
         resetScroll()
     }
 
@@ -209,6 +249,7 @@ final class BrowserInfoPane: NSView {
 #if DEBUG
     var qaTitle: String { title.stringValue }
     var qaDetails: String { text.stringValue }
+    var qaGitStatus: String? { git.isHidden ? nil : git.stringValue }
     var qaPreviewURL: URL? { (preview?.previewItem as? NSURL).map { $0 as URL } }
     var qaPreviewNavigation: (previous: Bool, next: Bool)? {
         navigation.isHidden ? nil : (previous.isEnabled, next.isEnabled)

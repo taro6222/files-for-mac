@@ -58,6 +58,34 @@ import Testing
     #expect(snapshot.entries.contains { $0.path == untracked && $0.kind == .untracked })
 }
 
+@Test func gitSelectedItemStatusUsesLiteralPathsAndCountsDirectoryChanges() async throws {
+    let fm = FileManager.default
+    let root = fm.temporaryDirectory.appendingPathComponent("files-git-selection-\(UUID())", isDirectory: true)
+    try fm.createDirectory(at: root, withIntermediateDirectories: true)
+    defer { try? fm.removeItem(at: root) }
+    try runGit(["init", "-b", "main"], at: root)
+    try configureIdentity(root)
+    let literal = root.appendingPathComponent("한글[1].txt")
+    let unrelated = root.appendingPathComponent("한글1.txt")
+    try Data("tracked".utf8).write(to: literal)
+    try runGit(["--literal-pathspecs", "add", "--", literal.lastPathComponent], at: root)
+    try runGit(["commit", "-m", "Initial"], at: root)
+    try Data("untracked".utf8).write(to: unrelated)
+    let provider = GitProvider()
+    let file = FileItem(url: literal, name: literal.lastPathComponent, isDirectory: false)
+    let folder = FileItem(url: root, name: root.lastPathComponent, isDirectory: true)
+    #expect(try await provider.status(for: file) == .clean)
+    #expect(try await provider.status(for: folder) == .directoryChanges(1))
+    try Data("modified".utf8).write(to: literal)
+    guard case .changed(let entry) = try await provider.status(for: file) else {
+        Issue.record("Expected the literal path's modified status")
+        return
+    }
+    #expect(entry.path == literal.lastPathComponent)
+    #expect(entry.statusCode == ".M")
+    #expect(try await provider.status(for: folder) == .directoryChanges(2))
+}
+
 @Test func gitProviderReadsAnUnmergedWorkTreeWithoutChangingIt() async throws {
     let fm = FileManager.default
     let root = fm.temporaryDirectory.appendingPathComponent("files-git-unmerged-\(UUID())", isDirectory: true)

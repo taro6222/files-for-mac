@@ -1498,6 +1498,7 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
     }
     @objc func refresh(_ sender: Any?) {
         FileIconCache.shared.removeAll()
+        inspector.refreshGitStatus()
         detailPresentationNeedsReload = true
         if secondaryActive { secondaryPane?.refresh() }
         else {
@@ -4773,6 +4774,36 @@ extension BrowserWindow {
                 try capture("git-conflict", view: conflictPanel.window?.contentView)
                 conflictPanel.close()
                 preferences.setShowGitStatusColumn(false)
+                gitList.showInfoPaneDetails(nil)
+                preferences.setShowInfoPane(true)
+                let expectedGitStatuses = [
+                    ("README.md", L("변경 없음", "No changes")),
+                    (unusualName, L("추적되지 않음", "Untracked")),
+                    (conflictPath, L("병합 충돌 (AA)", "Merge conflict (AA)"))
+                ]
+                var shownGitStatuses = 0
+                for (name, status) in expectedGitStatuses {
+                    guard let row = gitList.detailRows.indices.first(where: {
+                        detailItem(at: $0, in: gitList.detailRows)?.name == name
+                    }) else { continue }
+                    gitList.table.selectRowIndexes([row], byExtendingSelection: false)
+                    let expected = L("Git 상태: ", "Git status: ") + status
+                    let statusWait = ContinuousClock.now
+                    while gitList.inspector.qaGitStatus != expected && elapsed(statusWait) < 5 {
+                        try await Task.sleep(for: .milliseconds(20))
+                    }
+                    if gitList.inspector.qaTitle == name && gitList.inspector.qaGitStatus == expected {
+                        shownGitStatuses += 1
+                    }
+                }
+                checks["infoPaneGitStatus"] = shownGitStatuses == expectedGitStatuses.count && gitList.gitLocation == nil
+                if checks["infoPaneGitStatus"] == true, let gitContent = gitList.window?.contentView {
+                    try capture("info-pane-git-status", view: gitContent)
+                }
+                gitList.showInfoPanePreview(nil)
+                checks["infoPaneClearsGitStatusInPreview"] = gitList.inspector.qaGitStatus == nil
+                preferences.setShowInfoPane(false)
+                gitList.showInfoPaneDetails(nil)
                 gitList.close(); window.makeKeyAndOrderFront(nil)
             } else { checks["shortcutSettingsWindow"] = false }
             controller.showToolbarSettings(nil); try await Task.sleep(for: .milliseconds(50))
