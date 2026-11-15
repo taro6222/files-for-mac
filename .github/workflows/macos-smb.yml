@@ -30,4 +30,4 @@ jobs:
           sw_vers
           smbd="$(brew --prefix)/sbin/samba-dot-org-smbd"
           "$smbd" --version
-          python3 scripts/verify-loopback-smb.py "$smbd"
+          python3 scripts/verify-loopback-smb.py "$smbd" "$(brew --prefix)/bin/smbpasswd"
