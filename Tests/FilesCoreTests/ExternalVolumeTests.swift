@@ -457,42 +457,63 @@ func mountedSMBCopyMoveUndoRoundTrip() async throws {
     func visibleNames(in directory: URL) async throws -> Set<String> {
         Set(try await filesystem.contents(of: directory, showHidden: false).map(\.name))
     }
-    #expect(try await visibleNames(in: destination).isEmpty)
+    let copyDestination = root.appendingPathComponent("copy", isDirectory: true)
+    let listingDestination = root.appendingPathComponent("listing", isDirectory: true)
+    for directory in [copyDestination, listingDestination] {
+        try fm.createDirectory(at: directory, withIntermediateDirectories: false)
+    }
+    #expect(try await visibleNames(in: listingDestination).isEmpty)
 
     let copySource = local.appendingPathComponent("복사-é-📁", isDirectory: true)
     try fm.createDirectory(at: copySource, withIntermediateDirectories: true)
     let payload = Data(repeating: 0x5A, count: 512 * 1024)
     try payload.write(to: copySource.appendingPathComponent("payload.bin"))
-    let copy = await CopyEngine.run(sources: [copySource], destination: destination,
+    let copy = await CopyEngine.run(sources: [copySource], destination: copyDestination,
                                     journalDirectory: journal, cancellation: CopyCancellation())
     if copy.state != "completed" {
         #expect(try Data(contentsOf: copySource.appendingPathComponent("payload.bin")) == payload)
-        #expect(try fm.contentsOfDirectory(atPath: destination.path).isEmpty)
+        #expect(try fm.contentsOfDirectory(atPath: copyDestination.path).isEmpty)
         print(smbCopyDiagnostic(source: copySource, destination: root))
+        Issue.record(Comment(rawValue: copy.items.first?.message ?? "SMB copy did not complete"))
+    } else {
+        #expect(try await visibleNames(in: copyDestination) == [copySource.lastPathComponent])
+        let copiedFolder = copyDestination.appendingPathComponent(copySource.lastPathComponent)
+        #expect(try await visibleNames(in: copiedFolder) == ["payload.bin"])
+        #expect(try Data(contentsOf: copiedFolder.appendingPathComponent("payload.bin")) == payload)
+        if let copyUndo = CopyEngine.latestUndoCopy(journalDirectory: journal) {
+            let undo = await CopyEngine.undoCopy(copyUndo, journalDirectory: journal)
+            if undo.state != "completed", let item = copyUndo.items.first {
+                print(smbUndoCopyDiagnostic(item))
+            }
+            #expect(undo.state == "completed", Comment(rawValue: undo.items.first?.message ?? "SMB copy undo did not complete"))
+            if undo.state == "completed" {
+                #expect(try await visibleNames(in: copyDestination).isEmpty)
+            } else {
+                #expect(try Data(contentsOf: copiedFolder.appendingPathComponent("payload.bin")) == payload)
+            }
+        } else {
+            Issue.record("SMB copy did not record an undo entry")
+        }
     }
-    try #require(copy.state == "completed", Comment(rawValue: copy.items.first?.message ?? ""))
-    #expect(try await visibleNames(in: destination) == [copySource.lastPathComponent])
-    let copiedFolder = destination.appendingPathComponent(copySource.lastPathComponent)
-    #expect(try await visibleNames(in: copiedFolder) == ["payload.bin"])
-    #expect(try Data(contentsOf: destination.appendingPathComponent("복사-é-📁/payload.bin")) == payload)
-    let copyUndo = try #require(CopyEngine.latestUndoCopy(journalDirectory: journal))
-    #expect(await CopyEngine.undoCopy(copyUndo, journalDirectory: journal).state == "completed")
-    #expect(try await visibleNames(in: destination).isEmpty)
 
-    let external = destination.appendingPathComponent("external.txt")
-    let renamed = destination.appendingPathComponent("renamed.txt")
+    let external = listingDestination.appendingPathComponent("external.txt")
+    let renamed = listingDestination.appendingPathComponent("renamed.txt")
     try Data("external".utf8).write(to: external)
-    #expect(try await visibleNames(in: destination) == ["external.txt"])
+    #expect(try await visibleNames(in: listingDestination) == ["external.txt"])
     try fm.moveItem(at: external, to: renamed)
-    #expect(try await visibleNames(in: destination) == ["renamed.txt"])
+    #expect(try await visibleNames(in: listingDestination) == ["renamed.txt"])
     try fm.removeItem(at: renamed)
-    #expect(try await visibleNames(in: destination).isEmpty)
+    #expect(try await visibleNames(in: listingDestination).isEmpty)
 
     let moveSource = local.appendingPathComponent("move.txt")
     try Data("network-move".utf8).write(to: moveSource)
     let move = try await EntryOperations.move([moveSource], to: destination,
         conflictPolicy: .skip, journalDirectory: journal)
-    #expect(move.state == "completed")
+    if move.state != "completed" {
+        #expect(try String(contentsOf: moveSource, encoding: .utf8) == "network-move")
+        print(smbCopyDiagnostic(source: moveSource, destination: root))
+    }
+    try #require(move.state == "completed", Comment(rawValue: move.items.first?.message ?? "SMB move did not complete"))
     let moveUndo = try #require(EntryOperations.latestUndoMove(journalDirectory: journal))
     #expect(await EntryOperations.undoMove(moveUndo, journalDirectory: journal).state == "completed")
     #expect(try String(contentsOf: moveSource, encoding: .utf8) == "network-move")
@@ -516,7 +537,7 @@ func mountedSMBCopyMoveUndoRoundTrip() async throws {
 private func smbCopyDiagnostic(source: URL, destination: URL) -> String {
     let fm = FileManager.default
     let workspace = destination.appendingPathComponent(".files-smb-diagnostic-\(UUID().uuidString)", isDirectory: true)
-    let copy = workspace.appendingPathComponent("payload", isDirectory: true)
+    let copy = workspace.appendingPathComponent("payload")
     defer { try? fm.removeItem(at: workspace) }
     do {
         try fm.createDirectory(at: workspace, withIntermediateDirectories: false)
@@ -540,6 +561,28 @@ private func smbCopyDiagnostic(source: URL, destination: URL) -> String {
         }).joined(separator: "\n")
     } catch {
         return "SMB diagnostic could not inspect a separate Foundation copy: \(error.localizedDescription)"
+    }
+}
+
+private func smbUndoCopyDiagnostic(_ item: CopyUndoItem) -> String {
+    do {
+        let actual = try CopyEngine.makeSnapshot(item.target, cancellation: CopyCancellation())
+        guard let recorded = item.targetMetadata else { return "SMB undo diagnostic: no recorded metadata" }
+        let paths = Set(item.targetSnapshot.keys).union(actual.withPermissions.keys).sorted()
+        return (["SMB undo diagnostic: recorded stage compared with published copy"] + paths.map { path in
+            let originalDate = recorded.modificationDates[path]
+            let currentDate = actual.metadata.modificationDates[path]
+            let delta = originalDate.flatMap { expected in
+                currentDate.map { String(format: "%+.9f", $0.timeIntervalSince(expected)) }
+            } ?? "missing"
+            let contentsMatch = actual.withPermissions[path] == item.targetSnapshot[path]
+            let attributesMatch = actual.metadata.extendedAttributes[path] == recorded.extendedAttributes[path]
+            let aclMatches = actual.metadata.accessControlLists[path] == recorded.accessControlLists[path]
+            let creationMatches = actual.metadata.creationDates?[path] == recorded.creationDates?[path]
+            return "\(path.isEmpty ? "." : path) contentsAndModeMatch=\(contentsMatch) xattrsMatch=\(attributesMatch) aclMatches=\(aclMatches) creationTimeMatches=\(creationMatches) modificationDeltaSeconds=\(delta)"
+        }).joined(separator: "\n")
+    } catch {
+        return "SMB undo diagnostic could not inspect the published copy: \(error.localizedDescription)"
     }
 }
 
