@@ -298,9 +298,14 @@ def capture(output, app_id, window_handle, fixture=None):
                 visible = [element for element in tree.iter() if element.get("IsOffscreen") == "False"]
                 heading = any(element.get("Name", "").startswith("Search results for")
                               and "column-note" in element.get("Name", "") for element in visible)
-                names = {element.get("Name", "").casefold() for element in visible
-                         if element.get("AutomationId") == "ItemName"}
-                return tree if heading and names in ({"column-note.txt"}, {"column-note"}) else None
+                names = [element.get("Name", "").casefold() for element in visible
+                         if element.get("AutomationId") == "ItemName"]
+                paths = [element.get("Name", "").casefold() for element in visible
+                         if element.get("AutomationId") == "ItemPathTextBlock"]
+                expected_path = str(fixture / "Alpha" / "column-note.txt").casefold()
+                if heading and names in (["column-note.txt"], ["column-note"]) and paths == [expected_path]:
+                    return tree
+                return None
 
             send_control_shift("s")
             open_path(fixture)
@@ -317,8 +322,10 @@ def capture(output, app_id, window_handle, fixture=None):
                 names = [tab.get("Name") for tab in visible_tabs(tree)]
                 return tree if names == [fixture.name, "Alpha"] else None
 
-            open_path(fixture)
-            wait_for("the first tab showing the fixture", folder_source)
+            back = wait_for("the search page's Back button", lambda: element_route(
+                "xpath", "//Button[@AutomationId='Back' and @IsEnabled='True' and @IsOffscreen='False']"))
+            request("POST", back + "/click", {})
+            wait_for("the first tab back at the fixture", folder_source)
             request("POST", session + "/keys", {"value": ["\ue009", "t", "\ue000"]})
             wait_for("the second tab", lambda: len(visible_tabs(read_tree())) == 2)
             open_path(fixture / "Alpha")
