@@ -151,6 +151,7 @@ final class SecondaryBrowserPane: NSView, NSTableViewDataSource, NSTableViewDele
             let item = model.items[row]
             switch identifier.rawValue {
             case "name": return item.displayName(showExtensions: true)
+            case "tag": return detailTagText(item.tags)
             case "syncStatus": return item.cloudState.map { cloudStateTitle($0) } ?? "—"
             case "created": return item.created.map(dateFormatter.string) ?? "—"
             case "modified": return item.modified.map(dateFormatter.string) ?? "—"
@@ -241,7 +242,7 @@ final class SecondaryBrowserPane: NSView, NSTableViewDataSource, NSTableViewDele
         table.registerForDraggedTypes([.fileURL])
         table.setDraggingSourceOperationMask([.copy, .move], forLocal: true)
         table.setDraggingSourceOperationMask(.copy, forLocal: false)
-        for (key, title, width) in [("name", L("이름", "Name"), 300.0), ("syncStatus", L("동기화 상태", "Sync Status"), 150.0), ("created", L("생성일", "Date Created"), 200.0), ("modified", L("수정일", "Date Modified"), 185.0), ("kind", L("종류", "Kind"), 120.0), ("size", L("크기", "Size"), 90.0)] {
+        for (key, title, width) in [("name", L("이름", "Name"), 240.0), ("tag", L("Finder 태그", "Finder Tags"), 100.0), ("syncStatus", L("동기화 상태", "Sync Status"), 150.0), ("created", L("생성일", "Date Created"), 200.0), ("modified", L("수정일", "Date Modified"), 185.0), ("kind", L("종류", "Kind"), 120.0), ("size", L("크기", "Size"), 90.0)] {
             let column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier(key)); column.title = title; column.width = width; column.minWidth = 70
             column.sortDescriptorPrototype = NSSortDescriptor(key: key, ascending: true); table.addTableColumn(column)
         }
@@ -412,6 +413,7 @@ final class SecondaryBrowserPane: NSView, NSTableViewDataSource, NSTableViewDele
             }
         }
         detailRows = detailDisplayRows(items: model.items, grouping: model.grouping)
+        table.tableColumn(withIdentifier: .init("tag"))?.isHidden = !preferences.showFileTagColumn
         table.tableColumn(withIdentifier: .init("syncStatus"))?.isHidden = !preferences.showSyncStatusColumn
         table.tableColumn(withIdentifier: .init("created"))?.isHidden = !preferences.showCreatedColumn
         table.tableColumn(withIdentifier: .init("modified"))?.isHidden = !preferences.showDateColumn
@@ -492,6 +494,7 @@ final class SecondaryBrowserPane: NSView, NSTableViewDataSource, NSTableViewDele
         let cell = tableView.makeView(withIdentifier: id, owner: self) as? NSTableCellView ?? makeCell(id)
         switch id.rawValue {
         case "name": cell.textField?.stringValue = item.displayName(showExtensions: true); cell.imageView?.image = fileIcon(for: item, showsThumbnails: preferences.showThumbnails)
+        case "tag": cell.textField?.stringValue = detailTagText(item.tags)
         case "syncStatus":
             let status = cloudStateTitle(item.cloudState)
             cell.textField?.stringValue = item.cloudState == nil ? "—" : status
@@ -668,6 +671,7 @@ final class SecondaryBrowserPane: NSView, NSTableViewDataSource, NSTableViewDele
         (gridView.contextMenu != nil, gridView.qaHasDropHandler, gridView.qaPasteboardURL(at: 0))
     }
     var qaColumnCount: Int { columnView.qaColumnCount }
+    var qaTagColumnVisible: Bool { table.tableColumn(withIdentifier: .init("tag"))?.isHidden == false }
     func qaSelectColumn(id: String, column: Int = 0) { columnView.qaSelect(id: id, column: column) }
     var qaRenderedViewMode: BrowserViewMode { renderedViewMode }
     var qaGridItemSize: NSSize { gridView.qaItemSize }

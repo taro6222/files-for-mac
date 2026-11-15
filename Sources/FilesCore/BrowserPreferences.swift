@@ -259,7 +259,7 @@ public final class BrowserPreferences {
         showGitCommitAuthorColumn = defaults.bool(forKey: "showGitCommitAuthorColumn")
         showGitCommitSHAColumn = defaults.bool(forKey: "showGitCommitSHAColumn")
         showSyncStatusColumn = defaults.bool(forKey: "showSyncStatusColumn")
-        showFileTagColumn = defaults.object(forKey: "showFileTagColumn") as? Bool ?? false
+        showFileTagColumn = defaults.object(forKey: "showFileTagColumn") as? Bool ?? true
         showPathColumn = defaults.object(forKey: "showPathColumn") as? Bool ?? false
         showCompressionOptions = defaults.object(forKey: "showCompressionOptions") as? Bool ?? true
         showFlattenOptions = defaults.bool(forKey: "showFlattenOptions")
@@ -772,7 +772,7 @@ public final class BrowserPreferences {
         showGitCommitAuthorColumn = archive.showGitCommitAuthorColumn ?? false
         showGitCommitSHAColumn = archive.showGitCommitSHAColumn ?? false
         showSyncStatusColumn = archive.showSyncStatusColumn ?? false
-        showFileTagColumn = archive.showFileTagColumn ?? false; showPathColumn = archive.showPathColumn ?? false
+        showFileTagColumn = archive.showFileTagColumn ?? true; showPathColumn = archive.showPathColumn ?? false
         showCompressionOptions = archive.showCompressionOptions ?? true; showOpenTerminal = archive.showOpenTerminal ?? true
         showFlattenOptions = archive.showFlattenOptions ?? false
         showCreateFolderWithSelection = archive.showCreateFolderWithSelection ?? true

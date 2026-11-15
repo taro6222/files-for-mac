@@ -627,15 +627,15 @@ private struct DelayedLoader: DirectoryLoading {
     defer { defaults.removePersistentDomain(forName: suite) }
     let preferences = BrowserPreferences(defaults: defaults, initialFavorites: [])
     #expect(!preferences.showCreatedColumn && preferences.showDateColumn && preferences.showTypeColumn && preferences.showSizeColumn)
-    #expect(!preferences.showGitStatusColumn && !preferences.showSyncStatusColumn && !preferences.showFileTagColumn && !preferences.showPathColumn)
+    #expect(!preferences.showGitStatusColumn && !preferences.showSyncStatusColumn && preferences.showFileTagColumn && !preferences.showPathColumn)
     var notifications = 0; let token = preferences.observe { notifications += 1 }
     preferences.setShowCreatedColumn(true); preferences.setShowDateColumn(false); preferences.setShowTypeColumn(false)
     preferences.setShowSizeColumn(false); preferences.setShowGitStatusColumn(true)
-    preferences.setShowFileTagColumn(true); preferences.setShowPathColumn(true); preferences.setShowSyncStatusColumn(true)
+    preferences.setShowFileTagColumn(false); preferences.setShowPathColumn(true); preferences.setShowSyncStatusColumn(true)
     preferences.setShowDateColumn(false); preferences.setShowGitStatusColumn(true)
     let restored = BrowserPreferences(defaults: defaults, initialFavorites: [])
     #expect(restored.showCreatedColumn && !restored.showDateColumn && !restored.showTypeColumn && !restored.showSizeColumn && restored.showGitStatusColumn)
-    #expect(restored.showFileTagColumn && restored.showPathColumn && restored.showSyncStatusColumn)
+    #expect(!restored.showFileTagColumn && restored.showPathColumn && restored.showSyncStatusColumn)
     #expect(notifications == 8)
     preferences.removeObserver(token)
 }

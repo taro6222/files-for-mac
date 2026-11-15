@@ -1,6 +1,8 @@
 import AppKit
 import FilesCore
 
+func detailTagText(_ tags: [String]) -> String { tags.isEmpty ? "—" : tags.joined(separator: ", ") }
+
 @MainActor
 final class FolderSizeCell: NSTableCellView {
     private static let reuseID = NSUserInterfaceItemIdentifier("FolderSizeCell")

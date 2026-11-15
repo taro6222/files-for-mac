@@ -6,7 +6,7 @@ Windows의 비교 기준은 Files v4.2.9의 `99951c66928c4da714da8b1dd4603942118
 |---|---|---|
 | UI-01 홈 | 위젯 목록에서 빠른 접근, 드라이브, 네트워크 위치, 파일 태그, 최근 파일을 표시한다. [HomePage.xaml][home] | [빠른 접근·드라이브 카드](../verification/m7/INCREMENT_190.md)는 창 너비에 맞춰 줄을 바꾼다. [최근 파일](../verification/m7/INCREMENT_192.md)은 앱에서 연 파일을 보여 주며 최근 위치는 방문한 폴더를 보여 준다. [네트워크 위치](../verification/m7/INCREMENT_184.md)는 마운트한 공유를 연다. [파일 태그](../verification/m7/INCREMENT_196.md)는 Spotlight가 색인한 항목을 Finder 태그별로 표시한다. |
 | UI-02 기본 탐색 | 외부 탐색 셸에서 사이드바, 내부 탐색 도구 모음, 선택한 탭의 콘텐츠를 배치한다. [MainPage.xaml][main] | `files-top.png`에서 사이드바·경로·보기 선택과 항목 수를 확인했다. AppKit의 `historySelection`과 `historyScroll`도 통과했다. |
-| UI-03 상세 보기 | 이름·수정일·태그·Git 등 열과 표시 변경 메뉴가 있다. [DetailsLayoutPage.xaml][details] | `files-top.png`의 기본 열은 이름·수정일·종류·크기다. `autoFitColumns`, `gitCommitColumns`에서 추가 열과 너비 동작을 확인했다. |
+| UI-03 상세 보기 | 이름·수정일·태그·Git 등 열과 표시 변경 메뉴가 있다. [DetailsLayoutPage.xaml][details] | [기본 상세 열](../verification/m7/INCREMENT_198.md)은 이름·Finder 태그·수정일·종류·크기다. `autoFitColumns`, `gitCommitColumns`에서 추가 열과 너비 동작을 확인했다. |
 | UI-04 그리드 | `GridView`로 다중 선택, 그룹 머리글, 드래그 및 스크롤 자리 표시자를 제공한다. [GridLayoutPage.xaml][grid] | `files-grid.png`에서 아이콘·이름·선택 상태를 확인했다. `gridSelectionIdentity`와 `gridGroupingSections`가 통과했다. |
 | UI-05 컬럼 | `BladeView`가 초기 콘텐츠 프레임과 경계가 있는 개별 열을 배치한다. [ColumnsLayoutPage.xaml][columns] | `files-columns.png`에서 선택한 폴더의 계층별 열을 확인했다. `columnsHierarchy`, `columnsLeftNavigation` 및 폴더 열기 검사도 통과했다. |
 | UI-06 분할 보기 | 탐색 셸의 시각 상태가 분할 중 활성 영역의 테두리 두께를 조정한다. [ModernShellPage.xaml][shell] | macOS는 활성 패널의 테두리와 좌우·상하 분할을 제공한다. [키보드 초점과 저장 상태](../verification/m7/INCREMENT_81.md) 및 [두 방향의 비율 복원](../verification/m7/INCREMENT_83.md)을 AppKit에서 검증한다. [보조 패널의 읽기 중단과 재시도](../verification/m7/INCREMENT_111.md)를 검증한다. Windows 실행 화면과 탭 드롭 동작의 대조가 남아 있다. |
@@ -29,7 +29,7 @@ macOS 캡처에서 발견한 상태 표시줄의 개발 단계 문구를 제거�
 
 [UI-01 홈 실행 화면 대조](../verification/m7/INCREMENT_189.md)에서 Windows와 macOS의 기본 홈 레이아웃과 위젯을 확인했다. 동일 fixture·창 크기의 화면, UI-02~UI-20 및 적용 상태별 시각·동작 검증은 정식 출시 게이트에 남아 있다.
 
-[UI-02·03 공통 폴더 실행 화면](../verification/m7/INCREMENT_191.md)에서 양쪽의 파일 순서·크기·기본 열을 확인했다. macOS 상세 보기의 크기 열에 [개별 폴더 크기 조회](../verification/m7/INCREMENT_193.md)를 추가했다. Windows 기본 태그 열과 탐색 경로의 표현에 차이가 있다. 같은 창 크기와 상호작용 상태의 비교는 남아 있다.
+[UI-02·03 공통 폴더 실행 화면](../verification/m7/INCREMENT_191.md)에서 양쪽의 파일 순서·크기·기본 열을 확인했다. macOS 상세 보기의 크기 열에 [개별 폴더 크기 조회](../verification/m7/INCREMENT_193.md)를 추가하고 원본과 같이 [태그 열을 기본 표시](../verification/m7/INCREMENT_198.md)한다. 탐색 경로의 표현이 다르며 같은 창 크기와 상호작용 상태의 비교가 남아 있다.
 
 [UI-04·05 공통 폴더의 그리드·컬럼 검증](../verification/m7/INCREMENT_195.md)에서 macOS의 다섯 항목과 `Alpha` 선택으로 열린 두 번째 컬럼을 확인했다. Windows 캡처에도 같은 시험 항목과 컬럼 확인을 추가했다.
 

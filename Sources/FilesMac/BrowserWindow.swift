@@ -459,14 +459,15 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         table.setDraggingSourceOperationMask([.copy, .move], forLocal: true)
         table.setDraggingSourceOperationMask(.copy, forLocal: false)
         table.setAccessibilityLabel(L("파일 목록", "File list"))
-        let specs: [(String, String, CGFloat)] = [("name", L("이름", "Name"), 340), ("git", "Git", 72),
+        let specs: [(String, String, CGFloat)] = [("name", L("이름", "Name"), 245),
+            ("tag", L("Finder 태그", "Finder Tags"), 100), ("git", "Git", 72),
             ("gitCommitDate", L("Git 커밋 날짜", "Git Commit Date"), 140),
             ("gitCommitMessage", L("Git 커밋 메시지", "Git Commit Message"), 140),
             ("gitCommitAuthor", L("Git 커밋 작성자", "Git Commit Author"), 140),
             ("gitCommitSHA", L("Git 커밋 SHA", "Git Commit SHA"), 100),
-            ("syncStatus", L("동기화 상태", "Sync Status"), 150), ("tag", L("Finder 태그", "Finder Tags"), 150), ("path", L("폴더 경로", "Folder Path"), 260),
-            ("created", L("생성일", "Date Created"), 200), ("modified", L("수정일", "Date Modified"), 185),
-            ("kind", L("종류", "Kind"), 140), ("size", L("크기", "Size"), 100)]
+            ("syncStatus", L("동기화 상태", "Sync Status"), 150), ("path", L("폴더 경로", "Folder Path"), 260),
+            ("created", L("생성일", "Date Created"), 200), ("modified", L("수정일", "Date Modified"), 150),
+            ("kind", L("종류", "Kind"), 90), ("size", L("크기", "Size"), 90)]
         for (key, label, width) in specs {
             let column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier(key))
             column.title = label; column.width = width; column.minWidth = 70
@@ -1297,7 +1298,7 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
             cell.toolTip = status
         case "git", "gitCommitDate", "gitCommitMessage", "gitCommitAuthor", "gitCommitSHA":
             updateGitCell(cell, column: key, item: item)
-        case "tag": cell.textField?.stringValue = item.tags.isEmpty ? "—" : item.tags.joined(separator: ", ")
+        case "tag": cell.textField?.stringValue = detailTagText(item.tags)
         case "path": cell.textField?.stringValue = item.url.deletingLastPathComponent().standardizedFileURL.path
         case "created": cell.textField?.stringValue = item.created.map(dateFormatter.string) ?? "—"
         case "modified": cell.textField?.stringValue = item.modified.map(dateFormatter.string) ?? "—"
@@ -1927,6 +1928,7 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
             let item = model.items[row]
             switch identifier.rawValue {
             case "name": return item.displayName(showExtensions: preferences.showExtensions)
+            case "tag": return detailTagText(item.tags)
             case "syncStatus": return item.cloudState.map { cloudStateTitle($0) } ?? "—"
             case "git": return gitStatus(for: item)
             case "gitCommitDate", "gitCommitMessage", "gitCommitAuthor", "gitCommitSHA": return gitCommitValue(identifier.rawValue, for: item)
@@ -4784,6 +4786,8 @@ extension BrowserWindow {
                 && (controller.table.tableColumn(withIdentifier: .init("path"))?.width ?? 0) >= 70
             preferences.setShowCreatedColumn(false); preferences.setShowDateColumn(true); preferences.setShowTypeColumn(true); preferences.setShowSizeColumn(true); preferences.setShowGitStatusColumn(false)
             preferences.setShowFileTagColumn(false); preferences.setShowPathColumn(false)
+            checks["fileTagColumnCanBeHidden"] = !controller.qaVisibleDetailColumns.contains("tag")
+            preferences.setShowFileTagColumn(true)
             preferences.setHomeSectionExpanded(.favorites, expanded: false)
             preferences.setHomeSectionExpanded(.volumes, expanded: false)
             preferences.setHomeSectionExpanded(.network, expanded: false)
@@ -5773,8 +5777,9 @@ extension BrowserWindow {
                 try await settleWindows()
                 checks["referenceFolderDetails"] = controller.model.location == reference
                     && !expected.isEmpty && Set(controller.model.items.map(\.name)) == expected
-                    && Set(controller.table.tableColumns.map { $0.identifier.rawValue }).isSuperset(of: ["name", "modified", "kind", "size"])
+                    && controller.qaVisibleDetailColumns.isSuperset(of: ["name", "tag", "modified", "kind", "size"])
                 if checks["referenceFolderDetails"] == true {
+                    controller.autoFitColumns(nil)
                     try capture("ui-02-03-reference-folder")
                 }
                 controller.model.setViewMode(.grid)
@@ -5879,6 +5884,12 @@ extension BrowserWindow {
             fputs("File operation QA: split view and navigation\n", stderr)
             checks["splitWorkspace"] = { controller.splitVertically(nil); return controller.workspaceSnapshot().isSplit }()
             guard let secondary = controller.secondaryPane else { throw CocoaError(.validationMissingMandatoryProperty) }
+            let tagsVisibleByDefault = controller.qaVisibleDetailColumns.contains("tag") && secondary.qaTagColumnVisible
+            preferences.setShowFileTagColumn(false)
+            let tagsHidden = !controller.qaVisibleDetailColumns.contains("tag") && !secondary.qaTagColumnVisible
+            preferences.setShowFileTagColumn(true)
+            checks["splitTagColumnVisibility"] = tagsVisibleByDefault && tagsHidden
+                && controller.qaVisibleDetailColumns.contains("tag") && secondary.qaTagColumnVisible
             let secondaryStart = ContinuousClock.now
             while secondary.model.isLoading && elapsed(secondaryStart) < 10 { try await Task.sleep(for: .milliseconds(10)) }
             checks["secondaryNavigationAccessibilityLabels"] = secondary.qaNavigationAccessibility()
