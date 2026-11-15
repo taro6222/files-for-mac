@@ -5667,6 +5667,27 @@ extension BrowserWindow {
                 if checks["referenceFolderDetails"] == true {
                     try capture("ui-02-03-reference-folder")
                 }
+                controller.model.setViewMode(.grid)
+                controller.render()
+                checks["referenceFolderGrid"] = !controller.gridView.isHidden
+                    && Set(controller.model.items.map(\.name)) == expected
+                if checks["referenceFolderGrid"] == true { try capture("ui-04-reference-grid") }
+
+                let alpha = reference.appendingPathComponent("Alpha", isDirectory: true)
+                let child = alpha.appendingPathComponent("column-note.txt")
+                controller.model.savePosition(selection: [], scrollOffset: 0)
+                controller.model.setViewMode(.columns)
+                controller.render()
+                controller.columnView.qaSelect(id: alpha.path)
+                let columnsStart = ContinuousClock.now
+                while controller.columnView.qaPasteboardURL(column: 1)?.path != child.path && elapsed(columnsStart) < 5 {
+                    try await Task.sleep(for: .milliseconds(10))
+                }
+                checks["referenceFolderColumns"] = !controller.columnView.isHidden
+                    && controller.columnView.qaColumnCount == 2
+                    && controller.columnView.selectedItems.map(\.id) == [alpha.path]
+                    && controller.columnView.qaPasteboardURL(column: 1)?.path == child.path
+                if checks["referenceFolderColumns"] == true { try capture("ui-05-reference-columns") }
             }
             let report: [String: Any] = ["checks": checks, "metrics": metrics,
                 "samples": ["multiwindowCycleSeconds": durations, "scrollStepSeconds": scrollDurations],

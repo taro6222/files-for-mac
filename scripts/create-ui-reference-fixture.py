@@ -10,6 +10,9 @@ def create(folder):
     folder.mkdir(parents=True, exist_ok=False)
     for name in ("Alpha", "Workshop"):
         (folder / name).mkdir()
+    leaf = folder / "Alpha" / "column-note.txt"
+    leaf.write_bytes(b"Files reference columns\n")
+    os.utime(leaf, (1705320000, 1705320000))
     for name, payload in (
         ("notes.txt", b"Files reference notes\n"),
         ("preview.txt", b"Files reference preview\n"),

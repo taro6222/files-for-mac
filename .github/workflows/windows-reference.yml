@@ -68,7 +68,7 @@ jobs:
           "FILES_WINDOWS_APP_ID=$($installed.PackageFamilyName)!App" >> $env:GITHUB_ENV
           "FILES_WINDOWS_INSTALL_PATH=$($installed.InstallLocation)" >> $env:GITHUB_ENV
           "FILES_WINDOWS_PACKAGE_SHA=$((Get-FileHash $package.FullName -Algorithm SHA256).Hash.ToLowerInvariant())" >> $env:GITHUB_ENV
-      - name: Capture Windows Home and folder navigation
+      - name: Capture Windows Home and folder layouts
         shell: pwsh
         run: |
           Set-DisplayResolution -Width 1920 -Height 1080 -Force

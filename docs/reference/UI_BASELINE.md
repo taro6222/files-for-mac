@@ -31,6 +31,8 @@ macOS 캡처에서 발견한 상태 표시줄의 개발 단계 문구를 제거�
 
 [UI-02·03 공통 폴더 실행 화면](../verification/m7/INCREMENT_191.md)에서 양쪽의 파일 순서·크기·기본 열을 확인했다. macOS 상세 보기의 크기 열에 [개별 폴더 크기 조회](../verification/m7/INCREMENT_193.md)를 추가했다. Windows 기본 태그 열과 탐색 경로의 표현에 차이가 있다. 같은 창 크기와 상호작용 상태의 비교는 남아 있다.
 
+[UI-04·05 공통 폴더의 그리드·컬럼 검증](../verification/m7/INCREMENT_195.md)에서 macOS의 다섯 항목과 `Alpha` 선택으로 열린 두 번째 컬럼을 확인했다. Windows 캡처에도 같은 시험 항목과 컬럼 확인을 추가했다.
+
 [home]: https://github.com/files-community/Files/blob/99951c66928c4da714da8b1dd46039421182cbab/src/Files.App/Views/HomePage.xaml
 [main]: https://github.com/files-community/Files/blob/99951c66928c4da714da8b1dd46039421182cbab/src/Files.App/Views/MainPage.xaml
 [details]: https://github.com/files-community/Files/blob/99951c66928c4da714da8b1dd46039421182cbab/src/Files.App/Views/Layouts/DetailsLayoutPage.xaml

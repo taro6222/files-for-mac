@@ -152,6 +152,56 @@ def capture(output, app_id, window_handle, fixture=None):
                 record["folder"]["screens"].append("UI-03")
             tree.write(output / "UI-02_folder.xml", encoding="utf-8", xml_declaration=True)
             report.write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8")
+
+            def select_layout(key):
+                request("POST", session + "/keys", {"value": ["\ue009", "\ue008", key, "\ue000"]})
+
+            def grid_source():
+                tree = folder_source()
+                if tree is not None and any(element.get("AutomationId") == "GridViewBrowserListedItem"
+                                            or element.get("ClassName") == "GridViewItem" for element in tree.iter()):
+                    return tree
+                return None
+
+            def column_host(tree):
+                return next((element for element in tree.iter()
+                             if element.get("AutomationId") == "ColumnHost" or element.get("ClassName") == "BladeView"), None)
+
+            def columns_source():
+                tree = read_tree()
+                host = column_host(tree)
+                return tree if host is not None else None
+
+            def expanded_columns_source():
+                tree = columns_source()
+                if tree is not None:
+                    blades = [
+                        {element.get("Name", "").casefold() for element in blade.iter()}
+                        for blade in column_host(tree) if blade.get("ClassName") == "BladeItem"
+                    ]
+                    if len(blades) == 2 and "alpha" in blades[0] and {"column-note.txt", "column-note"} & blades[1]:
+                        return tree
+                return None
+
+            def capture_layout(tree, identifier, mode):
+                base = f"{identifier}_{mode}"
+                tree.write(output / f"{base}.xml", encoding="utf-8", xml_declaration=True)
+                record.setdefault("layouts", {})[identifier] = {
+                    "mode": mode, "screenshotSHA256": screenshot(f"{base}.png"),
+                }
+                report.write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8")
+
+            select_layout("4")
+            capture_layout(wait_for("the fixture grid", grid_source), "UI-04", "grid")
+            select_layout("5")
+            wait_for("the fixture column browser", columns_source)
+            alpha = wait_for("Alpha in the first column", lambda: element_route(
+                "xpath", "//*[@AutomationId='ItemName' and @Name='Alpha']"))
+            request("POST", alpha + "/click", {})
+            if expanded_columns_source() is None:
+                request("POST", session + "/keys", {"value": ["\ue007"]})
+            tree = wait_for("Alpha and its child in adjacent columns", expanded_columns_source)
+            capture_layout(tree, "UI-05", "columns")
     except Exception as error:
         (output / "capture-error.txt").write_text(str(error) + "\n", encoding="utf-8")
         if last_source is not None:
