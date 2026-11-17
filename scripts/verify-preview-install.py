@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Verify local preview startup or installation in a temporary home."""
+"""Verify preview startup and installation or inspect an installed app window."""
 
 import argparse
 from contextlib import contextmanager
@@ -60,6 +60,31 @@ if ["--close", "--quit"].contains(CommandLine.arguments[1]) {
 
 if CommandLine.arguments[1] == "--check-interaction-access" {
     exit(AXIsProcessTrusted() ? 0 : 2)
+}
+if CommandLine.arguments[1] == "--inspect-installed" {
+    let url = URL(fileURLWithPath: CommandLine.arguments[2], isDirectory: true).resolvingSymlinksInPath()
+    let applications = NSWorkspace.shared.runningApplications.filter {
+        $0.bundleURL?.resolvingSymlinksInPath() == url
+    }
+    guard applications.count == 1, let application = applications.first else {
+        fputs("Expected one running instance from the installed app path.\\n", stderr)
+        exit(2)
+    }
+    guard CGPreflightScreenCaptureAccess() else {
+        fputs("Screen Recording access is required to read another app's window title.\\n", stderr)
+        exit(2)
+    }
+    let windows = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]] ?? []
+    guard windows.contains(where: {
+        $0[kCGWindowOwnerPID as String] as? Int == Int(application.processIdentifier) &&
+        $0[kCGWindowLayer as String] as? Int == 0 &&
+        ($0[kCGWindowName as String] as? String)?.hasSuffix(" — Files macOS") == true
+    }) else {
+        fputs("No visible Files browser window for the installed app.\\n", stderr)
+        exit(2)
+    }
+    print(application.processIdentifier)
+    exit(0)
 }
 if CommandLine.arguments[1] == "--architecture" {
     guard let pid = pid_t(CommandLine.arguments[2]),
@@ -426,6 +451,7 @@ def main():
     modes = parser.add_mutually_exclusive_group()
     modes.add_argument("--startup", action="store_true", help="Measure 20 launches from one preview image")
     modes.add_argument("--interactive-startup", action="store_true", help="Measure 20 launches through an About menu accessibility action")
+    modes.add_argument("--inspect-installed", action="store_true", help="Inspect a visible browser window of an already launched Files macOS.app")
     parser.add_argument("--launch-services", action="store_true", help="Use Launch Services for interactive startup measurement")
     parser.add_argument("--run-parent", type=Path, help="Existing directory for the isolated installation and mount")
     parser.add_argument("--expect-architecture", choices=("arm64", "x86_64"),
@@ -435,15 +461,29 @@ def main():
     if args.launch_services and not (args.startup or args.interactive_startup):
         parser.error("--launch-services requires a startup measurement")
     startup = args.startup or args.interactive_startup
-    if startup and args.candidate is not None:
-        parser.error("Startup measurement accepts one preview image")
-    if not startup and args.candidate is None:
+    if (startup or args.inspect_installed) and args.candidate is not None:
+        parser.error("This mode accepts one path")
+    if not (startup or args.inspect_installed) and args.candidate is None:
         parser.error("Installation verification requires a previous and candidate preview image")
     if args.expect_macos is not None:
         actual = launch_environment()["macOS"]
         if actual != args.expect_macos:
             parser.error(f"Expected macOS {args.expect_macos}, got {actual}")
     images = [image.resolve() for image in (args.previous, args.candidate) if image is not None]
+    if args.inspect_installed:
+        if images[0].name != "Files macOS.app" or not images[0].is_dir():
+            parser.error("Use the installed Files macOS.app bundle")
+        app = images[0]
+        verify_signature(app)
+        with tempfile.TemporaryDirectory(prefix="files-window.") as temporary:
+            probe = build_window_probe(Path(temporary))
+            pid = run(probe, "--inspect-installed", app, stdout=subprocess.PIPE, timeout=5).stdout.strip()
+            arch = run(probe, "--architecture", pid, capture_output=True, timeout=5).stdout.strip()
+        if args.expect_architecture is not None and arch != args.expect_architecture:
+            raise RuntimeError(f"Expected app architecture {args.expect_architecture}, got {arch}")
+        print(json.dumps({**launch_environment(), "appVersion": version(app),
+                          "appArchitecture": arch, "browserWindowVisible": True}, indent=2))
+        return
     if any(image.name != "Files-macOS-preview.dmg" for image in images):
         parser.error("Use local Files-macOS-preview.dmg files")
     if args.run_parent is None:

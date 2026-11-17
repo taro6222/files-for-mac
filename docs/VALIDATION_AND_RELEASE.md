@@ -124,7 +124,7 @@ coverage 지표를 분리한다.
 - [ ] 압축·클라우드·원격 capability 표와 실제 결과 일치.
 - [ ] 성능·장시간 시험 통과 또는 명시적으로 확정한 변경 기준 통과.
 - [ ] 라이선스·자산 출처·의존성 버전·배포명 확인 완료.
-- [ ] Developer ID 서명·공증·staple 및 내려받은 DMG의 Gatekeeper 실행 검증.
+- [ ] Developer ID 서명·공증·staple 및 내려받은 DMG의 [Finder 설치·Gatekeeper 최초 실행 검증](verification/m7/INCREMENT_21.md).
 - [ ] 업데이트 패키지 검증·실패 처리·설정 마이그레이션·재설치 확인.
 - [ ] 릴리스 노트에 지원 범위·플랫폼 차이·알려진 제한과 복구 방법 기재.
 

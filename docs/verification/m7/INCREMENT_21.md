@@ -23,3 +23,12 @@ bash scripts/verify-release-dmg.sh ~/Downloads/Files-macOS.dmg "$team_id" "$rele
 정식 검증은 DMG와 내부 앱의 모든 아키텍처에 Developer ID Application 인증서를 요구한다. 앱의 Team ID를 읽어 앱과 DMG 서명 인증서의 조직 단위가 같은 값을 갖는지도 확인한다. 정상 체크섬을 가진 ad-hoc 서명 DMG는 Developer ID 검사에서 거부됐다. 별도로 설치된 Developer ID 서명 앱에서 같은 팀 조건은 통과했고 다른 팀 조건은 거부됐다. 프로젝트 인증서와 공증 프로필로 생성한 정식 이미지의 통합 검증은 남아 있다. [Apple 코드 서명 요구사항](https://developer.apple.com/documentation/technotes/tn3127-inside-code-signing-requirements/)
 
 Team ID 옵션 추가 후 빈 값, 소문자, 잘못된 길이, 특수문자를 거부했다. 옵션 사용 여부와 관계없이 체크섬이 올바른 ad-hoc DMG는 Developer ID 단계에서 거부됐다.
+
+Finder에서 내려받은 DMG를 열고 앱을 Applications에 복사한 뒤 실행한다. macOS의 확인 창이 표시되면 실제 문구와 실행 결과를 기록한다. 브라우저 창을 화면에 띄워 둔 상태에서, 화면 기록 권한이 있는 터미널에서 다음 명령의 출력을 출시 검증에 첨부한다. [Apple Gatekeeper 검증 절차](https://developer.apple.com/library/archive/technotes/tn2206/_index.html)
+
+```bash
+bash scripts/verify-release-dmg.sh --installed-app '/Applications/Files macOS.app' \
+  ~/Downloads/Files-macOS.dmg "$team_id" "$release_sha256"
+```
+
+이 호출은 다운로드 격리 속성, 설치본의 서명·배포 정책, DMG 내부 앱과 설치본의 두 아키텍처 서명 해시 일치를 확인한다. 지정한 설치 경로의 프로세스가 기본 아키텍처로 실행 중이며 브라우저 창을 표시하는지 기록한다. 검증기는 실행 중인 앱을 변경하거나 종료하지 않는다.

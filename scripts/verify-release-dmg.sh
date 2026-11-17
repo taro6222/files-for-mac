@@ -1,8 +1,17 @@
 #!/bin/bash
 set -euo pipefail
 
+finder_app=""
+if [[ ${1-} == --installed-app && $# -ge 2 ]]; then
+  finder_app=$2
+  if [[ ${finder_app##*/} != "Files macOS.app" || ! -d "$finder_app" ]]; then
+    echo "Expected the Finder-installed Files macOS.app bundle." >&2
+    exit 64
+  fi
+  shift 2
+fi
 if [[ $# -lt 1 || $# -gt 3 || ${1##*/} != Files-macOS.dmg ]]; then
-  echo "Usage: $0 /path/to/Files-macOS.dmg [expected-Team-ID [expected-SHA-256]]" >&2
+  echo "Usage: $0 [--installed-app '/Applications/Files macOS.app'] /path/to/Files-macOS.dmg [expected-Team-ID [expected-SHA-256]]" >&2
   exit 64
 fi
 release_team=${2-}
@@ -77,3 +86,28 @@ installed_app="$installation/Files macOS.app"
 /usr/bin/codesign --verify --all-architectures --strict -R "=$developer_id" "$installed_app"
 /usr/bin/syspolicy_check distribution "$installed_app"
 printf 'Release image, mounted app, and copied app passed verification: %s\n' "$image"
+if [[ -n "$finder_app" ]]; then
+  if ! /usr/bin/xattr -p com.apple.quarantine "$image" >/dev/null; then
+    echo "Use a downloaded release image with its quarantine attribute intact." >&2
+    exit 65
+  fi
+  /usr/bin/codesign --verify --all-architectures --strict -R "=$developer_id" "$finder_app"
+  /usr/bin/syspolicy_check distribution "$finder_app"
+  cdhash() {
+    /usr/bin/codesign --display --arch "$1" --verbose=4 -- "$2" 2>&1 | awk -F= '$1 == "CDHash" { print $2 }'
+  }
+  for arch in arm64 x86_64; do
+    mounted_hash=$(cdhash "$arch" "$app")
+    finder_hash=$(cdhash "$arch" "$finder_app")
+    if [[ -z "$mounted_hash" || "$mounted_hash" != "$finder_hash" ]]; then
+      echo "Finder-installed app differs from the released $arch app." >&2
+      exit 65
+    fi
+  done
+  native_arch=x86_64
+  if [[ "$(/usr/sbin/sysctl -n hw.optional.arm64 2>/dev/null)" == 1 ]]; then
+    native_arch=arm64
+  fi
+  python3 "$script_dir/verify-preview-install.py" --inspect-installed --expect-architecture "$native_arch" "$finder_app"
+  printf 'Observed the browser window of the installed release. DMG SHA-256: %s\n' "$expected"
+fi
