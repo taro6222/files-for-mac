@@ -708,8 +708,13 @@ func mountedSMBReconnectDuringReplacementMove() async throws {
     }
     @Sendable func reconnectCount() throws -> Int {
         let output = try command("/usr/bin/smbutil", ["statshares", "-m", volume.path])
-        let count = output.split(separator: "\n").lazy.map { $0.split(whereSeparator: \.isWhitespace) }
-            .first { $0.first == "SESSION_RECONNECT_COUNT" && $0.count == 2 }?.last.flatMap { Int($0) }
+        var count: Int?
+        for line in output.split(separator: "\n") {
+            let columns = line.split { $0.isWhitespace }
+            guard columns.count == 2, columns[0] == "SESSION_RECONNECT_COUNT" else { continue }
+            count = Int(columns[1])
+            break
+        }
         return try #require(count, "SMB session reconnect counter is unavailable")
     }
 
