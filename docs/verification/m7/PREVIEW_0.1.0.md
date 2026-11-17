@@ -6,7 +6,7 @@
 - 로컬 경로 `build/Files-macOS-preview.dmg`. SHA-256 `b65580ae06e8c2c16be522c110c7d5a9dc8af09a4e2638e2f45a4fc4297049e0`.
 - Apple Silicon의 macOS 14.8.7에서 DMG 체크섬, 읽기 전용 마운트, 두 슬라이스의 ad-hoc 서명, 설치·교체·복원을 확인했다. 직접 실행과 Launch Services로 각각 20회 창을 열었다. 공유 OS 캐시에서 Launch Services 창 표시 p95는 279 ms였다. [Sonoma 검증](INCREMENT_270.md)
 - [완료 기록 지우기](INCREMENT_263.md), [작업 센터 키보드 동작](INCREMENT_269.md), [홈 복귀 시 폴더 감시 해제](INCREMENT_268.md)와 [SMB 접근 시각 복원](INCREMENT_264.md)을 포함한다. macOS 27.2와 14.8.7에서 각각 한국어·영어 × 밝게·어둡게 파일 작업 검사 78개씩 통과했다. Sonoma의 영어·밝은 테마 전체 검사 281개도 통과했다.
-- 이 이미지의 SMB 실마운트 검증에서 복사 시각은 보존됐고 교차 볼륨 이동은 대상 확인 단계에서 원본을 남기고 중단됐다. [소스 수정 및 재검증 상태](INCREMENT_271.md)
+- 이 이미지에 해당하는 소스의 SMB 실마운트 검증에서 복사 시각은 보존됐고 교차 볼륨 이동은 대상 확인 단계에서 원본을 남기고 중단됐다. [후속 소스의 실마운트 시험](INCREMENT_275.md)에서 수정 후 이동과 실행 취소가 통과했다.
 
 Developer ID 서명·공증, Sonoma 초기 버전과 Sonoma Intel 설치, 콜드 캐시와 장시간 기준은 [출시 검증 현황](RELEASE_GATES.md)에서 추적한다.
 
