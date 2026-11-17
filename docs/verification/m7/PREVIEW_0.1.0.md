@@ -8,6 +8,8 @@
 - Launch Services로 20회 실행해 접근성 메뉴에서 정보 창을 열었다. 공유 OS 캐시 조건에서 메뉴 응답 p95는 583 ms, 최대 841 ms였다. [기동 검증](preview-launch-services-93af5b7.json)
 - [파일 작업 센터의 진행 막대](INCREMENT_255.md), [닫은 작업 결과](INCREMENT_237.md), [속성 창에서 파일 이름 변경](INCREMENT_241.md), [중첩 앱 서명 상태](INCREMENT_251.md) 및 [SMB 전송 안전성 수정](INCREMENT_242.md)을 포함한다. 같은 앱 소스의 실제 AppKit 파일 작업은 한국어·영어 × 밝게·어둡게 각 76개를 통과했다. 영어·밝은 테마의 AppKit 전체 검사 281개도 통과했다.
 
+- [설치 앱의 PNG·PDF 미리보기](INCREMENT_259.md)에서 실제 창의 그림과 문서 본문 표시를 확인했다.
+
 Developer ID 서명·공증, Intel 실기기와 최소 OS 설치, 콜드 캐시와 장시간 기준은 [출시 검증 현황](RELEASE_GATES.md)에서 추적한다.
 
 ## 이전 후보의 검증

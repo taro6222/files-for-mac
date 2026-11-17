@@ -82,7 +82,7 @@
 
 [UI-07 검색](INCREMENT_217.md)에서 Windows와 macOS의 공통 폴더 검색 결과와 표시 방식을 대조했다. Windows의 검색 복귀는 재실행한다.
 
-[UI-08 정보 패널](INCREMENT_224.md)에서 같은 텍스트 파일의 상세와 미리보기 본문을 두 앱의 실행 화면으로 확인했다. macOS의 [생성일·태그 편집·속성 바로가기](INCREMENT_226.md)와 [선택 항목의 Git 상태](INCREMENT_229.md)를 검증했다. [PNG·PDF 화면 검증](INCREMENT_230.md)은 열린 항목이다.
+[UI-08 정보 패널](INCREMENT_224.md)에서 같은 텍스트 파일의 상세와 미리보기 본문을 두 앱의 실행 화면으로 확인했다. macOS의 [생성일·태그 편집·속성 바로가기](INCREMENT_226.md)와 [선택 항목의 Git 상태](INCREMENT_229.md)를 검증했다. [설치 앱의 PNG·PDF 화면](INCREMENT_259.md)에서 이미지와 PDF 본문을 확인했다. Windows 동일 형식 대조와 대용량·손상 파일은 열린 항목이다.
 
 [UI-09 속성·해시](INCREMENT_240.md)에서 동일한 24바이트 파일의 속성과 SHA-256을 두 앱의 실행 화면으로 대조했다. macOS 속성 창에서 [이름 편집·충돌 보호·확장자 변경 취소](INCREMENT_241.md)를 검증했다. [보안·서명](INCREMENT_244.md)에서 Windows NTFS 액세스 목록, macOS POSIX 권한·확장 ACL 및 두 앱의 네이티브 코드 서명 표시를 비교했다. [중첩 앱 서명 검사](INCREMENT_251.md)는 정상·무효 상태, 바깥 앱 식별자와 하위 구성 요소 진단을 화면에서 확인했다. macOS 인증서 기반 서명 검증은 열린 항목이다.
 
