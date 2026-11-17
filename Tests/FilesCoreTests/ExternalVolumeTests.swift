@@ -23,6 +23,59 @@ func mountedVolumeProviderDiscoversRealMatrix() throws {
 }
 
 @Test(.enabled(if: hasIntegrationFixture("FILES_TEST_APFSX_VOLUME"), "Requires an integration fixture"))
+func mountedVolumeRetriesFailedCrossVolumeMoveBeforePublication() async throws {
+    let path = try #require(ProcessInfo.processInfo.environment["FILES_TEST_APFSX_VOLUME"])
+    let fm = FileManager.default
+    let root = fm.temporaryDirectory.appendingPathComponent("FilesMac-Retry-\(UUID())", isDirectory: true)
+    let destination = URL(fileURLWithPath: path, isDirectory: true)
+        .appendingPathComponent(root.lastPathComponent, isDirectory: true)
+    let journal = root.appendingPathComponent("journal", isDirectory: true)
+    defer { try? fm.removeItem(at: root); try? fm.removeItem(at: destination) }
+    try fm.createDirectory(at: root, withIntermediateDirectories: true)
+    try fm.createDirectory(at: destination, withIntermediateDirectories: false)
+    let source = root.appendingPathComponent("retry.txt")
+    let target = destination.appendingPathComponent(source.lastPathComponent)
+    let data = Data("original file".utf8)
+    try data.write(to: source)
+    let destinationEntry = try #require(ShelfEntry(destination))
+    let original = try await EntryOperations.move([source], to: destination, journalDirectory: journal) { progress in
+        guard progress.phase == "verifying" else { return }
+        do {
+            let names = try FileManager.default.contentsOfDirectory(atPath: destination.path)
+            let stage = try #require(names.first { $0.hasPrefix(".files-move-") })
+            try Data("incorrect staged bytes".utf8).write(
+                to: destination.appendingPathComponent(stage).appendingPathComponent("payload"))
+        } catch {
+            Issue.record(Comment(rawValue: "Could not modify the test staging file: \(error)"))
+        }
+    }
+    try #require(original.items.first?.state == "failed")
+    let retrySource = try #require(original.items.first?.retrySource)
+    #expect(try Data(contentsOf: source) == data)
+    #expect(try fm.contentsOfDirectory(atPath: destination.path).isEmpty)
+
+    let external = Data("external destination".utf8)
+    try external.write(to: target)
+    let conflict = try await EntryOperations.retryMove([retrySource], to: destinationEntry,
+        journalDirectory: journal, cancellation: CopyCancellation())
+    #expect(conflict.items.first?.state == "conflict")
+    #expect(try Data(contentsOf: target) == external)
+    #expect(try Data(contentsOf: source) == data)
+
+    try fm.removeItem(at: target)
+    let retried = try await EntryOperations.retryMove([retrySource], to: destinationEntry,
+        journalDirectory: journal, cancellation: CopyCancellation())
+    try #require(retried.state == "completed",
+                 Comment(rawValue: retried.items.first?.message ?? "Cross-volume retry failed"))
+    #expect(try Data(contentsOf: target) == data)
+    #expect(!fm.fileExists(atPath: source.path))
+    let undo = try #require(EntryOperations.latestUndoMove(journalDirectory: journal))
+    #expect(await EntryOperations.undoMove(undo, journalDirectory: journal).state == "completed")
+    #expect(try Data(contentsOf: source) == data)
+    #expect(!fm.fileExists(atPath: target.path))
+}
+
+@Test(.enabled(if: hasIntegrationFixture("FILES_TEST_APFSX_VOLUME"), "Requires an integration fixture"))
 func mountedVolumeAPFSPreservesFileMetadataThroughCopyMoveAndUndo() async throws {
     guard let path = ProcessInfo.processInfo.environment["FILES_TEST_APFSX_VOLUME"] else { Issue.record("Integration fixture is incomplete"); return }
     let fm = FileManager.default
@@ -863,6 +916,7 @@ private func verifyCrossVolumeMovePreservesReplacedDestination(local: URL, desti
         } catch { Issue.record(error) }
     }
     #expect(report.items.map(\.state) == ["failed"])
+    #expect(report.items.first?.retrySource == nil)
     #expect(try Data(contentsOf: source) == contents)
     #expect(try Data(contentsOf: target) == contents)
     #expect(try Data(contentsOf: originalPublication) == contents)

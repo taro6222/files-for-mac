@@ -863,6 +863,7 @@ public enum EntryOperations {
                     var backup: URL?
                     var backupVerified = false
                     var retrySource: ShelfEntry?
+                    var crossVolumeStage: URL?
                     func snapshotForUndo(_ url: URL) throws -> CopyEngine.VerificationSnapshot? {
                         do {
                             emit("verifyingUndo")
@@ -949,7 +950,6 @@ public enum EntryOperations {
                                 throw EntryOperationError.sourceChanged
                             }
                             let crossVolume = forceCrossVolume || sourceDevice != destinationDevice
-                            if retrySources != nil && crossVolume { throw EntryOperationError.sourceChanged }
                             crossVolumeItems[index] = crossVolume
                             if entryExists(target) {
                                 if conflictPolicy == .skip {
@@ -990,6 +990,9 @@ public enum EntryOperations {
                                 backupSnapshots[index] = backupSnapshot
                                 backupVerified = canRecordUndo[index]
                             }
+                            if conflictPolicy == .skip, flattenPlan == nil, redoItem == nil {
+                                retrySource = retrySources?[index] ?? ShelfEntry(source)
+                            }
                             if crossVolume {
                                 let sourceIdentity = try snapshotIdentity(source, fileManager: fm)
                                 let before = try CopyEngine.makeSnapshot(source, cancellation: cancellation)
@@ -997,8 +1000,19 @@ public enum EntryOperations {
                                     throw EntryOperationError.sourceChanged
                                 }
                                 let stage = normalizedDestination.appendingPathComponent(".files-move-\(operationId)-\(index)")
-                                try fm.createDirectory(at: stage, withIntermediateDirectories: false)
-                                defer { if entryExists(stage) { try? fm.removeItem(at: stage) } }
+                                guard mkdirat(destinationFD, stage.lastPathComponent, 0o700) == 0 else {
+                                    throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
+                                }
+                                crossVolumeStage = stage
+                                let stageFD = openat(destinationFD, stage.lastPathComponent, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
+                                guard stageFD >= 0 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
+                                defer {
+                                    if CopyEngine.matches(stage, descriptor: stageFD) { try? fm.removeItem(at: stage) }
+                                    close(stageFD)
+                                }
+                                guard CopyEngine.matches(stage, descriptor: stageFD) else {
+                                    throw EntryOperationError.sourceChanged
+                                }
                                 let payload = stage.appendingPathComponent("payload")
                                 itemStates[index] = MoveItemOperationResult(source: source, target: target, state: "copying", message: nil)
                                 try save(state: finalState); emit("copying"); try cancellation.check()
@@ -1020,9 +1034,11 @@ public enum EntryOperations {
                                 try verifiedPayload.verifyTransferredContents(of: before)
                                 let payloadIdentity = try snapshotIdentity(payload, fileManager: fm)
                                 try cancellation.check(); emit("committing")
-                                let stageFD = open(stage.path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
-                                guard stageFD >= 0 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
-                                defer { close(stageFD) }
+                                guard CopyEngine.matches(normalizedDestination, descriptor: destinationFD),
+                                      CopyEngine.matches(stage, descriptor: stageFD),
+                                      retryDestination?.isCurrent != false, retrySources?[index].isCurrent != false else {
+                                    throw EntryOperationError.sourceChanged
+                                }
                                 let publicationHandle = try CopyEngine.openPublicationHandle(payload, on: stageFD)
                                 defer { if let publicationHandle { close(publicationHandle) } }
                                 if let publicationHandle {
@@ -1034,10 +1050,13 @@ public enum EntryOperations {
                                 if let redoItem, !redoItem.destinationFolder.isCurrent {
                                     throw EntryOperationError.sourceChanged
                                 }
+                                // After a publication attempt the result must be reconciled before any retry.
+                                retrySource = nil
                                 do {
                                     try CopyEngine.publishNoReplace(payload: payload, target: target,
                                         sourceDirectoryFD: stageFD, sourceName: "payload",
-                                        destinationDirectoryFD: destinationFD, destinationName: target.lastPathComponent)
+                                        destinationDirectoryFD: destinationFD, destinationName: target.lastPathComponent,
+                                        allowPathFallback: retrySources == nil)
                                 } catch CopyPublicationError.conflict { throw EntryOperationError.conflict }
                                 var publishedIdentity = try CopyEngine.identityAfterPublication(of: target,
                                     handle: publicationHandle, original: payloadIdentity) { try snapshotIdentity($0, fileManager: fm) }
@@ -1065,7 +1084,8 @@ public enum EntryOperations {
                                           publicationHandle.map({ CopyEngine.matchesPublicationHandle(target, descriptor: $0) }) != false else {
                                         throw MoveFailure(text: LString.crossVolumeDestinationChanged)
                                     }
-                                    guard try snapshotIdentity(source, fileManager: fm) == sourceIdentity else {
+                                    guard try snapshotIdentity(source, fileManager: fm) == sourceIdentity,
+                                          retrySources?[index].isCurrent != false else {
                                         throw MoveFailure(text: LString.crossVolumeSourceChanged)
                                     }
                                 } catch {
@@ -1082,9 +1102,6 @@ public enum EntryOperations {
                                 publishedIdentities[index] = publishedIdentity
                                 publishedSnapshots[index] = verifiedPayload
                             } else {
-                                if conflictPolicy == .skip, flattenPlan == nil, redoItem == nil {
-                                    retrySource = retrySources?[index] ?? ShelfEntry(source)
-                                }
                                 let identity = try snapshotIdentity(source, fileManager: fm)
                                 let snapshot = try snapshotForUndo(source)
                                 try cancellation.check(); emit("committing")
@@ -1137,7 +1154,7 @@ public enum EntryOperations {
                         } catch {
                             itemStates[index] = MoveItemOperationResult(source: source, target: target, state: "failed",
                                 message: error.localizedDescription, recoveryBackup: restoreBackup(),
-                                retrySource: retrySource?.isCurrent == true ? retrySource : nil)
+                                retrySource: retrySource?.isCurrent == true && crossVolumeStage.map(entryExists) != true ? retrySource : nil)
                             finalState = "partial"
                         }
                     }
