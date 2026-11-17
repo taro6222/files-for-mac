@@ -2,15 +2,16 @@
 
 ## 설치 이미지
 
-- 앱 소스 `32110faaaf45984bccef450c294b5e4e76418db6`, Apple Silicon·Intel 슬라이스, macOS 14.0 배포 대상.
-- 로컬 경로 `build/Files-macOS-preview.dmg`. SHA-256 `34d58aa5c7d16483e72d9dd17fb401a519af0825ca8a83d192525262caef5a22`.
-- Apple Silicon Sonoma 14.8.7에서 DMG와 앱 서명을 확인하고 이전 프리뷰의 교체·복원을 검증했다. Launch Services로 20회 실행한 창 표시 시간은 공유 OS 캐시 조건에서 p95 310 ms였다. [설치 이미지 검증](INCREMENT_278.md)
+- 앱 소스 `40ffc39d4059f09be35e9d7efa6fcb8bd33b559c`, Apple Silicon·Intel 슬라이스, macOS 14.0 배포 대상.
+- 로컬 경로 `build/Files-macOS-preview.dmg`. SHA-256 `9179564d9b9cf227d6d43626cbe8ee0a5c859d3f4998698139025289a0f6c103`.
+- Apple Silicon Sonoma 14.8.7에서 앱 서명, 교체·복원과 한국어·영어의 실제 업데이트 조회 메뉴를 확인했다. [설치 이미지 검증](INCREMENT_280.md)
 - [완료 기록 지우기](INCREMENT_263.md), [작업 센터 키보드 동작](INCREMENT_269.md), [홈 복귀 시 폴더 감시 해제](INCREMENT_268.md), [게시 전 이동 실패 재시도](INCREMENT_272.md)와 [SMB 이동·실행 취소의 파일 시각 수정](INCREMENT_275.md)을 포함한다.
 
 Developer ID 서명·공증, Sonoma 초기 버전과 Sonoma Intel 설치, 콜드 캐시와 장시간 기준은 [출시 검증 현황](RELEASE_GATES.md)에서 추적한다.
 
 ## 이전 후보의 검증
 
+- 앱 소스 `32110fa`의 Apple Silicon Sonoma 14.8.7 설치·교체·복원을 확인했다. Launch Services로 20회 실행한 첫 창 표시 p95는 310 ms였다. [Sonoma 검증](INCREMENT_278.md)
 - 앱 소스 `80c8b68`의 Apple Silicon Sonoma 14.8.7 설치·교체·복원 및 Launch Services 20회의 창 표시 p95 279 ms를 확인했다. [Sonoma 검증](INCREMENT_270.md)
 - 앱 소스 `93af5b7`의 macOS 27.2 [설치·교체·복원](preview-install-93af5b7.json), [메뉴 응답 p95 583 ms](preview-launch-services-93af5b7.json), [PNG·PDF 미리보기](INCREMENT_259.md)를 확인했다.
 - Apple Silicon macOS 27.2에서 Launch Services로 20회 열고 접근성 메뉴에서 정보 창을 열었다. 공유 OS 캐시와 동시 부하 시험 조건에서 정보 창 표시 p95는 577 ms, 최대 857 ms였다. [기동 검증](preview-launch-services-0a65838.json)
