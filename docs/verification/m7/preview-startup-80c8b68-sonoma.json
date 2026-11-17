@@ -1,0 +1,37 @@
+{
+  "macOS": "14.8.7",
+  "macOSBuild": "23J520",
+  "architecture": "arm64",
+  "imageSHA256": "b65580ae06e8c2c16be522c110c7d5a9dc8af09a4e2638e2f45a4fc4297049e0",
+  "appVersion": [
+    "0.1.0",
+    "1"
+  ],
+  "metric": "Process creation to the first matching AppKit window in the WindowServer list",
+  "cacheCondition": "Fresh processes; shared OS caches, no cache purge",
+  "seconds": [
+    0.618,
+    0.363,
+    0.265,
+    0.273,
+    0.161,
+    0.322,
+    0.237,
+    0.191,
+    0.163,
+    0.217,
+    0.192,
+    0.154,
+    0.158,
+    0.148,
+    0.243,
+    0.315,
+    0.3,
+    0.202,
+    0.22,
+    0.193
+  ],
+  "p95Seconds": 0.363,
+  "maximumSeconds": 0.618,
+  "verifiedAppArchitecture": "arm64"
+}

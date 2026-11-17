@@ -2,18 +2,16 @@
 
 ## 설치 이미지
 
-- 앱 소스 `93af5b730d6ab32ad3935513f7454a02e2cbe76e`, Apple Silicon·Intel 슬라이스, macOS 14.0 배포 대상.
-- 로컬 경로 `build/Files-macOS-preview.dmg`. SHA-256 `319dbe245a7ad2178db867e1d9b51fde70d398dfa4fa4787da56ea893f57f15a`.
-- DMG 내부 체크섬, 읽기 전용 마운트, 각 슬라이스의 ad-hoc 서명을 확인했다. Apple Silicon macOS 27.2에서 이전 프리뷰 설치, 손상된 교체본 거부, 새 프리뷰 교체, 이전 앱 복원을 통과했다. 각 단계에서 시작 폴더, 세션 복원, 즐겨찾기, 확장자 표시와 사용자 파일이 보존됐다. 구형 탭과 새 형식의 탭에서 같은 창 상태가 복원됐다. 두 앱은 0.1.0 (1)로 표시되므로 시험 실행 파일 해시로 구분했다. [이번 설치 검증](preview-install-93af5b7.json) · [이전 설치 검증](preview-install-0a65838.json)
-- Launch Services로 20회 실행해 접근성 메뉴에서 정보 창을 열었다. 공유 OS 캐시 조건에서 메뉴 응답 p95는 583 ms, 최대 841 ms였다. [기동 검증](preview-launch-services-93af5b7.json)
-- [파일 작업 센터의 진행 막대](INCREMENT_255.md), [닫은 작업 결과](INCREMENT_237.md), [속성 창에서 파일 이름 변경](INCREMENT_241.md), [중첩 앱 서명 상태](INCREMENT_251.md) 및 [SMB 전송 안전성 수정](INCREMENT_242.md)을 포함한다. 같은 앱 소스의 실제 AppKit 파일 작업은 한국어·영어 × 밝게·어둡게 각 76개를 통과했다. 영어·밝은 테마의 AppKit 전체 검사 281개도 통과했다.
+- 앱 소스 `80c8b680241da59cd675720e7cfea384daf2da60`, Apple Silicon·Intel 슬라이스, macOS 14.0 배포 대상.
+- 로컬 경로 `build/Files-macOS-preview.dmg`. SHA-256 `b65580ae06e8c2c16be522c110c7d5a9dc8af09a4e2638e2f45a4fc4297049e0`.
+- Apple Silicon의 macOS 14.8.7에서 DMG 체크섬, 읽기 전용 마운트, 두 슬라이스의 ad-hoc 서명, 설치·교체·복원을 확인했다. 직접 실행과 Launch Services로 각각 20회 창을 열었다. 공유 OS 캐시에서 Launch Services 창 표시 p95는 279 ms였다. [Sonoma 검증](INCREMENT_270.md)
+- [완료 기록 지우기](INCREMENT_263.md), [작업 센터 키보드 동작](INCREMENT_269.md), [홈 복귀 시 폴더 감시 해제](INCREMENT_268.md)와 [SMB 접근 시각 복원](INCREMENT_264.md)을 포함한다. macOS 27.2와 14.8.7에서 각각 한국어·영어 × 밝게·어둡게 파일 작업 검사 78개씩 통과했다. Sonoma의 영어·밝은 테마 전체 검사 281개도 통과했다. SMB 접근 시각의 실마운트 결과는 검증 중이다.
 
-- [설치 앱의 PNG·PDF 미리보기](INCREMENT_259.md)에서 실제 창의 그림과 문서 본문 표시를 확인했다.
-
-Developer ID 서명·공증, Intel 실기기와 최소 OS 설치, 콜드 캐시와 장시간 기준은 [출시 검증 현황](RELEASE_GATES.md)에서 추적한다.
+Developer ID 서명·공증, Sonoma 초기 버전과 Sonoma Intel 설치, 콜드 캐시와 장시간 기준은 [출시 검증 현황](RELEASE_GATES.md)에서 추적한다.
 
 ## 이전 후보의 검증
 
+- 앱 소스 `93af5b7`의 macOS 27.2 [설치·교체·복원](preview-install-93af5b7.json), [메뉴 응답 p95 583 ms](preview-launch-services-93af5b7.json), [PNG·PDF 미리보기](INCREMENT_259.md)를 확인했다.
 - Apple Silicon macOS 27.2에서 Launch Services로 20회 열고 접근성 메뉴에서 정보 창을 열었다. 공유 OS 캐시와 동시 부하 시험 조건에서 정보 창 표시 p95는 577 ms, 최대 857 ms였다. [기동 검증](preview-launch-services-0a65838.json)
 - 이전 프리뷰 소스의 디버그 AppKit 검증에서 파일 작업은 한국어·영어 × 밝게·어둡게 네 조합마다 68개, 영어·밝은 테마 전체 검사는 270개가 통과했다. [AppKit 회귀](INCREMENT_184.md)
 - 파일 작업은 템플릿, 이동 실행 취소·재실행, 복사 취소, 교체 파일 보호 및 재생성된 APFS 폴더 감시 복구를 포함한다.
@@ -24,7 +22,7 @@ Developer ID 서명·공증, Intel 실기기와 최소 OS 설치, 콜드 캐시�
 
 최근 파일 작업 변경에는 [덮어쓰기 이동의 실행 취소 보호](INCREMENT_125.md), [이동 다시 실행의 메타데이터 검증](INCREMENT_126.md), [FAT32·HFS+ 생성 시간](INCREMENT_133.md), [APFS·exFAT 접근 시간](INCREMENT_135.md)이 포함된다.
 
-이전 후보에는 [상세 목록 분리](INCREMENT_76.md), [전체 Spotlight 인덱스 검색](INCREMENT_78.md), [정보 패널의 다중 항목 미리보기](INCREMENT_79.md) 및 [분할 비율 복원](INCREMENT_83.md)이 들어 있다. 이전 이미지 이후의 [충돌 미리보기](INCREMENT_91.md), [최근 위치만 갱신하는 홈 화면](INCREMENT_93.md), [닫힌 창 콘텐츠 해제](INCREMENT_95.md)도 포함한다. [복사](INCREMENT_101.md)와 [같은 볼륨 이동](INCREMENT_102.md)의 실패 항목 재시도, [일괄 이름 변경의 사전 검사](INCREMENT_103.md), [유휴 뒤 사용자 탐색 처리](INCREMENT_98.md)도 포함한다. [느린 시작 폴더에서 창 표시](INCREMENT_107.md) 개선을 포함한다. [Git 병합 충돌 표시](INCREMENT_108.md)와 [보조 패널 읽기 중단·재시도](INCREMENT_111.md)를 포함한다. Git의 [upstream 동기화](INCREMENT_113.md), [로컬 훅 비활성화](INCREMENT_114.md), [특수 파일명 표시](INCREMENT_116.md)도 포함한다. 또한 [같은 볼륨의 이동 충돌 보호](INCREMENT_148.md)와 [일반 교차 볼륨 이동의 실행 취소 재개](INCREMENT_149.md)를 포함한다. 파일 속성에서 [해시 비교](INCREMENT_152.md)와 [POSIX 권한](INCREMENT_153.md), [확장 ACL 편집](INCREMENT_154.md) 및 [계정 목록](INCREMENT_156.md)을 제공한다. 폴더의 [POSIX 권한](INCREMENT_160.md), [ACL](INCREMENT_161.md), [소유권](INCREMENT_162.md)을 하위 항목에 적용하고 [진행 중 중단](INCREMENT_164.md)할 수 있다. [이전 후보 소스의 장시간 시험](INCREMENT_157.md)이 진행 중이다.
+이전 후보에는 [상세 목록 분리](INCREMENT_76.md), [전체 Spotlight 인덱스 검색](INCREMENT_78.md), [정보 패널의 다중 항목 미리보기](INCREMENT_79.md) 및 [분할 비율 복원](INCREMENT_83.md)이 들어 있다. 이전 이미지 이후의 [충돌 미리보기](INCREMENT_91.md), [최근 위치만 갱신하는 홈 화면](INCREMENT_93.md), [닫힌 창 콘텐츠 해제](INCREMENT_95.md)도 포함한다. [복사](INCREMENT_101.md)와 [같은 볼륨 이동](INCREMENT_102.md)의 실패 항목 재시도, [일괄 이름 변경의 사전 검사](INCREMENT_103.md), [유휴 뒤 사용자 탐색 처리](INCREMENT_98.md)도 포함한다. [느린 시작 폴더에서 창 표시](INCREMENT_107.md) 개선을 포함한다. [Git 병합 충돌 표시](INCREMENT_108.md)와 [보조 패널 읽기 중단·재시도](INCREMENT_111.md)를 포함한다. Git의 [upstream 동기화](INCREMENT_113.md), [로컬 훅 비활성화](INCREMENT_114.md), [특수 파일명 표시](INCREMENT_116.md)도 포함한다. 또한 [같은 볼륨의 이동 충돌 보호](INCREMENT_148.md)와 [일반 교차 볼륨 이동의 실행 취소 재개](INCREMENT_149.md)를 포함한다. 파일 속성에서 [해시 비교](INCREMENT_152.md)와 [POSIX 권한](INCREMENT_153.md), [확장 ACL 편집](INCREMENT_154.md) 및 [계정 목록](INCREMENT_156.md)을 제공한다. 폴더의 [POSIX 권한](INCREMENT_160.md), [ACL](INCREMENT_161.md), [소유권](INCREMENT_162.md)을 하위 항목에 적용하고 [진행 중 중단](INCREMENT_164.md)할 수 있다. [권한·해시를 포함한 이전 프리뷰의 8시간 결과](INCREMENT_225.md)를 기록했다.
 
 ## 포함 기능
 
