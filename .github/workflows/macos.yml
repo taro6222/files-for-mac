@@ -11,6 +11,10 @@ on:
         description: Verify preview replacement and rollback
         type: boolean
         default: false
+      verify_full_appkit:
+        description: Verify the complete AppKit suite and capture windows
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -46,7 +50,7 @@ jobs:
       - name: Audit parity inventories
         run: python3 scripts/audit-parity.py
       - name: Build app and test targets
-        if: github.event_name != 'workflow_dispatch' || !inputs.verify_upgrade
+        if: github.event_name != 'workflow_dispatch' || !inputs.verify_upgrade || inputs.verify_full_appkit
         timeout-minutes: 12
         run: swift build --build-tests --disable-sandbox -Xswiftc -gnone
       - name: Run Swift tests
@@ -57,6 +61,43 @@ jobs:
         if: github.event_name != 'workflow_dispatch' || !inputs.verify_upgrade
         timeout-minutes: 14
         run: bash scripts/verify-volume-matrix.sh --skip-build --appkit
+      - name: Prepare Spotlight for AppKit content search
+        if: github.event_name == 'workflow_dispatch' && inputs.verify_full_appkit
+        timeout-minutes: 4
+        run: |
+          source_file="$PWD/Sources/FilesCore/LocalSearch.swift"
+          query='kMDItemTextContent == "*SearchRouter*"cd'
+          indexed() {
+            /usr/bin/mdfind -onlyin "$PWD" "$query" | /usr/bin/grep -Fx "$source_file" >/dev/null
+          }
+          if ! indexed; then
+            sudo /usr/bin/mdutil -i on /System/Volumes/Data
+            /usr/bin/mdimport -i "$source_file"
+            for attempt in {1..45}; do
+              if indexed; then break; fi
+              sleep 2
+            done
+          fi
+          if ! indexed; then
+            echo "Spotlight did not index $source_file on this runner." >&2
+            exit 1
+          fi
+      - name: Verify the complete AppKit suite
+        if: github.event_name == 'workflow_dispatch' && inputs.verify_full_appkit
+        timeout-minutes: 14
+        run: |
+          export TMPDIR="$RUNNER_TEMP"
+          bash scripts/verify-ui.sh --binary "$(swift build --show-bin-path)/FilesMac"
+      - name: Retain AppKit reports and window captures
+        if: always() && github.event_name == 'workflow_dispatch' && inputs.verify_full_appkit
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: files-appkit-macos15-${{ matrix.architecture }}
+          path: |
+            ${{ runner.temp }}/files-ui-verification.*/*/report.json
+            ${{ runner.temp }}/files-ui-verification.*/*/run.log
+            ${{ runner.temp }}/files-ui-verification.*/*/*.png
+          if-no-files-found: ignore
       - name: Build and launch the installed developer preview
         if: github.event_name != 'pull_request'
         timeout-minutes: 15
