@@ -6531,13 +6531,37 @@ extension BrowserWindow {
                     $0.status.hasPrefix(L("취소됨", "Cancelled")) && $0.destination == target.path
                         && $0.progress == nil && $0.cancel == nil && $0.showDetails == nil
                 } == true
-            reopenedCenter.close()
             let resultHidesProgress = centerCopyID.map { reopenedCenter.qaHidesProgress($0) } == true
             checks["fileOperationCenterCancellationAndResult"] = operationMenu && visibleProgress && cancelFromCenter
                 && centerShowsCancellation && centerCopyFinished && centerShowsResult && retainedClosedResult
                 && resultHidesProgress
                 && (try? Data(contentsOf: availableSource)) == availablePayload
                 && !fm.fileExists(atPath: target.appendingPathComponent(availableSource.lastPathComponent).path)
+            var secondCenterCopyFinished = false
+            CopyWindow.start(sources: [availableSource], destination: target,
+                             journalDirectory: journals) { secondCenterCopyFinished = true }
+            let secondCenterCopy = NSApp.windows.filter(\.isVisible).compactMap { $0.windowController as? CopyWindow }.first
+            let secondCenterCopyID = secondCenterCopy?.operationID
+            let canClearClosedResult = reopenedCenter.qaCanClearCompleted
+            reopenedCenter.qaClearCompleted()
+            let clearedClosedResult = centerCopyID.map { reopenedCenter.qaStatus(for: $0) == nil } == true
+            let activeCopyUnaffected = secondCenterCopyID.map { reopenedCenter.qaShowsInitialCopyProgress($0) } == true
+                && !reopenedCenter.qaCanClearCompleted
+            let cancelledSecondCopy = secondCenterCopyID.map { reopenedCenter.qaCancel($0) } == true
+            let secondCenterCopyStart = ContinuousClock.now
+            while !secondCenterCopyFinished && elapsed(secondCenterCopyStart) < 5 {
+                try await Task.sleep(for: .milliseconds(20))
+            }
+            let canClearOpenResult = reopenedCenter.qaCanClearCompleted
+            reopenedCenter.qaClearCompleted()
+            let openDetailsPreserved = secondCenterCopy?.window?.isVisible == true
+            secondCenterCopy?.close()
+            let clearedResultStaysHidden = secondCenterCopyID.map { reopenedCenter.qaStatus(for: $0) == nil } == true
+                && !reopenedCenter.qaCanClearCompleted
+            checks["fileOperationCenterClearsOnlyResults"] = canClearClosedResult && clearedClosedResult
+                && activeCopyUnaffected && cancelledSecondCopy && secondCenterCopyFinished && canClearOpenResult
+                && openDetailsPreserved && clearedResultStaysHidden
+            reopenedCenter.close()
             var mixedCopyFinished = false
             CopyWindow.start(sources: [availableSource, missingSource], destination: target,
                              journalDirectory: journals) { mixedCopyFinished = true }

@@ -29,12 +29,14 @@ extension NSWindowController {
 final class FileOperationCenter: NSWindowController, NSTableViewDataSource, NSTableViewDelegate {
     private static var center: FileOperationCenter?
     private static var recentResults: [FileOperationActivity] = []
+    private static var dismissedOpenResults: Set<UUID> = []
     private static let resultLimit = 50
     private var activities: [FileOperationActivity] = []
     private let table = NSTableView()
     private let summary = NSTextField(labelWithString: "")
     private let details = NSButton()
     private let cancel = NSButton()
+    private let clear = NSButton()
 
     @discardableResult
     static func present() -> FileOperationCenter {
@@ -51,7 +53,7 @@ final class FileOperationCenter: NSWindowController, NSTableViewDataSource, NSTa
     }
 
     static func retainResult(_ activity: FileOperationActivity) {
-        guard activity.progress == nil else { return }
+        guard activity.progress == nil, dismissedOpenResults.remove(activity.id) == nil else { return }
         let result = FileOperationActivity(id: activity.id, title: activity.title, destination: activity.destination,
                                            status: activity.status, progress: nil, showDetails: nil, cancel: nil)
         recentResults.insert(result, at: 0)
@@ -97,8 +99,11 @@ final class FileOperationCenter: NSWindowController, NSTableViewDataSource, NSTa
         cancel.title = L("작업 취소", "Cancel Operation")
         cancel.target = self
         cancel.action = #selector(cancelSelectedOperation(_:))
+        clear.title = L("완료 기록 지우기", "Clear Completed")
+        clear.target = self
+        clear.action = #selector(clearCompletedOperations(_:))
 
-        let actions = NSStackView(views: [details, cancel])
+        let actions = NSStackView(views: [details, cancel, clear])
         let stack = NSStackView(views: [summary, scroll, actions])
         stack.orientation = .vertical
         stack.alignment = .leading
@@ -124,8 +129,10 @@ final class FileOperationCenter: NSWindowController, NSTableViewDataSource, NSTa
 
     private func refresh() {
         let selectedID = selected?.id
-        activities = CopyWindow.activities + MoveWindow.activities + FolderMergeWindow.activities + Self.recentResults
+        let openActivities = CopyWindow.activities + MoveWindow.activities + FolderMergeWindow.activities
+        activities = openActivities.filter { !Self.dismissedOpenResults.contains($0.id) } + Self.recentResults
         let running = activities.filter { $0.progress != nil }.count
+        clear.isEnabled = running != activities.count
         summary.stringValue = activities.isEmpty
             ? L("파일 작업이 없습니다.", "No file operations.")
             : L("진행 중 \(running)개 · 결과 \(activities.count - running)개",
@@ -150,6 +157,12 @@ final class FileOperationCenter: NSWindowController, NSTableViewDataSource, NSTa
     }
 
     @objc private func cancelSelectedOperation(_ sender: Any?) { selected?.cancel?() }
+
+    @objc private func clearCompletedOperations(_ sender: Any?) {
+        Self.dismissedOpenResults.formUnion(activities.lazy.filter { $0.progress == nil && $0.showDetails != nil }.map(\.id))
+        Self.recentResults.removeAll()
+        refresh()
+    }
 
     func tableViewSelectionDidChange(_ notification: Notification) { updateButtons() }
     func numberOfRows(in tableView: NSTableView) -> Int { activities.count }
@@ -217,6 +230,9 @@ final class FileOperationCenter: NSWindowController, NSTableViewDataSource, NSTa
     }
 
     func qaHidesProgress(_ id: UUID) -> Bool { qaProgressIndicator(for: id) == nil }
+
+    var qaCanClearCompleted: Bool { clear.isEnabled }
+    func qaClearCompleted() { clear.performClick(nil) }
 
     func qaCancel(_ id: UUID) -> Bool {
         guard let row = activities.firstIndex(where: { $0.id == id }) else { return false }
