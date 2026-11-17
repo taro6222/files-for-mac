@@ -2,16 +2,16 @@
 
 ## 설치 이미지
 
-- 앱 소스 `80c8b680241da59cd675720e7cfea384daf2da60`, Apple Silicon·Intel 슬라이스, macOS 14.0 배포 대상.
-- 로컬 경로 `build/Files-macOS-preview.dmg`. SHA-256 `b65580ae06e8c2c16be522c110c7d5a9dc8af09a4e2638e2f45a4fc4297049e0`.
-- Apple Silicon의 macOS 14.8.7에서 DMG 체크섬, 읽기 전용 마운트, 두 슬라이스의 ad-hoc 서명, 설치·교체·복원을 확인했다. 직접 실행과 Launch Services로 각각 20회 창을 열었다. 공유 OS 캐시에서 Launch Services 창 표시 p95는 279 ms였다. [Sonoma 검증](INCREMENT_270.md)
-- [완료 기록 지우기](INCREMENT_263.md), [작업 센터 키보드 동작](INCREMENT_269.md), [홈 복귀 시 폴더 감시 해제](INCREMENT_268.md)와 [SMB 접근 시각 복원](INCREMENT_264.md)을 포함한다. macOS 27.2와 14.8.7에서 각각 한국어·영어 × 밝게·어둡게 파일 작업 검사 78개씩 통과했다. Sonoma의 영어·밝은 테마 전체 검사 281개도 통과했다.
-- 이 이미지에 해당하는 소스의 SMB 실마운트 검증에서 복사 시각은 보존됐고 교차 볼륨 이동은 대상 확인 단계에서 원본을 남기고 중단됐다. [후속 소스의 실마운트 시험](INCREMENT_275.md)에서 수정 후 이동과 실행 취소가 통과했다.
+- 앱 소스 `32110faaaf45984bccef450c294b5e4e76418db6`, Apple Silicon·Intel 슬라이스, macOS 14.0 배포 대상.
+- 로컬 경로 `build/Files-macOS-preview.dmg`. SHA-256 `34d58aa5c7d16483e72d9dd17fb401a519af0825ca8a83d192525262caef5a22`.
+- Apple Silicon Sonoma 14.8.7에서 DMG와 앱 서명을 확인하고 이전 프리뷰의 교체·복원을 검증했다. Launch Services로 20회 실행한 창 표시 시간은 공유 OS 캐시 조건에서 p95 310 ms였다. [설치 이미지 검증](INCREMENT_278.md)
+- [완료 기록 지우기](INCREMENT_263.md), [작업 센터 키보드 동작](INCREMENT_269.md), [홈 복귀 시 폴더 감시 해제](INCREMENT_268.md), [게시 전 이동 실패 재시도](INCREMENT_272.md)와 [SMB 이동·실행 취소의 파일 시각 수정](INCREMENT_275.md)을 포함한다.
 
 Developer ID 서명·공증, Sonoma 초기 버전과 Sonoma Intel 설치, 콜드 캐시와 장시간 기준은 [출시 검증 현황](RELEASE_GATES.md)에서 추적한다.
 
 ## 이전 후보의 검증
 
+- 앱 소스 `80c8b68`의 Apple Silicon Sonoma 14.8.7 설치·교체·복원 및 Launch Services 20회의 창 표시 p95 279 ms를 확인했다. [Sonoma 검증](INCREMENT_270.md)
 - 앱 소스 `93af5b7`의 macOS 27.2 [설치·교체·복원](preview-install-93af5b7.json), [메뉴 응답 p95 583 ms](preview-launch-services-93af5b7.json), [PNG·PDF 미리보기](INCREMENT_259.md)를 확인했다.
 - Apple Silicon macOS 27.2에서 Launch Services로 20회 열고 접근성 메뉴에서 정보 창을 열었다. 공유 OS 캐시와 동시 부하 시험 조건에서 정보 창 표시 p95는 577 ms, 최대 857 ms였다. [기동 검증](preview-launch-services-0a65838.json)
 - 이전 프리뷰 소스의 디버그 AppKit 검증에서 파일 작업은 한국어·영어 × 밝게·어둡게 네 조합마다 68개, 영어·밝은 테마 전체 검사는 270개가 통과했다. [AppKit 회귀](INCREMENT_184.md)
