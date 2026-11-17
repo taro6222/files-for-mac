@@ -60,6 +60,18 @@ import Testing
     #expect(throws: CopyEngine.TransferMismatch.contents) { try changed.verifyTransferredContents(of: local) }
 }
 
+@Test func accessTimeRestorationAcceptsOnlyItsOwnChangeTimeUpdate() throws {
+    let mutation = CopyEngine.AccessTimeChange(
+        oldChangeTime: timespec(tv_sec: 1_700_000_000, tv_nsec: 100),
+        newChangeTime: timespec(tv_sec: 1_700_000_000, tv_nsec: 300))
+    let recorded = "device:inode|ctime=1700000000:100"
+    #expect(try CopyEngine.identityAfterAccessTimeRestoration(recorded, change: mutation) == "device:inode|ctime=1700000000:300")
+    #expect(try CopyEngine.identityAfterAccessTimeRestoration(recorded, change: nil) == recorded)
+    #expect(throws: CopyEngine.TransferMismatch.accessTime) {
+        try CopyEngine.identityAfterAccessTimeRestoration("device:inode|ctime=1700000000:200", change: mutation)
+    }
+}
+
 @Test func smbTransferAcceptsFileTimeRoundingOnlyWhenVerifyingTheCopy() throws {
     let path = "/payload.bin"
     let baseline = Date(timeIntervalSinceReferenceDate: 816_404_686)

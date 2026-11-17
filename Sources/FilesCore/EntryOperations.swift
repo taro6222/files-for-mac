@@ -1039,7 +1039,7 @@ public enum EntryOperations {
                                         sourceDirectoryFD: stageFD, sourceName: "payload",
                                         destinationDirectoryFD: destinationFD, destinationName: target.lastPathComponent)
                                 } catch CopyPublicationError.conflict { throw EntryOperationError.conflict }
-                                let publishedIdentity = try CopyEngine.identityAfterPublication(of: target,
+                                var publishedIdentity = try CopyEngine.identityAfterPublication(of: target,
                                     handle: publicationHandle, original: payloadIdentity) { try snapshotIdentity($0, fileManager: fm) }
                                 do {
                                     try cancellation.check(); emit("removingSource")
@@ -1054,9 +1054,12 @@ public enum EntryOperations {
                                         throw MoveFailure(text: LString.crossVolumeDestinationChanged)
                                     }
                                     // SMB may give entries different identifiers after the staged tree is renamed.
-                                    try before.restoreAccessTimes(in: target,
+                                    let accessTimeChange = try before.restoreAccessTimes(in: target,
                                         verifiedCopy: publicationHandle == nil ? verifiedPayload : verifiedTarget,
-                                        cancellation: cancellation)
+                                        publishedIdentity: publishedIdentity, cancellation: cancellation)
+                                    // Setting access time can advance the server's change time.
+                                    publishedIdentity = try CopyEngine.identityAfterAccessTimeRestoration(publishedIdentity,
+                                        change: accessTimeChange)
                                     try cancellation.check()
                                     guard try matchesMoveIdentity(target, expected: publishedIdentity, fileManager: fm),
                                           publicationHandle.map({ CopyEngine.matchesPublicationHandle(target, descriptor: $0) }) != false else {

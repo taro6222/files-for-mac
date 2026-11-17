@@ -459,7 +459,7 @@ public enum CopyEngine {
         guard matchesPublicationHandle(target, descriptor: descriptor) else { throw CopyFailure(text: "Item identity changed during publication.") }
         // A path-derived identifier can repeat if a different item is created at
         // the same path. Preserve a separate change-time baseline for Undo.
-        return withChangeTime(current, opened)
+        return withChangeTime(current, opened.st_ctimespec)
     }
 
     static func matchesRecordedIdentity(at url: URL, expected: String, identity: (URL) throws -> String) throws -> Bool {
@@ -467,11 +467,23 @@ public enum CopyEngine {
         guard expected.contains("|ctime=") else { return current == expected }
         var info = stat()
         guard lstat(url.path, &info) == 0 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
-        return withChangeTime(current, info) == expected
+        return withChangeTime(current, info.st_ctimespec) == expected
     }
 
-    private static func withChangeTime(_ identity: String, _ info: stat) -> String {
-        "\(identity)|ctime=\(info.st_ctimespec.tv_sec):\(info.st_ctimespec.tv_nsec)"
+    struct AccessTimeChange {
+        let oldChangeTime: timespec
+        let newChangeTime: timespec
+    }
+
+    static func identityAfterAccessTimeRestoration(_ expected: String, change: AccessTimeChange?) throws -> String {
+        guard let suffix = expected.range(of: "|ctime="), let change else { return expected }
+        let base = String(expected[..<suffix.lowerBound])
+        guard expected == withChangeTime(base, change.oldChangeTime) else { throw TransferMismatch.accessTime }
+        return withChangeTime(base, change.newChangeTime)
+    }
+
+    private static func withChangeTime(_ identity: String, _ changeTime: timespec) -> String {
+        "\(identity)|ctime=\(changeTime.tv_sec):\(changeTime.tv_nsec)"
     }
 
     static func matchesPublicationHandle(_ url: URL, descriptor: Int32) -> Bool {
@@ -632,8 +644,10 @@ public enum CopyEngine {
             }
         }
 
-        func restoreAccessTimes(in payload: URL, verifiedCopy: Self, cancellation: CopyCancellation) throws {
-            guard !accessTimes.isEmpty else { return }
+        @discardableResult
+        func restoreAccessTimes(in payload: URL, verifiedCopy: Self, publishedIdentity: String? = nil,
+                                cancellation: CopyCancellation) throws -> AccessTimeChange? {
+            guard !accessTimes.isEmpty else { return nil }
             let parent = open(payload.deletingLastPathComponent().path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
             guard parent >= 0 else { throw TransferMismatch.accessTime }
             defer { close(parent) }
@@ -642,7 +656,8 @@ public enum CopyEngine {
             let filesystem = withUnsafeBytes(of: volume.f_fstypename) {
                 String(decoding: $0.prefix { $0 != 0 }, as: UTF8.self)
             }
-            guard Self.supportsAccessTimeRestoration(filesystem) else { return }
+            guard Self.supportsAccessTimeRestoration(filesystem) else { return nil }
+            var rootChange: AccessTimeChange?
             for (path, time) in accessTimes {
                 try cancellation.check()
                 let expected: timespec
@@ -668,17 +683,32 @@ public enum CopyEngine {
                     throw TransferMismatch.accessTime
                 }
                 if info.st_atimespec.tv_sec != expected.tv_sec || info.st_atimespec.tv_nsec != expected.tv_nsec {
+                    if path.isEmpty, let publishedIdentity, publishedIdentity.contains("|ctime="),
+                       !publishedIdentity.hasSuffix(CopyEngine.withChangeTime("", info.st_ctimespec)) {
+                        throw TransferMismatch.accessTime
+                    }
                     var attributes = attrlist()
                     attributes.bitmapcount = UInt16(ATTR_BIT_MAP_COUNT)
                     attributes.commonattr = attrgroup_t(ATTR_CMN_ACCTIME)
                     var accessTime = expected
+                    var updated = stat()
                     guard fsetattrlist(descriptor, &attributes, &accessTime, MemoryLayout<timespec>.size, 0) == 0,
-                          fstat(descriptor, &info) == 0,
-                          info.st_atimespec.tv_sec == expected.tv_sec, info.st_atimespec.tv_nsec == expected.tv_nsec else {
+                          fstat(descriptor, &updated) == 0,
+                          updated.st_atimespec.tv_sec == expected.tv_sec, updated.st_atimespec.tv_nsec == expected.tv_nsec,
+                          updated.st_dev == info.st_dev, updated.st_ino == info.st_ino,
+                          updated.st_mode == info.st_mode, updated.st_size == info.st_size, updated.st_nlink == info.st_nlink,
+                          updated.st_mtimespec.tv_sec == info.st_mtimespec.tv_sec,
+                          updated.st_mtimespec.tv_nsec == info.st_mtimespec.tv_nsec,
+                          updated.st_birthtimespec.tv_sec == info.st_birthtimespec.tv_sec,
+                          updated.st_birthtimespec.tv_nsec == info.st_birthtimespec.tv_nsec else {
                         throw TransferMismatch.accessTime
+                    }
+                    if path.isEmpty {
+                        rootChange = AccessTimeChange(oldChangeTime: info.st_ctimespec, newChangeTime: updated.st_ctimespec)
                     }
                 }
             }
+            return rootChange
         }
 
         private func openTransferEntry(parent: Int32, name: String, path: String, isDirectory: Bool,
