@@ -148,6 +148,8 @@ final class MoveWindow: NSWindowController, NSWindowDelegate {
         qaLastProgress = label.stringValue
 #endif
         progress.doubleValue = Double(update.index)
+        progress.showCurrentFileActivity(update.phase == "copying" || update.phase == "verifying"
+            || update.phase == "verifyingUndo")
         FileOperationCenter.activityChanged()
     }
 
@@ -169,6 +171,7 @@ final class MoveWindow: NSWindowController, NSWindowDelegate {
         }
         if pending > 0 { label.stringValue += L(" · 실행 안 됨 \(pending)", " · Not attempted \(pending)") }
         if cancelled > 0 { label.stringValue += L(" · 취소 \(cancelled)", " · Cancelled \(cancelled)") }
+        progress.showCurrentFileActivity(false)
         progress.isHidden = true
         let itemDetails: [String] = report.items.map { item in
             let status: String
@@ -200,6 +203,7 @@ final class MoveWindow: NSWindowController, NSWindowDelegate {
 
     private func fail(_ error: Error) {
         running = false
+        progress.showCurrentFileActivity(false)
         progress.isHidden = true
         label.stringValue = L("이동 실패", "Move failed")
         details.string = error.localizedDescription

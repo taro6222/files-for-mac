@@ -107,6 +107,7 @@ final class CopyWindow: NSWindowController, NSWindowDelegate {
         qaLastProgress = label.stringValue
 #endif
         progress.doubleValue = Double(update.index)
+        progress.showCurrentFileActivity(update.phase == "copying" || update.phase == "verifying")
         FileOperationCenter.activityChanged()
     }
     @objc private func cancelCopy(_ sender: Any?) {
@@ -135,6 +136,7 @@ final class CopyWindow: NSWindowController, NSWindowDelegate {
         if failed > 0 { label.stringValue += L(" · 실패 \(failed)", " · Failed \(failed)") }
         if pending > 0 { label.stringValue += L(" · 실행 안 됨 \(pending)", " · Not attempted \(pending)") }
         if cancelled > 0 { label.stringValue += L(" · 취소 \(cancelled)", " · Cancelled \(cancelled)") }
+        progress.showCurrentFileActivity(false)
         progress.isHidden = true
         let itemDetails: [String] = report.items.map { item in
             let state: String
@@ -209,9 +211,11 @@ final class CopyWindow: NSWindowController, NSWindowDelegate {
                     let started = clock.now
                     let staged = update.stagedTransfer?.bytes == Int64(original.count)
                         && controller.label.stringValue.contains(L("준비된 데이터", "Data staged"))
+                        && controller.progress.isIndeterminate
                     controller.cancel.performClick(nil)
                     sample.clickTime = started
                     if staged && controller.cancellation.isCancelled && !controller.cancel.isEnabled
+                        && controller.progress.isIndeterminate
                         && controller.label.stringValue.hasPrefix(L("취소 요청됨", "Cancellation requested")) {
                         sample.feedbackTime = started.duration(to: clock.now)
                     }
@@ -221,6 +225,7 @@ final class CopyWindow: NSWindowController, NSWindowDelegate {
             let finished = clock.now
             controller.finish(report)
             guard let clickTime = sample.clickTime, let feedbackTime = sample.feedbackTime, report.state == "cancelled",
+                  controller.progress.isHidden && !controller.progress.isIndeterminate,
                   controller.qaLastAnnouncement.contains(L("취소 1", "Cancelled 1")),
                   report.items.map(\.state) == ["cancelled"], report.journalError == nil,
                   !fm.fileExists(atPath: output.path), try Data(contentsOf: source) == original,
@@ -280,6 +285,19 @@ final class CopyWindow: NSWindowController, NSWindowDelegate {
         Self.operations.removeAll { $0 === self }
         FileOperationCenter.retainResult(activity)
         FileOperationCenter.activityChanged()
+    }
+}
+
+extension NSProgressIndicator {
+    func showCurrentFileActivity(_ isWorking: Bool) {
+        guard isIndeterminate != isWorking else { return }
+        if isWorking {
+            isIndeterminate = true
+            startAnimation(nil)
+        } else {
+            stopAnimation(nil)
+            isIndeterminate = false
+        }
     }
 }
 
