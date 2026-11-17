@@ -5,8 +5,12 @@ test_args=(--disable-sandbox --filter mountedVolume)
 case "${1:-}" in
   "") ;;
   --skip-build) test_args+=(--skip-build) ;;
-  *) echo "Usage: $0 [--skip-build]" >&2; exit 2 ;;
+  *) echo "Usage: $0 [--skip-build [--appkit]]" >&2; exit 2 ;;
 esac
+if [[ $# -gt 2 || (${2:-} != "" && ${2:-} != --appkit) ]]; then
+  echo "Usage: $0 [--skip-build [--appkit]]" >&2
+  exit 2
+fi
 root=$(/usr/bin/mktemp -d /tmp/files-volume-matrix.XXXXXX)
 devices=()
 cleanup() {
@@ -55,3 +59,6 @@ if [[ "$(xcode-select -p)" == /Library/Developer/CommandLineTools ]]; then
   fi
 fi
 swift test "${test_args[@]}"
+if [[ "${2:-}" == --appkit ]]; then
+  bash scripts/verify-m2-ui.sh "$(swift build --show-bin-path)/FilesMac"
+fi

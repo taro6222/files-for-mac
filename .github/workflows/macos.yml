@@ -53,14 +53,10 @@ jobs:
         if: github.event_name != 'workflow_dispatch' || !inputs.verify_upgrade
         timeout-minutes: 5
         run: swift test --skip-build --disable-xctest --no-parallel
-      - name: Verify mounted file systems
+      - name: Verify mounted file systems and AppKit file operations
         if: github.event_name != 'workflow_dispatch' || !inputs.verify_upgrade
-        timeout-minutes: 5
-        run: bash scripts/verify-volume-matrix.sh --skip-build
-      - name: Verify AppKit file operations
-        if: github.event_name != 'workflow_dispatch' || !inputs.verify_upgrade
-        timeout-minutes: 9
-        run: bash scripts/verify-m2-ui.sh "$(swift build --show-bin-path)/FilesMac"
+        timeout-minutes: 14
+        run: bash scripts/verify-volume-matrix.sh --skip-build --appkit
       - name: Build and launch the installed developer preview
         if: github.event_name != 'pull_request'
         timeout-minutes: 15

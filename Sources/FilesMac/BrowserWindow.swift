@@ -6550,18 +6550,20 @@ extension BrowserWindow {
             let activeCopyUnaffected = secondCenterCopyID.map { reopenedCenter.qaShowsInitialCopyProgress($0) } == true
                 && !reopenedCenter.qaCanClearCompleted
             FileOperationCenter.present()
-            let openedDetailsFromKeyboard = secondCenterCopyID.map {
-                reopenedCenter.qaPressShortcut(for: $0, characters: "\r", modifiers: [], keyCode: 36)
-            } == true && secondCenterCopy?.window?.isKeyWindow == true
-            FileOperationCenter.present()
             let cancelledSecondCopy = secondCenterCopyID.map {
                 reopenedCenter.qaPressShortcut(for: $0, characters: ".", modifiers: .command, keyCode: 47)
             } == true
-            checks["fileOperationCenterKeyboardActions"] = openedDetailsFromKeyboard && cancelledSecondCopy
             let secondCenterCopyStart = ContinuousClock.now
             while !secondCenterCopyFinished && elapsed(secondCenterCopyStart) < 5 {
                 try await Task.sleep(for: .milliseconds(20))
             }
+            secondCenterCopy?.window?.orderOut(nil)
+            let detailsWereHidden = secondCenterCopy?.window?.isVisible == false
+            FileOperationCenter.present()
+            let openedDetailsFromKeyboard = secondCenterCopyID.map {
+                reopenedCenter.qaPressShortcut(for: $0, characters: "\r", modifiers: [], keyCode: 36)
+            } == true && secondCenterCopy?.window?.isVisible == true
+            checks["fileOperationCenterKeyboardActions"] = detailsWereHidden && openedDetailsFromKeyboard && cancelledSecondCopy
             let canClearOpenResult = reopenedCenter.qaCanClearCompleted
             reopenedCenter.qaClearCompleted()
             let openDetailsPreserved = secondCenterCopy?.window?.isVisible == true
@@ -6678,6 +6680,12 @@ extension BrowserWindow {
                 && (try? Data(contentsOf: target.appendingPathComponent(blockedMove.lastPathComponent))) == movePayload
                 && (try? Data(contentsOf: target.appendingPathComponent(ordinaryMove.lastPathComponent))) == movePayload
             NSApp.windows.compactMap { $0.windowController as? MoveWindow }.forEach { $0.close() }
+            if let volumePath = ProcessInfo.processInfo.environment["FILES_TEST_APFSX_VOLUME"] {
+                let volume = URL(fileURLWithPath: volumePath, isDirectory: true)
+                checks["moveRetriesAcrossMountedVolumes"] = try await verifyCrossVolumeMoveRetry(
+                    sourceFolder: source, volume: volume,
+                    journalDirectory: journals.appendingPathComponent("cross-volume-retry", isDirectory: true))
+            }
             fputs("File operation QA: image and PDF preview\n", stderr)
             let imageFile = source.appendingPathComponent("preview.png")
             let pdfFile = source.appendingPathComponent("preview.pdf")
@@ -6973,6 +6981,46 @@ extension BrowserWindow {
             DispatchQueue.main.async { exit(1) }
         }
     }
+    private static func verifyCrossVolumeMoveRetry(sourceFolder: URL, volume: URL, journalDirectory: URL) async throws -> Bool {
+        let fm = FileManager.default
+        let sourceDevice = try fm.attributesOfItem(atPath: sourceFolder.path)[.systemNumber] as? NSNumber
+        let targetDevice = try fm.attributesOfItem(atPath: volume.path)[.systemNumber] as? NSNumber
+        guard let sourceDevice, let targetDevice, sourceDevice != targetDevice else { return false }
+        let folder = volume.appendingPathComponent("FilesMac-Retry-\(UUID())", isDirectory: true)
+        let source = sourceFolder.appendingPathComponent("cross-volume-retry.txt")
+        let target = folder.appendingPathComponent(source.lastPathComponent)
+        let contents = Data("cross-volume move retry fixture".utf8)
+        try fm.createDirectory(at: folder, withIntermediateDirectories: false)
+        defer {
+            try? fm.setAttributes([.posixPermissions: 0o700], ofItemAtPath: folder.path)
+            try? fm.removeItem(at: folder)
+            NSApp.windows.compactMap { $0.windowController as? MoveWindow }.forEach { $0.close() }
+        }
+        try contents.write(to: source)
+        try fm.setAttributes([.posixPermissions: 0o500], ofItemAtPath: folder.path)
+        var completions = 0
+        MoveWindow.start(sources: [source], destination: folder, journalDirectory: journalDirectory) {
+            completions += 1
+        }
+        let firstStart = ContinuousClock.now
+        while completions == 0 && elapsed(firstStart) < 10 { try await Task.sleep(for: .milliseconds(20)) }
+        guard completions == 1,
+              let result = NSApp.windows.filter(\.isVisible).compactMap({ $0.windowController as? MoveWindow }).first,
+              result.qaCanRetry, try Data(contentsOf: source) == contents,
+              try fm.contentsOfDirectory(atPath: folder.path).isEmpty else { return false }
+
+        try fm.setAttributes([.posixPermissions: 0o700], ofItemAtPath: folder.path)
+        result.qaRetry()
+        let retryStart = ContinuousClock.now
+        while completions < 2 && elapsed(retryStart) < 10 { try await Task.sleep(for: .milliseconds(20)) }
+        guard completions == 2, !result.qaCanRetry, !fm.fileExists(atPath: source.path),
+              try Data(contentsOf: target) == contents,
+              let undo = EntryOperations.latestUndoMove(journalDirectory: journalDirectory) else { return false }
+        let restored = await EntryOperations.undoMove(undo, journalDirectory: journalDirectory)
+        return restored.state == "completed" && !fm.fileExists(atPath: target.path)
+            && (try? Data(contentsOf: source)) == contents
+    }
+
     private func waitForFolderQA(_ condition: () -> Bool) async throws {
         let deadline = ContinuousClock.now + .seconds(8)
         while !condition() {
