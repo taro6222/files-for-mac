@@ -6549,7 +6549,15 @@ extension BrowserWindow {
             let clearedClosedResult = centerCopyID.map { reopenedCenter.qaStatus(for: $0) == nil } == true
             let activeCopyUnaffected = secondCenterCopyID.map { reopenedCenter.qaShowsInitialCopyProgress($0) } == true
                 && !reopenedCenter.qaCanClearCompleted
-            let cancelledSecondCopy = secondCenterCopyID.map { reopenedCenter.qaCancel($0) } == true
+            FileOperationCenter.present()
+            let openedDetailsFromKeyboard = secondCenterCopyID.map {
+                reopenedCenter.qaPressShortcut(for: $0, characters: "\r", modifiers: [], keyCode: 36)
+            } == true && secondCenterCopy?.window?.isKeyWindow == true
+            FileOperationCenter.present()
+            let cancelledSecondCopy = secondCenterCopyID.map {
+                reopenedCenter.qaPressShortcut(for: $0, characters: ".", modifiers: .command, keyCode: 47)
+            } == true
+            checks["fileOperationCenterKeyboardActions"] = openedDetailsFromKeyboard && cancelledSecondCopy
             let secondCenterCopyStart = ContinuousClock.now
             while !secondCenterCopyFinished && elapsed(secondCenterCopyStart) < 5 {
                 try await Task.sleep(for: .milliseconds(20))

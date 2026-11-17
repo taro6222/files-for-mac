@@ -88,6 +88,7 @@ final class FileOperationCenter: NSWindowController, NSTableViewDataSource, NSTa
         table.columnAutoresizingStyle = .uniformColumnAutoresizingStyle
         table.usesAlternatingRowBackgroundColors = true
         table.setAccessibilityLabel(L("파일 작업 목록", "File operations list"))
+        window.initialFirstResponder = table
 
         let scroll = NSScrollView()
         scroll.documentView = table
@@ -96,9 +97,12 @@ final class FileOperationCenter: NSWindowController, NSTableViewDataSource, NSTa
         details.title = L("세부 정보 열기", "Open Details")
         details.target = self
         details.action = #selector(openDetails(_:))
+        window.defaultButtonCell = details.cell as? NSButtonCell
         cancel.title = L("작업 취소", "Cancel Operation")
         cancel.target = self
         cancel.action = #selector(cancelSelectedOperation(_:))
+        cancel.keyEquivalent = "."
+        cancel.keyEquivalentModifierMask = .command
         clear.title = L("완료 기록 지우기", "Clear Completed")
         clear.target = self
         clear.action = #selector(clearCompletedOperations(_:))
@@ -233,6 +237,17 @@ final class FileOperationCenter: NSWindowController, NSTableViewDataSource, NSTa
 
     var qaCanClearCompleted: Bool { clear.isEnabled }
     func qaClearCompleted() { clear.performClick(nil) }
+
+    func qaPressShortcut(for id: UUID, characters: String, modifiers: NSEvent.ModifierFlags, keyCode: UInt16) -> Bool {
+        guard let window, window.initialFirstResponder === table,
+              let row = activities.firstIndex(where: { $0.id == id }),
+              let event = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: modifiers,
+                                          timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: window.windowNumber,
+                                          context: nil, characters: characters, charactersIgnoringModifiers: characters,
+                                          isARepeat: false, keyCode: keyCode) else { return false }
+        table.selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false)
+        return window.performKeyEquivalent(with: event)
+    }
 
     func qaCancel(_ id: UUID) -> Bool {
         guard let row = activities.firstIndex(where: { $0.id == id }) else { return false }
