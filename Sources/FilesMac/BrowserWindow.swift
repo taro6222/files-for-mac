@@ -252,6 +252,7 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
             Task { @MainActor in
                 guard let self else { return }
                 self.watcherTask?.cancel()
+                self.watcherTask = nil
                 if let watcher = self.watcher { Task.detached { watcher.stop() } }
                 self.watcher = nil
                 self.model.onChange = nil; self.model.cancelLoad()
@@ -3063,6 +3064,7 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
     private func updateWatcher(force: Bool = false) {
         guard force || watchedURL != model.location else { return }
         watcherTask?.cancel()
+        watcherTask = nil
         if let watcher { Task.detached { watcher.stop() } }
         watcher = nil; watchedURL = model.location
         watcherStatus = model.location == nil ? .idle : .connecting
@@ -7147,6 +7149,7 @@ private struct ReleaseSoakReport: Encodable {
     let targetSeconds: Int
     let elapsedSeconds: Double
     let cycles: Int
+    let primaryWatcherReleases: Int
     let peakRSSBytes: UInt64
     let peakPhysicalFootprintBytes: UInt64
     let samples: [ReleaseSoakSample]
@@ -7355,6 +7358,7 @@ extension BrowserWindow {
         let clock = ContinuousClock()
         let start = clock.now
         var cycles = 0
+        var primaryWatcherReleases = 0
         var peakRSS: UInt64 = 0
         var samples: [ReleaseSoakSample] = []
         var lastSample = start
@@ -7367,7 +7371,8 @@ extension BrowserWindow {
 
         func report(state: String, error: String? = nil) throws {
             let report = ReleaseSoakReport(state: state, workload: workload, targetSeconds: duration,
-                elapsedSeconds: elapsedSeconds(), cycles: cycles, peakRSSBytes: peakRSS,
+                elapsedSeconds: elapsedSeconds(), cycles: cycles, primaryWatcherReleases: primaryWatcherReleases,
+                peakRSSBytes: peakRSS,
                 peakPhysicalFootprintBytes: peakPhysicalFootprint,
                 samples: samples, error: error)
             try encoder.encode(report).write(to: root.appendingPathComponent("report.json"), options: .atomic)
@@ -7480,6 +7485,10 @@ extension BrowserWindow {
                 if workload != .navigation {
                     try await exerciseSecondaryWindow(relativeTo: window)
                 }
+                weak let previousWatcher = browser.watcher
+                guard previousWatcher != nil else {
+                    throw ReleaseSoakFailure("The primary folder has no watcher before returning Home")
+                }
                 // Return through history so the repeated workload keeps one forward
                 // entry instead of retaining two additional entries per cycle.
                 browser.goBack(nil)
@@ -7490,6 +7499,18 @@ extension BrowserWindow {
                 guard browser.scroll.superview == nil else {
                     throw ReleaseSoakFailure("The details view is still attached on Home")
                 }
+                guard browser.watcher == nil, browser.watcherTask == nil, browser.watchedURL == nil,
+                      browser.watcherStatus == .idle else {
+                    throw ReleaseSoakFailure("The primary watcher is still registered on Home")
+                }
+                let watcherDeadline = clock.now.advanced(by: .seconds(5))
+                while previousWatcher != nil {
+                    guard clock.now < watcherDeadline else {
+                        throw ReleaseSoakFailure("The previous primary watcher was retained on Home")
+                    }
+                    try await Task.sleep(for: .milliseconds(20))
+                }
+                primaryWatcherReleases += 1
                 cycles += 1
                 try measureMemory(recordSample: cycles == 1 || lastSample.duration(to: clock.now) >= .seconds(30))
                 try report(state: "running")
