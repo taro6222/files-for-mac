@@ -205,9 +205,17 @@ public enum EntryOperations {
 
     private static func matchesTransfer(_ url: URL, identity: String, snapshot: CopyEngine.VerificationSnapshot,
                                         fileManager: FileManager) -> Bool {
-        (try? matchesMoveIdentity(url, expected: identity, fileManager: fileManager)) == true
-            && (try? CopyEngine.makeSnapshot(url, cancellation: CopyCancellation()).matchesOriginal(snapshot)) == true
-            && (try? matchesMoveIdentity(url, expected: identity, fileManager: fileManager)) == true
+        (try? matchingTransferSnapshot(url, identity: identity, snapshot: snapshot, fileManager: fileManager)) != nil
+    }
+
+    private static func matchingTransferSnapshot(_ url: URL, identity: String, snapshot: CopyEngine.VerificationSnapshot,
+                                                 fileManager: FileManager,
+                                                 cancellation: CopyCancellation = CopyCancellation()) throws -> CopyEngine.VerificationSnapshot? {
+        guard try matchesMoveIdentity(url, expected: identity, fileManager: fileManager) else { return nil }
+        let current = try CopyEngine.makeSnapshot(url, cancellation: cancellation)
+        guard current.matchesOriginal(snapshot),
+              try matchesMoveIdentity(url, expected: identity, fileManager: fileManager) else { return nil }
+        return current
     }
 
     private static func matchesMoveIdentity(_ url: URL, expected: String, fileManager: FileManager) throws -> Bool {
@@ -1040,6 +1048,23 @@ public enum EntryOperations {
                                           try snapshotIdentity(source, fileManager: fm) == sourceIdentity else {
                                         throw MoveFailure(text: LString.crossVolumeSourceChanged)
                                     }
+                                    guard let verifiedTarget = try matchingTransferSnapshot(target, identity: publishedIdentity,
+                                            snapshot: verifiedPayload, fileManager: fm, cancellation: cancellation),
+                                          publicationHandle.map({ CopyEngine.matchesPublicationHandle(target, descriptor: $0) }) != false else {
+                                        throw MoveFailure(text: LString.crossVolumeDestinationChanged)
+                                    }
+                                    // SMB may give entries different identifiers after the staged tree is renamed.
+                                    try before.restoreAccessTimes(in: target,
+                                        verifiedCopy: publicationHandle == nil ? verifiedPayload : verifiedTarget,
+                                        cancellation: cancellation)
+                                    try cancellation.check()
+                                    guard try matchesMoveIdentity(target, expected: publishedIdentity, fileManager: fm),
+                                          publicationHandle.map({ CopyEngine.matchesPublicationHandle(target, descriptor: $0) }) != false else {
+                                        throw MoveFailure(text: LString.crossVolumeDestinationChanged)
+                                    }
+                                    guard try snapshotIdentity(source, fileManager: fm) == sourceIdentity else {
+                                        throw MoveFailure(text: LString.crossVolumeSourceChanged)
+                                    }
                                 } catch {
                                     let originalError = error
                                     if matchesTransfer(target, identity: publishedIdentity, snapshot: verifiedPayload, fileManager: fm),
@@ -1047,15 +1072,6 @@ public enum EntryOperations {
                                         try? fm.removeItem(at: target)
                                     }
                                     throw originalError
-                                }
-                                guard matchesTransfer(target, identity: publishedIdentity, snapshot: verifiedPayload, fileManager: fm),
-                                      publicationHandle.map({ CopyEngine.matchesPublicationHandle(target, descriptor: $0) }) != false else {
-                                    throw MoveFailure(text: LString.crossVolumeDestinationChanged)
-                                }
-                                try before.restoreAccessTimes(in: target, verifiedCopy: verifiedPayload, cancellation: cancellation)
-                                try cancellation.check()
-                                guard try snapshotIdentity(source, fileManager: fm) == sourceIdentity else {
-                                    throw MoveFailure(text: LString.crossVolumeSourceChanged)
                                 }
                                 // Directory removal can fail after deleting some children.
                                 // Keep the verified destination if source removal was attempted.

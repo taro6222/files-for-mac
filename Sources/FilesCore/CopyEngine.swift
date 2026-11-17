@@ -529,7 +529,7 @@ public enum CopyEngine {
         }
 
         fileprivate static func supportsAccessTimeRestoration(_ filesystem: String) -> Bool {
-            filesystem == "apfs" || filesystem == "exfat"
+            filesystem == "apfs" || filesystem == "exfat" || filesystem == "smbfs"
         }
 
         private func transferMismatch(_ source: Self) -> TransferMismatch? {
@@ -645,10 +645,17 @@ public enum CopyEngine {
             guard Self.supportsAccessTimeRestoration(filesystem) else { return }
             for (path, time) in accessTimes {
                 try cancellation.check()
-                // The macOS exFAT driver stores access times in even seconds.
-                let expected = filesystem == "exfat"
-                    ? timespec(tv_sec: time.tv_sec & ~1, tv_nsec: 0)
-                    : time
+                let expected: timespec
+                switch filesystem {
+                case "exfat":
+                    // The macOS exFAT driver stores access times in even seconds.
+                    expected = timespec(tv_sec: time.tv_sec & ~1, tv_nsec: 0)
+                case "smbfs":
+                    // SMB FILETIME stores access times in 100 ns ticks.
+                    expected = timespec(tv_sec: time.tv_sec, tv_nsec: time.tv_nsec / 100 * 100)
+                default:
+                    expected = time
+                }
                 let isDirectory = content[path] == "directory"
                 let descriptor = try openTransferEntry(parent: parent, name: payload.lastPathComponent,
                     path: path, isDirectory: isDirectory, mismatch: .accessTime)

@@ -605,7 +605,7 @@ func mountedSMBTransferTimestamps() async throws {
     let source = root.appendingPathComponent("times.txt")
     let creation = Date(timeIntervalSince1970: 1_600_000_000)
     let modification = Date(timeIntervalSince1970: 1_700_000_000)
-    var access = timespec(tv_sec: 1_650_000_000, tv_nsec: 123_456_700)
+    let access = timespec(tv_sec: 1_650_000_000, tv_nsec: 123_456_700)
     try payload.write(to: source)
     try fm.setAttributes([.creationDate: creation, .modificationDate: modification], ofItemAtPath: source.path)
     var timestamps = [access, timespec(tv_sec: 0, tv_nsec: Int(UTIME_OMIT))]
@@ -633,27 +633,36 @@ func mountedSMBTransferTimestamps() async throws {
     let copied = try sample(target, phase: "SMB published copy")
     #expect(copied.st_birthtimespec.tv_sec == original.st_birthtimespec.tv_sec)
     #expect(copied.st_birthtimespec.tv_nsec == original.st_birthtimespec.tv_nsec)
+    #expect(copied.st_atimespec.tv_sec == access.tv_sec)
+    #expect(copied.st_atimespec.tv_nsec == access.tv_nsec)
     #expect(copied.st_mtimespec.tv_sec == Int(modification.timeIntervalSince1970))
     #expect(try Data(contentsOf: target) == payload)
 
-    // Probe explicit timestamp setters on a separate file. The copy result above
-    // remains an observation of the normal product path.
-    let probe = destination.appendingPathComponent("setter-probe.txt")
-    try payload.write(to: probe)
-    let descriptor = open(probe.path, O_RDONLY | O_NOFOLLOW | O_CLOEXEC)
-    try #require(descriptor >= 0)
-    defer { close(descriptor) }
-    var attributes = attrlist()
-    attributes.bitmapcount = UInt16(ATTR_BIT_MAP_COUNT)
-    attributes.commonattr = attrgroup_t(ATTR_CMN_CRTIME)
-    var birth = original.st_birthtimespec
-    let birthStatus = fsetattrlist(descriptor, &attributes, &birth, MemoryLayout<timespec>.size, 0)
-    let birthError = birthStatus == 0 ? 0 : errno
-    attributes.commonattr = attrgroup_t(ATTR_CMN_ACCTIME)
-    let accessStatus = fsetattrlist(descriptor, &attributes, &access, MemoryLayout<timespec>.size, 0)
-    let accessError = accessStatus == 0 ? 0 : errno
-    print("SMB timestamp setters: birth errno=\(birthError) access errno=\(accessError)")
-    _ = try sample(probe, phase: "SMB after setters")
+    let moveDestination = destination.appendingPathComponent("move", isDirectory: true)
+    try fm.createDirectory(at: moveDestination, withIntermediateDirectories: false)
+    // Copying may advance the source's access time. Set a sub-tick
+    // value for the next operation and check the exact time rounded by SMB.
+    timestamps[0].tv_nsec += 42
+    try #require(utimensat(AT_FDCWD, source.path, &timestamps, AT_SYMLINK_NOFOLLOW) == 0)
+    let move = try await EntryOperations.move([source], to: moveDestination, journalDirectory: journal)
+    try #require(move.state == "completed",
+                 Comment(rawValue: move.items.first?.message ?? "SMB timestamp move failed"))
+    let moveTarget = moveDestination.appendingPathComponent(source.lastPathComponent)
+    let moved = try sample(moveTarget, phase: "SMB published move")
+    #expect(moved.st_birthtimespec.tv_sec == original.st_birthtimespec.tv_sec)
+    #expect(moved.st_atimespec.tv_sec == access.tv_sec)
+    #expect(moved.st_atimespec.tv_nsec == access.tv_nsec)
+    #expect(!fm.fileExists(atPath: source.path))
+    let undo = try #require(EntryOperations.latestUndoMove(journalDirectory: journal))
+    let restored = await EntryOperations.undoMove(undo, journalDirectory: journal)
+    try #require(restored.state == "completed",
+                 Comment(rawValue: restored.items.first?.message ?? "SMB timestamp move undo failed"))
+    let returned = try sample(source, phase: "APFS restored by Undo")
+    #expect(returned.st_birthtimespec.tv_sec == original.st_birthtimespec.tv_sec)
+    #expect(returned.st_atimespec.tv_sec == access.tv_sec)
+    #expect(returned.st_atimespec.tv_nsec == access.tv_nsec)
+    #expect(!fm.fileExists(atPath: moveTarget.path))
+    #expect(try Data(contentsOf: source) == payload)
 }
 
 @Test(.enabled(if: hasIntegrationFixture("FILES_TEST_SMB_RECONNECT_VOLUME"), "Requires a reconnected SMB integration fixture"))
