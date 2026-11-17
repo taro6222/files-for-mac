@@ -30,8 +30,10 @@ jobs:
         include:
           - runner: macos-15
             architecture: arm64
+            debug_build_minutes: 12
           - runner: macos-15-intel
             architecture: x86_64
+            debug_build_minutes: 20
     env:
       DEVELOPER_DIR: /Applications/Xcode_26.3.app/Contents/Developer
     steps:
@@ -51,7 +53,7 @@ jobs:
         run: python3 scripts/audit-parity.py
       - name: Build app and test targets
         if: github.event_name != 'workflow_dispatch' || !inputs.verify_upgrade || inputs.verify_full_appkit
-        timeout-minutes: 12
+        timeout-minutes: ${{ matrix.debug_build_minutes }}
         run: swift build --build-tests --disable-sandbox -Xswiftc -gnone
       - name: Run Swift tests
         if: github.event_name != 'workflow_dispatch' || !inputs.verify_upgrade
