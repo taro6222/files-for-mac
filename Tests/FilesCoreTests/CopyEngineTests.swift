@@ -87,6 +87,23 @@ import Testing
     }
 }
 
+@Test func smbTransferVerifiesCreationTimeWithoutRelaxingUndo() throws {
+    let timestamp = Date(timeIntervalSinceReferenceDate: 816_404_686)
+    let step = timestamp.timeIntervalSinceReferenceDate.ulp
+    var original = CopyEngine.VerificationSnapshot()
+    original.filesystemType = "smbfs"
+    original.metadata.creationDates = ["": timestamp]
+    var copy = original
+    copy.metadata.creationDates = ["": timestamp.addingTimeInterval(step)]
+    try copy.verifyTransferredContents(of: original)
+    #expect(!copy.metadata.matchesRecorded(original.metadata))
+
+    copy.metadata.creationDates = ["": timestamp.addingTimeInterval(step * 4)]
+    #expect(throws: CopyEngine.TransferMismatch.creationTime) {
+        try copy.verifyTransferredContents(of: original)
+    }
+}
+
 @Test func copyCreationTimeRestorationRejectsSymlinkedStagedParent() throws {
     let f = try CopyFixture(); defer { f.clean() }
     let fm = FileManager.default

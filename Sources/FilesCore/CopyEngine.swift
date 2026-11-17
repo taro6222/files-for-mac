@@ -519,6 +519,7 @@ public enum CopyEngine {
         private static func creationTimeResolution(for filesystem: String) -> TimeInterval? {
             switch filesystem {
             case "apfs": return 0.000001
+            case "smbfs": return 0.0000001
             // macOS exposes whole-second creation times through stat on exFAT.
             case "exfat": return 1
             case "hfs": return 1
@@ -546,7 +547,7 @@ public enum CopyEngine {
             if let resolution = Self.creationTimeResolution(for: filesystemType),
                let sourceResolution = Self.creationTimeResolution(for: source.filesystemType),
                !datesMatch(metadata.creationDates ?? [:], source.metadata.creationDates ?? [:],
-                           resolution: max(resolution, sourceResolution)) { return .creationTime }
+                           resolution: max(resolution, sourceResolution), usesSMB: usesSMB) { return .creationTime }
             return nil
         }
 
@@ -614,9 +615,12 @@ public enum CopyEngine {
                       info.st_mode & S_IFMT == (isDirectory ? S_IFDIR : S_IFREG) else {
                     throw TransferMismatch.creationTime
                 }
-                let seconds = date.timeIntervalSince1970
+                // Split off the fractional part before shifting the epoch to
+                // avoid losing SMB FILETIME precision in the larger epoch value.
+                let seconds = date.timeIntervalSinceReferenceDate
                 let whole = floor(seconds)
-                var birth = timespec(tv_sec: Int(whole), tv_nsec: Int((seconds - whole) * 1_000_000_000))
+                let epochSeconds = Int(whole) + Int(Date.timeIntervalBetween1970AndReferenceDate)
+                var birth = timespec(tv_sec: epochSeconds, tv_nsec: Int((seconds - whole) * 1_000_000_000))
                 if info.st_birthtimespec.tv_sec != birth.tv_sec || info.st_birthtimespec.tv_nsec != birth.tv_nsec {
                     var attributes = attrlist()
                     attributes.bitmapcount = UInt16(ATTR_BIT_MAP_COUNT)

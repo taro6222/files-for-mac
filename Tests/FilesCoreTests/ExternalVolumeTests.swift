@@ -631,6 +631,8 @@ func mountedSMBTransferTimestamps() async throws {
                  Comment(rawValue: report.items.first?.message ?? "SMB timestamp copy failed"))
     let target = destination.appendingPathComponent(source.lastPathComponent)
     let copied = try sample(target, phase: "SMB published copy")
+    #expect(copied.st_birthtimespec.tv_sec == original.st_birthtimespec.tv_sec)
+    #expect(copied.st_birthtimespec.tv_nsec == original.st_birthtimespec.tv_nsec)
     #expect(copied.st_mtimespec.tv_sec == Int(modification.timeIntervalSince1970))
     #expect(try Data(contentsOf: target) == payload)
 
