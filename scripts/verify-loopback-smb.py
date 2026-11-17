@@ -141,6 +141,8 @@ def verify(smbd, smbpasswd, root, smbcontrol=None):
         if smbcontrol is not None:
             verify_reconnect(smbcontrol, config, share, mount)
             environment["FILES_TEST_SMB_RECONNECT_VOLUME"] = str(mount)
+            environment["FILES_TEST_SMB_CONTROL"] = str(smbcontrol)
+            environment["FILES_TEST_SMB_CONFIG"] = str(config)
         subprocess.run(["bash", "scripts/verify-smb-volume.sh", mount, "--skip-build"],
                        env=environment, check=True, timeout=200)
     finally:

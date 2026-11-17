@@ -674,6 +674,97 @@ func mountedSMBReconnectSeesServerChanges() async throws {
     #expect(try Data(contentsOf: current.url) == Data("after Samba disconnect".utf8))
 }
 
+@Test(.enabled(if: hasIntegrationFixture("FILES_TEST_SMB_CONTROL"), "Requires a disposable loopback Samba server"))
+func mountedSMBReconnectDuringReplacementMove() async throws {
+    let environment = ProcessInfo.processInfo.environment
+    let control = try #require(environment["FILES_TEST_SMB_CONTROL"])
+    let config = try #require(environment["FILES_TEST_SMB_CONFIG"])
+    let volume = try smbFixture("FILES_TEST_SMB_RECONNECT_VOLUME")
+    let fm = FileManager.default
+    let local = fm.temporaryDirectory.appendingPathComponent("Files-SMB-session-\(UUID().uuidString)", isDirectory: true)
+    let remote = volume.appendingPathComponent(local.lastPathComponent, isDirectory: true)
+    defer { try? fm.removeItem(at: remote); try? fm.removeItem(at: local) }
+    try fm.createDirectory(at: local, withIntermediateDirectories: false)
+    try fm.createDirectory(at: remote, withIntermediateDirectories: false)
+    let journal = local.appendingPathComponent("journal", isDirectory: true)
+    let source = local.appendingPathComponent("replace.txt")
+    let target = remote.appendingPathComponent(source.lastPathComponent)
+    let oldBytes = Data("original SMB destination".utf8)
+    let newBytes = Data(repeating: 0xA5, count: 512 * 1024)
+    try newBytes.write(to: source)
+    try oldBytes.write(to: target)
+
+    @Sendable func command(_ executable: String, _ arguments: [String]) throws -> String {
+        let child = Process()
+        let output = Pipe()
+        child.executableURL = URL(fileURLWithPath: executable)
+        child.arguments = arguments
+        child.standardOutput = output
+        try child.run()
+        let data = output.fileHandleForReading.readDataToEndOfFile()
+        child.waitUntilExit()
+        try #require(child.terminationStatus == 0, "SMB fixture command failed: \(executable)")
+        return String(decoding: data, as: UTF8.self)
+    }
+    @Sendable func reconnectCount() throws -> Int {
+        let output = try command("/usr/bin/smbutil", ["statshares", "-m", volume.path])
+        let count = output.split(separator: "\n").lazy.map { $0.split(whereSeparator: \.isWhitespace) }
+            .first { $0.first == "SESSION_RECONNECT_COUNT" && $0.count == 2 }?.last.flatMap { Int($0) }
+        return try #require(count, "SMB session reconnect counter is unavailable")
+    }
+
+    let before = try reconnectCount()
+    let device = try #require(try fm.attributesOfItem(atPath: volume.path)[.systemNumber] as? NSNumber)
+    let cancellation = CopyCancellation()
+    let move = try await EntryOperations.move([source], to: remote, conflictPolicy: .replace,
+        journalDirectory: journal, cancellation: cancellation) { progress in
+            guard progress.phase == "removingSource" else { return }
+            do {
+                // At this point the new file is published and the source still exists.
+                var sourceInfo = stat()
+                try #require(lstat(source.path, &sourceInfo) == 0)
+                try #require(try Data(contentsOf: target) == newBytes)
+                print("SMB fault: cutting session before source removal")
+                _ = try command("/usr/bin/sudo", ["-n", control, "--configfile", config,
+                                                 "smbd", "kill-client-ip", "127.0.0.1"])
+                let deadline = ContinuousClock.now + .seconds(15)
+                var reconnected = false
+                repeat {
+                    // Force a request on the existing mount while the move is suspended.
+                    if (try? Data(contentsOf: target)) == newBytes, (try? reconnectCount()).map({ $0 > before }) == true {
+                        reconnected = true
+                        break
+                    }
+                    Thread.sleep(forTimeInterval: 0.2)
+                } while ContinuousClock.now < deadline
+                try #require(reconnected, "The interrupted transfer did not reconnect at the commit boundary")
+            } catch {
+                Issue.record(Comment(rawValue: "Could not inject SMB disconnect: \(error)"))
+                cancellation.cancel()
+            }
+        }
+
+    let after = try reconnectCount()
+    print("SMB fault: reconnect count \(before) -> \(after), move state \(move.state)")
+    try #require(after > before, "The active transfer did not cross an SMB reconnect")
+    #expect(try fm.attributesOfItem(atPath: volume.path)[.systemNumber] as? NSNumber == device)
+    let item = try #require(move.items.first)
+    if item.state == "completed" {
+        #expect(!fm.fileExists(atPath: source.path))
+        #expect(try Data(contentsOf: target) == newBytes)
+        let undo = try #require(EntryOperations.latestUndoMove(journalDirectory: journal))
+        let restored = await EntryOperations.undoMove(undo, journalDirectory: journal)
+        try #require(restored.state == "completed", Comment(rawValue: restored.items.first?.message ?? "SMB undo failed"))
+        #expect(try Data(contentsOf: target) == oldBytes)
+    } else {
+        let originalDestination = item.recoveryBackup ?? target
+        #expect(try Data(contentsOf: originalDestination) == oldBytes)
+        #expect(item.message?.isEmpty == false)
+        #expect(EntryOperations.latestUndoMove(journalDirectory: journal) == nil)
+    }
+    #expect(try Data(contentsOf: source) == newBytes)
+}
+
 private func smbCopyDiagnostic(source: URL, destination: URL) -> String {
     let fm = FileManager.default
     let workspace = destination.appendingPathComponent(".files-smb-diagnostic-\(UUID().uuidString)", isDirectory: true)
