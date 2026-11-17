@@ -1,13 +1,22 @@
 import AppKit
+#if canImport(FilesCore)
+import FilesCore
+#endif
 
 @MainActor
 final class ReleaseInfoWindow: NSWindowController {
-    enum Page { case about, releaseNotes }
+    enum Page { case about, releaseNotes, updates(version: String?) }
 
     private let heading = NSTextField(labelWithString: "")
     private let body = NSTextView()
+    private let releaseButton = NSButton(title: L("GitHub 릴리스 열기", "Open GitHub Release"),
+                                         target: nil, action: nil)
+    private let checkUpdate: @Sendable (String, Bool) async throws -> ReleaseUpdate
+    private var updateTask: Task<Void, Never>?
+    private var updatePage: URL?
 
-    init() {
+    init(checkUpdate: @escaping @Sendable (String, Bool) async throws -> ReleaseUpdate = ReleaseUpdates.check(currentVersion:isPreview:)) {
+        self.checkUpdate = checkUpdate
         let panel = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 560, height: 480),
                             styleMask: [.titled, .closable, .resizable, .utilityWindow],
                             backing: .buffered, defer: false)
@@ -27,18 +36,27 @@ final class ReleaseInfoWindow: NSWindowController {
         body.font = .systemFont(ofSize: 13); body.textContainerInset = NSSize(width: 4, height: 6)
         let scroll = NSScrollView(); scroll.documentView = body; scroll.hasVerticalScroller = true
         scroll.borderType = .bezelBorder; stack.addArrangedSubview(scroll)
+        releaseButton.target = self
+        releaseButton.action = #selector(openUpdatePage)
+        releaseButton.isHidden = true
+        stack.addArrangedSubview(releaseButton)
         content.addSubview(stack)
         NSLayoutConstraint.activate([
             stack.leadingAnchor.constraint(equalTo: content.leadingAnchor), stack.trailingAnchor.constraint(equalTo: content.trailingAnchor),
             stack.topAnchor.constraint(equalTo: content.topAnchor), stack.bottomAnchor.constraint(equalTo: content.bottomAnchor),
-            scroll.widthAnchor.constraint(equalTo: stack.widthAnchor, constant: -40), scroll.heightAnchor.constraint(greaterThanOrEqualToConstant: 280)
+            scroll.widthAnchor.constraint(equalTo: stack.widthAnchor, constant: -40), scroll.heightAnchor.constraint(greaterThanOrEqualToConstant: 240)
         ])
     }
 
     func present(_ page: Page) {
+        updateTask?.cancel()
+        updateTask = nil
+        updatePage = nil
+        releaseButton.isHidden = true
         let info = Bundle.main.infoDictionary
         let version = info?["CFBundleShortVersionString"] as? String ?? L("개발 빌드", "Development Build")
         let build = info?["CFBundleVersion"] as? String ?? "SwiftPM"
+        let isPreview = info?["FilesReleaseChannel"] as? String != "stable"
         switch page {
         case .about:
             window?.title = L("Files macOS 정보", "About Files macOS")
@@ -70,6 +88,12 @@ final class ReleaseInfoWindow: NSWindowController {
             """)
         case .releaseNotes:
             window?.title = L("릴리스 노트", "Release Notes")
+            if !isPreview {
+                heading.stringValue = L("Files macOS 릴리스 노트", "Files macOS Release Notes")
+                body.string = L("정식 버전 \(version) (\(build))\n\n설치 이미지의 Release Notes.txt에서 기능, 지원 범위와 복구 절차를 확인할 수 있습니다.",
+                                "Stable version \(version) (\(build))\n\nSee Release Notes.txt in the disk image for features, supported environments, and recovery steps.")
+                break
+            }
             heading.stringValue = L("개발 프리뷰 릴리스 노트", "Development Preview Release Notes")
             body.string = L("""
             현재 채널: 개발 프리뷰
@@ -106,11 +130,53 @@ final class ReleaseInfoWindow: NSWindowController {
             Recovery
             Check the operation result window and journal first. Never delete a source whose destination has not been verified.
             """)
+        case .updates(let version):
+            window?.title = L("업데이트 확인", "Check for Updates")
+            heading.stringValue = L("업데이트 확인", "Check for Updates")
+            if let version {
+                startUpdateCheck(version, isPreview: isPreview)
+            } else {
+                body.string = L("업데이트를 확인하려면 설치된 앱을 실행하세요.",
+                                "Run the installed app to check for updates.")
+            }
         }
         body.scrollToBeginningOfDocument(nil); window?.center(); showWindow(nil); window?.makeKeyAndOrderFront(nil)
+    }
+
+    private func startUpdateCheck(_ version: String, isPreview: Bool) {
+        body.string = L("GitHub에서 정식 배포 버전을 확인하고 있습니다…", "Checking GitHub for a stable release…")
+        updateTask = Task { [weak self, checkUpdate] in
+            do {
+                let result = try await checkUpdate(version, isPreview)
+                guard !Task.isCancelled, let self else { return }
+                switch result {
+                case .unavailable:
+                    self.body.string = L("다운로드할 수 있는 정식 배포 버전이 없습니다.",
+                                         "No stable release is available for download.")
+                case .upToDate:
+                    self.body.string = L("현재 버전 \(version)보다 새로운 정식 배포 버전이 없습니다.",
+                                         "There is no stable release newer than your version \(version).")
+                case .available(let latest, let page):
+                    self.updatePage = page
+                    self.releaseButton.isHidden = false
+                    self.body.string = L("현재 버전 \(version)\n정식 배포 버전 \(latest)\n\nGitHub 릴리스에서 설치 이미지와 체크섬을 다운로드할 수 있습니다.",
+                                         "Installed version \(version)\nAvailable stable release \(latest)\n\nDownload the disk image and its checksum from the GitHub release.")
+                }
+                self.body.scrollToBeginningOfDocument(nil)
+            } catch {
+                guard !Task.isCancelled else { return }
+                self?.body.string = L("업데이트를 확인할 수 없습니다. 연결을 확인한 뒤 다시 시도하세요.",
+                                     "Could not check for updates. Check the connection and try again.")
+            }
+        }
+    }
+
+    @objc private func openUpdatePage() {
+        if let updatePage { NSWorkspace.shared.open(updatePage) }
     }
 #if DEBUG
     var qaVisible: Bool { window?.isVisible == true }
     var qaText: String { body.string }
+    var qaUpdateActionVisible: Bool { !releaseButton.isHidden }
 #endif
 }

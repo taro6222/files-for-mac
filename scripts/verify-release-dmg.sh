@@ -67,6 +67,10 @@ trap cleanup EXIT
 mounted=true
 app="$mount_dir/Files macOS.app"
 bash "$script_dir/verify-dmg-contents.sh" "$mount_dir"
+if [[ "$(/usr/libexec/PlistBuddy -c 'Print :FilesReleaseChannel' "$app/Contents/Info.plist")" != stable ]]; then
+  echo "The release app must declare the stable update channel." >&2
+  exit 65
+fi
 if [[ -z "$release_team" ]]; then
   signature=$(/usr/bin/codesign --display --verbose=4 "$app" 2>&1)
   team=$(awk -F= '/^TeamIdentifier=/ { print $2 }' <<< "$signature")

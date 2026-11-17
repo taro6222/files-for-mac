@@ -175,6 +175,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         if releaseInfoWindow == nil { releaseInfoWindow = ReleaseInfoWindow() }
         releaseInfoWindow?.present(.releaseNotes)
     }
+    @objc func checkForUpdates(_ sender: Any?) {
+        if releaseInfoWindow == nil { releaseInfoWindow = ReleaseInfoWindow() }
+        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String
+        releaseInfoWindow?.present(.updates(version: version))
+    }
     @objc func showDeveloperSettings(_ sender: Any?) {
         if developerSettingsWindow == nil { developerSettingsWindow = DeveloperSettingsWindow(preferences: .shared) }
         developerSettingsWindow?.present()
@@ -318,6 +323,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         let appItem = NSMenuItem(); appItem.title = "Files macOS"; menu.addItem(appItem)
         let appMenu = NSMenu(); appItem.submenu = appMenu
         let about = appMenu.addItem(withTitle: L("Files macOS 정보", "About Files macOS"), action: #selector(showAbout(_:)), keyEquivalent: ""); about.target = self
+        let updates = appMenu.addItem(withTitle: L("업데이트 확인…", "Check for Updates…"), action: #selector(checkForUpdates(_:)), keyEquivalent: ""); updates.target = self
         let releaseNotes = appMenu.addItem(withTitle: L("릴리스 노트…", "Release Notes…"), action: #selector(showReleaseNotes(_:)), keyEquivalent: ""); releaseNotes.target = self
         appMenu.addItem(.separator())
         let shortcuts = appMenu.addItem(withTitle: L("키보드 단축키…", "Keyboard Shortcuts…"), action: #selector(showShortcutSettings(_:)), keyEquivalent: ",")

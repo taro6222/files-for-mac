@@ -35,6 +35,7 @@ ln -s /Applications "$stage/contents/Applications"
 cp LICENSE "$stage/contents/LICENSE.txt"
 cp docs/RELEASE_NOTES.md "$stage/contents/Release Notes.txt"
 if [[ "$mode" == --release ]]; then
+  /usr/libexec/PlistBuddy -c 'Set :FilesReleaseChannel stable' "$app/Contents/Info.plist"
   codesign --force --options runtime --timestamp --sign "$FILES_SIGNING_IDENTITY" "$app"
 fi
 scripts/verify-dmg-contents.sh "$stage/contents"

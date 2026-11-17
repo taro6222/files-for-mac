@@ -4322,7 +4322,8 @@ extension BrowserWindow {
                 #selector(AppDelegate.closeSelectedTab(_:)), #selector(AppDelegate.closeAllTabs(_:)),
                 #selector(AppDelegate.closeOtherTabs(_:)), #selector(AppDelegate.closeTabsToLeft(_:)),
                 #selector(AppDelegate.closeTabsToRight(_:))].allSatisfy { action in paletteEntries.contains { $0.item.action == action } }
-            checks["diagnosticAndHelpCommands"] = [#selector(AppDelegate.openHelp(_:)), #selector(AppDelegate.openLogFile(_:)),
+            checks["diagnosticAndHelpCommands"] = [#selector(AppDelegate.checkForUpdates(_:)),
+                #selector(AppDelegate.openHelp(_:)), #selector(AppDelegate.openLogFile(_:)),
                 #selector(AppDelegate.openLogFileLocation(_:)), #selector(AppDelegate.openSettingsFile(_:)),
                 #selector(AppDelegate.openRepositoryInIDE(_:)), #selector(editInTextEdit(_:))].allSatisfy { action in paletteEntries.contains { $0.item.action == action } }
             checks["archivePlacementCommands"] = [#selector(extractArchivesHere(_:)), #selector(extractArchivesSmart(_:)), #selector(extractArchivesToChildFolders(_:))].allSatisfy { action in
@@ -4350,6 +4351,20 @@ extension BrowserWindow {
                 delegate.showReleaseNotes(nil); try await Task.sleep(for: .milliseconds(50))
                 checks["releaseNotesWindow"] = delegate.qaReleaseInfoVisible && delegate.qaReleaseInfoText.contains(L("개발 프리뷰", "Development Preview"))
                 try capture("release-notes", view: delegate.qaReleaseInfoContentView); delegate.qaReleaseInfoContentView?.window?.close(); window.makeKeyAndOrderFront(nil)
+                let updates = ReleaseInfoWindow { _, _ in
+                    .available(version: "0.2.0", page: URL(string: "https://github.com/taro6222/files-for-mac/releases/tag/v0.2.0")!)
+                }
+                updates.present(.updates(version: "0.1.0"))
+                let updateStart = ContinuousClock.now
+                while !updates.qaUpdateActionVisible && elapsed(updateStart) < 3 {
+                    try await Task.sleep(for: .milliseconds(10))
+                }
+                checks["stableUpdateWindow"] = updates.qaVisible && updates.qaUpdateActionVisible
+                    && updates.qaText.contains("0.1.0") && updates.qaText.contains("0.2.0")
+                try capture("update-available", view: updates.window?.contentView)
+                updates.present(.about)
+                checks["updateActionHiddenOutsideUpdatePage"] = !updates.qaUpdateActionVisible
+                updates.close(); window.makeKeyAndOrderFront(nil)
                 delegate.showShortcutSettings(nil); try await Task.sleep(for: .milliseconds(50))
                 checks["shortcutSettingsCommands"] = delegate.qaShortcutRowCount >= 15
                 checks["shortcutSettingsWindow"] = delegate.qaShortcutWindowVisible
