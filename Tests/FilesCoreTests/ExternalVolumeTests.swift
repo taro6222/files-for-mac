@@ -884,6 +884,73 @@ func mountedSMBReconnectDuringPayloadWrite() async throws {
     #expect(try fm.contentsOfDirectory(atPath: destination.path).isEmpty)
 }
 
+@Test(.enabled(if: hasIntegrationFixture("FILES_TEST_SMB_SERVER_SHARE"), "Requires access to the loopback Samba backing directory"))
+func mountedSMBServerRevokesStagingWritePermission() async throws {
+    let environment = ProcessInfo.processInfo.environment
+    let share = URL(fileURLWithPath: try #require(environment["FILES_TEST_SMB_SERVER_SHARE"]), isDirectory: true)
+    let volume = try smbFixture("FILES_TEST_SMB_VOLUME")
+    let fm = FileManager.default
+    let local = fm.temporaryDirectory.appendingPathComponent("Files-SMB-permissions-\(UUID().uuidString)", isDirectory: true)
+    let destination = volume.appendingPathComponent(local.lastPathComponent, isDirectory: true)
+    let serverDirectory = share.appendingPathComponent(local.lastPathComponent, isDirectory: true)
+    let source = local.appendingPathComponent("replace.txt")
+    let target = destination.appendingPathComponent(source.lastPathComponent)
+    let journal = local.appendingPathComponent("journal", isDirectory: true)
+    let injected = local.appendingPathComponent("permission-revoked")
+    defer {
+        // Restore only this test's staging directories if a failed operation retained one.
+        if let entries = try? fm.contentsOfDirectory(at: serverDirectory, includingPropertiesForKeys: nil) {
+            for entry in entries where entry.lastPathComponent.hasPrefix(".files-move-")
+                && !entry.lastPathComponent.hasPrefix(".files-move-backup-") {
+                try? fm.setAttributes([.posixPermissions: 0o700], ofItemAtPath: entry.path)
+            }
+        }
+        try? fm.removeItem(at: destination)
+        try? fm.removeItem(at: local)
+    }
+    try fm.createDirectory(at: local, withIntermediateDirectories: false)
+    try fm.createDirectory(at: destination, withIntermediateDirectories: false)
+    let newBytes = Data(repeating: 0x3A, count: 1024 * 1024)
+    let oldBytes = Data("Existing destination before server permission change".utf8)
+    try newBytes.write(to: source)
+    try oldBytes.write(to: target)
+    let original = try CopyEngine.makeSnapshot(source, cancellation: CopyCancellation())
+    let cancellation = CopyCancellation()
+    let move = try await EntryOperations.move([source], to: destination, conflictPolicy: .replace,
+        journalDirectory: journal, cancellation: cancellation) { progress in
+            guard progress.phase == "copying" else { return }
+            do {
+                let serverFiles = FileManager()
+                let entries = try serverFiles.contentsOfDirectory(at: serverDirectory, includingPropertiesForKeys: nil)
+                let stage = try #require(entries.first {
+                    $0.lastPathComponent.hasPrefix(".files-move-")
+                        && !$0.lastPathComponent.hasPrefix(".files-move-backup-")
+                })
+                try serverFiles.setAttributes([.posixPermissions: 0o500], ofItemAtPath: stage.path)
+                let mode = try serverFiles.attributesOfItem(atPath: stage.path)[.posixPermissions] as? NSNumber
+                try #require(mode?.intValue == 0o500)
+                try Data("revoked".utf8).write(to: injected)
+                print("SMB fault: server revoked staging write permission before payload creation")
+            } catch {
+                Issue.record(Comment(rawValue: "Could not change the Samba staging permission: \(error)"))
+                cancellation.cancel()
+            }
+        }
+    try #require(fm.fileExists(atPath: injected.path))
+    let item = try #require(move.items.first)
+    print("SMB fault: server permission change, move state \(move.state), item state \(item.state)")
+    #expect(move.state == "partial")
+    #expect(item.state == "failed")
+    #expect(item.message?.isEmpty == false)
+    #expect(item.recoveryBackup == nil)
+    #expect(try Data(contentsOf: source) == newBytes)
+    #expect(try Data(contentsOf: target) == oldBytes)
+    let retainedSource = try CopyEngine.makeSnapshot(source, cancellation: CopyCancellation())
+    #expect(retainedSource.content == original.content)
+    #expect(EntryOperations.latestUndoMove(journalDirectory: journal) == nil)
+    #expect(try fm.contentsOfDirectory(atPath: destination.path) == [target.lastPathComponent])
+}
+
 private func disconnectSMBFixture(control: String, config: String) throws {
     _ = try smbFixtureCommand("/usr/bin/sudo", ["-n", control, "--configfile", config,
                                                "smbd", "kill-client-ip", "127.0.0.1"])
