@@ -9,6 +9,7 @@ import FilesCore
 final class FilePromiseReceiveWindow: NSWindowController, NSWindowDelegate {
     typealias Prepare = ([URL], [PromisedFileIntake], @escaping (Bool) -> Void) -> Void
     private static var operations: [FilePromiseReceiveWindow] = []
+    static var isRunning: Bool { operations.contains { !$0.paused && !$0.finished } }
     static var activities: [FileOperationActivity] { operations.filter { !$0.closed }.map(\.activity) }
     private let operationID = UUID()
     private let destination: URL
@@ -66,10 +67,13 @@ final class FilePromiseReceiveWindow: NSWindowController, NSWindowDelegate {
         update()
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
-    private func begin() {
-        let storage = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+    static var storageDirectory: URL {
+        FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
             .appendingPathComponent(Bundle.main.bundleIdentifier ?? "org.taro6222.files-for-mac")
             .appendingPathComponent("received-files", isDirectory: true)
+    }
+    private func begin() {
+        let storage = Self.storageDirectory
         let count = receivers.count
         Task { [self] in
             do {

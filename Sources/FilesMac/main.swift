@@ -127,6 +127,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     }
     @objc func newWindow(_ sender: Any?) { makeBrowser() }
     @objc func showFileOperations(_ sender: Any?) { FileOperationCenter.present() }
+    @objc func showReceivedFiles(_ sender: Any?) {
+        ReceivedFilesWindow.present { [weak self] sources, intakes, destination, decision in
+            guard let self else { decision(false); return }
+            let browser = self.currentBrowser ?? self.makeBrowser(location: destination)
+            browser.prepareRecoveredFiles(sources: sources, intakes: intakes, destination: destination, decision: decision)
+        }
+    }
     @objc func newTab(_ sender: Any?) {
         let controller = makeBrowser(tabbedTo: currentBrowser)
         if BrowserPreferences.shared.alwaysOpenDualPaneInNewTab { controller.toggleDualPane(nil) }
@@ -317,7 +324,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         try? workspaceStore.save(windows.map { $0.workspaceSnapshot() })
     }
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
-        guard CopyWindow.isRunning || DeletionWindow.isRunning || RestoreWindow.isRunning || MoveWindow.isRunning ||
+        guard CopyWindow.isRunning || FolderMergeWindow.isRunning || FilePromiseReceiveWindow.isRunning || DeletionWindow.isRunning || RestoreWindow.isRunning || MoveWindow.isRunning ||
               PermanentDeleteWindow.isRunning || BatchRenameWindow.isRunning || GitCloneWindow.isRunning ||
               gitCommandTask != nil || BrowserWindow.entryOperationRunning else { return .terminateNow }
         let alert = NSAlert()
@@ -433,6 +440,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         file.addItem(withTitle: L("Finder에서 휴지통 열기", "Open Trash in Finder"), action: #selector(BrowserWindow.openFinderTrash(_:)), keyEquivalent: "")
         file.addItem(withTitle: L("영구 삭제…", "Delete Permanently…"), action: #selector(BrowserWindow.permanentlyDeleteSelection(_:)), keyEquivalent: "")
         file.addItem(withTitle: L("파일 작업…", "File Operations…"), action: #selector(showFileOperations(_:)), keyEquivalent: "").target = self
+        file.addItem(withTitle: L("보관된 수신 파일…", "Retained Received Files…"), action: #selector(showReceivedFiles(_:)), keyEquivalent: "").target = self
         file.addItem(withTitle: L("창 닫기", "Close Window"), action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w")
         let editItem = NSMenuItem(); editItem.title = L("편집", "Edit"); menu.addItem(editItem)
         let edit = NSMenu(title: editItem.title); editItem.submenu = edit

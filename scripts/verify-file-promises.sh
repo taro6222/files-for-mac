@@ -36,6 +36,7 @@ if mode == "contract":
         "delegatePreservesSymbolicLink", "unknownIdentityKeepsOnlyFileURL",
         "receivePolicyCancellationRetainsRetry", "receiveHandoffIncludesAllIntakes", "receiveAcceptedBatchMarkedOnce",
         "receiveDoesNotResubmitAcceptedBatch", "receivePauseRetainsVerifiedFiles", "receiveTypesIncludeURLAndPromises",
+        "recoveryListsPersistedJobs", "recoveryEnablesVerifiedCopyRequest", "recoveryDamagedReceiptAllowsRevealOnly", "recoveryMixedSelectionProtectsDamagedData",
     }
     checks = result["checks"]
     if status or result.get("mode") != "delegate-contract" or not expected.issubset(checks) or not all(value is True for value in checks.values()):

@@ -220,3 +220,53 @@ private struct PromiseIntakeFixture {
     #expect(report.items.first?.state == "failed")
     #expect(try FileManager.default.contentsOfDirectory(atPath: destination.path).isEmpty)
 }
+
+@Test func promisedRecoveryOfMissingStorageDoesNotCreateDirectories() throws {
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent("missing-promise-\(UUID())")
+    #expect(try PromisedFileRecovery.discover(in: root).isEmpty)
+    #expect(!FileManager.default.fileExists(atPath: root.path))
+}
+
+@Test func promisedRecoveryListsHealthyAndDamagedJobsWithoutAdoptingOtherEntries() throws {
+    let f = try PromiseIntakeFixture(); defer { f.clean() }
+    let file = f.intake.receivingDirectory.appendingPathComponent("retained.txt")
+    try Data("retained".utf8).write(to: file)
+    try f.intake.registerReceivedFile(file)
+    let damaged = f.root.appendingPathComponent("promise-damaged")
+    let unrelated = f.root.appendingPathComponent("unrelated")
+    for directory in [damaged, unrelated] { try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true) }
+    try Data("manual recovery".utf8).write(to: damaged.appendingPathComponent("manual.txt"))
+    try FileManager.default.createSymbolicLink(at: f.root.appendingPathComponent("promise-alias"), withDestinationURL: f.intake.directoryURL)
+    let records = try PromisedFileRecovery.discover(in: f.root)
+    #expect(records.count == 2)
+    let healthy = try #require(records.first { $0.intake != nil })
+    #expect(healthy.names == ["retained.txt"])
+    #expect(try healthy.intake?.verifiedSources() == [file])
+    let failed = try #require(records.first { $0.intake == nil })
+    #expect(failed.directoryURL.lastPathComponent == "promise-damaged")
+    let damagedIdentity = try #require(LocalEntryIdentity.read(damaged))
+    #expect(LocalEntryIdentity.read(failed.directoryURL) == damagedIdentity)
+    #expect(failed.problem != nil)
+    #expect(try Data(contentsOf: damaged.appendingPathComponent("manual.txt")) == Data("manual recovery".utf8))
+    #expect(FileManager.default.fileExists(atPath: unrelated.path))
+}
+
+@Test func promisedRecoverySeparatesListingFromPayloadRevalidation() throws {
+    let f = try PromiseIntakeFixture(); defer { f.clean() }
+    let file = f.intake.receivingDirectory.appendingPathComponent("received.txt")
+    try Data("initial".utf8).write(to: file)
+    try f.intake.registerReceivedFile(file)
+    try Data("modified".utf8).write(to: file)
+    let recovered = try #require(PromisedFileRecovery.discover(in: f.root).first?.intake)
+    #expect(recovered.receivedNames == ["received.txt"])
+    #expect(throws: PromisedFileIntakeError.changedItem) { try recovered.verifiedSources() }
+    #expect(try Data(contentsOf: file) == Data("modified".utf8))
+}
+
+@Test func promisedRecoveryRefusesSymbolicLinkStorageRoot() throws {
+    let f = try PromiseIntakeFixture(); defer { f.clean() }
+    let link = f.root.appendingPathComponent("storage-link")
+    try FileManager.default.createSymbolicLink(at: link, withDestinationURL: f.root)
+    #expect(throws: PromisedFileIntakeError.invalidLocation) { try PromisedFileRecovery.discover(in: link) }
+    #expect(try FileManager.default.destinationOfSymbolicLink(atPath: link.path) == f.root.path)
+}

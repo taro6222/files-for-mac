@@ -151,6 +151,11 @@ enum FilePromiseVerification {
                     return intake
                 }.value
                 checks.merge(await FilePromiseReceiveWindow.verifyHandoff(intakes: [intake], destination: target)) { _, new in new }
+                let recoveryStorage = intake.directoryURL.deletingLastPathComponent()
+                try await Task.detached {
+                    try FileManager.default.createDirectory(at: recoveryStorage.appendingPathComponent("promise-damaged"), withIntermediateDirectories: false)
+                }.value
+                checks.merge(await ReceivedFilesWindow.verifyRecovery(storage: recoveryStorage, destination: target)) { _, new in new }
                 diagnostics["collisionError"] = collision.0 ?? ""
                 diagnostics["staleSourceError"] = stale.0 ?? ""
             }

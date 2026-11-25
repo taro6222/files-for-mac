@@ -14,13 +14,15 @@ M7 출시 검증이 진행 중이다. [유니버설 개발 프리뷰](verificati
 |---|---|---|
 | 설치·업데이트 | 유니버설 프리뷰의 Sonoma 14.8.7 설치·교체·복원, 두 언어의 실제 업데이트 메뉴 조회 | 서명·공증된 정식 배포본의 다운로드·최초 실행·버전 교체 |
 | SMB | 파일 시각, 이동·실행 취소, 게시 후 세션 재연결과 기록 중 단절 시 원본 보호 | 서버 권한 회수 시험, 장기 단절 및 외부 서버 검증 |
-| 전체 AppKit | `390cdb9`의 Apple Silicon 네 조합 각각 283개 통과. Intel은 이전 `3a65d40` 네 조합 각각 283개 통과 | 같은 소스의 Intel 재실행 결과와 새 수신 UI의 전체 회귀 |
+| 전체 AppKit | `390cdb9`의 Apple Silicon 네 조합 각각 283개 통과. Intel은 이전 `3a65d40` 네 조합 각각 283개 통과 | `390cdb9` Intel 재실행의 네 조합 180초 시간 초과 조사와 새 수신 UI의 전체 회귀 |
 | Xcode 진입점 | `466f5bd`의 Apple Silicon·Intel 실제 Xcode 빌드와 preview 채널 확인 | 후속 소스의 Xcode 재검증 |
 | 장시간 | 현재 커밋의 최적화 QA 앱으로 8시간 시험 시작, 해시·프로세스·초기 사이클 확인 | 정상 종료와 최종 보고서·메모리 추세·누수 판정 |
 
 실행별 증거와 정확한 제한은 [설치 프리뷰](verification/m7/INCREMENT_280.md), [SMB 기록 중 단절](verification/m7/INCREMENT_277.md), [서버 권한 회수](verification/m7/INCREMENT_285.md), [Intel UI 진단](verification/m7/INCREMENT_282.md), [Xcode 연결](verification/m7/INCREMENT_284.md), [8시간 시험](verification/m7/INCREMENT_283.md)에 기록했다.
 
 ## 이번 구현 단위
+
+[재시작 후 수신 파일 복구 화면](verification/m7/INCREMENT_296.md): 보관 작업 목록과 재검증을 거친 복사 재개를 추가했다. 손상 기록은 보존하고 자동 복사를 막는다. 관련 55개 시험과 네이티브 계약 28개 통과. 실제 메뉴·폴더 선택·재기동·접근성 수용과 보관소 정리는 진행 중이다.
 
 [파일 약속 수신 UI 연결](verification/m7/INCREMENT_295.md): 모든 파일 보기에 외부 수신, 독립 보관소, 충돌 정책·복사·단일 Undo를 연결했다. 51개 관련 시험과 AppKit 계약 24개 통과. 실제 SDK 드래그 수용·재시작 복구 화면·보관소 정리는 진행 중이다. 인증서와 공증 프로필은 사용자 준비 중이다.
 

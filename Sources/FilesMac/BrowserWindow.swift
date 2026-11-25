@@ -2752,6 +2752,10 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
             }
         }
     }
+    func prepareRecoveredFiles(sources: [URL], intakes: [PromisedFileIntake], destination: URL, decision: @escaping (Bool) -> Void) {
+        guard window?.isVisible == true, let identity = ShelfEntry(destination.resolvingSymlinksInPath()) else { decision(false); return }
+        prepareCopy(sources: sources, destination: destination, validateSources: { identity.isCurrent }, sourceIntakes: intakes, onDecision: decision)
+    }
     private func receivePromises(_ receivers: [NSFilePromiseReceiver], destination: URL) -> Bool {
         guard let identity = ShelfEntry(destination.resolvingSymlinksInPath()) else { return false }
         return FilePromiseReceiveWindow.start(receivers: receivers, destination: destination) { [weak self] sources, intakes, decision in
