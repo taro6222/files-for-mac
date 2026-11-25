@@ -39,6 +39,8 @@ tests = [
     "gitConcurrentSnapshotsCompleteWithoutBlockingSwiftTasks",
     "gitWaitingForProcessAllowsOtherSwiftTasksToResume",
     "gitCancellationTerminatesProcessAndCleansCloneStaging",
+    "directoryWaitingForFileSystemAllowsOtherSwiftTasksToResume",
+    "directoryCancellationWhileFileSystemIsBlockedStopsBeforeFirstBatch",
 ]
 arguments = [str(helper), "--test-bundle-path", str(test_binary), "--filter", "|".join(tests),
              "--testing-library", "swift-testing"]

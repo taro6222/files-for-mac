@@ -235,12 +235,14 @@ private func entryFixture() throws -> URL {
     let trashed = trash.items.compactMap { $0.trashed }
     #expect(trashed.count == 1)
     #expect(!FileManager.default.fileExists(atPath: source.path))
-    let result = try await EntryOperations.restoreFromTrash([trashed[0]], to: restored, journalDirectory: journal)
+    let trashedItem = try #require(trashed.first, "The system Trash service must return the moved fixture before restoration.")
+    let result = try await EntryOperations.restoreFromTrash([trashedItem], to: restored, journalDirectory: journal)
     #expect(result.state == "completed")
     #expect(result.items.count == 1)
-    #expect(result.items[0].state == "completed")
-    #expect(result.items[0].target.deletingLastPathComponent().path == restored.path)
-    #expect(FileManager.default.fileExists(atPath: result.items[0].target.path))
+    let restoredItem = try #require(result.items.first)
+    #expect(restoredItem.state == "completed")
+    #expect(restoredItem.target.deletingLastPathComponent().path == restored.path)
+    #expect(FileManager.default.fileExists(atPath: restoredItem.target.path))
 }
 
 @Test func entryRestoreFailsOutsideTrash() async throws {

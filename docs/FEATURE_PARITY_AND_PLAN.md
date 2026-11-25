@@ -1,6 +1,6 @@
 # 기능 대응 및 개발 계획
 
-작성일 2026-09-09. 2026-11-25 현재 M7 출시 검증을 진행한다. 원본 대응 및 단계별 미검증 항목은 [개발 현황](DEVELOPMENT_STATUS.md)과 [출시 검증 현황](verification/m7/RELEASE_GATES.md)에서 추적한다.
+작성일 2026-09-09. 2026-11-26 현재 M7 출시 검증을 진행한다. 원본 대응 및 단계별 미검증 항목은 [개발 현황](DEVELOPMENT_STATUS.md)과 [출시 검증 현황](verification/m7/RELEASE_GATES.md)에서 추적한다.
 
 ## 1. 추적 원칙
 

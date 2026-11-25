@@ -1,0 +1,43 @@
+{
+  "sourceCommit": "390cdb9de8861a9b858d563e3bb48a939ef86af8",
+  "runURL": "https://github.com/taro6222/files-for-mac/actions/runs/45637911764",
+  "jobId": 139288251437,
+  "architecture": "x86_64",
+  "jobConclusion": "failure",
+  "processTimeoutSeconds": 180,
+  "rootCause": "not proven by a single end-of-run stack; instrumented rerun required",
+  "reports": {
+    "en-dark": {
+      "reportExists": false,
+      "captureCount": 36,
+      "stackSHA256": "8181c3fbab6c125375cfe3327464b2056cbfdf32ffab306ac918107672b8e301",
+      "directoryWorkerInSample": true,
+      "fileProviderCallsInSample": true,
+      "stackScope": "one-second sample taken at the 180-second observation deadline"
+    },
+    "en-light": {
+      "reportExists": false,
+      "captureCount": 36,
+      "stackSHA256": "60229f37a218164aede0c88885378b9e9167a815fc343025d17b97ac6897c43c",
+      "directoryWorkerInSample": false,
+      "fileProviderCallsInSample": true,
+      "stackScope": "one-second sample taken at the 180-second observation deadline"
+    },
+    "ko-dark": {
+      "reportExists": false,
+      "captureCount": 35,
+      "stackSHA256": "6f00e00f57cdf4150eb3d820cff622aad53747b78d567ba70781ff042ac2aed4",
+      "directoryWorkerInSample": true,
+      "fileProviderCallsInSample": true,
+      "stackScope": "one-second sample taken at the 180-second observation deadline"
+    },
+    "ko-light": {
+      "reportExists": false,
+      "captureCount": 38,
+      "stackSHA256": "ad0d1e0cbcc5ffc8ef6af4129794332d22a894ce3f477b3ccd2e65c8fb823f5e",
+      "directoryWorkerInSample": true,
+      "fileProviderCallsInSample": true,
+      "stackScope": "one-second sample taken at the 180-second observation deadline"
+    }
+  }
+}

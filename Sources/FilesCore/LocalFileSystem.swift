@@ -29,7 +29,10 @@ public protocol DirectoryStreaming: DirectoryLoading {
 }
 
 public struct LocalFileSystem: DirectoryStreaming {
-    public init() {}
+    private let beforeReading: (@Sendable () -> Void)?
+    public init() { beforeReading = nil }
+    // A bounded test seam for a synchronously blocked filesystem call.
+    init(beforeReading: @escaping @Sendable () -> Void) { self.beforeReading = beforeReading }
     public func contents(of url: URL, showHidden: Bool) async throws -> [FileItem] {
         var result: [FileItem] = []
         for try await batch in batches(of: url, showHidden: showHidden) { result.append(contentsOf: batch) }
@@ -37,8 +40,14 @@ public struct LocalFileSystem: DirectoryStreaming {
     }
     public func batches(of url: URL, showHidden: Bool) -> AsyncThrowingStream<[FileItem], Error> {
         AsyncThrowingStream { continuation in
-            let worker = Task.detached(priority: .userInitiated) {
+            let cancellation = CopyCancellation()
+            // NSURL resource queries may synchronously wait for File Provider or a mounted
+            // server. Keep that work off Swift's cooperative executor, including the first read.
+            DispatchQueue.global(qos: .userInitiated).async {
                 do {
+                    try cancellation.check()
+                    beforeReading?()
+                    try cancellation.check()
                     // Validate the root first; a missing/unreadable directory is never empty success.
                     guard try url.resourceValues(forKeys: [.isDirectoryKey]).isDirectory == true else {
                         throw POSIXError(.ENOTDIR)
@@ -56,7 +65,7 @@ public struct LocalFileSystem: DirectoryStreaming {
                     var batch: [FileItem] = []
                     var first = true
                     while true {
-                        try Task.checkCancellation()
+                        try cancellation.check()
                         var reachedEnd = false
                         let item: FileItem? = autoreleasepool {
                             guard let enumerated = enumerator.nextObject() as? URL else {
@@ -94,7 +103,7 @@ public struct LocalFileSystem: DirectoryStreaming {
                     continuation.finish()
                 } catch { continuation.finish(throwing: error) }
             }
-            continuation.onTermination = { _ in worker.cancel() }
+            continuation.onTermination = { _ in cancellation.cancel() }
         }
     }
 }

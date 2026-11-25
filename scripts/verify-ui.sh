@@ -6,6 +6,7 @@ themes=(light dark)
 runName=files-ui-verification
 export FILES_UI_QA_REPETITIONS=5
 binary=""
+timeoutSeconds=180
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --performance)
@@ -14,18 +15,22 @@ while [[ $# -gt 0 ]]; do
       export FILES_UI_QA_REPETITIONS=20
       shift
       ;;
+    --timeout-seconds)
+      [[ $# -ge 2 && "$2" =~ ^[0-9]+$ && "$2" -ge 30 && "$2" -le 900 ]] || { echo "Expected a timeout from 30 to 900 seconds." >&2; exit 2; }
+      timeoutSeconds=$2; shift 2
+      ;;
     --binary)
       [[ $# -ge 2 && -x "$2" ]] || { echo "Expected a debug FilesMac executable." >&2; exit 2; }
       binary=$2
       shift 2
       ;;
-    *) echo "Usage: $0 [--performance] [--binary path-to-debug-FilesMac]" >&2; exit 2 ;;
+    *) echo "Usage: $0 [--performance] [--binary path-to-debug-FilesMac] [--timeout-seconds 30..900]" >&2; exit 2 ;;
   esac
 done
 if [[ -z "$binary" ]]; then
   export CLANG_MODULE_CACHE_PATH="$PWD/.build/ModuleCache"
   # UI verification needs DEBUG hooks, but does not need a dSYM bundle.
-  swift build --disable-sandbox -Xswiftc -gnone
+  swift build --disable-sandbox -debug-info-format none
   binary="$(swift build --show-bin-path)/FilesMac"
 fi
 outputRoot=$(mktemp -d "${TMPDIR:-/tmp}/$runName.XXXXXX")
@@ -37,7 +42,7 @@ for language in "${languages[@]}"; do
   for theme in "${themes[@]}"; do
     output="$outputRoot/$language-$theme"
     mkdir -p "$output"
-    python3 - "$binary" "$output" "$language" "$theme" <<'PY' || failed=1
+    python3 - "$binary" "$output" "$language" "$theme" "$timeoutSeconds" <<'PY' || failed=1
 import json
 from itertools import islice
 import os
@@ -46,7 +51,9 @@ import subprocess
 import sys
 
 binary, output = (Path(value).resolve() for value in sys.argv[1:3])
-language, theme = sys.argv[3:]
+language, theme = sys.argv[3:5]
+timeout_seconds = int(sys.argv[5])
+print(f"{language}/{theme}: full suite process budget {timeout_seconds}s", flush=True)
 env = dict(os.environ, FILES_UI_QA_OUTPUT=str(output), FILES_UI_QA_THEME=theme)
 log = output / "run.log"
 report = output / "report.json"
@@ -56,7 +63,7 @@ try:
         arguments = [binary, "-AppleLanguages", f"({language})", "-AppleLocale", language]
         with subprocess.Popen(arguments, env=env, stdout=stream, stderr=subprocess.STDOUT) as app:
             try:
-                status = app.wait(timeout=180)
+                status = app.wait(timeout=timeout_seconds)
             except subprocess.TimeoutExpired:
                 try:
                     subprocess.run(["/usr/bin/sample", str(app.pid), "1", "-file", stack],
@@ -72,13 +79,20 @@ try:
     result = json.loads(report.read_text())
     if result["language"].split("-")[0] != language or result["theme"] != theme:
         raise ValueError("reported language or theme differs from the requested environment")
-    if not result["checks"] or not all(value is True for value in result["checks"].values()):
+    if len(result["checks"]) != 283 or not all(value is True for value in result["checks"].values()):
         raise ValueError("AppKit checks failed or are missing")
+    progress_result = json.loads((output / "progress.json").read_text())
+    if progress_result.get("state") != "passed" or progress_result.get("checks") != result["checks"]:
+        raise ValueError("AppKit completion checkpoint differs from the final report")
 except (OSError, subprocess.SubprocessError, ValueError, KeyError) as error:
     if log.exists():
         print(log.read_text(errors="replace"), file=sys.stderr)
     if report.exists():
         print(report.read_text(errors="replace"), file=sys.stderr)
+    progress = output / "progress.json"
+    if progress.exists():
+        print("Last completed checks and active phase:", file=sys.stderr)
+        print(progress.read_text(errors="replace"), file=sys.stderr)
     if stack.exists():
         print(f"Timeout sample: {stack}", file=sys.stderr)
         with stack.open(errors="replace") as sample:

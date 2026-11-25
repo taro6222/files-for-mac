@@ -74,6 +74,8 @@ fixture 생성 스크립트는 반복 실행 가능하게 만들고 사용자의
 
 캡처 파일명: `<ui-id>_<state>_<theme>_<locale>_<size>_<scale>.png`. 테스트 보고서에는 source SHA, app SHA, macOS build, fixture version을 함께 기록한다.
 
+전체 AppKit 기능 회귀의 프로세스 제한은 여러 화면·검색·압축·탭 전환을 합친 실행 예산이다. `verify-ui.sh --timeout-seconds`로 30~900초 범위에서 명시하며 macOS 15 CI는 Apple Silicon 180초, Intel 600초다. 이 값으로 아래 성능 목표나 각 기능의 대기 제한을 완화하지 않는다. 모든 283개 검사와 최종 완료 기록이 일치해야 성공이며, 시간 초과 시 중간 `progress.json`과 프로세스 스택을 보존한다.
+
 ## 5. 성능 예산
 
 아래는 제안된 개발 목표이며 현재 측정 결과가 아니다. M0에서 기준 장비(최소 16GB RAM·로컬 SSD), release build, 데이터 분포를 고정한다. 네트워크와 클라우드 다운로드 시간은 로컬 성능과 분리한다.

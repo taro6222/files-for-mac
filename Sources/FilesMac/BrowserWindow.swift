@@ -4140,11 +4140,29 @@ extension BrowserWindow {
         let suite = "FilesMac.UIVerification.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suite)!
         defer { defaults.removePersistentDomain(forName: suite) }
-        var checks: [String: Bool] = [:]
+        let verificationStarted = ContinuousClock.now
         var metrics: [String: Double] = [:]
         var diagnostics: [String: Any] = [:]
+        func checkpoint(_ values: [String: Bool], phase: String, state: String = "running") {
+            let duration = verificationStarted.duration(to: .now).components
+            let elapsed = Double(duration.seconds) + Double(duration.attoseconds) / 1e18
+            let progress: [String: Any] = ["state": state, "phase": phase, "elapsedSeconds": elapsed,
+                "checks": values, "metrics": metrics, "diagnostics": diagnostics,
+                "language": Locale.preferredLanguages.first ?? "unknown",
+                "os": ProcessInfo.processInfo.operatingSystemVersionString]
+            if let data = try? JSONSerialization.data(withJSONObject: progress, options: [.prettyPrinted, .sortedKeys]) {
+                try? data.write(to: requestedDestination.appendingPathComponent("progress.json"), options: .atomic)
+            }
+        }
+        var checks: [String: Bool] = [:] {
+            didSet {
+                let changed = checks.keys.filter { oldValue[$0] != checks[$0] }.sorted()
+                checkpoint(checks, phase: "checks:" + changed.joined(separator: ","))
+            }
+        }
         do {
             try fm.createDirectory(at: requestedDestination, withIntermediateDirectories: true)
+            checkpoint(checks, phase: "fixture-creation")
             let destination = requestedDestination.standardizedFileURL
             let fixture = destination.appendingPathComponent("fixture", isDirectory: true)
             try fm.createDirectory(at: fixture, withIntermediateDirectories: true)
@@ -4184,6 +4202,7 @@ extension BrowserWindow {
             NSApp.activate(ignoringOtherApps: true)
             var capturesUseRequestedTheme = true
             func capture(_ name: String, view: NSView? = nil, backingColor: NSColor? = nil) throws {
+                checkpoint(checks, phase: "capture:" + name)
                 let view = view ?? root
                 capturesUseRequestedTheme = capturesUseRequestedTheme
                     && view.effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == expectedAppearance
@@ -6182,6 +6201,9 @@ extension BrowserWindow {
                     checks["referenceFolderInfoDetails"] = false
                 }
             }
+            let totalDuration = verificationStarted.duration(to: .now).components
+            metrics["fullSuiteElapsedSeconds"] = Double(totalDuration.seconds) + Double(totalDuration.attoseconds) / 1e18
+            checkpoint(checks, phase: "report-writing")
             let report: [String: Any] = ["checks": checks, "metrics": metrics, "diagnostics": diagnostics,
                 "samples": ["multiwindowCycleSeconds": durations, "scrollStepSeconds": scrollDurations],
                 "cycles": cycleChecks,
@@ -6190,9 +6212,12 @@ extension BrowserWindow {
                 "measurement": "Warm local fixture; AppKit layout/display completion, not compositor presentation. Percentiles describe this run only."]
             try JSONSerialization.data(withJSONObject: report, options: [.prettyPrinted, .sortedKeys]).write(to: destination.appendingPathComponent("report.json"))
             try fm.removeItem(at: fixture)
+            checkpoint(checks, phase: "finished", state: checks.values.allSatisfy { $0 } ? "passed" : "failed")
             // End the QA process only after deferred preference cleanup runs.
             DispatchQueue.main.async { exit(checks.values.allSatisfy { $0 } ? 0 : 1) }
         } catch {
+            diagnostics["error"] = error.localizedDescription
+            checkpoint(checks, phase: "error", state: "failed")
             fputs("UI verification failed: \(error)\n", stderr)
             DispatchQueue.main.async { exit(1) }
         }
