@@ -1,0 +1,69 @@
+{
+  "collectedAtUTC": "2026-11-25T18:52:31.115103+00:00",
+  "status": "local-checks-passed-windows-reverification-pending",
+  "failedRun": {
+    "url": "https://github.com/taro6222/files-for-mac/actions/runs/45677056571",
+    "sourceSHA": "ebee00eb6be4e39e3139bcb4f32008d59d9ae23d",
+    "error": "The Omnibar did not receive the requested input",
+    "capture": {
+      "upstreamSHA": "99951c66928c4da714da8b1dd46039421182cbab",
+      "packageSHA256": "0b77041d114bebc4b1a7e815ab43bb54feb728069ff782cf6ec2d996ec290cdd",
+      "appID": "FilesDev_ykqwq8d6ps0ag!App",
+      "windows": "10.0.26100",
+      "architecture": "AMD64",
+      "scope": "operation-progress",
+      "screen": "UI-01 Home, initial runner defaults",
+      "screenshotSHA256": "7a0bedb5706f7ac7de5aad26a326ded41c16e42867727d063ace6f4030eafbea",
+      "folder": {
+        "screens": [
+          "UI-02",
+          "UI-03"
+        ],
+        "entries": [
+          "Alpha",
+          "Workshop",
+          "notes.txt",
+          "preview.txt",
+          "readme.md"
+        ],
+        "visibleEntryNames": [
+          "Alpha",
+          "Workshop",
+          "notes.txt",
+          "preview.txt",
+          "readme.md"
+        ],
+        "detailColumnNames": [
+          "Date modified",
+          "Name",
+          "Size",
+          "Type"
+        ],
+        "screenshotSHA256": "28cb13d1cc17aef64b0b528c0dc7a8d88c8a011d5026a8f0cdb84dd9da9799fe"
+      },
+      "activeCopy": {
+        "state": "prepared",
+        "source": {
+          "files": 24000,
+          "bytes": 24576000,
+          "sha256": "e49695f5415e999c8cd80f03318fd6fc8c653708fbf76ea55cb18756e3636036"
+        },
+        "destination": "Workshop"
+      }
+    },
+    "screenshot": "windows-transfer-input-failure.png",
+    "screenshotSHA256": "df0319a374c3205d020d54aade9a5367a59005cf7cb40e176b68daf500665343",
+    "driverLogSHA256": "0e7bacb7dce0c63f8040778b7639e5a0fd9cba926d2c5edd4501a3c46b68db7e",
+    "failedLogSHA256": "1c70100a763713de1fe66856dc3be2c56aa44a380f39b45a14b144b0bcccc224",
+    "cachedXMLIsNotContemporaneousFocusEvidence": true
+  },
+  "sourceSHA256": {
+    "scripts/capture-windows-reference.py": "e4ad2ab5325448a2a7a5c98764c259a68333f7750b9b7d825219798b295a9385",
+    "Tests/FixtureTests/test_windows_progress_capture.py": "21fb6b3026e1e696691fa75ea1a188a4fb4a39299f239e8d00fd0f3c58b4adce",
+    ".github/workflows/windows-reference.yml": "6f1d54d9b517c763a821bdbb9597842dfacae9d1baeda59d227630a2bef9a5b7"
+  },
+  "localTests": {
+    "passed": 10,
+    "logSHA256": "cf8d3a2572a7898fcf32a4c2dd1445509b3d59e66061853243c4627f80695068"
+  }
+}

@@ -197,6 +197,30 @@ def operation_copy_card(tree, destination, *, cancelled=False):
     return None
 
 
+
+
+def editor_has_keyboard_focus(tree, identifier):
+    editors = [element for element in tree.iter() if element.get("AutomationId") == identifier
+               and element.get("IsOffscreen") == "False"]
+    return (len(editors) == 1 and editors[0].get("IsEnabled") == "True"
+            and editors[0].get("HasKeyboardFocus") == "True")
+
+
+def bulk_rename_controls(tree, *, enabled, invalid=False):
+    visible = [element for element in tree.iter() if element.get("IsOffscreen") == "False"]
+    def unique(identifier):
+        matches = [element for element in visible if element.get("AutomationId") == identifier]
+        return matches[0] if len(matches) == 1 else None
+    editor, primary, cancel = (unique(identifier) for identifier in ("FileNameBox", "PrimaryButton", "SecondaryButton"))
+    if editor is None or primary is None or cancel is None:
+        return False
+    if (primary.get("Name") != "Rename" or cancel.get("Name") != "Cancel"
+            or primary.get("IsEnabled") != str(enabled) or cancel.get("IsEnabled") != "True"):
+        return False
+    warning = any(element.get("Name", "").strip() == "The item name specified is invalid" for element in visible)
+    return warning if invalid else not warning
+
+
 def transfer_fixture_manifest(root):
     """Hash every regular payload by relative name; unknown links and special files abort evidence collection."""
     entries = []
@@ -280,13 +304,25 @@ def capture(output, app_id, window_handle, fixture=None, scope="all"):
                 for name in ([item.name] if item.is_dir() else [item.name, item.stem])
             }
 
-            def submit_omnibar(key, value):
-                request("POST", session + "/keys", {"value": ["\ue009", key, "\ue000"]})
-                editor = wait_for("the Omnibar editor", lambda: element_route("accessibility id", "PART_TextBox"))
+            def set_editor_text(identifier, value):
+                editor = wait_for(f"the {identifier} editor", lambda: element_route("accessibility id", identifier))
+                request("POST", editor + "/click", {})
+
+                def focused_editor():
+                    tree = read_tree()
+                    return editor_has_keyboard_focus(tree, identifier)
+
+                wait_for(f"keyboard focus in {identifier}", focused_editor)
                 request("POST", editor + "/clear", {})
                 request("POST", editor + "/value", {"value": list(value)})
-                if request("GET", editor + "/text")["value"] != value:
-                    raise RuntimeError("The Omnibar did not receive the requested input")
+                actual = request("GET", editor + "/text")["value"]
+                if actual != value or not focused_editor():
+                    raise RuntimeError(f"The {identifier} editor lost focus or did not receive the requested input: {actual!r}")
+                return editor
+
+            def submit_omnibar(key, value):
+                request("POST", session + "/keys", {"value": ["\ue009", key, "\ue000"]})
+                editor = set_editor_text("PART_TextBox", value)
                 request("POST", editor + "/value", {"value": ["\ue007"]})
 
             def open_path(path):
@@ -434,6 +470,58 @@ def capture(output, app_id, window_handle, fixture=None, scope="all"):
                     "xpath", f"//*[@AutomationId='ItemName' and (@Name='{file.name}' or @Name='{file.stem}') and @IsOffscreen='False']"))
                 request("POST", row + "/click", {})
 
+            if scope == "rename":
+                before = transfer_fixture_manifest(fixture)
+                select_file(fixture / "preview.txt")
+                request("POST", session + "/keys", {"value": ["\ue009", "a", "\ue000"]})
+                tree = read_tree()
+                selected_names = {element.get("Name", "") for row in tree.iter() if row.get("IsSelected") == "True"
+                                  for element in row.iter() if element.get("AutomationId") == "ItemName"
+                                  and element.get("Name", "").casefold() in normalized_names}
+                if len(selected_names) < 2:
+                    raise RuntimeError("Bulk rename requires multiple visibly selected fixture entries")
+                record["bulkRename"] = {"state": "selected", "selectedNames": sorted(selected_names), "sourceBefore": before}
+                report.write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8")
+                request("POST", session + "/keys", {"value": ["\ue032"]})  # F2 on multiple selected items
+
+                def rename_source(enabled, invalid=False):
+                    tree = read_tree()
+                    return tree if bulk_rename_controls(tree, enabled=enabled, invalid=invalid) else None
+
+                tree = wait_for("the empty bulk rename dialog with Rename disabled", lambda: rename_source(False))
+                capture_layout(tree, "UI-12-empty", "bulk-rename")
+
+                def set_name(name):
+                    set_editor_text("FileNameBox", name)
+
+                set_name("invalid/name")
+                tree = wait_for("the invalid name warning with Rename disabled", lambda: rename_source(False, True))
+                capture_layout(tree, "UI-12-invalid", "bulk-rename")
+                if transfer_fixture_manifest(fixture) != before:
+                    raise RuntimeError("An invalid rename input changed the fixture")
+                set_name("RenamedReference")
+                tree = wait_for("a valid bulk name with Rename enabled", lambda: rename_source(True))
+                capture_layout(tree, "UI-12-valid", "bulk-rename")
+                if transfer_fixture_manifest(fixture) != before:
+                    raise RuntimeError("Editing the valid name changed files before confirmation")
+                request("POST", element_route("accessibility id", "SecondaryButton") + "/click", {})
+
+                def returned_source():
+                    tree = folder_source()
+                    return tree if tree is not None and not any(element.get("AutomationId") == "FileNameBox"
+                        and element.get("IsOffscreen") == "False" for element in tree.iter()) else None
+
+                tree = wait_for("the unchanged folder after cancelling bulk rename", returned_source)
+                after = transfer_fixture_manifest(fixture)
+                if after != before:
+                    raise RuntimeError("Cancelling bulk rename changed file names or contents")
+                capture_layout(tree, "UI-12-cancelled", "bulk-rename")
+                record["bulkRename"].update(state="cancelled-without-mutation", sourceAfter=after,
+                    emptyNameDisabled=True, invalidNameDisabled=True, invalidNameWarning=True,
+                    validNameEnabled=True, sourcePreserved=True)
+                report.write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8")
+                return
+
             if scope == "operation-progress":
                 source = fixture / "TransferCancellation"
                 destination = fixture / "Workshop"
@@ -448,7 +536,9 @@ def capture(output, app_id, window_handle, fixture=None, scope="all"):
                 report.write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8")
                 select_file(source)
                 request("POST", session + "/keys", {"value": ["\ue009", "c", "\ue000"]})
-                open_path(destination)
+                # Navigate through the visible folder row while preserving the file clipboard.
+                select_file(destination)
+                request("POST", session + "/keys", {"value": ["\ue007"]})
 
                 def at_destination():
                     route = element_route("accessibility id", "CurrentPathGet")
@@ -512,7 +602,9 @@ def capture(output, app_id, window_handle, fixture=None, scope="all"):
                     raise RuntimeError("The copy destination is not empty")
                 select_file(source)
                 request("POST", session + "/keys", {"value": ["\ue009", "c", "\ue000"]})
-                open_path(destination)
+                # Navigate through the visible folder row while preserving the file clipboard.
+                select_file(destination)
+                request("POST", session + "/keys", {"value": ["\ue007"]})
 
                 def is_at_destination():
                     route = element_route("accessibility id", "CurrentPathGet")
@@ -746,6 +838,17 @@ def capture(output, app_id, window_handle, fixture=None, scope="all"):
             capture_layout(tree, "UI-06-stacked", "dual-pane")
     except Exception as error:
         (output / "capture-error.txt").write_text(str(error) + "\n", encoding="utf-8")
+        diagnostic = {"sourceRefreshedAfterFailure": False, "sourceAttemptUnixSeconds": time.time()}
+        if session is not None:
+            try:
+                refreshed = request("GET", session + "/source")["value"]
+                if not isinstance(refreshed, str):
+                    raise ValueError("Expected an XML source string")
+                last_source = refreshed
+                diagnostic["sourceRefreshedAfterFailure"] = True
+            except (URLError, TimeoutError, RuntimeError, ValueError, KeyError) as diagnostic_error:
+                diagnostic["sourceRefreshError"] = str(diagnostic_error)
+        (output / "failure-diagnostics.json").write_text(json.dumps(diagnostic, indent=2) + "\n", encoding="utf-8")
         if last_source is not None:
             try:
                 ET.ElementTree(ET.fromstring(last_source)).write(
@@ -773,7 +876,7 @@ if __name__ == "__main__":
     parser.add_argument("--window-handle", required=True)
     parser.add_argument("--fixture", type=Path)
     parser.add_argument("--scope", choices=("all", "tab-drop", "properties", "security", "advanced-security",
-                                            "operation-center", "operation-progress"), default="all")
+                                            "operation-center", "operation-progress", "rename"), default="all")
     arguments = parser.parse_args()
     if arguments.scope != "all" and arguments.fixture is None:
         parser.error("a specific --scope requires --fixture")

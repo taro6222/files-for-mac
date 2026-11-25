@@ -67,5 +67,55 @@ class ProgressEvidenceTests(unittest.TestCase):
                 capture.transfer_fixture_manifest(root)
 
 
+class RenameEvidenceTests(unittest.TestCase):
+    def dialog(self, enabled=False, warning=False):
+        root = ET.Element('Window')
+        ET.SubElement(root, 'Edit', AutomationId='FileNameBox', IsOffscreen='False')
+        ET.SubElement(root, 'Button', AutomationId='PrimaryButton', Name='Rename', IsEnabled=str(enabled), IsOffscreen='False')
+        ET.SubElement(root, 'Button', AutomationId='SecondaryButton', Name='Cancel', IsEnabled='True', IsOffscreen='False')
+        if warning:
+            ET.SubElement(root, 'Text', Name='The item name specified is invalid', IsOffscreen='False')
+        return ET.ElementTree(root)
+
+    def test_disabled_does_not_prove_invalid_without_visible_warning(self):
+        self.assertTrue(capture.bulk_rename_controls(self.dialog(), enabled=False))
+        self.assertFalse(capture.bulk_rename_controls(self.dialog(), enabled=False, invalid=True))
+        self.assertTrue(capture.bulk_rename_controls(self.dialog(warning=True), enabled=False, invalid=True))
+
+    def test_valid_requires_enabled_rename_and_dismissed_warning(self):
+        self.assertTrue(capture.bulk_rename_controls(self.dialog(enabled=True), enabled=True))
+        self.assertFalse(capture.bulk_rename_controls(self.dialog(enabled=True, warning=True), enabled=True))
+        self.assertFalse(capture.bulk_rename_controls(self.dialog(), enabled=True))
+
+    def test_hidden_or_ambiguous_dialog_controls_do_not_prove_state(self):
+        result = self.dialog()
+        editor = next(element for element in result.iter() if element.get('AutomationId') == 'FileNameBox')
+        editor.set('IsOffscreen', 'True')
+        self.assertFalse(capture.bulk_rename_controls(result, enabled=False))
+        editor.set('IsOffscreen', 'False')
+        ET.SubElement(result.getroot(), 'Edit', AutomationId='FileNameBox', IsOffscreen='False')
+        self.assertFalse(capture.bulk_rename_controls(result, enabled=False))
+
+
+class EditorFocusEvidenceTests(unittest.TestCase):
+    def test_another_focused_control_cannot_authorize_editor_input(self):
+        root = ET.Element('Window')
+        editor = ET.SubElement(root, 'Edit', AutomationId='PART_TextBox', IsOffscreen='False', IsEnabled='True', HasKeyboardFocus='False')
+        ET.SubElement(root, 'Edit', AutomationId='InlineRename', IsOffscreen='False', IsEnabled='True', HasKeyboardFocus='True')
+        self.assertFalse(capture.editor_has_keyboard_focus(ET.ElementTree(root), 'PART_TextBox'))
+        editor.set('HasKeyboardFocus', 'True')
+        self.assertTrue(capture.editor_has_keyboard_focus(ET.ElementTree(root), 'PART_TextBox'))
+        editor.set('IsOffscreen', 'True')
+        self.assertFalse(capture.editor_has_keyboard_focus(ET.ElementTree(root), 'PART_TextBox'))
+
+    def test_ambiguous_and_disabled_editors_reject_input(self):
+        root = ET.Element('Window')
+        editor = ET.SubElement(root, 'Edit', AutomationId='FileNameBox', IsOffscreen='False', IsEnabled='False', HasKeyboardFocus='True')
+        self.assertFalse(capture.editor_has_keyboard_focus(ET.ElementTree(root), 'FileNameBox'))
+        editor.set('IsEnabled', 'True')
+        ET.SubElement(root, 'Edit', AutomationId='FileNameBox', IsOffscreen='False', IsEnabled='True', HasKeyboardFocus='True')
+        self.assertFalse(capture.editor_has_keyboard_focus(ET.ElementTree(root), 'FileNameBox'))
+
+
 if __name__ == '__main__':
     unittest.main()
