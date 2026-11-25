@@ -71,6 +71,8 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
     private var readHomeFileTags: () async -> [HomeFileTagGroup]? = { await HomeFileTagSearch().load() }
     private let homeRecentFilesView = NSStackView()
     private let homeRecentView = NSStackView()
+    private let recentLocationRows = HomeRecentRows()
+    private let recentFileRows = HomeRecentRows()
     private var homeNeedsUpdate = true
     private var homeRecentNeedsUpdate = true
     private var homeRecentFilesNeedsUpdate = true
@@ -700,8 +702,9 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         button.setAccessibilityLabel(title); button.setAccessibilityValue(expanded ? L("펼침", "Expanded") : L("접힘", "Collapsed"))
         homeView.addArrangedSubview(button); homeView.setCustomSpacing(10, after: button)
     }
+    @discardableResult
     private func locationButton(_ title: String, symbol: String, url: URL?, in stack: NSStackView,
-                                prominent: Bool = false, recentFile: Bool = false, taggedItem: Bool = false) {
+                                prominent: Bool = false, recentFile: Bool = false, taggedItem: Bool = false) -> LocationButton {
         let action = taggedItem ? #selector(openTaggedHomeItem(_:))
             : (recentFile ? #selector(openRecentFile(_:)) : #selector(openLocation(_:)))
         let b = LocationButton(title: title, target: self, action: action)
@@ -719,6 +722,10 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         stack.addArrangedSubview(b)
         b.heightAnchor.constraint(equalToConstant: prominent ? 54 : 32).isActive = true
         b.widthAnchor.constraint(equalTo: stack.widthAnchor, constant: -(stack.edgeInsets.left + stack.edgeInsets.right)).isActive = true
+        updateLocationMenu(b, url: url, recentFile: recentFile, taggedItem: taggedItem)
+        return b
+    }
+    private func updateLocationMenu(_ b: LocationButton, url: URL?, recentFile: Bool = false, taggedItem: Bool = false) {
         let menu = NSMenu(); menu.autoenablesItems = false
         if recentFile || taggedItem {
             let copy = menu.addItem(withTitle: L("파일 경로 복사", "Copy File Path"), action: #selector(copyLocationItem(_:)), keyEquivalent: "")
@@ -830,7 +837,7 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
     private func buildHome() {
         homeNeedsUpdate = false
         let focusedButton = (window?.firstResponder as? SidebarKeyboardButton).flatMap {
-            $0.isDescendant(of: homeView) ? $0 : nil
+            $0.isDescendant(of: homeView) ? HomeFocusSnapshot($0) : nil
         }
         homeView.arrangedSubviews.forEach { homeView.removeArrangedSubview($0); $0.removeFromSuperview() }
         var favoriteCards: [NSView] = []
@@ -927,41 +934,49 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
     }
     private func updateHomeRecent() {
         homeRecentNeedsUpdate = false
-        let focusedButton = (window?.firstResponder as? SidebarKeyboardButton).flatMap {
-            $0.isDescendant(of: homeRecentView) ? $0 : nil
-        }
-        homeRecentView.arrangedSubviews.forEach { homeRecentView.removeArrangedSubview($0); $0.removeFromSuperview() }
-        guard homeRecentView.superview === homeView else { return }
-        if recent.isEmpty {
-            homeRecentView.addArrangedSubview(NSTextField(labelWithString: L("방문한 폴더가 여기에 표시됩니다.", "Folders you visit will appear here.")))
-        } else {
-            for url in recent { locationButton(url.path, symbol: "clock", url: url, in: homeRecentView) }
-            let clear = SidebarKeyboardButton(title: L("최근 기록 지우기", "Clear Recent Locations"), target: self, action: #selector(clearRecent(_:)))
-            clear.bezelStyle = .rounded
-            homeRecentView.addArrangedSubview(clear)
-        }
-        if let focusedButton { restoreHomeFocus(from: focusedButton) }
+        updateRecentRows(in: homeRecentView, rows: recentLocationRows, urls: recent, files: false)
     }
     private func updateHomeRecentFiles() {
         homeRecentFilesNeedsUpdate = false
+        updateRecentRows(in: homeRecentFilesView, rows: recentFileRows, urls: preferences.recentFiles, files: true)
+    }
+    private func updateRecentRows(in stack: NSStackView, rows: HomeRecentRows, urls: [URL], files: Bool) {
+        guard stack.superview === homeView else { return }
         let focusedButton = (window?.firstResponder as? SidebarKeyboardButton).flatMap {
-            $0.isDescendant(of: homeRecentFilesView) ? $0 : nil
+            $0.isDescendant(of: stack) ? HomeFocusSnapshot($0) : nil
         }
-        homeRecentFilesView.arrangedSubviews.forEach { homeRecentFilesView.removeArrangedSubview($0); $0.removeFromSuperview() }
-        guard homeRecentFilesView.superview === homeView else { return }
-        if preferences.recentFiles.isEmpty {
-            let message = NSTextField(labelWithString: L("이 앱에서 연 파일이 여기에 표시됩니다.", "Files you open in this app will appear here."))
-            message.textColor = .secondaryLabelColor
-            homeRecentFilesView.addArrangedSubview(message)
-        } else {
-            for url in preferences.recentFiles {
-                locationButton(displayName(url), symbol: "doc", url: url, in: homeRecentFilesView, recentFile: true)
-            }
-            let clear = SidebarKeyboardButton(title: L("최근 파일 지우기", "Clear Recent Files"), target: self,
-                                              action: #selector(clearRecentFiles(_:)))
+        if rows.message == nil {
+            let title = files ? L("이 앱에서 연 파일이 여기에 표시됩니다.", "Files you open in this app will appear here.")
+                : L("방문한 폴더가 여기에 표시됩니다.", "Folders you visit will appear here.")
+            let message = NSTextField(labelWithString: title)
+            if files { message.textColor = .secondaryLabelColor }
+            rows.message = message; stack.addArrangedSubview(message)
+            let clear = SidebarKeyboardButton(title: files ? L("최근 파일 지우기", "Clear Recent Files")
+                : L("최근 기록 지우기", "Clear Recent Locations"), target: self,
+                action: files ? #selector(clearRecentFiles(_:)) : #selector(clearRecent(_:)))
             clear.bezelStyle = .rounded
-            homeRecentFilesView.addArrangedSubview(clear)
+            rows.clear = clear; stack.addArrangedSubview(clear)
         }
+        // Reuse slots up to the history high-water mark instead of registering fresh arranged views on each reorder.
+        while rows.buttons.count < urls.count {
+            let url = urls[rows.buttons.count]
+            let button = locationButton(files ? displayName(url) : url.path,
+                symbol: files ? "doc" : "clock", url: url, in: stack, recentFile: files)
+            stack.insertArrangedSubview(button, at: rows.buttons.count + 1)
+            rows.buttons.append(button)
+        }
+        for (index, button) in rows.buttons.enumerated() {
+            let url = urls.indices.contains(index) ? urls[index] : nil
+            let title = url.map { files ? displayName($0) : $0.path } ?? ""
+            button.url = url; button.title = title; button.toolTip = url?.path
+            button.setAccessibilityLabel(title)
+            if button.isEnabled != (url != nil) { button.isEnabled = url != nil }
+            if button.isHidden != (url == nil) { button.isHidden = url == nil }
+            if let url { updateLocationMenu(button, url: url, recentFile: files) }
+            else { button.menu = nil }
+        }
+        if rows.message?.isHidden != !urls.isEmpty { rows.message?.isHidden = !urls.isEmpty }
+        if rows.clear?.isHidden != urls.isEmpty { rows.clear?.isHidden = urls.isEmpty }
         if let focusedButton { restoreHomeFocus(from: focusedButton) }
     }
     private func reloadHomeFileTags() {
@@ -983,7 +998,7 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
     }
     private func updateHomeFileTags() {
         let focusedButton = (window?.firstResponder as? SidebarKeyboardButton).flatMap {
-            $0.isDescendant(of: homeFileTagsView) ? $0 : nil
+            $0.isDescendant(of: homeFileTagsView) ? HomeFocusSnapshot($0) : nil
         }
         homeFileTagsView.arrangedSubviews.forEach { homeFileTagsView.removeArrangedSubview($0); $0.removeFromSuperview() }
         if homeFileTagTask != nil {
@@ -1012,11 +1027,11 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         if let focusedButton { restoreHomeFocus(from: focusedButton) }
     }
     @objc private func retryHomeFileTags(_ sender: Any?) { reloadHomeFileTags() }
-    private func restoreHomeFocus(from previous: SidebarKeyboardButton) {
+    private func restoreHomeFocus(from previous: HomeFocusSnapshot) {
         let buttons = homeKeyboardButtons
         let replacement = buttons.first {
-            $0.action == previous.action && $0.accessibilityLabel() == previous.accessibilityLabel()
-                && ($0 as? LocationButton)?.url == (previous as? LocationButton)?.url
+            $0.action == previous.action && $0.accessibilityLabel() == previous.label
+                && ($0 as? LocationButton)?.url == previous.url
         }
         if let button = replacement ?? buttons.first { focusHomeButton(button) }
     }
@@ -3133,6 +3148,23 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         }
     }
 
+}
+
+@MainActor
+private final class HomeRecentRows {
+    var buttons: [LocationButton] = []
+    var message: NSTextField?
+    var clear: SidebarKeyboardButton?
+}
+
+@MainActor
+private struct HomeFocusSnapshot {
+    let action: Selector?
+    let label: String?
+    let url: URL?
+    init(_ button: SidebarKeyboardButton) {
+        action = button.action; label = button.accessibilityLabel(); url = (button as? LocationButton)?.url
+    }
 }
 
 @MainActor
@@ -5899,7 +5931,7 @@ extension BrowserWindow {
             let recentButtons = controller.homeRecentFilesView.arrangedSubviews.compactMap { $0 as? LocationButton }
             checks["homeRecentFilesShowsSuccessfulOpens"] = recentButtons.compactMap(\.url) == [secondFile, firstFile]
                 && controller.homeView.arrangedSubviews.first === homeHeader && preferences.recent == recentFolders
-            recentButtons.last?.performClick(nil)
+            recentButtons.first { $0.url == firstFile && !$0.isHiddenOrHasHiddenAncestor }?.performClick(nil)
             checks["homeRecentFileReopensAndMovesToFront"] = storageRequests.last == firstFile
                 && preferences.recentFiles.first == firstFile && controller.model.location == nil
             try capture("home-recent-files")
@@ -7019,8 +7051,20 @@ extension BrowserWindow {
             let otherHomeViewsReused = controller.homeView.arrangedSubviews.first === homeContent
                 && controller.homeView.arrangedSubviews.contains { $0 === currentNetworkButton }
             let recentFocusRestored = (window.firstResponder as? LocationButton)?.url?.path == recentPath
-            diagnostics["homeRecentRefresh"] = [recentOrderUpdated, otherHomeViewsReused, recentFocusRestored]
+            let recentRowIDs = controller.homeRecentView.arrangedSubviews.map(ObjectIdentifier.init)
+            for _ in 0..<100 {
+                preferences.recordVisit(recoveryFolder)
+                preferences.recordVisit(source)
+            }
+            let recentRowsReused = controller.homeRecentView.arrangedSubviews.map(ObjectIdentifier.init) == recentRowIDs
+            let recentMenusCurrent = controller.recentLocationRows.buttons.filter { !$0.isHidden }.allSatisfy { button in
+                button.menu?.items.compactMap { $0.representedObject as? URL }.allSatisfy { $0 == button.url } == true
+            }
+            let recentFocusStillRestored = (window.firstResponder as? LocationButton)?.url?.path == recentPath
+            diagnostics["homeRecentRefresh"] = [recentOrderUpdated, otherHomeViewsReused, recentFocusRestored,
+                recentRowsReused, recentMenusCurrent, recentFocusStillRestored]
             checks["homeRecentRefresh"] = recentOrderUpdated && otherHomeViewsReused && recentFocusRestored
+                && recentRowsReused && recentMenusCurrent && recentFocusStillRestored
             func showsNetworkEntry() -> Bool {
                 controller.homeView.arrangedSubviews.contains { ($0 as? LocationButton)?.title == shareName }
             }

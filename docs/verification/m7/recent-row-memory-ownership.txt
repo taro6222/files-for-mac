@@ -1,0 +1,48 @@
+Tracing: <NSStackView 0x7a35c99b80> [640]
+
+Found 49 roots referencing: <NSStackView 0x7a35c99b80> [640]
+
+This is a reverse reference tree showing how the specified block is referenced.
+The top node is the specified block, the next level down are blocks that reference that, and so on.
+The number at the start of each line is the number of paths-to-roots going through that node.
+
+    49 <NSStackView 0x7a35c99b80> [640]
+      33 <BrowserWindow 0x7a35508000> [1536]   +552: __strong homeRecentView 0x7a35508228
+      + 27 <NSWindowAuxiliary 0x7a34a67000> [1024]   +752: _windowController 0x7a34a672f0
+      + ! 27 <NSKVONotifying_NSWindow 0x7a35c9a800> [640]   +232: _auxiliaryStorage 0x7a35c9a8e8
+
+A reference tree is a top-down tree attempting to show the primary ownership chain
+of every malloc allocation and dynamically-allocated VM region of the process.
+This output has been filtered to only show branches containing instances
+of the specified <classes-pattern>, ending at the lowest-level such
+instance on each branch.
+
+    89580 (5.64M) << TOTAL >>
+      62465 (2.75M) AppKit __DATA __bss: '_MergedGlobals.93[]'
+      + 62465 (2.75M) CFDictionary
+      +   62463 (2.75M) CFDictionary (Value Storage)
+      +     54118 (2.16M) NSStackView
+      +     ! 54104 (2.15M) _dependencyInfo --> NSKeyValueDependencyInfo
+      +     !   54048 (2.14M) _dependencyMap --> CFDictionary
+      +     !   : 54038 (2.14M) CFDictionary (Value Storage)
+      +     !   :   54028 (2.14M) CFSet
+      +     !   :     53958 (2.14M) CFSet (Value Storage)
+      +     !   :       53888 (1.64M) NSKeyValueDependency
+      +     !   :         26848 (839K) _context --> NSKeyValueDependencyContext
+      +     !   46 (1.58K) _computedDependencyContexts --> NSMutableDictionary
+      +     !     36 (1.27K) NSMutableDictionary (Storage)
+      +     !       27 (864 bytes) NSKeyValueDependencyContext
+      +     6004 (271K) NSView
+
+Tracing: <NSView 0x7a374bb480> [640]
+
+Found 49 roots referencing: <NSView 0x7a374bb480> [640]
+
+This is a reverse reference tree showing how the specified block is referenced.
+The top node is the specified block, the next level down are blocks that reference that, and so on.
+The number at the start of each line is the number of paths-to-roots going through that node.
+
+    49 <NSView 0x7a374bb480> [640]
+      28 <NSTabBar 0x7a363a0f00> [1280]   +608: __strong _tabContainer 0x7a363a1160
+      + 12 <NSISUnrestrictedVariable 0x7a342e6200> [64]     +8: _delegate 0x7a342e6208
+      + ! 12 0x7a360f5000 [2048]  +1216:  0x7a360f54c0

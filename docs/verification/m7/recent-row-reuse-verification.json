@@ -1,0 +1,123 @@
+{
+  "sourceBaseSHA": "56d0ffc275fc8f7702799d6553e2f18444370752",
+  "browserSourceSHA256": "1ca495b9471d98c8bcc649fc53c654c9cf2e174f96fe401a4ae743c87d9721fb",
+  "debugBinarySHA256": "6d84adaddc0cc245a78cbc1c3491a7e4a075a21655900ebff5465d7d633405d3",
+  "debugBuild": {
+    "path": "build/recent-reuse-final-build.log",
+    "sha256": "0a1d9cf7fc9a1cb27b33bdd76d3e731cb135bd145bfe79e47a3ff3692c00bafb"
+  },
+  "releaseBuild": {
+    "path": "build/recent-reuse-release.log",
+    "sha256": "07e318dc45f67625efabeecb4026d99d2828c35c1a16406c41dc64a8cb6ee277"
+  },
+  "releaseNote": "The final difference is a DEBUG-only semantic button selector in the full UI contract. Release production code is unchanged.",
+  "fileOperationUI": {
+    "ko-light": {
+      "checks": 78,
+      "report": {
+        "path": "/private/var/folders/lg/xk3px5rn42n0mrrykzn0pw380000gn/T/files-m2-ui.Hl76rP/ko-light/report.json",
+        "sha256": "b4b38ea60cbd240d65196462db204fb9c36f6147377588260e0e8974f4ba5268"
+      },
+      "recentRowIdentityMenuAndFocus": [
+        true,
+        true,
+        true,
+        true,
+        true,
+        true
+      ]
+    },
+    "ko-dark": {
+      "checks": 78,
+      "report": {
+        "path": "/private/var/folders/lg/xk3px5rn42n0mrrykzn0pw380000gn/T/files-m2-ui.Hl76rP/ko-dark/report.json",
+        "sha256": "85857df63ac86602c86ae120f6f809c06aaa2b8ca5d91e8e068574fce1766cd2"
+      },
+      "recentRowIdentityMenuAndFocus": [
+        true,
+        true,
+        true,
+        true,
+        true,
+        true
+      ]
+    },
+    "en-light": {
+      "checks": 78,
+      "report": {
+        "path": "/private/var/folders/lg/xk3px5rn42n0mrrykzn0pw380000gn/T/files-m2-ui.Hl76rP/en-light/report.json",
+        "sha256": "b43ad0075b51c2c3c53d0eb8af02752336f43ceaf66caeee052f5d8ccfe0f345"
+      },
+      "recentRowIdentityMenuAndFocus": [
+        true,
+        true,
+        true,
+        true,
+        true,
+        true
+      ]
+    },
+    "en-dark": {
+      "checks": 78,
+      "report": {
+        "path": "/private/var/folders/lg/xk3px5rn42n0mrrykzn0pw380000gn/T/files-m2-ui.Hl76rP/en-dark/report.json",
+        "sha256": "fe9a305b35b1264b3772591a2dbf030c9a7db7f7440fcedfbc345cbfa4c6da48"
+      },
+      "recentRowIdentityMenuAndFocus": [
+        true,
+        true,
+        true,
+        true,
+        true,
+        true
+      ]
+    }
+  },
+  "fullAppKit": {
+    "ko-light": {
+      "checks": 283,
+      "report": {
+        "path": "/private/var/folders/lg/xk3px5rn42n0mrrykzn0pw380000gn/T/files-ui-verification.K95rLD/ko-light/report.json",
+        "sha256": "7347a76287311ca5d6999b26aad18b22720587f1b214e597cafb294b4ca5ccf2"
+      }
+    },
+    "ko-dark": {
+      "checks": 283,
+      "report": {
+        "path": "/private/var/folders/lg/xk3px5rn42n0mrrykzn0pw380000gn/T/files-ui-verification.K95rLD/ko-dark/report.json",
+        "sha256": "7eb9bda2f7a53cb81989b1ea70add7486fadf154ca75ead7f070c37929ccee4b"
+      }
+    },
+    "en-light": {
+      "checks": 283,
+      "report": {
+        "path": "/private/var/folders/lg/xk3px5rn42n0mrrykzn0pw380000gn/T/files-ui-verification.K95rLD/en-light/report.json",
+        "sha256": "aef2c29feb0cfee5bd26bfe8a9697e3e1c64cb21dda17adc4e0f13fb0d10fc45"
+      }
+    },
+    "en-dark": {
+      "checks": 283,
+      "report": {
+        "path": "/private/var/folders/lg/xk3px5rn42n0mrrykzn0pw380000gn/T/files-ui-verification.K95rLD/en-dark/report.json",
+        "sha256": "956a959e7184940f30b30caab99e8d8c663ce1eba3738e362cb15c118c7009cb"
+      }
+    }
+  },
+  "remainingTagCI": {
+    "runID": 45699346383,
+    "jobID": 139505033658,
+    "sourceSHA": "56d0ffc275fc8f7702799d6553e2f18444370752",
+    "failedTest": "directoryMetadataBatchPreservesAllResourceFieldsAndHiddenPolicy",
+    "expectedTags": [
+      "Review",
+      "한글"
+    ],
+    "observedTags": [],
+    "rawStoredXattrReadRemotely": false,
+    "log": {
+      "path": "build/memory-investigation-313/56d0ffc-arm-job.log",
+      "sha256": "5b252dbbf4b059d6516f834f9922214ddb0042cd0383b11768f3888501e3b559"
+    },
+    "state": "unresolved; verify stored metadata and product read path"
+  }
+}

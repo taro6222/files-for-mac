@@ -1,0 +1,221 @@
+{
+  "sourceBaseSHA": "56d0ffc275fc8f7702799d6553e2f18444370752",
+  "durationSeconds": 180,
+  "cases": {
+    "baseline": {
+      "observations": [
+        {
+          "cyclesBefore": 5,
+          "cyclesAfter": 5,
+          "counts": {
+            "NSKeyValueDependencyContext": 1087,
+            "NSKeyValueDependency": 3312,
+            "NSStackView": 15,
+            "BrowserWindow": 1,
+            "BrowserFileTable": 1,
+            "LocationButton": 7
+          },
+          "heapSHA256": "7f08dab04fcbe7987a0824e94717e7c58952e13e1bf43f3e77bfd2dac2ac5c43"
+        },
+        {
+          "cyclesBefore": 40,
+          "cyclesAfter": 40,
+          "counts": {
+            "NSKeyValueDependencyContext": 1577,
+            "NSKeyValueDependency": 3802,
+            "NSStackView": 15,
+            "BrowserWindow": 1,
+            "BrowserFileTable": 1,
+            "LocationButton": 7
+          },
+          "heapSHA256": "938431fdc7931a30fe47db73940b137f233c36a1594314868bbc13e568e010e0"
+        }
+      ],
+      "pid": 88391,
+      "binarySHA256": "c8670ae21b8d09f2eb46600080128f4595ab44a3b9e090bedb1180ee6132be60",
+      "browserSourceSHA256": "93146d8c89df0304d6d2881dffdd844d3e745e7d3e904c6bb7dbadb208293f0f",
+      "exitStatus": 0,
+      "report": {
+        "cycles": 62,
+        "elapsedSeconds": 182.928885833,
+        "peakPhysicalFootprintBytes": 63439952,
+        "peakRSSBytes": 143736832,
+        "primaryWatcherReleases": 62,
+        "samples": [
+          {
+            "cycle": 1,
+            "elapsedSeconds": 0.837114458,
+            "physicalFootprintBytes": 62325816,
+            "retainedPrimaryDetailCells": 55,
+            "rssBytes": 141262848
+          },
+          {
+            "cycle": 13,
+            "elapsedSeconds": 33.746721292,
+            "physicalFootprintBytes": 53740624,
+            "retainedPrimaryDetailCells": 55,
+            "rssBytes": 140214272
+          },
+          {
+            "cycle": 23,
+            "elapsedSeconds": 64.197706833,
+            "physicalFootprintBytes": 56230992,
+            "retainedPrimaryDetailCells": 55,
+            "rssBytes": 143294464
+          },
+          {
+            "cycle": 33,
+            "elapsedSeconds": 94.2002245,
+            "physicalFootprintBytes": 53199952,
+            "retainedPrimaryDetailCells": 55,
+            "rssBytes": 143458304
+          },
+          {
+            "cycle": 43,
+            "elapsedSeconds": 124.43749275,
+            "physicalFootprintBytes": 53183568,
+            "retainedPrimaryDetailCells": 55,
+            "rssBytes": 143491072
+          },
+          {
+            "cycle": 54,
+            "elapsedSeconds": 157.183621375,
+            "physicalFootprintBytes": 53134416,
+            "retainedPrimaryDetailCells": 55,
+            "rssBytes": 143671296
+          },
+          {
+            "cycle": 62,
+            "elapsedSeconds": 182.928883917,
+            "physicalFootprintBytes": 51414096,
+            "retainedPrimaryDetailCells": 55,
+            "rssBytes": 143736832
+          }
+        ],
+        "state": "completed",
+        "targetSeconds": 180,
+        "workload": "full"
+      },
+      "contextGrowth": {
+        "cycles": 35,
+        "objects": 490,
+        "objectsPerCycle": 14.0
+      }
+    },
+    "candidate": {
+      "observations": [
+        {
+          "cyclesBefore": 5,
+          "cyclesAfter": 5,
+          "counts": {
+            "NSKeyValueDependencyContext": 1061,
+            "NSKeyValueDependency": 3307,
+            "NSStackView": 15,
+            "BrowserWindow": 1,
+            "BrowserFileTable": 1,
+            "LocationButton": 7
+          },
+          "heapSHA256": "fd4fbe48dbfa7e9b05500349f92513395335a4a4fd25644e64909ac2b0d7d677"
+        },
+        {
+          "cyclesBefore": 40,
+          "cyclesAfter": 40,
+          "counts": {
+            "NSKeyValueDependencyContext": 1236,
+            "NSKeyValueDependency": 3482,
+            "NSStackView": 15,
+            "BrowserWindow": 1,
+            "BrowserFileTable": 1,
+            "LocationButton": 7
+          },
+          "heapSHA256": "baa00a1a6584b044a5b3185add867353726275049d6b89f6a0497fc5969d193d"
+        }
+      ],
+      "pid": 88392,
+      "binarySHA256": "70f31f381eb81abf6c61d894554fd9d9babea8d2d9e579a0bda03d80d202ed61",
+      "browserSourceSHA256": "161322c9732c666e9171c3e11892a98f195728d1b54d116691d1acf3a02cf600",
+      "exitStatus": 0,
+      "report": {
+        "cycles": 61,
+        "elapsedSeconds": 180.43337275,
+        "peakPhysicalFootprintBytes": 64128080,
+        "peakRSSBytes": 144343040,
+        "primaryWatcherReleases": 61,
+        "samples": [
+          {
+            "cycle": 1,
+            "elapsedSeconds": 0.589710209,
+            "physicalFootprintBytes": 61817936,
+            "retainedPrimaryDetailCells": 55,
+            "rssBytes": 141885440
+          },
+          {
+            "cycle": 13,
+            "elapsedSeconds": 33.740336,
+            "physicalFootprintBytes": 55018576,
+            "retainedPrimaryDetailCells": 55,
+            "rssBytes": 140197888
+          },
+          {
+            "cycle": 23,
+            "elapsedSeconds": 63.926331792,
+            "physicalFootprintBytes": 55510096,
+            "retainedPrimaryDetailCells": 55,
+            "rssBytes": 142868480
+          },
+          {
+            "cycle": 33,
+            "elapsedSeconds": 94.286240417,
+            "physicalFootprintBytes": 53609552,
+            "retainedPrimaryDetailCells": 55,
+            "rssBytes": 142950400
+          },
+          {
+            "cycle": 44,
+            "elapsedSeconds": 127.287640375,
+            "physicalFootprintBytes": 53429328,
+            "retainedPrimaryDetailCells": 55,
+            "rssBytes": 144080896
+          },
+          {
+            "cycle": 54,
+            "elapsedSeconds": 157.428693042,
+            "physicalFootprintBytes": 53462096,
+            "retainedPrimaryDetailCells": 55,
+            "rssBytes": 144130048
+          },
+          {
+            "cycle": 61,
+            "elapsedSeconds": 180.433370917,
+            "physicalFootprintBytes": 51807312,
+            "retainedPrimaryDetailCells": 55,
+            "rssBytes": 144146432
+          }
+        ],
+        "state": "completed",
+        "targetSeconds": 180,
+        "workload": "full"
+      },
+      "contextGrowth": {
+        "cycles": 35,
+        "objects": 175,
+        "objectsPerCycle": 5.0
+      }
+    }
+  },
+  "measurementScope": "Three-minute optimized QA; live heap counts at cycles 5 and 40; baseline/candidate overlap on one host. Not eight-hour stability acceptance.",
+  "contextGrowthReductionFraction": 0.6428571428571428,
+  "remainingGrowth": true,
+  "sourceTrace": {
+    "liveBaselineSHA": "5284cb30b0d21a1033895558894f439599fd3d63",
+    "pid": 71382,
+    "browserSourceRecentBodiesIdenticalTo56d0ffc": true,
+    "recentFunctionSHA256": "f85b4d87a832592af5cbb23381d8293a26924bb2b4d9e324a51148eebfacc618",
+    "initialHeapSHA256": "5ecebabb978ad0b2573ffbdc55757caceb1e7fa30bf7e03d530e065df1c836cc"
+  },
+  "profileToFinalSourceDifference": {
+    "description": "Only a DEBUG-only full-suite test now selects the visible recent-file button by URL; production row code is unchanged.",
+    "diff": "--- profile-source\n+++ validated-source\n@@ -5931,7 +5931,7 @@\n             let recentButtons = controller.homeRecentFilesView.arrangedSubviews.compactMap { $0 as? LocationButton }\n             checks[\"homeRecentFilesShowsSuccessfulOpens\"] = recentButtons.compactMap(\\.url) == [secondFile, firstFile]\n                 && controller.homeView.arrangedSubviews.first === homeHeader && preferences.recent == recentFolders\n-            recentButtons.last?.performClick(nil)\n+            recentButtons.first { $0.url == firstFile && !$0.isHiddenOrHasHiddenAncestor }?.performClick(nil)\n             checks[\"homeRecentFileReopensAndMovesToFront\"] = storageRequests.last == firstFile\n                 && preferences.recentFiles.first == firstFile && controller.model.location == nil\n             try capture(\"home-recent-files\")\n",
+    "finalBrowserSourceSHA256": "1ca495b9471d98c8bcc649fc53c654c9cf2e174f96fe401a4ae743c87d9721fb"
+  }
+}
