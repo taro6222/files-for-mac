@@ -95,7 +95,7 @@ jobs:
       - name: Build app and test targets
         if: github.event_name != 'workflow_dispatch' || !inputs.verify_upgrade || inputs.verify_full_appkit
         timeout-minutes: ${{ matrix.debug_build_minutes }}
-        run: swift build --build-tests --disable-sandbox -Xswiftc -gnone
+        run: swift build --build-tests --disable-sandbox -debug-info-format none
       - name: Run Swift tests
         if: github.event_name != 'workflow_dispatch' || !inputs.verify_upgrade
         timeout-minutes: 5
@@ -115,6 +115,21 @@ jobs:
         if: github.event_name != 'workflow_dispatch' || !inputs.verify_upgrade
         timeout-minutes: 14
         run: bash scripts/verify-volume-matrix.sh --skip-build --appkit
+      - name: Verify AppKit file promise export contracts
+        if: github.event_name != 'workflow_dispatch' || !inputs.verify_upgrade
+        timeout-minutes: 2
+        env:
+          TMPDIR: ${{ runner.temp }}
+        run: bash scripts/verify-file-promises.sh --contract --binary "$(swift build --show-bin-path)/FilesMac"
+      - name: Retain file promise contract diagnostics
+        if: always() && (github.event_name != 'workflow_dispatch' || !inputs.verify_upgrade)
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: files-promise-contract-${{ matrix.architecture }}
+          path: |
+            ${{ runner.temp }}/files-promise-verification.*/report.json
+            ${{ runner.temp }}/files-promise-verification.*/run.log
+          if-no-files-found: ignore
       - name: Prepare Spotlight for AppKit content search
         if: github.event_name == 'workflow_dispatch' && inputs.verify_full_appkit
         timeout-minutes: 4

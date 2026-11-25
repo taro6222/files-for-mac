@@ -145,10 +145,33 @@ public enum CopyEngine {
         }.value
     }
 
+    /// Fulfill an external file promise at its exact, receiver-selected URL without replacing an entry.
+    /// Call on the promise provider's operation queue, never on the main actor.
+    public static func exportPromisedItem(_ item: FileItem, to target: URL,
+                                          journalDirectory: URL) throws -> CopyReport {
+        guard let identity = item.identity, LocalEntryIdentity.read(item.url) == identity,
+              let entry = ShelfEntry(item.url), LocalEntryIdentity.read(item.url) == identity else {
+            throw EntryOperationError.sourceChanged
+        }
+        return try exportPromisedItem(entry, to: target, journalDirectory: journalDirectory)
+    }
+
+    public static func exportPromisedItem(_ source: ShelfEntry, to target: URL,
+                                          journalDirectory: URL) throws -> CopyReport {
+        guard target.isFileURL, source.isCurrent else { throw EntryOperationError.sourceChanged }
+        try EntryOperations.validateName(target.lastPathComponent)
+        let destination = target.deletingLastPathComponent().resolvingSymlinksInPath().standardizedFileURL
+        guard let expectedDestination = ShelfEntry(destination) else { throw EntryOperationError.sourceChanged }
+        return execute(sources: [source.url], destination: destination, journalDirectory: journalDirectory,
+                       cancellation: CopyCancellation(), conflictPolicy: .skip, recordUndo: false,
+                       explicitName: target.lastPathComponent, expectedDestination: expectedDestination,
+                       expectedSource: source, progress: { _ in })
+    }
+
     private static func execute(sources: [URL], destination: URL, journalDirectory: URL,
                                 cancellation: CopyCancellation, conflictPolicy: CopyConflictPolicy,
                                 recordUndo: Bool, explicitName: String? = nil, expectedDestination: ShelfEntry? = nil,
-                                expectedTemplate: ShelfEntry? = nil,
+                                expectedTemplate: ShelfEntry? = nil, expectedSource: ShelfEntry? = nil,
                                 progress: @Sendable (CopyProgress) -> Void) -> CopyReport {
         let fm = FileManager()
         let delegate = CopyDelegate(cancellation)
@@ -187,6 +210,9 @@ public enum CopyEngine {
                 report.items[index].state = "planning"; try save(); emit("planning")
                 let attrs = try fm.attributesOfItem(atPath: source.path)
                 let requestedName = explicitName ?? source.lastPathComponent
+                if let expectedSource, expectedSource.url != source || !expectedSource.isCurrent {
+                    throw EntryOperationError.sourceChanged
+                }
                 if let expectedTemplate,
                    !expectedTemplate.isCurrent || attrs[.type] as? FileAttributeType != .typeRegular {
                     throw EntryOperationError.sourceChanged
@@ -220,14 +246,14 @@ public enum CopyEngine {
                     }
                     emit("copying"); try cancellation.check()
                     let payload = temporary.appendingPathComponent("payload")
-                    if let expectedTemplate, !expectedTemplate.isCurrent {
+                    if expectedTemplate?.isCurrent == false || expectedSource?.isCurrent == false {
                         throw EntryOperationError.sourceChanged
                     }
                     let copyStarted = ContinuousClock.now
                     try fm.copyItem(at: source, to: payload)
                     try before.restoreCreationTimes(in: payload, cancellation: cancellation)
                     let copyElapsed = copyStarted.duration(to: .now)
-                    if let expectedTemplate, !expectedTemplate.isCurrent {
+                    if expectedTemplate?.isCurrent == false || expectedSource?.isCurrent == false {
                         throw EntryOperationError.sourceChanged
                     }
                     try cancellation.check()
@@ -247,6 +273,7 @@ public enum CopyEngine {
                     let publicationHandle = try openPublicationHandle(payload, on: stageFD)
                     defer { if let publicationHandle { close(publicationHandle) } }
                     emit("committing"); try cancellation.check()
+                    if expectedSource?.isCurrent == false { throw EntryOperationError.sourceChanged }
                     guard matches(destination, descriptor: destinationFD), matches(temporary, descriptor: stageFD),
                           expectedDestination?.isCurrent != false else {
                         throw CopyFailure(text: "Destination identity changed before commit.")

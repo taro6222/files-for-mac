@@ -522,3 +522,55 @@ func copyUndoPreservesMetadataChangesInCopyAndMerge(merge: Bool) async throws {
                                                 journalDirectory: fixture.journal)
     }
 }
+
+@Test func promisedItemExportUsesReceiversNameAndPreservesFileMetadata() throws {
+    let f = try CopyFixture(); defer { f.clean() }
+    let source = try f.file("원본.txt", text: "promised bytes")
+    try FileManager.default.setAttributes([.posixPermissions: 0o640], ofItemAtPath: source.path)
+    let entry = try #require(ShelfEntry(source))
+    let target = f.destination.appendingPathComponent("받은 이름.txt")
+    let report = try CopyEngine.exportPromisedItem(entry, to: target, journalDirectory: f.journal)
+    #expect(report.state == "completed")
+    #expect(report.items.first?.target == target)
+    #expect(try Data(contentsOf: target) == Data("promised bytes".utf8))
+    #expect(try FileManager.default.attributesOfItem(atPath: target.path)[.posixPermissions] as? Int == 0o640)
+    #expect(try Data(contentsOf: source) == Data("promised bytes".utf8))
+    #expect(entry.isCurrent)
+    #expect(CopyEngine.latestUndoCopy(journalDirectory: f.journal) == nil)
+    #expect(try f.noTemporaryOutput())
+}
+
+@Test func promisedItemExportProtectsExistingTargetsAndChangedSources() throws {
+    let f = try CopyFixture(); defer { f.clean() }
+    let source = try f.file("source.txt")
+    let entry = try #require(ShelfEntry(source))
+    let target = f.destination.appendingPathComponent("existing.txt")
+    try Data("existing bytes".utf8).write(to: target)
+    let collision = try CopyEngine.exportPromisedItem(entry, to: target, journalDirectory: f.journal)
+    #expect(collision.items.first?.state == "conflict")
+    #expect(try Data(contentsOf: target) == Data("existing bytes".utf8))
+    try FileManager.default.moveItem(at: source, to: f.source.appendingPathComponent("retained.txt"))
+    try Data("replacement source".utf8).write(to: source)
+    #expect(throws: EntryOperationError.sourceChanged) {
+        try CopyEngine.exportPromisedItem(entry, to: f.destination.appendingPathComponent("new.txt"), journalDirectory: f.journal)
+    }
+    #expect(!FileManager.default.fileExists(atPath: f.destination.appendingPathComponent("new.txt").path))
+    #expect(try Data(contentsOf: source) == Data("replacement source".utf8))
+    #expect(try f.noTemporaryOutput())
+}
+
+@Test func promisedFolderExportKeepsNestedContentsAndSymbolicLinks() throws {
+    let f = try CopyFixture(); defer { f.clean() }
+    let folder = f.source.appendingPathComponent("folder", isDirectory: true)
+    try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+    try Data("nested bytes".utf8).write(to: folder.appendingPathComponent("nested.txt"))
+    try FileManager.default.createSymbolicLink(atPath: folder.appendingPathComponent("link").path,
+                                             withDestinationPath: "nested.txt")
+    let target = f.destination.appendingPathComponent("Renamed Folder", isDirectory: true)
+    let report = try CopyEngine.exportPromisedItem(try #require(ShelfEntry(folder)), to: target, journalDirectory: f.journal)
+    #expect(report.state == "completed")
+    #expect(try Data(contentsOf: target.appendingPathComponent("nested.txt")) == Data("nested bytes".utf8))
+    #expect(try FileManager.default.destinationOfSymbolicLink(atPath: target.appendingPathComponent("link").path) == "nested.txt")
+    #expect(FileManager.default.fileExists(atPath: folder.path))
+    #expect(try f.noTemporaryOutput())
+}

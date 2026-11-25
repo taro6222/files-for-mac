@@ -136,7 +136,7 @@ final class FileListView: NSView, NSTableViewDataSource, NSTableViewDelegate {
         onSelectionChange?(Set(selectedItems.map(\.id)))
     }
     func tableView(_ tableView: NSTableView, pasteboardWriterForRow row: Int) -> (any NSPasteboardWriting)? {
-        guard let item = item(at: row) else { return nil }; return item.url as NSURL
+        guard let item = item(at: row) else { return nil }; return FileDragPromise(item: item)
     }
     func tableView(_ tableView: NSTableView, validateDrop info: any NSDraggingInfo, proposedRow row: Int, proposedDropOperation operation: NSTableView.DropOperation) -> NSDragOperation {
         guard !draggedURLs(info).isEmpty else { return [] }

@@ -1,0 +1,51 @@
+{
+  "baseCommit": "3a65d40c82c785ae07bd934398833cc425a1271e",
+  "sourceSHA256": {
+    "Sources/FilesCore/CopyEngine.swift": "741d748ca06af39738060309fd8843f5a57aa0ca907680fb9af8f0d504dab60a",
+    "Sources/FilesMac/FileDragPromise.swift": "594c1a8a0f459610afb7ad1c82e8a6fb3d12deb34342fccb24cdd052e099d4ab",
+    "Sources/FilesMac/FilePromiseVerification.swift": "2fa1128d1ab125e2d9e484340bcf452ef7cde3856aeb5a3f972f52eaad95e0e5",
+    "Sources/FilesMac/main.swift": "d38c3bec11fe57e109720ffdd6eb8dab08d4572f5218f92c764334584e29fcce",
+    "Sources/FilesMac/BrowserWindow.swift": "d9fafe9261c701a539b95aae243b47ceea13a48253a572f31820615a9100226d",
+    "Sources/FilesMac/FileGridView.swift": "bf92c5082ce769ed67ab18ce67738c10079829355c338a05a4b66a9bef6748f4",
+    "Sources/FilesMac/FileListView.swift": "87e49fe891e39abd5b0186a019a61921308d611cc0cf05aed995583382024e66",
+    "Sources/FilesMac/FileColumnView.swift": "59d54f592daa36b9439db15bf9e1a2be044025e52eafb8653ca91aa2a1970fef",
+    "Sources/FilesMac/SecondaryBrowserPane.swift": "9350c2a7b4bc0ca987151aa0f9bed2651f4de1477c096940374659c6ff841941"
+  },
+  "binarySHA256": "c07ab341f043388c4d34209d1b2944d7b9bf969d75e9347b9909765fc34595b2",
+  "coreTests": {
+    "filter": "promised|template|copy",
+    "passed": 15
+  },
+  "appkitDelegateContract": {
+    "checks": {
+      "delegateCompletesWithoutError": true,
+      "delegateExportsDirectory": true,
+      "delegateNamesOriginalFile": true,
+      "delegatePreservesBothSourceVersions": true,
+      "delegatePreservesMode": true,
+      "delegatePreservesSymbolicLink": true,
+      "delegateProtectsExistingDestination": true,
+      "delegateRejectsChangedSource": true,
+      "delegateReportsCollision": true,
+      "delegateUsesReceiversName": true,
+      "offersDirectoryType": true,
+      "offersPromiseTypes": true,
+      "preservesFileURLRepresentation": true,
+      "promiseIsLazy": true,
+      "readsOnePromiseReceiver": true,
+      "unknownIdentityKeepsOnlyFileURL": true,
+      "usesBackgroundPromiseQueue": true,
+      "writesPasteboard": true
+    },
+    "diagnostics": {
+      "collisionError": "An item with this name already exists; skipped.",
+      "staleSourceError": "The operation couldn’t be completed. (FilesCore.EntryOperationError error 2.)"
+    },
+    "mode": "delegate-contract",
+    "os": "Version 27.2.1 (Build 26B131)"
+  },
+  "actualDragAcceptance": {
+    "state": "pending",
+    "reason": "Console session is locked; frontmost application is com.apple.loginwindow. No completed drag is claimed."
+  }
+}

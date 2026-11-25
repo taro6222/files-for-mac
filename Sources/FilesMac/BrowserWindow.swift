@@ -1452,7 +1452,7 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
     }
     func tableView(_ tableView: NSTableView, pasteboardWriterForRow row: Int) -> (any NSPasteboardWriting)? {
         guard let item = detailItem(at: row, in: detailRows) else { return nil }
-        return item.url as NSURL
+        return FileDragPromise(item: item)
     }
     func tableView(_ tableView: NSTableView, validateDrop info: any NSDraggingInfo,
                    proposedRow row: Int, proposedDropOperation dropOperation: NSTableView.DropOperation) -> NSDragOperation {

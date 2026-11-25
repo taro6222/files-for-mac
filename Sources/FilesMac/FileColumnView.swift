@@ -164,7 +164,7 @@ final class FileColumnView: NSView {
             guard !suppress else { return }; owner?.selectionChanged(column: self)
         }
         func tableView(_ tableView: NSTableView, pasteboardWriterForRow row: Int) -> (any NSPasteboardWriting)? {
-            guard items.indices.contains(row) else { return nil }; return items[row].url as NSURL
+            guard items.indices.contains(row) else { return nil }; return FileDragPromise(item: items[row])
         }
         func tableView(_ tableView: NSTableView, validateDrop info: any NSDraggingInfo, proposedRow row: Int, proposedDropOperation operation: NSTableView.DropOperation) -> NSDragOperation {
             owner?.validateDrop(info, column: self, row: operation == .on ? row : -1) ?? []
@@ -480,7 +480,7 @@ final class FileColumnView: NSView {
     var qaHasDropHandler: Bool { onFileDrop != nil && contextMenu != nil }
     func qaPasteboardURL(column index: Int = 0, row: Int = 0) -> URL? {
         guard columns.indices.contains(index) else { return nil }
-        return (columns[index].tableView(columns[index].table, pasteboardWriterForRow: row) as? NSURL) as URL?
+        return fileDragURL(from: columns[index].tableView(columns[index].table, pasteboardWriterForRow: row))
     }
 #endif
 }

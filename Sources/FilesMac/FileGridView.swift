@@ -189,7 +189,7 @@ final class FileGridView: NSView, NSCollectionViewDataSource, NSCollectionViewDe
     }
     func collectionView(_ collectionView: NSCollectionView, pasteboardWriterForItemAt indexPath: IndexPath) -> (any NSPasteboardWriting)? {
         guard let item = item(at: indexPath) else { return nil }
-        return item.url as NSURL
+        return FileDragPromise(item: item)
     }
     func collectionView(_ collectionView: NSCollectionView, didSelectItemsAt indexPaths: Set<IndexPath>) { selectionChanged() }
     func collectionView(_ collectionView: NSCollectionView, didDeselectItemsAt indexPaths: Set<IndexPath>) { selectionChanged() }
@@ -222,7 +222,7 @@ final class FileGridView: NSView, NSCollectionViewDataSource, NSCollectionViewDe
     func qaPasteboardURL(at index: Int) -> URL? {
         guard items.indices.contains(index) else { return nil }
         guard let path = groups.indices.lazy.compactMap({ section in self.groups[section].items.firstIndex(where: { $0.id == self.items[index].id }).map { IndexPath(item: $0, section: section) } }).first else { return nil }
-        return (collectionView(collection, pasteboardWriterForItemAt: path) as? NSURL) as URL?
+        return fileDragURL(from: collectionView(collection, pasteboardWriterForItemAt: path))
     }
     var qaItemSize: NSSize { (collection.collectionViewLayout as? NSCollectionViewFlowLayout)?.itemSize ?? .zero }
     var qaSectionCount: Int { groups.count }
