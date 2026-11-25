@@ -1,0 +1,139 @@
+{
+  "sourceBaseSHA": "81cce9bc0ccec884f27a3854bfb583c2df15c538",
+  "implementationCommit": "740ebf4789f73fe57c4302661a148491fbb13284",
+  "sourceFileSHA256": {
+    "Sources/FilesCore/FileTags.swift": "402cc0bc829ea82ff6f32f6fec7e7b7a9fdd9cb9236b1afb81833fea76f378fb",
+    "Sources/FilesCore/LocalFileSystem.swift": "536650bfd229b4a5fe676e6a33f71b359c3a9c5a8810627c1b60fb0ed61183d5",
+    "Sources/FilesCore/LocalSearch.swift": "e63e95dcf8cfac7e488539b857e58bb84ff6e5a2323cd721fd287af352181c99",
+    "Sources/FilesCore/FileProperties.swift": "404b8186de05b7ab684f572e5c0a9ce947fb081c15aca1052306aad69f44f300",
+    "Tests/FilesCoreTests/DirectoryMetadataBatchTests.swift": "4615553142ad70dab1c4cff0e499f2a5ed8fd3a282fc4134951d3f22002bf007",
+    "Tests/FilesCoreTests/StoredFileTagsTests.swift": "e689901dfee708696c27e80026294116812a5f3e1d22cf563ab820fd870d6c40"
+  },
+  "debugBinarySHA256": "65890faf1433ab20c098a8efbf2f6f4c87089154e5689c08447ad2b70aa0fdc7",
+  "builds": {
+    "build": {
+      "path": "build/stored-tags-build.log",
+      "sha256": "8e47b4ae6c5a43a0d2ed41738362318ff027d0aab800a708524b9fe850297856"
+    },
+    "release": {
+      "path": "build/stored-tags-release.log",
+      "sha256": "d2688393521ba589e1f165c15d984339ecd5e15369d0f398e906a505c12107b2"
+    }
+  },
+  "swift": {
+    "reported": 342,
+    "passed": 324,
+    "skipped": 18,
+    "log": {
+      "path": "build/stored-tags-tests.log",
+      "sha256": "70da7039b261e33f561e7ab91ddeebea4544bf4982736df323f16a02b17656bf"
+    }
+  },
+  "restrictedExecutor": {
+    "state": "passed",
+    "tests": {
+      "gitConcurrentSnapshotsCompleteWithoutBlockingSwiftTasks": true,
+      "gitWaitingForProcessAllowsOtherSwiftTasksToResume": true,
+      "gitCancellationTerminatesProcessAndCleansCloneStaging": true,
+      "directoryWaitingForFileSystemAllowsOtherSwiftTasksToResume": true,
+      "directoryCancellationWhileFileSystemIsBlockedStopsBeforeFirstBatch": true,
+      "directoryMetadataCancellationReturnsWhileBoundedReadersAreStillBlocked": true,
+      "folderSizingWaitingForFileSystemAllowsOtherSwiftTasksToResume": true,
+      "folderSizingCancellationWhileFileSystemIsBlockedReturnsBeforeIO": true,
+      "folderBulkSizingCancellationDiscardsLateResults": true,
+      "cloudDiscoveryCancellationWhileFileSystemIsBlockedReturnsBeforeIO": true
+    },
+    "exitCode": 0,
+    "timedOut": false,
+    "elapsedSeconds": 0.3190914999868255,
+    "testBinary": "/Users/changhun/Desktop/Workspace/Files/.build/out/Products/Debug/FilesCoreTests.xctest/Contents/MacOS/FilesCoreTests",
+    "constrainedProcess": "swiftpm-testing-helper",
+    "swiftVersion": "Apple Swift version 6.4.2 (swiftlang-6.4.2.1.9 clang-2100.4.1.1)\nTarget: arm64-apple-macosx27.2.0",
+    "sourceCommit": null,
+    "strictCooperativePool": true
+  },
+  "mountedVolumes": {
+    "reported": 7,
+    "filesystems": [
+      "APFS",
+      "case-sensitive APFS",
+      "exFAT",
+      "FAT32",
+      "HFS+"
+    ],
+    "log": {
+      "path": "build/stored-tags-volume-ui.log",
+      "sha256": "b6a1fb55107f0bd9978c34498c5bacd31812fbc55cfd2f90d19875c7a8f40d2c"
+    }
+  },
+  "fileOperationUI": {
+    "ko-light": {
+      "checks": 79,
+      "report": {
+        "path": "/private/var/folders/lg/xk3px5rn42n0mrrykzn0pw380000gn/T/files-m2-ui.Av1Yzx/ko-light/report.json",
+        "sha256": "ceceb79459fe0b1b70c74b7654a51280c3171eaf6db720fdf19879b337f5a82b"
+      }
+    },
+    "ko-dark": {
+      "checks": 79,
+      "report": {
+        "path": "/private/var/folders/lg/xk3px5rn42n0mrrykzn0pw380000gn/T/files-m2-ui.Av1Yzx/ko-dark/report.json",
+        "sha256": "94d08528c50cb7a7f976311dde7bad637578234560f00245e61edbdc6f8c5a19"
+      }
+    },
+    "en-light": {
+      "checks": 79,
+      "report": {
+        "path": "/private/var/folders/lg/xk3px5rn42n0mrrykzn0pw380000gn/T/files-m2-ui.Av1Yzx/en-light/report.json",
+        "sha256": "45cce7a626ac16c59d21047b41f3e3a998ae3f44e9d7e85d24d07f6b942b5126"
+      }
+    },
+    "en-dark": {
+      "checks": 79,
+      "report": {
+        "path": "/private/var/folders/lg/xk3px5rn42n0mrrykzn0pw380000gn/T/files-m2-ui.Av1Yzx/en-dark/report.json",
+        "sha256": "94dd64dbd46c859c68037fece6a686aef619c1c2ddad48b2ddc140bc95c61ac1"
+      }
+    }
+  },
+  "fullAppKit": {
+    "ko-light": {
+      "checks": 283,
+      "report": {
+        "path": "/private/var/folders/lg/xk3px5rn42n0mrrykzn0pw380000gn/T/files-ui-verification.gA2thI/ko-light/report.json",
+        "sha256": "d9de210309a522f6df30fdc000785068add07454d996ed0cd181e0e1d50ff2ae"
+      }
+    },
+    "ko-dark": {
+      "checks": 283,
+      "report": {
+        "path": "/private/var/folders/lg/xk3px5rn42n0mrrykzn0pw380000gn/T/files-ui-verification.gA2thI/ko-dark/report.json",
+        "sha256": "369e2a3e471677b30e80ed39f42a299510ed1d160e6a6f283637041b020e0d00"
+      }
+    },
+    "en-light": {
+      "checks": 283,
+      "report": {
+        "path": "/private/var/folders/lg/xk3px5rn42n0mrrykzn0pw380000gn/T/files-ui-verification.gA2thI/en-light/report.json",
+        "sha256": "1ce0e8550d1ca1e2a0eb836cfdbece9e38f94b584c24dad7ca06f7e142551d2a"
+      }
+    },
+    "en-dark": {
+      "checks": 283,
+      "report": {
+        "path": "/private/var/folders/lg/xk3px5rn42n0mrrykzn0pw380000gn/T/files-ui-verification.gA2thI/en-dark/report.json",
+        "sha256": "87ee21c6120f5c17d094130c34b14c7a3377f0500a647aee56bfa402e87fee50"
+      }
+    }
+  },
+  "remote": {
+    "runID": 45705238611,
+    "state": "in-progress; tests not yet completed at evidence collection"
+  },
+  "limits": [
+    "Stored plist decoding is preferred when available; missing/unsupported/malformed storage retains native provider values.",
+    "Direct xattr reads do not follow a leaf symbolic link; native fallback semantics are unchanged.",
+    "No atomic guarantee across concurrent metadata mutation; size-growth retry is bounded.",
+    "Remote ARM/Intel acceptance, memory stability, performance and formal signed distribution remain separate gates."
+  ]
+}
