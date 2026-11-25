@@ -104,8 +104,10 @@ public struct PromisedFileCleanupRecovery: Sendable {
                     record.receivedNames = intake.receivedNames
                     return record
                 }
-                return Self(journal: url, original: result.original, recordedState: result.state,
+                var unknown = Self(journal: url, original: result.original, recordedState: result.state,
                             location: nil, status: .unlocated, message: result.message)
+                unknown.receivedNames = result.receivedNames ?? []
+                return unknown
             } catch {
                 return Self(journal: url, original: nil, recordedState: nil, location: nil,
                             status: .invalid, message: error.localizedDescription)

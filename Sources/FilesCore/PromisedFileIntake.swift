@@ -277,6 +277,20 @@ public final class PromisedFileIntake: @unchecked Sendable {
         }
     }
 
+#if DEBUG
+    /// The QA runner can terminate its own process after the OS move but before its location is journaled.
+    public func interruptibleCleanupForVerification(journalDirectory: URL,
+                                                    didMove: (URL) throws -> Void) throws -> PromisedFileCleanupResult {
+        try moveVerifiedCopiesToTrash(journalDirectory: journalDirectory, cancellation: CopyCancellation()) { root in
+            var moved: NSURL?
+            try FileManager.default.trashItem(at: root, resultingItemURL: &moved)
+            guard let moved else { throw PromisedFileIntakeError.changedRoot }
+            try didMove(moved as URL)
+            return moved as URL
+        }
+    }
+#endif
+
     // The injected move permits deterministic race/failure tests using only fixture directories.
     func moveVerifiedCopiesToTrash(journalDirectory: URL, cancellation: CopyCancellation = CopyCancellation(),
                                    trash: (URL) throws -> URL) throws -> PromisedFileCleanupResult {
@@ -288,6 +302,7 @@ public final class PromisedFileIntake: @unchecked Sendable {
             try fm.createDirectory(at: journalDirectory, withIntermediateDirectories: true)
             var result = PromisedFileCleanupResult(original: directoryURL, retainedAt: directoryURL, state: "verified", message: nil, journal: journal)
             result.directoryIdentity = header.directoryIdentity
+            result.receivedNames = receivedNames
             func save() throws { try JSONEncoder().encode(result).write(to: journal, options: .atomic) }
             try save(); try cancellation.check(); try requireOwnedDirectories()
             let trashed: URL
@@ -377,4 +392,5 @@ public struct PromisedFileCleanupResult: Codable, Sendable {
     public var message: String?
     public let journal: URL
     public var directoryIdentity: String? // Older journals remain readable, without adopting a location.
+    public var receivedNames: [String]? // Available even when a crash prevented recording the moved location.
 }

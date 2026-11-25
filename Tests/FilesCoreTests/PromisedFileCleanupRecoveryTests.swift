@@ -19,6 +19,7 @@ private struct CleanupRecoveryFixture {
         var result = PromisedFileCleanupResult(original: intake.directoryURL, retainedAt: location ?? intake.directoryURL,
                                               state: state, message: nil, journal: journal)
         if !legacy { result.directoryIdentity = LocalEntryIdentity.read(intake.directoryURL) }
+        result.receivedNames = intake.receivedNames
         try JSONEncoder().encode(result).write(to: journal, options: .atomic)
     }
     func discover() throws -> [PromisedFileCleanupRecovery] {
@@ -57,11 +58,15 @@ private struct CleanupRecoveryFixture {
 }
 
 @Test func promisedCleanupRestartDoesNotGuessTrashWhenMoveWasNotJournaled() throws {
-    let f = try CleanupRecoveryFixture(); defer { f.remove() }; try f.save()
+    let f = try CleanupRecoveryFixture(); defer { f.remove() }
+    let source = f.intake.receivingDirectory.appendingPathComponent("recorded-name.txt")
+    try Data("retained source".utf8).write(to: source); try f.intake.registerReceivedFile(source)
+    try f.save()
     let moved = f.root.appendingPathComponent("unknown-trash-location")
     try FileManager.default.moveItem(at: f.intake.directoryURL, to: moved)
     let row = try #require(try f.discover().first)
     #expect(row.status == .unlocated && row.location == nil)
+    #expect(row.receivedNames == ["recorded-name.txt"])
     #expect(FileManager.default.fileExists(atPath: moved.path))
 }
 

@@ -355,7 +355,7 @@ final class ReceivedFilesWindow: NSWindowController, NSTableViewDataSource, NSTa
 
 /// A fresh controller reads durable journals, including jobs interrupted in a previous process.
 @MainActor
-private final class CleanupHistoryWindow: NSWindowController, NSTableViewDataSource, NSTableViewDelegate {
+final class CleanupHistoryWindow: NSWindowController, NSTableViewDataSource, NSTableViewDelegate {
     private static var shared: CleanupHistoryWindow?
     private let journals: URL
     private let storage: URL
@@ -454,6 +454,38 @@ private final class CleanupHistoryWindow: NSWindowController, NSTableViewDataSou
         NSWorkspace.shared.activateFileViewerSelecting([location]); reload()
     }
 #if DEBUG
+    static func verifyInterruptedRestart(journals: URL, storage: URL, output: URL) async -> [String: Bool] {
+        let controller = CleanupHistoryWindow(journals: journals, storage: storage)
+        defer { controller.window?.close() }
+        controller.reload()
+        for _ in 0..<500 where controller.busy { try? await Task.sleep(for: .milliseconds(10)) }
+        var checks = ["restartHistoryReadsInterruptedJournal": !controller.busy && controller.rows.count == 1]
+        controller.table.selectRowIndexes(IndexSet(integer: 0), byExtendingSelection: false); controller.updateSelection()
+        checks["restartHistoryDoesNotInventMovedLocation"] = controller.selected?.status == .unlocated && !controller.reveal.isEnabled && controller.record.isEnabled
+        checks["restartHistoryExplainsInterruptedState"] = controller.selected?.recordedState == "verified"
+            && controller.details.stringValue.contains(L("미완료 정리", "Interrupted cleanup"))
+        if let window = controller.window, let view = window.contentView {
+            window.setFrame(NSRect(origin: window.frame.origin, size: window.minSize), display: false); view.layoutSubtreeIfNeeded()
+            checks["restartHistoryControlsFitMinimumWindow"] = [controller.reveal, controller.record, controller.refresh].allSatisfy {
+                view.bounds.contains(view.convert($0.bounds, from: $0)) && $0.frame.width >= $0.fittingSize.width - 1
+            }
+            if let bitmap = view.bitmapImageRepForCachingDisplay(in: view.bounds) {
+                view.effectiveAppearance.performAsCurrentDrawingAppearance {
+                    view.cacheDisplay(in: view.bounds, to: bitmap)
+                    if let context = NSGraphicsContext(bitmapImageRep: bitmap)?.cgContext {
+                        context.setBlendMode(.destinationOver); context.setFillColor(NSColor.windowBackgroundColor.cgColor)
+                        context.fill(CGRect(x: 0, y: 0, width: bitmap.pixelsWide, height: bitmap.pixelsHigh))
+                    }
+                }
+                do {
+                    guard let png = bitmap.representation(using: .png, properties: [:]) else { throw CocoaError(.fileWriteUnknown) }
+                    try png.write(to: output.appendingPathComponent("interrupted-cleanup-history.png"))
+                    checks["restartHistoryCaptureWritten"] = true
+                } catch { checks["restartHistoryCaptureWritten"] = false }
+            }
+        }
+        return checks
+    }
     static func verify(journals: URL, storage: URL) async -> [String: Bool] {
         let damaged = journals.appendingPathComponent("promise-cleanup-ui-damaged-\(UUID()).json")
         do { try Data("interrupted invalid fixture".utf8).write(to: damaged) }
