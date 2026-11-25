@@ -30,9 +30,15 @@ public protocol DirectoryStreaming: DirectoryLoading {
 
 public struct LocalFileSystem: DirectoryStreaming {
     private let beforeReading: (@Sendable () -> Void)?
-    public init() { beforeReading = nil }
-    // A bounded test seam for a synchronously blocked filesystem call.
-    init(beforeReading: @escaping @Sendable () -> Void) { self.beforeReading = beforeReading }
+    private let beforeEntryReading: (@Sendable (URL) -> Void)?
+    private let metadataWorkers: Int
+    public init() { beforeReading = nil; beforeEntryReading = nil; metadataWorkers = 4 }
+    // Bounded seams for synchronously blocked root and entry metadata calls.
+    init(beforeReading: @escaping @Sendable () -> Void,
+         beforeEntryReading: (@Sendable (URL) -> Void)? = nil, metadataWorkers: Int = 4) {
+        self.beforeReading = beforeReading; self.beforeEntryReading = beforeEntryReading
+        self.metadataWorkers = max(1, min(4, metadataWorkers))
+    }
     public func contents(of url: URL, showHidden: Bool) async throws -> [FileItem] {
         var result: [FileItem] = []
         for try await batch in batches(of: url, showHidden: showHidden) { result.append(contentsOf: batch) }
@@ -58,57 +64,78 @@ public struct LocalFileSystem: DirectoryStreaming {
                     var options: FileManager.DirectoryEnumerationOptions = [.skipsSubdirectoryDescendants]
                     if !showHidden { options.insert(.skipsHiddenFiles) }
                     guard let enumerator = FileManager.default.enumerator(at: url,
-                        includingPropertiesForKeys: Array(keys), options: options,
+                        includingPropertiesForKeys: [.tagNamesKey], options: options,
                         errorHandler: { _, error in rootError = error; return false }) else {
                         throw CocoaError(.fileReadUnknown)
                     }
-                    var batch: [FileItem] = []
+                    // Keep URL traversal serial; full resource lookup can synchronously consult
+                    // File Provider even for local files. Read bounded batches on the GCD pool.
                     var first = true
-                    while true {
+                    var ended = false
+                    while !ended {
+                        var urls: [URL] = []
+                        let limit = first ? 128 : 1024
+                        urls.reserveCapacity(limit)
+                        while urls.count < limit {
+                            try cancellation.check()
+                            guard let child = enumerator.nextObject() as? URL else { ended = true; break }
+                            urls.append(child)
+                        }
+                        if let rootError { throw rootError }
+                        guard !urls.isEmpty else { break }
+                        let batch = DirectoryEntryBatch(count: urls.count)
+                        let children = urls
+                        let workers = min(metadataWorkers, children.count)
+                        DispatchQueue.concurrentPerform(iterations: workers) { worker in
+                            for index in stride(from: worker, to: children.count, by: workers) {
+                                if cancellation.isCancelled { break }
+                                let item: FileItem? = autoreleasepool {
+                                    beforeEntryReading?(children[index])
+                                    guard !cancellation.isCancelled else { return nil }
+                                    // Explicit tag prefetch preserves Finder tag values carried by
+                                    // the enumerator while the remaining keys resolve on this worker.
+                                    let enumerated = children[index]
+                                    let name = enumerated.lastPathComponent
+                                    do {
+                                        let v = try enumerated.resourceValues(forKeys: keys)
+                                        guard !cancellation.isCancelled else { return nil }
+                                        let child = url.appending(component: name, directoryHint: v.isDirectory == true ? .isDirectory : .notDirectory)
+                                        return FileItem(url: child, name: name,
+                                            isDirectory: v.isDirectory ?? false, identity: LocalEntryIdentity.read(child),
+                                            isPackage: v.isPackage ?? false,
+                                            isSymbolicLink: v.isSymbolicLink ?? false, isHidden: v.isHidden ?? false,
+                                            size: v.fileSize.map(Int64.init), created: v.creationDate, modified: v.contentModificationDate,
+                                            kind: v.isDirectory == true ? "Folder" : (child.pathExtension.isEmpty ? "File" : child.pathExtension.uppercased()),
+                                            tags: v.tagNames ?? [],
+                                            cloudState: v.isUbiquitousItem == true ? .readUbiquitousState(at: child) : nil)
+                                    } catch {
+                                        let error = error as NSError
+                                        if error.domain == NSCocoaErrorDomain && error.code == NSFileReadNoSuchFileError { return nil }
+                                        return FileItem(url: url.appending(component: name, directoryHint: .notDirectory), name: name, isDirectory: false, kind: "—")
+                                    }
+                                }
+                                batch.store(item, at: index)
+                            }
+                        }
                         try cancellation.check()
-                        var reachedEnd = false
-                        let item: FileItem? = autoreleasepool {
-                            guard let enumerated = enumerator.nextObject() as? URL else {
-                                reachedEnd = true
-                                return nil
-                            }
-                            let name = enumerated.lastPathComponent
-                            do {
-                                // Use the resource values prefetched by the directory enumerator.
-                                // Keep a fresh URL in the model for later operations and refreshes.
-                                let v = try enumerated.resourceValues(forKeys: keys)
-                                // The enumerator already supplied the type. Do not perform another
-                                // filesystem probe just to construct a fresh URL for every child.
-                                let child = url.appending(component: name, directoryHint: v.isDirectory == true ? .isDirectory : .notDirectory)
-                                return FileItem(url: child, name: child.lastPathComponent,
-                                    isDirectory: v.isDirectory ?? false, identity: LocalEntryIdentity.read(child),
-                                    isPackage: v.isPackage ?? false,
-                                    isSymbolicLink: v.isSymbolicLink ?? false, isHidden: v.isHidden ?? false,
-                                    size: v.fileSize.map(Int64.init), created: v.creationDate, modified: v.contentModificationDate,
-                                    kind: v.isDirectory == true ? "Folder" : (child.pathExtension.isEmpty ? "File" : child.pathExtension.uppercased()),
-                                    tags: v.tagNames ?? [],
-                                    cloudState: v.isUbiquitousItem == true ? .readUbiquitousState(at: child) : nil)
-                            } catch {
-                                let e = error as NSError
-                                if e.domain == NSCocoaErrorDomain && e.code == NSFileReadNoSuchFileError { return nil }
-                                return FileItem(url: url.appending(component: name, directoryHint: .notDirectory), name: name, isDirectory: false, kind: "—")
-                            }
-                        }
-                        if reachedEnd { break }
-                        guard let item else { continue }
-                        batch.append(item)
-                        if batch.count >= (first ? 128 : 1024) {
-                            continuation.yield(batch); batch.removeAll(keepingCapacity: true); first = false
-                        }
+                        let items = batch.items
+                        if !items.isEmpty { continuation.yield(items); first = false }
                     }
-                    if let rootError { throw rootError }
-                    if !batch.isEmpty { continuation.yield(batch) }
                     continuation.finish()
                 } catch { continuation.finish(throwing: error) }
             }
             continuation.onTermination = { _ in cancellation.cancel() }
         }
     }
+}
+
+/// Resource reads run concurrently, but a completed batch retains traversal order.
+private final class DirectoryEntryBatch: @unchecked Sendable {
+    private let lock = NSLock()
+    private var entries: [FileItem?]
+    init(count: Int) { entries = Array(repeating: nil, count: count) }
+    func store(_ item: FileItem?, at index: Int) { lock.withLock { entries[index] = item } }
+    var items: [FileItem] { lock.withLock { entries.compactMap { $0 } } }
 }
 
 public struct NavigationEntry: Codable, Equatable, Sendable {

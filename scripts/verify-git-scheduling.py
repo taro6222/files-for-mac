@@ -41,6 +41,7 @@ tests = [
     "gitCancellationTerminatesProcessAndCleansCloneStaging",
     "directoryWaitingForFileSystemAllowsOtherSwiftTasksToResume",
     "directoryCancellationWhileFileSystemIsBlockedStopsBeforeFirstBatch",
+    "directoryMetadataCancellationReturnsWhileBoundedReadersAreStillBlocked",
     "folderSizingWaitingForFileSystemAllowsOtherSwiftTasksToResume",
     "folderSizingCancellationWhileFileSystemIsBlockedReturnsBeforeIO",
     "folderBulkSizingCancellationDiscardsLateResults",
