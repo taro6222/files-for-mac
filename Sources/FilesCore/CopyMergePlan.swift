@@ -31,14 +31,19 @@ public struct CopyMergePlan: Codable, Sendable {
 public enum CopyMergePlanner {
     /// Builds a read-only recursive plan. Execution must revalidate every target because the
     /// directory can change between planning and publication.
-    public static func plan(source: URL, target: URL) throws -> CopyMergePlan {
+    public static func plan(source: URL, target: URL, cancellation: CopyCancellation? = nil) throws -> CopyMergePlan {
         let source = source.standardizedFileURL
         let target = target.standardizedFileURL
         guard try entryKind(source) == .directory, try entryKind(target) == .directory else {
             throw CocoaError(.fileReadUnsupportedScheme)
         }
+        let root = source.resolvingSymlinksInPath().path
+        let destination = target.resolvingSymlinksInPath().path
+        guard destination != root, !destination.hasPrefix(root == "/" ? "/" : root + "/") else {
+            throw MergeFailure(text: "Cannot merge a folder into itself or a descendant.")
+        }
         var actions: [CopyMergeAction] = []
-        try appendDirectory(source: source, target: target, relativeParent: "", actions: &actions)
+        try appendDirectory(source: source, target: target, relativeParent: "", cancellation: cancellation, actions: &actions)
         return CopyMergePlan(source: source, target: target, actions: actions,
                              targetIdentity: try identity(target))
     }
@@ -46,11 +51,13 @@ public enum CopyMergePlanner {
     private enum EntryKind { case directory, other }
 
     private static func appendDirectory(source: URL, target: URL, relativeParent: String,
-                                        actions: inout [CopyMergeAction]) throws {
+                                        cancellation: CopyCancellation?, actions: inout [CopyMergeAction]) throws {
+        try cancellation?.check()
         let children = try FileManager.default.contentsOfDirectory(
             at: source, includingPropertiesForKeys: nil, options: [])
             .sorted { $0.lastPathComponent.localizedStandardCompare($1.lastPathComponent) == .orderedAscending }
         for child in children {
+            try cancellation?.check()
             let relative = relativeParent.isEmpty ? child.lastPathComponent : relativeParent + "/" + child.lastPathComponent
             let destination = target.appendingPathComponent(child.lastPathComponent)
             let sourceKind = try entryKind(child)
@@ -66,7 +73,7 @@ public enum CopyMergePlanner {
                                                expectedParentIdentity: try identity(target),
                                                expectedTargetIdentity: try identity(destination)))
                 try appendDirectory(source: child, target: destination,
-                                    relativeParent: relative, actions: &actions)
+                                    relativeParent: relative, cancellation: cancellation, actions: &actions)
             } else {
                 actions.append(CopyMergeAction(source: child, target: destination,
                                                relativePath: relative,
@@ -112,6 +119,7 @@ public struct CopyMergeExecutionReport: Codable, Sendable {
     public var state: String
     public var items: [CopyMergeExecutionItem]
     public var journalError: String?
+    public var selectionTransfer: SelectionTransferProgress? = nil
 }
 
 /// Progress of the current missing entry; bytes describe staging before verification/publication.
@@ -121,6 +129,7 @@ public struct CopyMergeProgress: Sendable {
     public let relativePath: String
     public let phase: String
     public var liveTransfer: LiveTransferProgress? = nil
+    public var selectionTransfer: SelectionTransferProgress? = nil
 }
 
 public enum CopyMergeExecutor {
@@ -128,13 +137,73 @@ public enum CopyMergeExecutor {
                            cancellation: CopyCancellation, recordUndo: Bool = true,
                            progress: @escaping @Sendable (CopyMergeProgress) -> Void = { _ in }) async -> CopyMergeExecutionReport {
         await Task.detached(priority: .userInitiated) {
-            execute(plan: plan, journalDirectory: journalDirectory,
+            execute(plan: plan, prepared: nil, journalDirectory: journalDirectory,
                     cancellation: cancellation, recordUndo: recordUndo, progress: progress)
         }.value
     }
 
-    private static func execute(plan: CopyMergePlan, journalDirectory: URL,
-                                cancellation: CopyCancellation, recordUndo: Bool,
+    final class Prepared: @unchecked Sendable {
+        private let lock = NSLock()
+        private var originals: [Result<CopyEngine.VerificationSnapshot, any Error>?]
+        let sizes: [Int64?]
+        init(originals: [Result<CopyEngine.VerificationSnapshot, any Error>?], sizes: [Int64?]) {
+            self.originals = originals; self.sizes = sizes
+        }
+        func take(_ index: Int) -> Result<CopyEngine.VerificationSnapshot, any Error>? {
+            lock.withLock { let value = originals[index]; originals[index] = nil; return value }
+        }
+        var totalBytes: Int64? { SelectionTransferTracker(plans: sizes).snapshot().totalBytes }
+    }
+    static func prepare(plan: CopyMergePlan, cancellation: CopyCancellation,
+                        progress: (CopyMergeAction) -> Void = { _ in }) -> Prepared {
+        var originals = [Result<CopyEngine.VerificationSnapshot, any Error>?](repeating: nil, count: plan.actions.count)
+        var sizes = [Int64?](repeating: 0, count: plan.actions.count)
+        var lastFeedback: ContinuousClock.Instant?
+        for index in plan.actions.indices where plan.actions[index].kind == .copyMissing {
+            let action = plan.actions[index]
+            if cancellation.isCancelled {
+                for remaining in index..<plan.actions.count where plan.actions[remaining].kind == .copyMissing { sizes[remaining] = nil }
+                break
+            }
+            let now = ContinuousClock.now
+            if lastFeedback.map({ $0.duration(to: now) >= .milliseconds(100) }) != false {
+                progress(action); lastFeedback = now
+            }
+            let result = Result { () throws -> CopyEngine.VerificationSnapshot in
+                try cancellation.check()
+                guard try identity(plan.target) == plan.targetIdentity,
+                      try identity(action.target.deletingLastPathComponent()) == action.expectedParentIdentity else {
+                    throw MergeFailure(text: "Merge destination changed before preparation.")
+                }
+                return try CopyEngine.makeSnapshot(action.source, cancellation: cancellation)
+            }
+            originals[index] = result
+            if case .success(let snapshot) = result { sizes[index] = snapshot.logicalDataBytes }
+            else { sizes[index] = nil }
+        }
+        return Prepared(originals: originals, sizes: sizes)
+    }
+    static func revalidate(plan: CopyMergePlan, prepared: Prepared, cancellation: CopyCancellation) throws {
+        for index in plan.actions.indices where plan.actions[index].kind == .copyMissing {
+            try cancellation.check()
+            guard let original = prepared.take(index) else { continue }
+            let snapshot = try original.get()
+            guard try CopyEngine.makeSnapshot(plan.actions[index].source, cancellation: cancellation).matchesOriginal(snapshot) else {
+                throw MergeFailure(text: "Source changed after merge preparation.")
+            }
+        }
+    }
+    static func runPrepared(plan: CopyMergePlan, prepared: Prepared, journalDirectory: URL,
+                            cancellation: CopyCancellation, expectedDestination: ShelfEntry?,
+                            progress: @escaping @Sendable (CopyMergeProgress) -> Void) async -> CopyMergeExecutionReport {
+        await Task.detached(priority: .userInitiated) {
+            execute(plan: plan, prepared: prepared, journalDirectory: journalDirectory,
+                    cancellation: cancellation, recordUndo: false, expectedDestination: expectedDestination, progress: progress)
+        }.value
+    }
+
+    private static func execute(plan: CopyMergePlan, prepared: Prepared?, journalDirectory: URL,
+                                cancellation: CopyCancellation, recordUndo: Bool, expectedDestination: ShelfEntry? = nil,
                                 progress: @escaping @Sendable (CopyMergeProgress) -> Void) -> CopyMergeExecutionReport {
         let fm = FileManager.default
         var report = CopyMergeExecutionReport(version: 1, id: UUID(), state: "running",
@@ -152,16 +221,24 @@ public enum CopyMergeExecutor {
         guard (try? identity(plan.target)) == plan.targetIdentity else {
             report.state = "failed"; report.journalError = "Merge destination changed after planning."; try? save(); return report
         }
+        let preparation = prepared ?? prepare(plan: plan, cancellation: cancellation) { action in
+            progress(CopyMergeProgress(index: 0, total: plan.actions.count, relativePath: action.relativePath, phase: "sizing"))
+        }
         var undoItems: [CopyUndoItem] = []
+        let selection = SelectionTransferTracker(plans: preparation.sizes)
         for index in plan.actions.indices {
+            let original = preparation.take(index)
             let action = plan.actions[index]
             func emit(_ phase: String) {
                 progress(CopyMergeProgress(index: index, total: plan.actions.count,
-                    relativePath: action.relativePath, phase: phase))
+                    relativePath: action.relativePath, phase: phase, selectionTransfer: selection.snapshot()))
             }
-            emit("planning")
             if cancellation.isCancelled { report.items[index].state = "cancelled"; continue }
+            emit("planning")
             do {
+                guard expectedDestination?.isCurrent != false else {
+                    throw MergeFailure(text: "Merge destination changed after preparation.")
+                }
                 let parent = action.target.deletingLastPathComponent()
                 guard try identity(parent) == action.expectedParentIdentity else {
                     throw MergeFailure(text: "Destination parent changed after planning.")
@@ -179,7 +256,9 @@ public enum CopyMergeExecutor {
                     report.items[index].state = "verified"
                 case .copyMissing:
                     report.items[index].state = "copying"; try save(); try cancellation.check()
-                    let before = try CopyEngine.makeSnapshot(action.source, cancellation: cancellation)
+                    let before: CopyEngine.VerificationSnapshot
+                    if let original { before = try original.get() }
+                    else { before = try CopyEngine.makeSnapshot(action.source, cancellation: cancellation) }
                     let staging = parent.appendingPathComponent(".files-merge-\(report.id.uuidString)-\(index)")
                     guard mkdir(staging.path, 0o700) == 0 else {
                         throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
@@ -192,7 +271,8 @@ public enum CopyMergeExecutor {
                     try NativeFileCopy.run(from: action.source, to: temporary,
                                            totalBytes: before.logicalDataBytes, cancellation: cancellation) { live in
                         progress(CopyMergeProgress(index: index, total: plan.actions.count,
-                            relativePath: action.relativePath, phase: "copying", liveTransfer: live))
+                            relativePath: action.relativePath, phase: "copying", liveTransfer: live,
+                            selectionTransfer: selection.record(index, live: live)))
                     }
                     try before.restoreCreationTimes(in: temporary, cancellation: cancellation)
                     try before.restoreDirectoryModificationTimes(in: temporary, cancellation: cancellation)
@@ -212,7 +292,8 @@ public enum CopyMergeExecutor {
                     let parentFD = open(parent.path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
                     guard parentFD >= 0 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
                     defer { close(parentFD) }
-                    guard try identity(parent) == action.expectedParentIdentity,
+                    guard expectedDestination?.isCurrent != false,
+                          try identity(parent) == action.expectedParentIdentity,
                           CopyEngine.matches(parent, descriptor: parentFD),
                           CopyEngine.matches(staging, descriptor: stageFD) else {
                         throw MergeFailure(text: "Destination or staging directory changed before publication.")
@@ -239,6 +320,7 @@ public enum CopyMergeExecutor {
             emit(report.items[index].state)
             do { try save() } catch { report.journalError = error.localizedDescription; break }
         }
+        report.selectionTransfer = selection.snapshot()
         let failed = report.items.filter { $0.state == "failed" }.count
         report.state = cancellation.isCancelled ? "cancelled" : (failed == 0 ? "completed" : "partiallyCompleted")
         if recordUndo && !undoItems.isEmpty {

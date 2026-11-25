@@ -1,0 +1,112 @@
+{
+  "sourceBaseSHA": "34cae2c8f5a5e83d00f07e3c343ddd494c0f5ffb",
+  "sourceFilesSHA256": {
+    "Sources/FilesCore/CopyEngine.swift": "549c89f48550e5e469235bccc954df21c9a1b4f9189d323c3fc3271a97e8d7e1",
+    "Sources/FilesCore/CopyMergeBatch.swift": "945c42ebf445d4191685098b10e8ed313d56340240a4aec8eb6223b2c17f941d",
+    "Sources/FilesCore/CopyMergePlan.swift": "34172f5d649675bdc2bfd5f8d26c942d576d1d4ec85a25b487091f7c291ea128",
+    "Sources/FilesCore/SelectionTransferProgress.swift": "9fa82c4fb478a569d1d6dbda9c490b70269ac67536701d5fae131b9b598955d7",
+    "Sources/FilesMac/BrowserWindow.swift": "3039c839d196fd327a127eb2fdd046857f7726eb6b35936f6aa7b754e816dc13",
+    "Sources/FilesMac/FolderMergeWindow.swift": "8330e9dc387d3ee1899a826367e5bda79b8512f016949ba5bdc2b20152e69101",
+    "Tests/FilesCoreTests/MergeSelectionProgressTests.swift": "fbe7901fa7d7864bdbfac6a2f97e0a0e729d196f780a2437fffec1bdc84f3ca8"
+  },
+  "debugSHA256": "f05337a4ce82eeeb4af41f63e7d417419626773d31844c1f2f376276a37d6007",
+  "releaseSHA256": "009c773e5bfcd20595e7213cdb5f6ef245a35b2a5f66f88ea7ccb1138d1494da",
+  "swiftTests": {
+    "reported": 361,
+    "passed": 343,
+    "environmentSkipped": 18
+  },
+  "mountedVolumeTests": 7,
+  "strictExecutor": {
+    "state": "passed",
+    "tests": {
+      "gitConcurrentSnapshotsCompleteWithoutBlockingSwiftTasks": true,
+      "gitWaitingForProcessAllowsOtherSwiftTasksToResume": true,
+      "gitCancellationTerminatesProcessAndCleansCloneStaging": true,
+      "directoryWaitingForFileSystemAllowsOtherSwiftTasksToResume": true,
+      "directoryCancellationWhileFileSystemIsBlockedStopsBeforeFirstBatch": true,
+      "directoryMetadataCancellationReturnsWhileBoundedReadersAreStillBlocked": true,
+      "folderSizingWaitingForFileSystemAllowsOtherSwiftTasksToResume": true,
+      "folderSizingCancellationWhileFileSystemIsBlockedReturnsBeforeIO": true,
+      "folderBulkSizingCancellationDiscardsLateResults": true,
+      "cloudDiscoveryCancellationWhileFileSystemIsBlockedReturnsBeforeIO": true
+    },
+    "exitCode": 0,
+    "timedOut": false,
+    "elapsedSeconds": 0.18760887498501688,
+    "testBinary": "/Users/changhun/Desktop/Workspace/Files/.build/out/Products/Debug/FilesCoreTests.xctest/Contents/MacOS/FilesCoreTests",
+    "constrainedProcess": "swiftpm-testing-helper",
+    "swiftVersion": "Apple Swift version 6.4.2 (swiftlang-6.4.2.1.9 clang-2100.4.1.1)\nTarget: arm64-apple-macosx27.2.0",
+    "sourceCommit": null,
+    "strictCooperativePool": true
+  },
+  "cases": {
+    "ko-light": {
+      "fileOperationChecks": 82,
+      "fullChecks": 283,
+      "mergeLiveBytesAndLateFrames": true,
+      "fileOperationReportSHA256": "a2891ca69055768ad9af1ba074c6c75818c7391b3948b64572f26173072ace76",
+      "fullReportSHA256": "1e5a4120391ccf9f0344735adef864583a7f3ea0ec92cf3d05ce19e7e3d68d34",
+      "capture": "merge-selection-ko-light.png",
+      "captureSHA256": "2ae157e6bd1d01d5a95549b35bd9ba04e50d5f684536b9e3615cf1ced872abba"
+    },
+    "ko-dark": {
+      "fileOperationChecks": 82,
+      "fullChecks": 283,
+      "mergeLiveBytesAndLateFrames": true,
+      "fileOperationReportSHA256": "55141ddbaed1c8643c3720a7f86f662f03001bcd88ebd7c8c46fc934216c9a5c",
+      "fullReportSHA256": "661d94f787b9d8872b6d18f705be8a2d46e6a059a860fc60c92270cc7b49517a",
+      "capture": "merge-selection-ko-dark.png",
+      "captureSHA256": "ccd39b34620cb01addb98d7081e0c06a24b4905a12942f32d3ec732c072a6c89"
+    },
+    "en-light": {
+      "fileOperationChecks": 82,
+      "fullChecks": 283,
+      "mergeLiveBytesAndLateFrames": true,
+      "fileOperationReportSHA256": "ec1cf57f7c6d37daeb3103b9c12e6a326272b25729c5dfad0951017db5f6d791",
+      "fullReportSHA256": "dcd9d3822815befc94bb00ecf837d2ac8a57cf5389953fa69667c79ed4b93946",
+      "capture": "merge-selection-en-light.png",
+      "captureSHA256": "e2e90af7b69fb2d329c4bfe9a03d4b1c53bf3a4fa205d1d6fa2a399d815f8a76"
+    },
+    "en-dark": {
+      "fileOperationChecks": 82,
+      "fullChecks": 283,
+      "mergeLiveBytesAndLateFrames": true,
+      "fileOperationReportSHA256": "d2e9ac28e095cfc819f90a5de33fd6328c6354efeff17ebe23447edd720ed246",
+      "fullReportSHA256": "4171a17a092b32b96c427c293080ae59f04b45b71c3de91f3c7ade0e89d6665d",
+      "capture": "merge-selection-en-dark.png",
+      "captureSHA256": "13ec6d57ae3edbaa11b915d1218a2b136534c7ca8bd89c68dd31b027a32ba5b2"
+    }
+  },
+  "logsSHA256": {
+    "final-build": "d18279254e7d5fb4e9bbac04f6377e915cab6043406cd62b3453f5fc7d211822",
+    "final-tests": "6d5c7cc9153272e4215587ad596d84938422e0861846a9415aa267294387038b",
+    "volume-ui": "7d1ac6ca483e55629a2374ed1ba0295d1b53c77b526f82921ab3c27920204c3d",
+    "full-ui": "6345a6d83def19507d96066131c243aa385ee81e9dd4945579e58481f754a876",
+    "final-release": "c4d65a71c1d4d6faac2113c58f8b285b7b15f8901bbedc900fa51dd48b259f61",
+    "final-strict": "07679bd895be564bc764706104baecdae3d42279ffafbead80d7d40862661115"
+  },
+  "fixture": {
+    "currentFileBytes": 6,
+    "earlierRootBytes": 3,
+    "expectedStagedBytes": 9,
+    "expectedTotalBytes": 9,
+    "preservedConflictSourceBytes": 6
+  },
+  "knownUnfinishedRequirements": [
+    {
+      "requirement": "F13 overlapping ancestor/descendant Undo",
+      "reproductionTest": "mergeSelectionSameNamedRootsStillMergeNestedContentsAndPreserveOverlappingUndoSafely",
+      "observedUndoState": "partiallyCompleted",
+      "nestedLaterFileRemoved": true,
+      "ancestorEarlierFilePreserved": true,
+      "fullUndoAccepted": false
+    }
+  ],
+  "limitations": [
+    "Staging bytes do not represent publication/verification success or physical I/O.",
+    "Overlapping ancestor/descendant Undo remains unfinished despite local checks passing.",
+    "Same-name roots may require revalidation and fresh planning when an earlier root changes the destination.",
+    "Latest-source remote acceptance, move selection totals, memory stability, physical input and signed release remain open."
+  ]
+}

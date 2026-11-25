@@ -121,6 +121,19 @@ public enum CopyEngine {
         } onCancel: { cancellation.cancel() }
     }
 
+    static func runPrepared(source: URL, snapshot: VerificationSnapshot, destination: URL,
+                            journalDirectory: URL, cancellation: CopyCancellation,
+                            expectedDestination: ShelfEntry?, sourceIntakes: [PromisedFileIntake],
+                            progress: @escaping @Sendable (CopyProgress) -> Void) async -> CopyReport {
+        await withTaskCancellationHandler {
+            await Task.detached(priority: .userInitiated) {
+                execute(sources: [source], destination: destination, journalDirectory: journalDirectory,
+                    cancellation: cancellation, conflictPolicy: .skip, recordUndo: false,
+                    expectedDestination: expectedDestination, sourceIntakes: sourceIntakes, progress: progress, preparedOriginals: [.success(snapshot)])
+            }.value
+        } onCancel: { cancellation.cancel() }
+    }
+
     /// Creates a named copy of a user-selected regular template without replacing an entry.
     public static func instantiateTemplate(_ template: URL, in destination: URL, name: String,
                                            journalDirectory: URL) async throws -> CopyReport {
@@ -169,7 +182,8 @@ public enum CopyEngine {
                                 recordUndo: Bool, explicitName: String? = nil, expectedDestination: ShelfEntry? = nil,
                                 expectedTemplate: ShelfEntry? = nil, expectedSource: ShelfEntry? = nil,
                                 sourceIntakes: [PromisedFileIntake] = [],
-                                progress: @escaping @Sendable (CopyProgress) -> Void) -> CopyReport {
+                                progress: @escaping @Sendable (CopyProgress) -> Void,
+                                preparedOriginals: [Result<VerificationSnapshot, any Error>?]? = nil) -> CopyReport {
         let fm = FileManager()
         let destination = destination.resolvingSymlinksInPath().standardizedFileURL
         var report = CopyReport(version: 1, id: UUID(), state: "running", items: sources.map {
@@ -189,8 +203,11 @@ public enum CopyEngine {
         defer { if destinationFD >= 0 { close(destinationFD) } }
         // Reuse the required original snapshots; no second recursive size scan or duplicate hashing.
         // Each consumed snapshot is released as its root starts, bounding retention alongside the journal.
-        var prepared = [Result<VerificationSnapshot, any Error>?](repeating: nil, count: sources.count)
-        var plans = [Int64?](repeating: nil, count: sources.count)
+        var prepared = preparedOriginals ?? [Result<VerificationSnapshot, any Error>?](repeating: nil, count: sources.count)
+        var plans: [Int64?] = prepared.map { value in
+            if case .success(let snapshot) = value { return snapshot.logicalDataBytes }
+            return nil
+        }
         if destinationFD >= 0, matches(destination, descriptor: destinationFD),
            expectedDestination.map({ $0.url.path == destination.path && $0.isCurrent }) != false {
             for index in sources.indices {
@@ -204,6 +221,7 @@ public enum CopyEngine {
                     plans[index] = 0
                     continue
                 }
+                if prepared[index] != nil { continue }
                 let result = Result { () throws -> VerificationSnapshot in
                     try cancellation.check()
                     let attrs = try fm.attributesOfItem(atPath: source.path)

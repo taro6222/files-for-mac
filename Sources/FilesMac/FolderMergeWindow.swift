@@ -12,6 +12,7 @@ final class FolderMergeWindow: NSWindowController, NSWindowDelegate {
     private var latestIndex = -1
     private var latestAction = -1
     private var latestPhase = -1
+    private var latestSelection: SelectionTransferProgress?
     private var latestBytes: Int64?
     private let destinationPath: String
     private var running = true
@@ -75,6 +76,8 @@ final class FolderMergeWindow: NSWindowController, NSWindowDelegate {
         guard running, !cancellation.isCancelled else { return }
         let rank = ["sizing": -1, "planning": 0, "copying": 1, "verifying": 2, "committing": 3][update.state] ?? 4
         guard update.index >= latestIndex else { return }
+        if let value = update.selectionTransfer, let latestSelection,
+           value.sequence < latestSelection.sequence { return }
         if update.index == latestIndex {
             guard update.actionIndex >= latestAction else { return }
             if update.actionIndex == latestAction {
@@ -86,6 +89,7 @@ final class FolderMergeWindow: NSWindowController, NSWindowDelegate {
         } else { latestBytes = nil }
         latestIndex = update.index; latestAction = update.actionIndex; latestPhase = rank
         if let live = update.liveTransfer { latestBytes = live.bytes }
+        if let value = update.selectionTransfer { latestSelection = value }
         progress.doubleValue = Double(update.index) + (rank == 4 && update.actionIndex == Int.max ? 1 : 0)
         progress.showCurrentFileActivity(rank == -1 || rank == 1 || rank == 2)
         let phase: String
@@ -103,6 +107,7 @@ final class FolderMergeWindow: NSWindowController, NSWindowDelegate {
         label.stringValue = "\(update.index + 1)/\(update.total) · \(phase) · \(update.source.lastPathComponent)"
         if let path = update.relativePath { label.stringValue += " · \(path)" }
         if let live = update.liveTransfer { label.stringValue += liveTransferDescription(live) }
+        if let value = update.selectionTransfer { label.stringValue += selectionTransferDescription(value) }
         FileOperationCenter.activityChanged()
     }
 
@@ -112,6 +117,7 @@ final class FolderMergeWindow: NSWindowController, NSWindowDelegate {
         let conflicts = report.items.reduce(0) { $0 + $1.conflictCount }
         label.stringValue = L("병합 종료 · 추가 \(added) · 보존한 충돌 \(conflicts)",
                               "Merge finished · Added \(added) · Preserved conflicts \(conflicts)")
+        if let value = report.selectionTransfer { label.stringValue += selectionTransferDescription(value) }
         details.string = report.items.map {
             "[\($0.state)] \($0.source.path) → \($0.target.path)" +
             "\n  " + L("추가 ", "Added ") + "\($0.addedCount)" +
@@ -141,17 +147,19 @@ final class FolderMergeWindow: NSWindowController, NSWindowDelegate {
 #if DEBUG
     /// Replays real engine callbacks through the actual view, independently of MainActor scheduling.
     static func qaVerifyProgress(_ events: [CopyMergeBatchProgress], sources: [URL], destination: URL,
-                                 captures: URL) -> Bool {
+                                 captures: URL, report: CopyMergeBatchReport) -> Bool {
         let controller = FolderMergeWindow(sources: sources, destination: destination)
         controller.showWindow(nil)
         defer { controller.close() }
         guard let liveEvent = events.first(where: { $0.relativePath != nil && ($0.liveTransfer?.bytes ?? 0) > 0 }),
               let live = liveEvent.liveTransfer,
+              let total = liveEvent.selectionTransfer, total.bytes == 9, total.totalBytes == 9,
               let verifying = events.first(where: { $0.index == liveEvent.index && $0.actionIndex == liveEvent.actionIndex && $0.state == "verifying" }),
               let earlier = events.first(where: { $0.index == liveEvent.index && $0.actionIndex == liveEvent.actionIndex && $0.liveTransfer?.bytes == 0 }),
               let later = events.last else { return false }
         controller.update(liveEvent)
-        guard controller.label.stringValue.contains(liveTransferDescription(live)), controller.progress.isIndeterminate else { return false }
+        guard controller.label.stringValue.contains(liveTransferDescription(live)),
+              controller.label.stringValue.contains(selectionTransferDescription(total)), controller.progress.isIndeterminate else { return false }
         let text = controller.label.stringValue
         controller.update(earlier)
         guard controller.label.stringValue == text else { return false }
@@ -179,7 +187,12 @@ final class FolderMergeWindow: NSWindowController, NSWindowDelegate {
         guard controller.label.stringValue == terminalText, !controller.progress.isIndeterminate else { return false }
         controller.cancelMerge(nil)
         controller.update(liveEvent)
-        return controller.label.stringValue.contains(L("취소", "Cancelling")) && !controller.cancel.isEnabled
+        guard controller.label.stringValue.contains(L("취소", "Cancelling")) && !controller.cancel.isEnabled else { return false }
+        controller.finish(report)
+        let summary = controller.label.stringValue
+        controller.update(liveEvent)
+        return report.selectionTransfer?.bytes == 9 && report.selectionTransfer?.totalBytes == 9
+            && summary.contains(selectionTransferDescription(total)) && controller.label.stringValue == summary
     }
 #endif
 

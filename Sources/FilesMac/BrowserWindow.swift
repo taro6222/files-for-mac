@@ -6349,7 +6349,7 @@ extension BrowserWindow {
                 sources: mergeSources, destination: target, journalDirectory: journals,
                 cancellation: CopyCancellation()) { mergeEvents.append($0) }
             checks["mergeLiveBytesAndLateFrames"] = FolderMergeWindow.qaVerifyProgress(
-                mergeEvents.values, sources: mergeSources, destination: target, captures: destination)
+                mergeEvents.values, sources: mergeSources, destination: target, captures: destination, report: report)
             controller.refresh(nil); try await settle()
             checks["batchCompleted"] = report.state == "completed" && report.items.map(\.state) == ["completed", "merged", "conflict"]
             checks["listReflectsCopy"] = controller.model.items.contains { $0.name == "new.txt" }
