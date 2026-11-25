@@ -1,8 +1,8 @@
 {
   "collectedAtUTC": "2026-11-25T18:54:31.139513+00:00",
-  "status": "both-cpu-full-appkit-passed-installed-preview-results-pending",
+  "status": "both-cpu-verification-including-installed-preview-passed-workflow-failed-arm-xcode-cancelled",
   "run": {
-    "conclusion": "",
+    "conclusion": "failure",
     "headSha": "396866cc4c32b087aee8ff2a253973ce9813c839",
     "jobs": [
       {
@@ -278,12 +278,12 @@
         "url": "https://github.com/taro6222/files-for-mac/actions/runs/45675174334/job/139420673939"
       },
       {
-        "completedAt": "0001-01-01T00:00:00Z",
-        "conclusion": "",
+        "completedAt": "2026-11-25T18:57:31Z",
+        "conclusion": "success",
         "databaseId": 139420673995,
         "name": "macOS 15 (x86_64)",
         "startedAt": "2026-11-25T18:26:33Z",
-        "status": "in_progress",
+        "status": "completed",
         "steps": [
           {
             "completedAt": "2026-11-25T18:26:35Z",
@@ -446,42 +446,50 @@
             "status": "completed"
           },
           {
-            "completedAt": "0001-01-01T00:00:00Z",
-            "conclusion": "",
+            "completedAt": "2026-11-25T18:57:28Z",
+            "conclusion": "success",
             "name": "Build and launch the installed developer preview",
             "number": 21,
             "startedAt": "2026-11-25T18:52:19Z",
-            "status": "in_progress"
+            "status": "completed"
           },
           {
-            "completedAt": "0001-01-01T00:00:00Z",
-            "conclusion": "",
+            "completedAt": "2026-11-25T18:57:28Z",
+            "conclusion": "skipped",
             "name": "Check out the previous preview source",
             "number": 22,
-            "startedAt": "0001-01-01T00:00:00Z",
-            "status": "pending"
+            "startedAt": "2026-11-25T18:57:28Z",
+            "status": "completed"
           },
           {
-            "completedAt": "0001-01-01T00:00:00Z",
-            "conclusion": "",
+            "completedAt": "2026-11-25T18:57:28Z",
+            "conclusion": "skipped",
             "name": "Verify preview replacement and rollback",
             "number": 23,
-            "startedAt": "0001-01-01T00:00:00Z",
-            "status": "pending"
+            "startedAt": "2026-11-25T18:57:28Z",
+            "status": "completed"
           },
           {
-            "completedAt": "0001-01-01T00:00:00Z",
-            "conclusion": "",
+            "completedAt": "2026-11-25T18:57:28Z",
+            "conclusion": "success",
             "name": "Post Run actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803",
             "number": 46,
-            "startedAt": "0001-01-01T00:00:00Z",
-            "status": "pending"
+            "startedAt": "2026-11-25T18:57:28Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-11-25T18:57:29Z",
+            "conclusion": "success",
+            "name": "Complete job",
+            "number": 47,
+            "startedAt": "2026-11-25T18:57:28Z",
+            "status": "completed"
           }
         ],
         "url": "https://github.com/taro6222/files-for-mac/actions/runs/45675174334/job/139420673995"
       }
     ],
-    "status": "in_progress",
+    "status": "completed",
     "url": "https://github.com/taro6222/files-for-mac/actions/runs/45675174334"
   },
   "newerSourceRunSnapshot": {
@@ -5281,8 +5289,94 @@
     }
   ],
   "limits": [
-    "Intel installed preview final results are still pending. ARM Xcode in this run was cancelled; both Xcode jobs succeeded in the separate 5284cb3 run.",
+    "Both macOS verification jobs succeeded including installed preview. ARM Xcode was cancelled, and the whole workflow concluded failure. Both Xcode jobs succeeded in the separate 5284cb3 run.",
     "Four locale-theme observations per architecture are not a 20-run performance acceptance test.",
     "This source is 396866c; 5284cb3 is being verified in a different run."
+  ],
+  "installedPreviewStartup": [
+    {
+      "architecture": "arm",
+      "report": {
+        "macOS": "15.8.2",
+        "macOSBuild": "24H232",
+        "architecture": "arm64",
+        "imageSHA256": "377539b7dbb30024c294d4e0ebd98de1ac277ca49a15437ab0d3b32588181606",
+        "appVersion": [
+          "0.1.0",
+          "1"
+        ],
+        "metric": "Launch Services request to the first matching AppKit window in the WindowServer list",
+        "cacheCondition": "Fresh processes; shared OS caches, no cache purge",
+        "seconds": [
+          0.729,
+          0.352,
+          0.368,
+          0.393,
+          0.409,
+          0.352,
+          0.349,
+          0.551,
+          0.287,
+          0.325,
+          0.25,
+          0.267,
+          0.332,
+          0.268,
+          0.291,
+          0.376,
+          0.429,
+          0.355,
+          0.375,
+          0.317
+        ],
+        "p95Seconds": 0.551,
+        "maximumSeconds": 0.729,
+        "verifiedAppArchitecture": "arm64"
+      },
+      "logSHA256": "ce8f341f8daba712c85a8969d795434457e3a2969572db6d57fdd2122db9f83c",
+      "recomputedSummaryMatches": true
+    },
+    {
+      "architecture": "intel",
+      "report": {
+        "macOS": "15.7.9",
+        "macOSBuild": "24G830",
+        "architecture": "x86_64",
+        "imageSHA256": "134ec7c9e3a4da7972695cb8cac490cbc8b869082ca00ca1acfd74bc339c375b",
+        "appVersion": [
+          "0.1.0",
+          "1"
+        ],
+        "metric": "Launch Services request to the first matching AppKit window in the WindowServer list",
+        "cacheCondition": "Fresh processes; shared OS caches, no cache purge",
+        "seconds": [
+          1.178,
+          0.368,
+          0.485,
+          0.485,
+          0.671,
+          0.55,
+          0.367,
+          0.397,
+          0.365,
+          0.335,
+          0.326,
+          0.375,
+          0.485,
+          0.425,
+          0.542,
+          0.432,
+          0.539,
+          0.634,
+          0.394,
+          0.503
+        ],
+        "p95Seconds": 0.671,
+        "maximumSeconds": 1.178,
+        "verifiedAppArchitecture": "x86_64"
+      },
+      "logSHA256": "992192cb98c7774f3ede961c89d45f0e9c092c0331742648cf3f68201b125014",
+      "recomputedSummaryMatches": true
+    }
   ]
 }

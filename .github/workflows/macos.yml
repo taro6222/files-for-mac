@@ -15,6 +15,10 @@ on:
         description: Verify the complete AppKit suite and capture windows
         type: boolean
         default: false
+      verify_performance:
+        description: Measure optimized warm-cache performance on both CPUs
+        type: boolean
+        default: false
       verify_xcode:
         description: Build the native Xcode project on both architectures
         type: boolean
@@ -61,7 +65,7 @@ jobs:
           test -x "$app/Contents/MacOS/Files macOS"
           test "$(/usr/libexec/PlistBuddy -c 'Print :FilesReleaseChannel' "$app/Contents/Info.plist")" = preview
   verify:
-    if: github.event_name != 'workflow_dispatch' || !inputs.verify_xcode || inputs.verify_full_appkit || inputs.verify_upgrade
+    if: github.event_name != 'workflow_dispatch' || inputs.verify_full_appkit || inputs.verify_upgrade || (!inputs.verify_xcode && !inputs.verify_performance)
     name: macOS 15 (${{ matrix.architecture }})
     runs-on: ${{ matrix.runner }}
     timeout-minutes: ${{ github.event_name == 'workflow_dispatch' && inputs.verify_full_appkit && 90 || 60 }}
@@ -227,3 +231,41 @@ jobs:
           python3 scripts/verify-preview-install.py \
             build/previous-preview/build/Files-macOS-preview.dmg build/Files-macOS-preview.dmg \
             --expect-architecture "$EXPECTED_ARCH"
+
+  verify-performance:
+    if: github.event_name == 'workflow_dispatch' && inputs.verify_performance
+    name: Optimized performance (${{ matrix.architecture }})
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-15
+            architecture: arm64
+          - runner: macos-15-intel
+            architecture: x86_64
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.3.app/Contents/Developer
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - name: Verify benchmark evidence validation
+        run: PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s Tests/FixtureTests -p 'test_performance_baseline.py' -v
+      - name: Measure optimized native performance
+        run: |
+          test "$(uname -m)" = "${{ matrix.architecture }}"
+          bash scripts/verify-release-performance.sh current-candidate-performance full
+      - name: Assess 20-process 10000-item baseline
+        run: |
+          python3 scripts/check-performance-baseline.py build/current-candidate-performance/report.json \
+            --expected-source "${{ github.sha }}" --expected-architecture "${{ matrix.architecture }}" \
+            --output build/current-candidate-performance/assessment.json
+      - name: Retain raw measurements and assessment
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: files-optimized-performance-${{ matrix.architecture }}
+          path: build/current-candidate-performance
+          if-no-files-found: ignore

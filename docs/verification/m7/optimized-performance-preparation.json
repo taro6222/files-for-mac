@@ -1,0 +1,101 @@
+{
+  "collectedAtUTC": "2026-11-25T18:58:51.856230+00:00",
+  "status": "performance-run-pending",
+  "sourceSHA256": {
+    ".github/workflows/macos.yml": "9625f270cd79873162bfe3ec29cfdd18fd1c4672edf4ebf68eccfd863b8ed1ec",
+    "scripts/check-performance-baseline.py": "9d6cdb914029826aeafab825021a15efbb15b8cefb680127d83b61488247b846",
+    "Tests/FixtureTests/test_performance_baseline.py": "3c47ef4d39676b00ba9158780968d510549915bc6c1c181a7e58f7fae126da4e"
+  },
+  "localTests": {
+    "passed": 6,
+    "logSHA256": "05fbe1affa6259071876594b5275cb4a1d4f3c677413b17fd3aafbaf1933f73c"
+  },
+  "installedPreviewStartup": [
+    {
+      "architecture": "arm",
+      "report": {
+        "macOS": "15.8.2",
+        "macOSBuild": "24H232",
+        "architecture": "arm64",
+        "imageSHA256": "377539b7dbb30024c294d4e0ebd98de1ac277ca49a15437ab0d3b32588181606",
+        "appVersion": [
+          "0.1.0",
+          "1"
+        ],
+        "metric": "Launch Services request to the first matching AppKit window in the WindowServer list",
+        "cacheCondition": "Fresh processes; shared OS caches, no cache purge",
+        "seconds": [
+          0.729,
+          0.352,
+          0.368,
+          0.393,
+          0.409,
+          0.352,
+          0.349,
+          0.551,
+          0.287,
+          0.325,
+          0.25,
+          0.267,
+          0.332,
+          0.268,
+          0.291,
+          0.376,
+          0.429,
+          0.355,
+          0.375,
+          0.317
+        ],
+        "p95Seconds": 0.551,
+        "maximumSeconds": 0.729,
+        "verifiedAppArchitecture": "arm64"
+      },
+      "logSHA256": "ce8f341f8daba712c85a8969d795434457e3a2969572db6d57fdd2122db9f83c",
+      "recomputedSummaryMatches": true
+    },
+    {
+      "architecture": "intel",
+      "report": {
+        "macOS": "15.7.9",
+        "macOSBuild": "24G830",
+        "architecture": "x86_64",
+        "imageSHA256": "134ec7c9e3a4da7972695cb8cac490cbc8b869082ca00ca1acfd74bc339c375b",
+        "appVersion": [
+          "0.1.0",
+          "1"
+        ],
+        "metric": "Launch Services request to the first matching AppKit window in the WindowServer list",
+        "cacheCondition": "Fresh processes; shared OS caches, no cache purge",
+        "seconds": [
+          1.178,
+          0.368,
+          0.485,
+          0.485,
+          0.671,
+          0.55,
+          0.367,
+          0.397,
+          0.365,
+          0.335,
+          0.326,
+          0.375,
+          0.485,
+          0.425,
+          0.542,
+          0.432,
+          0.539,
+          0.634,
+          0.394,
+          0.503
+        ],
+        "p95Seconds": 0.671,
+        "maximumSeconds": 1.178,
+        "verifiedAppArchitecture": "x86_64"
+      },
+      "logSHA256": "992192cb98c7774f3ede961c89d45f0e9c092c0331742648cf3f68201b125014",
+      "recomputedSummaryMatches": true
+    }
+  ],
+  "installedPreviewSourceSHA": "396866cc4c32b087aee8ff2a253973ce9813c839",
+  "installedPreviewRun": "https://github.com/taro6222/files-for-mac/actions/runs/45675174334"
+}
