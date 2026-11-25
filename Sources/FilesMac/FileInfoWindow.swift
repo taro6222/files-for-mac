@@ -352,6 +352,10 @@ final class FileInfoWindow: NSWindowController, NSTextFieldDelegate {
         }
         return sheet.qaReady && sheet.qaOwnerEnabled == FilePropertiesInspector.canChangeOwner
     }
+    static func qaVerifyACLRuleLookup(in directory: URL) async throws -> Bool {
+        try await FilePermissionsSheet.qaVerifyPendingLookup(in: directory)
+    }
+    private(set) var qaACLRuleDiagnostics: [String: Any] = [:]
     func qaChangePermissions(to mode: Int, acl: String? = nil, addEveryoneRule: Bool = false, group: String? = nil) async throws -> Bool {
         guard let sheet = openPermissions() else { return false }
         let deadline = ContinuousClock.now + .seconds(5)
@@ -361,6 +365,7 @@ final class FileInfoWindow: NSWindowController, NSTextFieldDelegate {
             changed = try await sheet.qaSetGroup(group)
         } else if addEveryoneRule {
             changed = try await sheet.qaAddEveryoneRule()
+            qaACLRuleDiagnostics = sheet.qaRuleDiagnostics
         } else {
             changed = acl.map({ sheet.qaSetACL($0) }) ?? sheet.qaSetMode(mode)
         }
@@ -447,11 +452,18 @@ private final class FilePermissionsSheet: NSObject, NSTextViewDelegate {
     private let ownerList = NSPopUpButton()
     private let includeDescendants = NSButton()
     private var accountListTask: Task<Void, Never>?
+    private var ownershipListTasks: [Task<Void, Never>] = []
+    private var ruleTask: Task<Void, Never>?
+    private var ruleGeneration = 0
+    private let loadAccountNames: @Sendable (FileACLAccountKind) async -> [String]
+    private let resolveRule: @Sendable (FileACLAccountKind, String, FileACLEffect, FileACLAccess) async throws -> String
     private let ruleControls = NSStackView()
     private let status = NSTextField(wrappingLabelWithString: "")
     private let save: NSButton
 
-    init(url: URL, onSave: @escaping () -> Void) {
+    init(url: URL, loadAccountNames: @escaping @Sendable (FileACLAccountKind) async -> [String] = { await $0.accountNames() },
+         resolveRule: @escaping @Sendable (FileACLAccountKind, String, FileACLEffect, FileACLAccess) async throws -> String = { try await $0.rule(for: $1, effect: $2, access: $3) }, onSave: @escaping () -> Void) {
+        self.loadAccountNames = loadAccountNames; self.resolveRule = resolveRule
         self.url = url
         self.onSave = onSave
         alert.messageText = L("파일 권한", "File Permissions")
@@ -469,6 +481,9 @@ private final class FilePermissionsSheet: NSObject, NSTextViewDelegate {
         let sheet = alert.window
         alert.beginSheetModal(for: parent) { [self] _ in
             folderCancellation?.cancel()
+            accountListTask?.cancel(); accountListTask = nil
+            ownershipListTasks.forEach { $0.cancel() }; ownershipListTasks.removeAll()
+            ruleGeneration += 1; ruleTask?.cancel(); ruleTask = nil
             if refreshAfterClose { onSave() }
         }
         Task {
@@ -591,19 +606,19 @@ private final class FilePermissionsSheet: NSObject, NSTextViewDelegate {
         editACL.isEnabled = true
         ownerList.addItem(withTitle: L("현재 UID \(snapshot.ownerID)", "Current UID \(snapshot.ownerID)"))
         groupList.addItem(withTitle: L("현재 GID \(snapshot.groupID)", "Current GID \(snapshot.groupID)"))
-        Task {
+        ownershipListTasks.append(Task { [weak self] in
             let groups = await FileACLAccountKind.group.accountNames(memberGroupsOnly: true)
-            guard alert.window.sheetParent != nil else { return }
-            groupList.addItems(withTitles: groups)
-            groupList.isEnabled = !groups.isEmpty && !aclText.isEditable && !save.isEnabled
-        }
+            guard let self, !Task.isCancelled, self.alert.window.sheetParent != nil else { return }
+            self.groupList.addItems(withTitles: groups)
+            self.groupList.isEnabled = !groups.isEmpty && !self.aclText.isEditable && !self.save.isEnabled
+        })
         if FilePropertiesInspector.canChangeOwner {
-            Task {
+            ownershipListTasks.append(Task { [weak self] in
                 let users = await FileACLAccountKind.user.accountNames()
-                guard alert.window.sheetParent != nil else { return }
-                ownerList.addItems(withTitles: users)
-                ownerList.isEnabled = !users.isEmpty && !aclText.isEditable && !save.isEnabled
-            }
+                guard let self, !Task.isCancelled, self.alert.window.sheetParent != nil else { return }
+                self.ownerList.addItems(withTitles: users)
+                self.ownerList.isEnabled = !users.isEmpty && !self.aclText.isEditable && !self.save.isEnabled
+            })
         }
     }
 
@@ -670,6 +685,7 @@ private final class FilePermissionsSheet: NSObject, NSTextViewDelegate {
 
     private func setRuleControlsEnabled(_ enabled: Bool) {
         [accountKind, accountName, accountList, ruleEffect, ruleAccess, addACLRule].forEach { $0.isEnabled = enabled }
+        accountList.isEnabled = enabled && accountList.numberOfItems > 1
     }
 
     private var selectedAccountKind: FileACLAccountKind {
@@ -685,12 +701,14 @@ private final class FilePermissionsSheet: NSObject, NSTextViewDelegate {
         accountList.isEnabled = false
         accountName.stringValue = ""
         let kind = selectedAccountKind
+        let loader = loadAccountNames
         accountListTask = Task { [weak self] in
-            let names = await kind.accountNames()
+            let names = await loader(kind)
             guard let self, !Task.isCancelled, self.aclText.isEditable,
                   self.alert.window.sheetParent != nil else { return }
+            self.accountListTask = nil
             self.accountList.addItems(withTitles: names)
-            self.accountList.isEnabled = !names.isEmpty
+            self.accountList.isEnabled = !names.isEmpty && self.ruleTask == nil
         }
     }
 
@@ -706,19 +724,25 @@ private final class FilePermissionsSheet: NSObject, NSTextViewDelegate {
         let options: [FileACLAccess] = [.read, .write, .execute]
         guard options.indices.contains(ruleAccess.indexOfSelectedItem) else { return }
         let access = options[ruleAccess.indexOfSelectedItem]
-        addACLRule.isEnabled = false
-        Task {
-            defer { addACLRule.isEnabled = aclText.isEditable }
+        ruleGeneration += 1
+        let generation = ruleGeneration
+        let resolver = resolveRule
+        setRuleControlsEnabled(false); save.isEnabled = false
+        status.stringValue = L("계정을 확인하는 중…", "Resolving account…")
+        ruleTask = Task { [weak self] in
             do {
-                let rule = try await kind.rule(for: name, effect: effect, access: access)
-                guard alert.window.sheetParent != nil, aclText.isEditable else { return }
-                let entries = aclText.string.trimmingCharacters(in: .newlines)
-                aclText.string = entries.isEmpty ? rule : entries + "\n" + rule
-                updateACLSaveState()
-                status.stringValue = L("규칙을 추가했습니다. 저장을 눌러 적용하세요.", "Rule added. Choose Save to apply it.")
+                let rule = try await resolver(kind, name, effect, access)
+                guard let self, !Task.isCancelled, self.ruleGeneration == generation,
+                      self.alert.window.sheetParent != nil, self.aclText.isEditable else { return }
+                let entries = self.aclText.string.trimmingCharacters(in: .newlines)
+                self.aclText.string = entries.isEmpty ? rule : entries + "\n" + rule
+                self.ruleTask = nil; self.setRuleControlsEnabled(true); self.updateACLSaveState()
+                self.status.stringValue = L("규칙을 추가했습니다. 저장을 눌러 적용하세요.", "Rule added. Choose Save to apply it.")
             } catch {
-                guard alert.window.sheetParent != nil, aclText.isEditable else { return }
-                status.stringValue = L("계정을 찾을 수 없습니다.", "Account not found.")
+                guard let self, !Task.isCancelled, self.ruleGeneration == generation,
+                      self.alert.window.sheetParent != nil, self.aclText.isEditable else { return }
+                self.ruleTask = nil; self.setRuleControlsEnabled(true); self.updateACLSaveState()
+                self.status.stringValue = L("계정을 찾을 수 없습니다.", "Account not found.")
             }
         }
     }
@@ -735,6 +759,7 @@ private final class FilePermissionsSheet: NSObject, NSTextViewDelegate {
 
     private func updateACLSaveState() {
         guard aclText.isEditable, let initial else { return }
+        guard ruleTask == nil else { save.isEnabled = false; return }
         let recursive = includeDescendants.state == .on
         save.isEnabled = recursive || aclText.string.trimmingCharacters(in: .whitespacesAndNewlines) != (initial.accessControlList ?? "")
         if recursive {
@@ -893,12 +918,84 @@ private final class FilePermissionsSheet: NSObject, NSTextViewDelegate {
         save.performClick(nil)
         return true
     }
+    static func qaVerifyPendingLookup(in directory: URL) async throws -> Bool {
+        let file = directory.appendingPathComponent("acl-rule-lookup-fixture")
+        try Data("unchanged".utf8).write(to: file)
+        try FileManager.default.setAttributes([.posixPermissions: 0o640], ofItemAtPath: file.path)
+        let read = try await FileACLAccountKind.group.rule(for: "everyone", effect: .allow, access: .read)
+        let write = try await FileACLAccountKind.group.rule(for: "everyone", effect: .allow, access: .write)
+        let parent = NSWindow(contentRect: NSRect(x: 0,y: 0,width: 640,height: 520), styleMask: [.titled], backing: .buffered, defer: false)
+        parent.isReleasedWhenClosed = false
+        parent.makeKeyAndOrderFront(nil); defer { parent.close() }
+        let gate = ACLRuleQAGate()
+        var saved = false
+        let sheet = FilePermissionsSheet(url: file, loadAccountNames: { _ in ["everyone"] },
+            resolveRule: { _,_,_,_ in await gate.wait() }, onSave: { saved = true })
+        sheet.present(on: parent)
+        func wait(_ condition: () -> Bool) async throws -> Bool {
+            let deadline = ContinuousClock.now + .seconds(5)
+            while !condition() && ContinuousClock.now < deadline { try await Task.sleep(for: .milliseconds(10)) }
+            return condition()
+        }
+        guard try await wait({ sheet.qaReady }) else { return false }
+        sheet.editACL.performClick(nil)
+        sheet.aclText.string = read; sheet.updateACLSaveState()
+        guard sheet.save.isEnabled else { return false }
+        sheet.accountKind.selectItem(at: 1); sheet.changeAccountKind(nil)
+        guard try await wait({ sheet.accountList.isEnabled }) else { return false }
+        sheet.accountName.stringValue = "everyone"; sheet.ruleAccess.selectItem(at: 1)
+        sheet.addACLRule.performClick(nil)
+        let locked = !sheet.save.isEnabled && [sheet.accountKind,sheet.accountName,sheet.accountList,sheet.ruleEffect,sheet.ruleAccess,sheet.addACLRule].allSatisfy { !$0.isEnabled }
+        sheet.updateACLSaveState(); sheet.savePermissions(nil)
+        let snapshot = try await FilePropertiesInspector().permissions(file)
+        let pendingSafe = locked && !sheet.save.isEnabled && !saved && snapshot.accessControlList == nil && parent.attachedSheet != nil
+        await gate.release(write)
+        guard try await wait({ sheet.ruleTask == nil }), sheet.save.isEnabled,
+              sheet.aclText.string == read + "\n" + write else { return false }
+        sheet.save.performClick(nil)
+        guard try await wait({ parent.attachedSheet == nil && saved }) else { return false }
+        let applied = try await FilePropertiesInspector().permissions(file)
+        let appliedSafe = applied.mode == 0o640 && applied.accessControlList?.hasSuffix(":allow:write") == true
+        let lateGate = ACLRuleQAGate()
+        var lateSaved = false
+        let closed = FilePermissionsSheet(url: file, loadAccountNames: { _ in ["everyone"] },
+            resolveRule: { _,_,_,_ in await lateGate.wait() }, onSave: { lateSaved = true })
+        closed.present(on: parent)
+        guard try await wait({ closed.qaReady }) else { return false }
+        closed.editACL.performClick(nil)
+        closed.accountName.stringValue = "everyone"; closed.ruleAccess.selectItem(at: 1)
+        closed.addACLRule.performClick(nil)
+        let pending = closed.ruleTask
+        let entries = closed.aclText.string, status = closed.status.stringValue
+        parent.endSheet(closed.alert.window)
+        guard try await wait({ closed.ruleTask == nil }) else { return false }
+        await lateGate.release(write)
+        await pending?.value
+        let lateSafe = !lateSaved && closed.aclText.string == entries && closed.status.stringValue == status
+        let final = try await FilePropertiesInspector().permissions(file)
+        let checks = ["pendingSaveBlocked": pendingSafe, "resolvedRuleApplied": appliedSafe,
+                      "closedSheetIgnoresReply": lateSafe, "fileContentsPreserved": (try Data(contentsOf: file)) == Data("unchanged".utf8),
+                      "noLateACLWrite": final.accessControlList == applied.accessControlList]
+        try JSONSerialization.data(withJSONObject: checks, options: [.prettyPrinted,.sortedKeys]).write(to: directory.appendingPathComponent("acl-rule-lookup-state.json"))
+        return checks.values.allSatisfy { $0 }
+    }
+    private(set) var qaRuleDiagnostics: [String: Any] = [:]
     func qaAddEveryoneRule() async throws -> Bool {
+        let start = ContinuousClock.now
+        var stage = "begin-edit"
+        defer {
+            let elapsed = start.duration(to: .now).components
+            qaRuleDiagnostics = ["stage": stage, "seconds": Double(elapsed.seconds) + Double(elapsed.attoseconds)/1e18,
+                "accountCount": accountList.numberOfItems, "accountLoading": accountListTask != nil,
+                "rulePending": ruleTask != nil, "saveEnabled": save.isEnabled,
+                "status": status.stringValue, "entries": aclText.string]
+        }
         editACL.performClick(nil)
         guard aclText.isEditable else { return false }
         accountKind.selectItem(at: 1)
         changeAccountKind(nil)
         let deadline = ContinuousClock.now + .seconds(5)
+        stage = "account-list"
         while accountList.indexOfItem(withTitle: "everyone") < 0 && ContinuousClock.now < deadline {
             try await Task.sleep(for: .milliseconds(20))
         }
@@ -909,10 +1006,12 @@ private final class FilePermissionsSheet: NSObject, NSTextViewDelegate {
         ruleEffect.selectItem(at: 0)
         ruleAccess.selectItem(at: 1)
         addACLRule.performClick(nil)
-        while !addACLRule.isEnabled && ContinuousClock.now < deadline {
+        stage = "rule-resolution"
+        while ruleTask != nil && ContinuousClock.now < deadline {
             try await Task.sleep(for: .milliseconds(20))
         }
-        guard save.isEnabled, aclText.string.hasSuffix(":allow:write") else { return false }
+        guard ruleTask == nil, save.isEnabled, aclText.string.hasSuffix(":allow:write") else { return false }
+        stage = "save-requested"
         save.performClick(nil)
         return true
     }
@@ -937,3 +1036,15 @@ private final class FilePermissionsSheet: NSObject, NSTextViewDelegate {
     }
 #endif
 }
+
+#if DEBUG
+private actor ACLRuleQAGate {
+    private var continuation: CheckedContinuation<String, Never>?
+    private var released: String?
+    func wait() async -> String {
+        if let released { return released }
+        return await withCheckedContinuation { continuation = $0 }
+    }
+    func release(_ value: String) { released = value; continuation?.resume(returning: value); continuation = nil }
+}
+#endif

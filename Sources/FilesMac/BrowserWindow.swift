@@ -5190,6 +5190,9 @@ extension BrowserWindow {
                     && savedACL.accessControlList?.hasSuffix(":allow:read") == true
                 let addedACLRule = try await info.qaChangePermissions(to: 0o640, addEveryoneRule: true)
                 let accountACL = try await FilePropertiesInspector().permissions(inputFile)
+                diagnostics["fileInfoACLAccountRule"] = ["ui": info.qaACLRuleDiagnostics,
+                    "before": savedACL.accessControlList ?? "", "after": accountACL.accessControlList ?? "",
+                    "mode": accountACL.mode, "uiReturned": addedACLRule]
                 checks["fileInfoACLAccountRule"] = addedACLRule && accountACL.mode == 0o640
                     && accountACL.accessControlList?.hasPrefix((savedACL.accessControlList ?? "") + "\n") == true
                     && accountACL.accessControlList?.hasSuffix(":allow:write") == true
@@ -7135,6 +7138,7 @@ extension BrowserWindow {
             try await Task.sleep(for: .milliseconds(100))
             checks["paletteReturnExecutesInBrowser"] = palette.window?.isVisible == false && pathEditorIsFocused()
             checks["overlappingFolderUndoThroughMenu"] = try await qaOverlappingUndo(in: destination)
+            checks["aclRulePendingSaveAndClosedReply"] = try await FileInfoWindow.qaVerifyACLRuleLookup(in: destination)
             let result: [String: Any] = ["checks": checks, "diagnostics": diagnostics,
                 "language": Locale.preferredLanguages.first ?? "unknown", "theme": dark ? "dark" : "light",
                 "os": ProcessInfo.processInfo.operatingSystemVersionString]

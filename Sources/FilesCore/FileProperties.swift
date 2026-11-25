@@ -66,14 +66,15 @@ public enum FileACLAccountKind: String, Sendable {
     private static let accountEnumerationLock = NSLock()
 
     public func accountNames(memberGroupsOnly: Bool = false) async -> [String] {
-        await Task.detached(priority: .utility) {
+        let work = Task.detached(priority: .utility) {
             Self.accountEnumerationLock.withLock {
+                guard !Task.isCancelled else { return [String]() }
                 var names = Set<String>()
                 switch self {
                 case .user:
                     setpwent()
                     defer { endpwent() }
-                    while let entry = getpwent() {
+                    while !Task.isCancelled, let entry = getpwent() {
                         if let name = entry.pointee.pw_name { names.insert(String(cString: name)) }
                     }
                 case .group:
@@ -89,16 +90,21 @@ public enum FileACLAccountKind: String, Sendable {
                     }
                     setgrent()
                     defer { endgrent() }
-                    while let entry = getgrent() {
+                    while !Task.isCancelled, let entry = getgrent() {
                         if memberships.isEmpty || memberships.contains(entry.pointee.gr_gid),
                            let name = entry.pointee.gr_name {
                             names.insert(String(cString: name))
                         }
                     }
                 }
+                guard !Task.isCancelled else { return [] }
                 return names.filter { !$0.isEmpty }.sorted { $0.localizedStandardCompare($1) == .orderedAscending }
             }
-        }.value
+        }
+        return await withTaskCancellationHandler {
+            let names = await work.value
+            return Task.isCancelled ? [] : names
+        } onCancel: { work.cancel() }
     }
 
     public func rule(for name: String, effect: FileACLEffect, access: FileACLAccess) async throws -> String {

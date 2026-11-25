@@ -1,0 +1,152 @@
+{
+  "sourceBaseSHA": "28f80209ee99c288e840d9dd32707c1cdbe3b5ca",
+  "sourceFilesSHA256": {
+    "Sources/FilesCore/FileProperties.swift": "558e4448cf74c333b5816c0aaadaef976db9e0e73ae99335c7d82a1e14c4bdd8",
+    "Sources/FilesMac/BrowserWindow.swift": "8891129ac4bff47f4a29285a5df903e5135f08928dc59bd7f82cce2f585c5a0b",
+    "Sources/FilesMac/FileInfoWindow.swift": "41303277b91148c4e717e5175d9961cd3b7fa7a8794c920be59de3e1c53809d0",
+    "Tests/FilesCoreTests/ACLAccountCancellationTests.swift": "8edf20e9fd583dfaec191d8bbd5e9028816ee267b7d794020b96450fdb24c9f4"
+  },
+  "debugSHA256": "71e7d0564e574aeffe9a1d666e868b43cd1037e1795400073c682b5391b9d573",
+  "releaseSHA256": "0d42743198b1b10ed8f5f77a71064137edadff5fbe7b4fcc9f4175f0ca3156e3",
+  "swiftTests": {
+    "reported": 368,
+    "passed": 349,
+    "environmentSkipped": 19,
+    "cancelledAccountEnumerationCases": 2
+  },
+  "strictExecutorTests": 10,
+  "cases": {
+    "ko-light": {
+      "fileOperationChecks": 83,
+      "fullChecks": 283,
+      "pendingRuleState": {
+        "closedSheetIgnoresReply": true,
+        "fileContentsPreserved": true,
+        "noLateACLWrite": true,
+        "pendingSaveBlocked": true,
+        "resolvedRuleApplied": true
+      },
+      "realAccountRule": {
+        "after": "group:ABCDEFAB-CDEF-ABCD-EFAB-CDEF0000000C:everyone:12:allow:read\ngroup:ABCDEFAB-CDEF-ABCD-EFAB-CDEF0000000C:everyone:12:allow:write",
+        "before": "group:ABCDEFAB-CDEF-ABCD-EFAB-CDEF0000000C:everyone:12:allow:read",
+        "mode": 416,
+        "ui": {
+          "accountCount": 163,
+          "accountLoading": false,
+          "entries": "group:ABCDEFAB-CDEF-ABCD-EFAB-CDEF0000000C:everyone:12:allow:read\ngroup:ABCDEFAB-CDEF-ABCD-EFAB-CDEF0000000C:everyone:12:allow:write",
+          "rulePending": false,
+          "saveEnabled": false,
+          "seconds": 0.3606935,
+          "stage": "save-requested",
+          "status": "규칙을 추가했습니다. 저장을 눌러 적용하세요."
+        },
+        "uiReturned": true
+      },
+      "fileOperationReportSHA256": "670d20cde02d9b8c10e53674cba997facc7c21496c7a89e5e2ca90d5312623ca",
+      "fullReportSHA256": "472fcb1ad439301a1a31b42bab8e55d8babc55ee42b8b968552570daf8f67d18"
+    },
+    "ko-dark": {
+      "fileOperationChecks": 83,
+      "fullChecks": 283,
+      "pendingRuleState": {
+        "closedSheetIgnoresReply": true,
+        "fileContentsPreserved": true,
+        "noLateACLWrite": true,
+        "pendingSaveBlocked": true,
+        "resolvedRuleApplied": true
+      },
+      "realAccountRule": {
+        "after": "group:ABCDEFAB-CDEF-ABCD-EFAB-CDEF0000000C:everyone:12:allow:read\ngroup:ABCDEFAB-CDEF-ABCD-EFAB-CDEF0000000C:everyone:12:allow:write",
+        "before": "group:ABCDEFAB-CDEF-ABCD-EFAB-CDEF0000000C:everyone:12:allow:read",
+        "mode": 416,
+        "ui": {
+          "accountCount": 163,
+          "accountLoading": false,
+          "entries": "group:ABCDEFAB-CDEF-ABCD-EFAB-CDEF0000000C:everyone:12:allow:read\ngroup:ABCDEFAB-CDEF-ABCD-EFAB-CDEF0000000C:everyone:12:allow:write",
+          "rulePending": false,
+          "saveEnabled": false,
+          "seconds": 0.346325458,
+          "stage": "save-requested",
+          "status": "규칙을 추가했습니다. 저장을 눌러 적용하세요."
+        },
+        "uiReturned": true
+      },
+      "fileOperationReportSHA256": "6ec43c8debc3b200dff598b2af0b772a209a01e9fff9f0864f0fafe8159d6ed1",
+      "fullReportSHA256": "5df50bae7053f7b48d487b7e8bd1b1a6d8351007a223993c7256ea0a65225c46"
+    },
+    "en-light": {
+      "fileOperationChecks": 83,
+      "fullChecks": 283,
+      "pendingRuleState": {
+        "closedSheetIgnoresReply": true,
+        "fileContentsPreserved": true,
+        "noLateACLWrite": true,
+        "pendingSaveBlocked": true,
+        "resolvedRuleApplied": true
+      },
+      "realAccountRule": {
+        "after": "group:ABCDEFAB-CDEF-ABCD-EFAB-CDEF0000000C:everyone:12:allow:read\ngroup:ABCDEFAB-CDEF-ABCD-EFAB-CDEF0000000C:everyone:12:allow:write",
+        "before": "group:ABCDEFAB-CDEF-ABCD-EFAB-CDEF0000000C:everyone:12:allow:read",
+        "mode": 416,
+        "ui": {
+          "accountCount": 163,
+          "accountLoading": false,
+          "entries": "group:ABCDEFAB-CDEF-ABCD-EFAB-CDEF0000000C:everyone:12:allow:read\ngroup:ABCDEFAB-CDEF-ABCD-EFAB-CDEF0000000C:everyone:12:allow:write",
+          "rulePending": false,
+          "saveEnabled": false,
+          "seconds": 0.365855917,
+          "stage": "save-requested",
+          "status": "Rule added. Choose Save to apply it."
+        },
+        "uiReturned": true
+      },
+      "fileOperationReportSHA256": "3fe7f31fc4ff664b5aad1d8a7feeaed6b68595dc3fafc26a81d6cfea9200ef79",
+      "fullReportSHA256": "d1db17d615dca2c438a4dd62d79d2656f66fedf42a830b59027d7c70d2c553cb"
+    },
+    "en-dark": {
+      "fileOperationChecks": 83,
+      "fullChecks": 283,
+      "pendingRuleState": {
+        "closedSheetIgnoresReply": true,
+        "fileContentsPreserved": true,
+        "noLateACLWrite": true,
+        "pendingSaveBlocked": true,
+        "resolvedRuleApplied": true
+      },
+      "realAccountRule": {
+        "after": "group:ABCDEFAB-CDEF-ABCD-EFAB-CDEF0000000C:everyone:12:allow:read\ngroup:ABCDEFAB-CDEF-ABCD-EFAB-CDEF0000000C:everyone:12:allow:write",
+        "before": "group:ABCDEFAB-CDEF-ABCD-EFAB-CDEF0000000C:everyone:12:allow:read",
+        "mode": 416,
+        "ui": {
+          "accountCount": 163,
+          "accountLoading": false,
+          "entries": "group:ABCDEFAB-CDEF-ABCD-EFAB-CDEF0000000C:everyone:12:allow:read\ngroup:ABCDEFAB-CDEF-ABCD-EFAB-CDEF0000000C:everyone:12:allow:write",
+          "rulePending": false,
+          "saveEnabled": false,
+          "seconds": 0.346388833,
+          "stage": "save-requested",
+          "status": "Rule added. Choose Save to apply it."
+        },
+        "uiReturned": true
+      },
+      "fileOperationReportSHA256": "b344213100c542da96e431bcb01e47d3a2394f7710abdfd1378a81ed2978b0d1",
+      "fullReportSHA256": "10fd85fa1e93fa57cdce367193e91fb9c4edfed7b4752ab5ec6dd401f0010d7e"
+    }
+  },
+  "logsSHA256": {
+    "final-build": "92bace08be4eb2638b99e28a3cead754b7a2c3d62a3bc2dd7317b07a7b5debe3",
+    "final-tests": "0ab15a87acccc3f75187ef431de78a1b0f0e10147bb77f3e9f582bedbb6f88ca",
+    "release": "162b1d7cd24e580685c0d0b26074f535a82d1df96fde704cdab571cf184b48e9",
+    "strict": "087e3fc04c36e405e10e4281ca359cfd400fe87d632fb92948998281347f24e3",
+    "m2-verified": "23c25b58710017ac91ae130c2fa2be947211c06ff57f79df008d6a3dd4638d07",
+    "full-ui": "53c5f41d8dede071a9d0f08b2737d9e6a9065e02e40824006a5b9d350c8d4676"
+  },
+  "limits": [
+    "Existing combined 5 second account-list and rule-resolution deadline retained.",
+    "Native account lookup and lock waits stop only at safe points.",
+    "Local race correction does not establish the cause or resolution of the previous Intel ACL failure.",
+    "DEBUG gated lookup verifies real sheet actions and native ACL writes, not physical input or VoiceOver acceptance.",
+    "Mounted-volume suite was not rerun in this stage; stage 320 evidence remains separate.",
+    "Latest remote, memory stability, latest-source 8 hours, signed and notarized release remain open."
+  ]
+}
