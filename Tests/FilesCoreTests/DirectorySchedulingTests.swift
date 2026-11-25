@@ -5,13 +5,18 @@ import Testing
 private final class BlockedDirectoryRead: @unchecked Sendable {
     let started = DispatchSemaphore(value: 0)
     let resume = DispatchSemaphore(value: 0)
+    let ended = DispatchSemaphore(value: 0)
     private let lock = NSLock()
     private var resumedBeforeDeadline = false
+    private var finished = false
     func block() {
         started.signal()
-        let result = resume.wait(timeout: .now() + 3)
-        lock.withLock { resumedBeforeDeadline = result == .success }
+        // This is a synchronization watchdog, not an application latency budget.
+        let result = resume.wait(timeout: .now() + 10)
+        lock.withLock { resumedBeforeDeadline = result == .success; finished = true }
+        ended.signal()
     }
+    var isWaiting: Bool { lock.withLock { !finished } }
     var resumed: Bool { lock.withLock { resumedBeforeDeadline } }
 }
 
@@ -24,7 +29,10 @@ private final class BlockedDirectoryRead: @unchecked Sendable {
     let provider = LocalFileSystem(beforeReading: { blocked.block() })
     let listing = Task { try await provider.contents(of: root, showHidden: true) }
     let started = await withCheckedContinuation { continuation in
-        DispatchQueue.global().async { continuation.resume(returning: blocked.started.wait(timeout: .now() + 5) == .success) }
+        // A private observer queue must not wait behind the intentionally blocked I/O queue.
+        DispatchQueue(label: "FilesCore.Tests.DirectoryReadObserver").async {
+            continuation.resume(returning: blocked.started.wait(timeout: .now() + 10) == .success)
+        }
     }
     #expect(started)
     // This Swift task must run while the simulated synchronous filesystem call is waiting.
@@ -47,11 +55,23 @@ private final class BlockedDirectoryRead: @unchecked Sendable {
         return count
     }
     let started = await withCheckedContinuation { continuation in
-        DispatchQueue.global().async { continuation.resume(returning: blocked.started.wait(timeout: .now() + 5) == .success) }
+        // A private observer queue must not wait behind the intentionally blocked I/O queue.
+        DispatchQueue(label: "FilesCore.Tests.DirectoryReadObserver").async {
+            continuation.resume(returning: blocked.started.wait(timeout: .now() + 10) == .success)
+        }
     }
     #expect(started)
     listing.cancel()
-    blocked.resume.signal()
+    // The consumer must finish cancelling while the synchronous read is still held.
+    // Releasing first races a not-yet-suspended consumer against a buffered batch.
     do { #expect(try await listing.value == 0) } catch { #expect(error is CancellationError) }
+    #expect(blocked.isWaiting)
+    blocked.resume.signal()
+    let ended = await withCheckedContinuation { continuation in
+        DispatchQueue(label: "FilesCore.Tests.DirectoryReadEndObserver").async {
+            continuation.resume(returning: blocked.ended.wait(timeout: .now() + 10) == .success)
+        }
+    }
+    #expect(ended && blocked.resumed)
     #expect(try Data(contentsOf: root.appendingPathComponent("file.txt")) == Data("keep".utf8))
 }

@@ -147,7 +147,11 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
     private let openSystemURL: (URL) -> Bool
     private let undoJournalDirectory: URL
     private let filePasteboard: NSPasteboard
-    static private(set) var entryOperationRunning = false
+    private static var localEntryOperationRunning = false
+    static private(set) var entryOperationRunning: Bool {
+        get { localEntryOperationRunning || ReceivedFilesWindow.isCleaning }
+        set { localEntryOperationRunning = newValue }
+    }
     private static var pendingMoveRedo: MoveRedoRecord?
     private static var operationJournalDirectory: URL {
         FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]

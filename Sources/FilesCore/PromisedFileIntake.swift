@@ -2,19 +2,27 @@ import Foundation
 import CryptoKit
 import Darwin
 
-public enum PromisedFileIntakeError: Error, Equatable, Sendable {
-    case invalidLocation, invalidManifest, changedRoot, changedItem
+public enum PromisedFileIntakeError: Error, Equatable, Hashable, Sendable {
+    case invalidLocation, invalidManifest, changedRoot, changedItem, noVerifiedCopy, unknownContents
 }
 
 /// Durable ownership boundary for incoming promises. File-system methods run off the UI thread.
 /// Received data is retained; deinitialization never deletes it.
 public final class PromisedFileIntake: @unchecked Sendable {
-    private struct Item: Codable {
+    private struct Delivery: Codable, Equatable {
+        let operationID: UUID
+        let target: URL
+        let identity: String
+        let fingerprint: [String: String]
+        let metadata: CopyTransferMetadata
+    }
+    private struct Item: Codable, Equatable {
         let name: String
         let identity: String
         let fingerprint: [String: String]
         let metadata: CopyTransferMetadata
         let receivedAt: Date
+        var copies: [Delivery]? // Absent in receipts written before verified cleanup was introduced.
     }
     private struct Header: Codable {
         let version: Int
@@ -87,6 +95,8 @@ public final class PromisedFileIntake: @unchecked Sendable {
 
     public var itemCount: Int { state.withLock { items.count } }
     public var receivedNames: [String] { state.withLock { order } }
+    /// A recorded publication is a cleanup candidate, never proof that its target is still valid.
+    public var copiedItemCount: Int { state.withLock { items.values.filter { $0.copies?.isEmpty == false }.count } }
 
     /// Called within the receiver's coordinated read after its item is available.
     public func registerReceivedFile(_ url: URL, cancellation: CopyCancellation = CopyCancellation()) throws {
@@ -104,7 +114,7 @@ public final class PromisedFileIntake: @unchecked Sendable {
             guard LocalEntryIdentity.read(local) == identity else { throw PromisedFileIntakeError.changedItem }
             try requireOwnedDirectories()
             let item = Item(name: itemURL.lastPathComponent, identity: identity,
-                            fingerprint: snapshot.withPermissions, metadata: snapshot.metadata, receivedAt: Date())
+                            fingerprint: snapshot.withPermissions, metadata: snapshot.metadata, receivedAt: Date(), copies: nil)
             let record = receiptsDirectory.appendingPathComponent(Self.receiptKey(item.name) + ".json")
             let cached = state.withLock { items[item.name] }
             let previous = try cached ?? Self.optionalItem(record)
@@ -165,14 +175,170 @@ public final class PromisedFileIntake: @unchecked Sendable {
             }
         }
     }
-    private func requireOwnedDirectories() throws {
-        let url = directoryURL.appendingPathComponent(Self.manifestName)
-        guard (try? Self.directoryIdentity(directoryURL)) == header.directoryIdentity,
-              (try? Self.directoryIdentity(receivingDirectory)) == header.receivingIdentity,
-              (try? Self.directoryIdentity(receiptsDirectory)) == header.receiptsIdentity,
+    private func requireOwnedDirectories(at root: URL? = nil) throws {
+        let root = root ?? directoryURL
+        let url = root.appendingPathComponent(Self.manifestName)
+        guard (try? Self.directoryIdentity(root)) == header.directoryIdentity,
+              (try? Self.directoryIdentity(root.appendingPathComponent("Files"))) == header.receivingIdentity,
+              (try? Self.directoryIdentity(root.appendingPathComponent("Receipts"))) == header.receiptsIdentity,
               (try? Self.fileIdentity(url)) == headerIdentity,
               (try? Data(contentsOf: url)) == headerData else { throw PromisedFileIntakeError.changedRoot }
     }
+    // Called only with the copy engine's already verified publication. Cleanup always rehashes.
+    func recordVerifiedCopy(source: URL, sourceSnapshot: CopyEngine.VerificationSnapshot,
+                            record: CopyRecord, operationID: UUID) throws {
+        try processing.withLock {
+            try requireOwnedDirectories()
+            guard source.standardizedFileURL == receivingDirectory.appendingPathComponent(source.lastPathComponent),
+                  let cached = state.withLock({ items[source.lastPathComponent] }),
+                  record.state == "completed", let identity = record.targetIdentity,
+                  let fingerprint = record.targetSnapshot, let metadata = record.targetMetadata,
+                  isExternalTarget(record.target) else { throw PromisedFileIntakeError.invalidLocation }
+            let receipt = receiptsDirectory.appendingPathComponent(Self.receiptKey(cached.name) + ".json")
+            var item = try Self.readItem(receipt)
+            guard item.identity == cached.identity, item.fingerprint == cached.fingerprint, item.metadata == cached.metadata,
+                  sourceSnapshot.withPermissions == item.fingerprint, sourceSnapshot.metadata == item.metadata,
+                  LocalEntryIdentity.read(source) == item.identity else { throw PromisedFileIntakeError.changedItem }
+            guard (try? CopyEngine.entryIdentity(record.target)) == identity,
+                  let stableIdentity = LocalEntryIdentity.read(record.target),
+                  (try? CopyEngine.entryIdentity(record.target)) == identity else { throw PromisedFileIntakeError.changedItem }
+            let delivery = Delivery(operationID: operationID, target: record.target, identity: stableIdentity,
+                                    fingerprint: fingerprint, metadata: metadata)
+            var copies = item.copies ?? []
+            copies.removeAll { $0.target == delivery.target && $0.identity == delivery.identity }
+            copies.append(delivery); item.copies = copies
+            let encoder = JSONEncoder(); encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+            try encoder.encode(item).write(to: receipt, options: .atomic)
+            try requireOwnedDirectories(); cache(item)
+        }
+    }
+
+    private func isExternalTarget(_ target: URL) -> Bool {
+        guard target.isFileURL else { return false }
+        let target = target.deletingLastPathComponent().resolvingSymlinksInPath().appendingPathComponent(target.lastPathComponent).path
+        let storage = directoryURL.deletingLastPathComponent().resolvingSymlinksInPath().path
+        return target != storage && !target.hasPrefix(storage + "/")
+    }
+
+    private func verifiedCleanupItems(at root: URL, cancellation: CopyCancellation) throws -> [Item] {
+        try cancellation.check(); try requireOwnedDirectories(at: root)
+        let current = state.withLock { order.compactMap { items[$0] } }
+        guard !current.isEmpty else { throw PromisedFileIntakeError.noVerifiedCopy }
+        let fm = FileManager.default
+        let names: (URL) throws -> Set<String> = { Set(try fm.contentsOfDirectory(atPath: $0.path)) }
+        let files = root.appendingPathComponent("Files"), receipts = root.appendingPathComponent("Receipts")
+        guard try names(root) == Set([Self.manifestName, "Files", "Receipts"]),
+              try names(files) == Set(current.map(\.name)),
+              try names(receipts) == Set(current.map { Self.receiptKey($0.name) + ".json" }) else {
+            throw PromisedFileIntakeError.unknownContents
+        }
+        var verified: [Item] = []
+        for cached in current {
+            try cancellation.check()
+            let item = try Self.readItem(receipts.appendingPathComponent(Self.receiptKey(cached.name) + ".json"))
+            guard item.name == cached.name, item.identity == cached.identity,
+                  item.fingerprint == cached.fingerprint, item.metadata == cached.metadata else { throw PromisedFileIntakeError.changedItem }
+            let source = files.appendingPathComponent(item.name)
+            guard LocalEntryIdentity.read(source) == item.identity else { throw PromisedFileIntakeError.changedItem }
+            let original = try CopyEngine.makeSnapshot(source, cancellation: cancellation)
+            guard original.withPermissions == item.fingerprint, original.metadata == item.metadata,
+                  LocalEntryIdentity.read(source) == item.identity else { throw PromisedFileIntakeError.changedItem }
+            var backedUp = false
+            for copy in (item.copies ?? []).reversed() {
+                try cancellation.check()
+                guard isExternalTarget(copy.target), LocalEntryIdentity.read(copy.target) == copy.identity else { continue }
+                do {
+                    let target = try CopyEngine.makeSnapshot(copy.target, cancellation: cancellation)
+                    guard LocalEntryIdentity.read(copy.target) == copy.identity,
+                          target.withPermissions == copy.fingerprint, target.metadata.matchesRecorded(copy.metadata) else { continue }
+                    try target.verifyTransferredContents(of: original)
+                    backedUp = true; break
+                } catch is CancellationError { throw CancellationError() }
+                catch { continue }
+            }
+            guard backedUp else { throw PromisedFileIntakeError.noVerifiedCopy }
+            verified.append(item)
+        }
+        try requireOwnedDirectories(at: root)
+        // Recheck unknown arrivals after the possibly long source/target verification.
+        guard try names(files) == Set(current.map(\.name)),
+              try names(receipts) == Set(current.map { Self.receiptKey($0.name) + ".json" }),
+              try names(root) == Set([Self.manifestName, "Files", "Receipts"]) else { throw PromisedFileIntakeError.unknownContents }
+        return verified
+    }
+
+    /// Run outside the UI thread. Never permanently deletes any received data.
+    public func moveVerifiedCopiesToTrash(journalDirectory: URL, cancellation: CopyCancellation = CopyCancellation()) throws -> PromisedFileCleanupResult {
+        try moveVerifiedCopiesToTrash(journalDirectory: journalDirectory, cancellation: cancellation) { root in
+            var trashed: NSURL?
+            try FileManager.default.trashItem(at: root, resultingItemURL: &trashed)
+            guard let trashed else { throw PromisedFileIntakeError.changedRoot }
+            return trashed as URL
+        }
+    }
+
+    // The injected move permits deterministic race/failure tests using only fixture directories.
+    func moveVerifiedCopiesToTrash(journalDirectory: URL, cancellation: CopyCancellation = CopyCancellation(),
+                                   trash: (URL) throws -> URL) throws -> PromisedFileCleanupResult {
+        try processing.withLock {
+            _ = try verifiedCleanupItems(at: directoryURL, cancellation: cancellation)
+            let journal = journalDirectory.appendingPathComponent("promise-cleanup-\(UUID()).json")
+            guard isExternalTarget(journal) else { throw PromisedFileIntakeError.invalidLocation }
+            let fm = FileManager.default
+            try fm.createDirectory(at: journalDirectory, withIntermediateDirectories: true)
+            var result = PromisedFileCleanupResult(original: directoryURL, retainedAt: directoryURL, state: "verified", message: nil, journal: journal)
+            func save() throws { try JSONEncoder().encode(result).write(to: journal, options: .atomic) }
+            try save(); try cancellation.check(); try requireOwnedDirectories()
+            let trashed: URL
+            do { trashed = try trash(directoryURL) }
+            catch {
+                let retained = LocalEntryIdentity.read(directoryURL) == header.directoryIdentity
+                result.state = retained ? "retained" : "needsReview"
+                result.retainedAt = retained ? directoryURL : nil
+                result.message = error.localizedDescription; try? save()
+                return result
+            }
+            result.retainedAt = trashed; result.state = "movedToTrash"
+            do {
+                try save()
+                _ = try verifiedCleanupItems(at: trashed, cancellation: cancellation)
+                result.state = "trashed"; try save()
+                return result
+            } catch {
+                let reason = error.localizedDescription
+                result.state = "needsReview"; result.message = reason
+                if LocalEntryIdentity.read(trashed) != header.directoryIdentity {
+                    result.retainedAt = LocalEntryIdentity.read(directoryURL) == header.directoryIdentity ? directoryURL : nil
+                }
+                // Restore only our unchanged directory identity, with atomic no-overwrite rename.
+                if LocalEntryIdentity.read(trashed) == header.directoryIdentity {
+                    let from = open(trashed.deletingLastPathComponent().path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
+                    let to = open(directoryURL.deletingLastPathComponent().path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
+                    defer { if from >= 0 { close(from) }; if to >= 0 { close(to) } }
+                    if from >= 0, to >= 0 {
+                        do {
+                            try CopyEngine.publishNoReplace(payload: trashed, target: directoryURL,
+                                sourceDirectoryFD: from, sourceName: trashed.lastPathComponent,
+                                destinationDirectoryFD: to, destinationName: directoryURL.lastPathComponent, allowPathFallback: false)
+                            if LocalEntryIdentity.read(directoryURL) == header.directoryIdentity {
+                                result.retainedAt = directoryURL; result.state = "restored"
+                            } else {
+                                // The opened parent may have been renamed by another process.
+                                var path = [CChar](repeating: 0, count: Int(MAXPATHLEN))
+                                if fcntl(to, F_GETPATH, &path) == 0 {
+                                    let actual = URL(fileURLWithPath: String(cString: path)).appendingPathComponent(directoryURL.lastPathComponent)
+                                    result.retainedAt = LocalEntryIdentity.read(actual) == header.directoryIdentity ? actual : nil
+                                } else { result.retainedAt = nil }
+                            }
+                        } catch { result.message = reason + "; " + error.localizedDescription }
+                    }
+                }
+                try? save()
+                return result
+            }
+        }
+    }
+
     private static func optionalItem(_ url: URL) throws -> Item? {
         var info = stat()
         if lstat(url.path, &info) == 0 { return try readItem(url) }
@@ -201,4 +367,12 @@ public final class PromisedFileIntake: @unchecked Sendable {
               let identity = LocalEntryIdentity.read(url) else { throw PromisedFileIntakeError.changedRoot }
         return identity
     }
+}
+
+public struct PromisedFileCleanupResult: Codable, Sendable {
+    public let original: URL
+    public var retainedAt: URL?
+    public var state: String
+    public var message: String?
+    public let journal: URL
 }

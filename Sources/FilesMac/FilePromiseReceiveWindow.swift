@@ -9,6 +9,23 @@ import FilesCore
 final class FilePromiseReceiveWindow: NSWindowController, NSWindowDelegate {
     typealias Prepare = ([URL], [PromisedFileIntake], @escaping (Bool) -> Void) -> Void
     private static var operations: [FilePromiseReceiveWindow] = []
+    static func isReceiving(_ intake: PromisedFileIntake) -> Bool {
+        operations.contains { controller in
+            (!controller.finished || controller.preparing) && controller.intakes.contains { $0.directoryURL.path == intake.directoryURL.path }
+        }
+    }
+    static func forgetCleanedIntakes(_ directories: [URL]) {
+        let paths = Set(directories.map(\.path))
+        for controller in operations where controller.finished && !controller.preparing {
+            controller.intakes.removeAll { paths.contains($0.directoryURL.path) }
+            let remaining = Set(controller.intakes.map { $0.receivingDirectory.path })
+            controller.submitted = controller.submitted.filter { remaining.contains($0.deletingLastPathComponent().path) }
+            if controller.intakes.isEmpty {
+                controller.label.stringValue = L("수신 보관본 정리 완료", "Received exports cleaned up")
+                controller.window?.close()
+            } else { controller.update() }
+        }
+    }
     static var isRunning: Bool { operations.contains { !$0.paused && !$0.finished } }
     static var activities: [FileOperationActivity] { operations.filter { !$0.closed }.map(\.activity) }
     private let operationID = UUID()
@@ -139,6 +156,21 @@ final class FilePromiseReceiveWindow: NSWindowController, NSWindowDelegate {
     }
 #if DEBUG
     /// Exercises the production handoff with real receipt files; does not simulate SDK delivery.
+    static func verifyFinishedIntakeCleanup(_ intake: PromisedFileIntake) -> Bool {
+        let controller = FilePromiseReceiveWindow(receivers: [], destination: intake.directoryURL) { _, _, decision in decision(false) }
+        controller.intakes = [intake]; operations.append(controller)
+        forgetCleanedIntakes([intake.directoryURL])
+        return !operations.contains { $0 === controller } && controller.closed
+    }
+    static func duringPendingReceiveVerification(intake: PromisedFileIntake, receiver: NSFilePromiseReceiver, body: () -> Void) {
+        let controller = FilePromiseReceiveWindow(receivers: [receiver], destination: intake.directoryURL) { _, _, decision in decision(false) }
+        controller.intakes = [intake]; operations.append(controller)
+        defer {
+            controller.paused = true; controller.window?.close()
+            operations.removeAll { $0 === controller }
+        }
+        body()
+    }
     static func verifyHandoff(intakes: [PromisedFileIntake], destination: URL) async -> [String: Bool] {
         var calls = 0
         var acceptedSources: [URL] = []

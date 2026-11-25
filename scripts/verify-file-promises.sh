@@ -24,8 +24,15 @@ mode = sys.argv[3]
 print(f"File promise {mode} verification results: {output}", flush=True)
 if mode == "contract":
     env = dict(os.environ, FILES_PROMISE_QA_OUTPUT=str(output), FILES_PROMISE_QA_MODE="contract")
+    arguments = [binary]
+    language = os.environ.get("FILES_PROMISE_QA_LANGUAGE")
+    theme = os.environ.get("FILES_PROMISE_QA_THEME")
+    if language:
+        if language not in {"ko", "en"}: raise SystemExit("Expected ko or en for the contract language")
+        arguments += ["-AppleLanguages", f"({language})", "-AppleLocale", language]
+    if theme and theme not in {"light", "dark"}: raise SystemExit("Expected light or dark for the contract appearance")
     with (output / "run.log").open("wb") as log:
-        status = subprocess.run([binary], env=env, stdout=log, stderr=subprocess.STDOUT, timeout=45).returncode
+        status = subprocess.run(arguments, env=env, stdout=log, stderr=subprocess.STDOUT, timeout=45).returncode
     result = json.loads((output / "report.json").read_text())
     expected = {
         "writesPasteboard", "preservesFileURLRepresentation", "promiseIsLazy", "offersPromiseTypes",
@@ -37,7 +44,13 @@ if mode == "contract":
         "receivePolicyCancellationRetainsRetry", "receiveHandoffIncludesAllIntakes", "receiveAcceptedBatchMarkedOnce",
         "receiveDoesNotResubmitAcceptedBatch", "receivePauseRetainsVerifiedFiles", "receiveTypesIncludeURLAndPromises",
         "recoveryListsPersistedJobs", "recoveryEnablesVerifiedCopyRequest", "recoveryDamagedReceiptAllowsRevealOnly", "recoveryMixedSelectionProtectsDamagedData",
+        "cleanupRejectsUncopiedAndDamagedSelections", "cleanupReceiptsPersistAfterVerifiedCopy", "cleanupEnablesOnlyRecordedCopyCandidates",
+        "cleanupBlocksOtherJobsAndOffersCancellation", "cleanupMovesVerifiedIntakeToSystemTrash", "cleanupRefreshesListAndReleasesOperationGuard",
+        "cleanupBlocksPendingSDKReceiver", "cleanupControlsFitMinimumWindow", "cleanupControlsCaptureWritten",
+        "cleanupClosesFinishedReceiveWindow", "cleanupFixtureReturnedFromTrash", "cleanupResultsCanBeRevealed",
     }
+    if language and not result.get("language", "").startswith(language): raise SystemExit("Contract language differs from request")
+    if theme and result.get("theme") != theme: raise SystemExit("Contract appearance differs from request")
     checks = result["checks"]
     if status or result.get("mode") != "delegate-contract" or not expected.issubset(checks) or not all(value is True for value in checks.values()):
         raise SystemExit(f"File promise delegate contract checks failed: {json.dumps(result, ensure_ascii=False)}")

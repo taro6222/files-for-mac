@@ -67,6 +67,9 @@ private final class PromiseDestinationView: NSView {
 @MainActor
 enum FilePromiseVerification {
     static func run(output: String) async {
+        if let theme = ProcessInfo.processInfo.environment["FILES_PROMISE_QA_THEME"] {
+            NSApp.appearance = NSAppearance(named: theme == "dark" ? .darkAqua : .aqua)
+        }
         let fm = FileManager.default
         let root = URL(fileURLWithPath: output, isDirectory: true)
         var checks: [String: Bool] = [:]
@@ -155,7 +158,7 @@ enum FilePromiseVerification {
                 try await Task.detached {
                     try FileManager.default.createDirectory(at: recoveryStorage.appendingPathComponent("promise-damaged"), withIntermediateDirectories: false)
                 }.value
-                checks.merge(await ReceivedFilesWindow.verifyRecovery(storage: recoveryStorage, destination: target)) { _, new in new }
+                checks.merge(await ReceivedFilesWindow.verifyRecovery(storage: recoveryStorage, destination: target, pendingReceiver: receivers.first)) { _, new in new }
                 diagnostics["collisionError"] = collision.0 ?? ""
                 diagnostics["staleSourceError"] = stale.0 ?? ""
             }
@@ -204,7 +207,9 @@ enum FilePromiseVerification {
             if !contractOnly { checks["sourceRemainsUnchanged"] = try Data(contentsOf: file) == bytes }
             let report: [String: Any] = ["checks": checks, "diagnostics": diagnostics,
                                        "mode": contractOnly ? "delegate-contract" : "actual-drag",
-                                       "os": ProcessInfo.processInfo.operatingSystemVersionString]
+                                       "os": ProcessInfo.processInfo.operatingSystemVersionString,
+            "language": Locale.preferredLanguages.first ?? "unknown",
+            "theme": NSApp.effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua ? "dark" : "light"]
             try JSONSerialization.data(withJSONObject: report, options: [.prettyPrinted, .sortedKeys])
                 .write(to: root.appendingPathComponent("report.json"), options: .atomic)
             DispatchQueue.main.async { exit(checks.values.allSatisfy { $0 } ? 0 : 1) }

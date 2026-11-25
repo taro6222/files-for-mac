@@ -1,0 +1,112 @@
+{
+  "sourceCommit": "ca827fcde5c530830aa1ff99dd933c1fc43857dd",
+  "runURL": "https://github.com/taro6222/files-for-mac/actions/runs/45647313772",
+  "xcode": {
+    "arm64": "success",
+    "x86_64": "success"
+  },
+  "completeAppKitReached": {
+    "arm64": false,
+    "x86_64": false
+  },
+  "intelScheduling": {
+    "state": "failed",
+    "tests": {
+      "gitConcurrentSnapshotsCompleteWithoutBlockingSwiftTasks": true,
+      "gitWaitingForProcessAllowsOtherSwiftTasksToResume": true,
+      "gitCancellationTerminatesProcessAndCleansCloneStaging": true,
+      "directoryWaitingForFileSystemAllowsOtherSwiftTasksToResume": true,
+      "directoryCancellationWhileFileSystemIsBlockedStopsBeforeFirstBatch": false
+    },
+    "exitCode": 1,
+    "timedOut": false,
+    "elapsedSeconds": 4.559220038000035,
+    "testBinary": "/Users/runner/work/files-for-mac/files-for-mac/.build/x86_64-apple-macosx/debug/FilesMacPackageTests.xctest/Contents/MacOS/FilesMacPackageTests",
+    "constrainedProcess": "swiftpm-testing-helper",
+    "swiftVersion": "Apple Swift version 6.2.4 (swiftlang-6.2.4.1.4 clang-1700.6.4.2)\nTarget: x86_64-apple-macosx15.0",
+    "sourceCommit": "ca827fcde5c530830aa1ff99dd933c1fc43857dd",
+    "strictCooperativePool": true
+  },
+  "arm64SpotlightPreparation": {
+    "state": "failed",
+    "id": "a5b1eeeb3ec44f1ab349a46c07e2b1e6",
+    "fixtureRoot": "/Users/runner/FilesMac-Spotlight-QA.evr84tg6",
+    "device": 16777229,
+    "inode": 3598144,
+    "sourceSHA256": "804efcedca423e04ccf23070736835b0a22fd6f1987059c334e5cf2a3c7ad788",
+    "expectedFile": "/Users/runner/FilesMac-Spotlight-QA.evr84tg6/Sources/FilesCore/LocalSearch.swift",
+    "query": "kMDItemTextContent == \"*SearchRouter*\"cd",
+    "enableIndexing": {
+      "arguments": [
+        "sudo",
+        "/usr/bin/mdutil",
+        "-i",
+        "on",
+        "/System/Volumes/Data"
+      ],
+      "exitCode": 0,
+      "stdout": "/System/Volumes/Data:\n\tIndexing enabled. \n",
+      "stderr": ""
+    },
+    "import": {
+      "arguments": [
+        "/usr/bin/mdimport",
+        "-i",
+        "/Users/runner/FilesMac-Spotlight-QA.evr84tg6/Sources/FilesCore/LocalSearch.swift"
+      ],
+      "exitCode": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    "indexHits": [],
+    "indexWaitSeconds": 113.08317062499998,
+    "error": "Spotlight did not index the exact Swift source fixture",
+    "diagnostics": [
+      {
+        "arguments": [
+          "/usr/bin/mdutil",
+          "-s",
+          "/System/Volumes/Data"
+        ],
+        "exitCode": 0,
+        "stdout": "/System/Volumes/Data:\n\tIndexing enabled. \n",
+        "stderr": ""
+      },
+      {
+        "arguments": [
+          "/usr/bin/mdls",
+          "-name",
+          "kMDItemContentType",
+          "-name",
+          "kMDItemFSName",
+          "/Users/runner/FilesMac-Spotlight-QA.evr84tg6/Sources/FilesCore/LocalSearch.swift"
+        ],
+        "exitCode": 0,
+        "stdout": "kMDItemContentType = (null)\nkMDItemFSName      = (null)\n",
+        "stderr": ""
+      },
+      {
+        "arguments": [
+          "/usr/bin/mdimport",
+          "-t",
+          "-d2",
+          "/Users/runner/FilesMac-Spotlight-QA.evr84tg6/Sources/FilesCore/LocalSearch.swift"
+        ],
+        "exitCode": 0,
+        "stdout": "Imported '/Users/runner/FilesMac-Spotlight-QA.evr84tg6/Sources/FilesCore/LocalSearch.swift' of type 'public.swift-source' with plugIn /System/Library/Spotlight/RichText.mdimporter.\n29 attributes returned\n{\n    \":MD:DeviceId\" = 16777229;\n    \":MD:kMDItemPath\" = \"/Users/runner/FilesMac-Spotlight-QA.evr84tg6/Sources/FilesCore/LocalSearch.swift\";\n    \"_kMDItemContentChangeDate\" = \"2026-11-25 15:42:59 +0000\";\n    \"_kMDItemCreationDate\" = \"2026-11-25 15:42:59 +0000\";\n    \"_kMDItemCreatorCode\" = 0;\n    \"_kMDItemDisplayNameWithExtensions\" =     {\n        \"\" = \"LocalSearch.swift\";\n    };\n    \"_kMDItemFileName\" = \"LocalSearch.swift\";\n    \"_kMDItemFinderFlags\" = 0;\n    \"_kMDItemFinderLabel\" = 0;\n    \"_kMDItemFromImporter\" = 1;\n    \"_kMDItemIsEvictedFile\" = \"<null>\";\n    \"_kMDItemIsExtensionHidden\" = 0;\n    \"_kMDItemIsFromImporter\" = 1;\n    \"_kMDItemOwnerGroupID\" = 20;\n    \"_kMDItemOwnerUserID\" = 501;\n    \"_kMDItemTextEncodingHint\" = 134217984;\n    \"_kMDItemTypeCode\" = 0;\n    \"com_apple_metadata_modtime\" = \"817314179.1987427\";\n    kMDItemContentCreationDate = \"2026-11-25 15:42:59 +0000\";\n    kMDItemContentModificationDate = \"2026-11-25 15:42:59 +0000\";\n    kMDItemContentType = \"public.swift-source\";\n    kMDItemContentTypeTree =     (\n        \"public.swift-source\",\n        \"public.source-code\",\n        \"public.plain-text\",\n        \"public.text\",\n        \"public.data\",\n        \"public.item\",\n        \"public.content\"\n    );\n    kMDItemDateAdded = \"2026-11-25 15:51:03 +0000\";\n    kMDItemDisplayName =     {\n        \"\" = \"LocalSearch.swift\";\n    };\n    kMDItemDocumentIdentifier = 0;\n    kMDItemKind =     {\n        \"\" = \"Swift Source\";\n        en = \"Swift Source\";\n    };\n    kMDItemLogicalSize = 7386;\n    kMDItemPhysicalSize = 8192;\n    kMDItemTextContent = \"<<< Text content of 7386 characters >>>\";\n}\n",
+        "stderr": ""
+      },
+      {
+        "arguments": [
+          "/usr/bin/mdimport",
+          "-L"
+        ],
+        "exitCode": 0,
+        "stdout": "Paths: id(501) (\n    \"/System/Library/Spotlight/iWork.mdimporter\",\n    \"/System/Library/Spotlight/iPhoto.mdimporter\",\n    \"/System/Library/Spotlight/PDF.mdimporter\",\n    \"/System/Library/Spotlight/RichText.mdimporter\",\n    \"/System/Library/Spotlight/Office.mdimporter\",\n    \"/System/Library/Spotlight/PS.mdimporter\",\n    \"/System/Library/Spotlight/MIDI.mdimporter\",\n    \"/System/Library/Spotlight/Archives.mdimporter\",\n    \"/System/Library/Spotlight/Audio.mdimporter\",\n    \"/System/Library/Spotlight/iPhoto8.mdimporter\",\n    \"/System/Library/Spotlight/Automator.mdimporter\",\n    \"/System/Library/Spotlight/Application.mdimporter\",\n    \"/System/Library/Spotlight/Font.mdimporter\",\n    \"/System/Library/Spotlight/Mail.mdimporter\",\n    \"/System/Library/Spotlight/vCard.mdimporter\",\n    \"/System/Library/Spotlight/Image.mdimporter\",\n    \"/System/Library/Spotlight/iCal.mdimporter\",\n    \"/System/Library/Spotlight/CoreMedia.mdimporter\"\n)\n",
+        "stderr": ""
+      }
+    ],
+    "cleaned": true
+  },
+  "scope": "Xcode success applies only to ca827fc; no success claim for complete AppKit or the later cleanup implementation"
+}

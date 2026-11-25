@@ -133,7 +133,7 @@ final class FileOperationCenter: NSWindowController, NSTableViewDataSource, NSTa
 
     private func refresh() {
         let selectedID = selected?.id
-        let openActivities = CopyWindow.activities + MoveWindow.activities + FolderMergeWindow.activities + FilePromiseReceiveWindow.activities
+        let openActivities = CopyWindow.activities + MoveWindow.activities + FolderMergeWindow.activities + FilePromiseReceiveWindow.activities + ReceivedFilesWindow.activities
         activities = openActivities.filter { !Self.dismissedOpenResults.contains($0.id) } + Self.recentResults
         let running = activities.filter { $0.progress != nil }.count
         clear.isEnabled = running != activities.count

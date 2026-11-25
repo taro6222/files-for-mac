@@ -306,6 +306,14 @@ public enum CopyEngine {
                             report.items[index].state = "completed"
                             report.items[index].targetSnapshot = verifiedPayload.withPermissions
                             report.items[index].targetMetadata = verifiedPayload.metadata
+                            if let intake = sourceIntakes.first(where: { source.deletingLastPathComponent().standardizedFileURL == $0.receivingDirectory }) {
+                                do {
+                                    try intake.recordVerifiedCopy(source: source, sourceSnapshot: currentSource,
+                                        record: report.items[index], operationID: report.id)
+                                } catch {
+                                    report.items[index].message = "Copied file was preserved, but the receive cleanup receipt could not be saved: " + error.localizedDescription
+                                }
+                            }
                             break
                         } catch CopyPublicationError.conflict {}
                         if conflictPolicy == .skip {
@@ -533,7 +541,7 @@ public enum CopyEngine {
         var info = stat(); return lstat(url.path, &info) == 0
     }
 
-    private static func entryIdentity(_ url: URL) throws -> String {
+    static func entryIdentity(_ url: URL) throws -> String {
         var info = stat()
         guard lstat(url.path, &info) == 0 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .ENOENT) }
         return "\(info.st_dev):\(info.st_ino):\(info.st_mode & S_IFMT)"
