@@ -1,0 +1,84 @@
+{
+  "collectedAtUTC": "2026-11-25T18:36:47.668587+00:00",
+  "status": "in-progress",
+  "sourceSHA": "5284cb30b0d21a1033895558894f439599fd3d63",
+  "binarySHA256": "6d2cb840523fe2f70148b02a525dd509049b3130f0887360ee1bd44f8061ed9d",
+  "runDirectory": "build/release-soak.cVt0iz",
+  "processes": "71077 34257 03:50 bash scripts/verify-release-soak.sh 28800\n71382 71077 03:02 /Users/changhun/Desktop/Workspace/Files/build/release-soak.cVt0iz/FilesMac\n",
+  "initialReport": {
+    "cycles": 61,
+    "elapsedSeconds": 181.647146375,
+    "peakPhysicalFootprintBytes": 65012864,
+    "peakRSSBytes": 147111936,
+    "primaryWatcherReleases": 61,
+    "samples": [
+      {
+        "cycle": 1,
+        "elapsedSeconds": 0.825885209,
+        "physicalFootprintBytes": 63161472,
+        "retainedPrimaryDetailCells": 55,
+        "rssBytes": 144244736
+      },
+      {
+        "cycle": 12,
+        "elapsedSeconds": 31.004482709,
+        "physicalFootprintBytes": 59999360,
+        "retainedPrimaryDetailCells": 55,
+        "rssBytes": 147095552
+      },
+      {
+        "cycle": 22,
+        "elapsedSeconds": 61.306684792,
+        "physicalFootprintBytes": 56984704,
+        "retainedPrimaryDetailCells": 55,
+        "rssBytes": 145965056
+      },
+      {
+        "cycle": 33,
+        "elapsedSeconds": 94.33367725,
+        "physicalFootprintBytes": 53675136,
+        "retainedPrimaryDetailCells": 55,
+        "rssBytes": 146063360
+      },
+      {
+        "cycle": 43,
+        "elapsedSeconds": 125.613294417,
+        "physicalFootprintBytes": 53675136,
+        "retainedPrimaryDetailCells": 55,
+        "rssBytes": 146259968
+      },
+      {
+        "cycle": 53,
+        "elapsedSeconds": 157.37612275,
+        "physicalFootprintBytes": 53675136,
+        "retainedPrimaryDetailCells": 55,
+        "rssBytes": 146309120
+      }
+    ],
+    "state": "running",
+    "targetSeconds": 28800,
+    "workload": "full"
+  },
+  "soakBuild": {
+    "sha256": "6d2cb840523fe2f70148b02a525dd509049b3130f0887360ee1bd44f8061ed9d",
+    "platform": "MACOS",
+    "minimumOS": "14.0",
+    "sdk": "14.0"
+  },
+  "candidateReleaseBuild": {
+    "sha256": "b291e3540fa5ed5f4a44dce2863c26d94a090682bd1cb7cfdc5e178ea7792949",
+    "platform": "MACOS",
+    "minimumOS": "14.0",
+    "sdk": "14.0"
+  },
+  "buildMetadataMatches": true,
+  "windowsCaptureLocalTests": {
+    "passed": 5,
+    "logSHA256": "0e2b419f5a3b2f6a027a01dfdc48f20ddd2a333f32927a650e5568d0bacb4829"
+  },
+  "sourceSHA256": {
+    "scripts/capture-windows-reference.py": "fd898d09aab14736459509dc9a83f0fbea9e21da0fb3810527edbe7732a17ffe",
+    "Tests/FixtureTests/test_windows_progress_capture.py": "3470383e2289f64e4f60b16fc25429412373b90254b36d4d6f1afa9f50a51642",
+    ".github/workflows/windows-reference.yml": "01b6bf15de288614ed33b3e5e9e3066dec6a0d37bf5b3ba7d4bd4d29852d2565"
+  }
+}

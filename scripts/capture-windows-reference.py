@@ -172,6 +172,47 @@ def completed_copy_card(tree, destination):
     return None
 
 
+
+def operation_copy_card(tree, destination, *, cancelled=False):
+    """Match state and controls on the same visible card, never a completed or hidden sibling."""
+    for listing in tree.iter():
+        if listing.get("AutomationId") != "StatusCenterItemsListView" or listing.get("IsOffscreen") != "False":
+            continue
+        for row in listing.iter("ListItem"):
+            if row.get("IsOffscreen") != "False":
+                continue
+            visible = [element for element in row.iter() if element.get("IsOffscreen") == "False"]
+            titles = [element.get("Name", "").casefold() for element in visible
+                      if element.get("AutomationId") == "StatusCenterItemHeaderTextBlock"]
+            controls = {element.get("AutomationId") for element in visible}
+            if not any(f'"{destination.casefold()}"' in title for title in titles):
+                continue
+            if cancelled:
+                if (any("cancelled" in title or "canceled" in title for title in titles)
+                        and "CloseItemButton" in controls and "MoreOptionsButton" not in controls):
+                    return row
+            elif (any(title.startswith("copying ") for title in titles) and "MoreOptionsButton" in controls
+                  and {"MainProgressBar", "MainGraphCartesianChartClipGrid"} & controls):
+                return row
+    return None
+
+
+def transfer_fixture_manifest(root):
+    """Hash every regular payload by relative name; unknown links and special files abort evidence collection."""
+    entries = []
+    for path in sorted(root.rglob("*")):
+        if path.is_symlink():
+            raise RuntimeError("A transfer fixture contains an unexpected symbolic link")
+        if path.is_dir():
+            continue
+        if not path.is_file():
+            raise RuntimeError("A transfer fixture contains an unexpected special file")
+        data = path.read_bytes()
+        entries.append((path.relative_to(root).as_posix(), len(data), hashlib.sha256(data).hexdigest()))
+    digest = hashlib.sha256(json.dumps(entries, separators=(",", ":")).encode()).hexdigest()
+    return {"files": len(entries), "bytes": sum(entry[1] for entry in entries), "sha256": digest}
+
+
 def capture(output, app_id, window_handle, fixture=None, scope="all"):
     output.mkdir(parents=True, exist_ok=True)
     session = None
@@ -392,6 +433,75 @@ def capture(output, app_id, window_handle, fixture=None, scope="all"):
                 row = wait_for(f"the visible row for {file.name}", lambda: element_route(
                     "xpath", f"//*[@AutomationId='ItemName' and (@Name='{file.name}' or @Name='{file.stem}') and @IsOffscreen='False']"))
                 request("POST", row + "/click", {})
+
+            if scope == "operation-progress":
+                source = fixture / "TransferCancellation"
+                destination = fixture / "Workshop"
+                copied = destination / source.name
+                if source.exists() or copied.exists():
+                    raise RuntimeError("Refusing to reuse a transfer cancellation fixture")
+                source.mkdir()
+                for index in range(24000):
+                    (source / f"item-{index:05d}.bin").write_bytes(index.to_bytes(4, "little") * 256)
+                before = transfer_fixture_manifest(source)
+                record["activeCopy"] = {"state": "prepared", "source": before, "destination": destination.name}
+                report.write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8")
+                select_file(source)
+                request("POST", session + "/keys", {"value": ["\ue009", "c", "\ue000"]})
+                open_path(destination)
+
+                def at_destination():
+                    route = element_route("accessibility id", "CurrentPathGet")
+                    return request("GET", route + "/text")["value"].rstrip("\\").casefold() == str(destination).rstrip("\\").casefold()
+
+                wait_for("the active copy destination", at_destination)
+                request("POST", session + "/keys", {"value": ["\ue009", "v", "\ue000"]})
+                button = wait_for("the Status Center button", lambda: element_route(
+                    "xpath", "//Button[@AutomationId='ShowStatusCenterButton' and @IsOffscreen='False']"))
+                request("POST", button + "/click", {})
+
+                def active_source():
+                    tree = read_tree()
+                    card = operation_copy_card(tree, destination.name)
+                    count = len(list(copied.glob("*.bin"))) if copied.exists() else 0
+                    return (tree, card, count) if card is not None and 0 < count < before["files"] else None
+
+                tree, card, count = wait_for("a copying card with partial data and a cancel control", active_source)
+                record["activeCopy"].update(state="observed-active", copiedFilesBeforeCancel=count,
+                    visibleControls=[dict(element.attrib) for element in card.iter() if element.get("IsOffscreen") == "False"])
+                capture_layout(tree, "UI-10-copy-active", "status-center")
+                button = element_route("xpath", "//Button[@AutomationId='MoreOptionsButton' and @IsOffscreen='False']")
+                request("POST", button + "/click", {})
+                tree = read_tree()
+                capture_layout(tree, "UI-10-copy-cancel-menu", "status-center")
+                button = wait_for("the enabled cancel command", lambda: element_route(
+                    "xpath", "//*[@AutomationId='CancelItemButton' and @IsEnabled='True' and @IsOffscreen='False']"))
+                cancel_started = time.monotonic()
+                request("POST", button + "/click", {})
+
+                def cancelled_source():
+                    tree = read_tree()
+                    return tree if operation_copy_card(tree, destination.name, cancelled=True) is not None else None
+
+                tree = wait_for("the terminal cancelled copy card", cancelled_source)
+                record["activeCopy"]["cancelToTerminalSeconds"] = time.monotonic() - cancel_started
+                capture_layout(tree, "UI-10-copy-cancelled", "status-center")
+                after = transfer_fixture_manifest(source)
+                if after != before:
+                    raise RuntimeError("Cancelling the copy changed the source manifest")
+                if not copied.is_dir():
+                    raise RuntimeError("No partial destination remains to verify the cancellation")
+                partial = transfer_fixture_manifest(copied)
+                if not 0 < partial["files"] < before["files"]:
+                    raise RuntimeError("The copy did not stop before completing all files")
+                for _ in range(3):
+                    time.sleep(.5)
+                    if transfer_fixture_manifest(copied) != partial:
+                        raise RuntimeError("The destination continued changing after the cancelled terminal card")
+                record["activeCopy"].update(state="cancelled", sourceAfter=after, partialDestination=partial,
+                                             sourcePreserved=True, destinationStable=True)
+                report.write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8")
+                return
 
             if scope == "operation-center":
                 source = fixture / "preview.txt"
@@ -663,7 +773,7 @@ if __name__ == "__main__":
     parser.add_argument("--window-handle", required=True)
     parser.add_argument("--fixture", type=Path)
     parser.add_argument("--scope", choices=("all", "tab-drop", "properties", "security", "advanced-security",
-                                            "operation-center"), default="all")
+                                            "operation-center", "operation-progress"), default="all")
     arguments = parser.parse_args()
     if arguments.scope != "all" and arguments.fixture is None:
         parser.error("a specific --scope requires --fixture")

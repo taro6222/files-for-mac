@@ -6,7 +6,7 @@ on:
       scope:
         description: Reference capture scope
         type: choice
-        options: [all, tab-drop, properties, security, advanced-security, operation-center]
+        options: [all, tab-drop, properties, security, advanced-security, operation-center, operation-progress]
         default: all
 
 permissions:
@@ -32,6 +32,9 @@ jobs:
       - uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5
         with:
           global-json-file: upstream/global.json
+      - name: Verify operation evidence matching and fixture manifests
+        shell: pwsh
+        run: python -B -m unittest discover -s Tests/FixtureTests -p 'test_windows_progress_capture.py' -v
       - name: Build and sign the pinned source on the temporary runner
         working-directory: upstream
         shell: pwsh
