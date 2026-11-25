@@ -1,0 +1,26 @@
+{
+  "previewSourceSHA": "40ffc39d4059f09be35e9d7efa6fcb8bd33b559c",
+  "previewImageSHA256": "9179564d9b9cf227d6d43626cbe8ee0a5c859d3f4998698139025289a0f6c103",
+  "originalExecutableSHA256": "50a6a0ef04b79284561a4c0b0d0c17b903483bc844dc26c80aca7fa8c9294971",
+  "isolatedExecutableSHA256": "3a2cabc12d73c7da73787d168698d4af3b06f6c4742a1e468d3fc4051e5a9622",
+  "macOS": "27.2.1",
+  "macOSBuild": "26B131",
+  "architecture": "arm64",
+  "isolation": "Copied preview with a unique bundle identifier, ad-hoc signature, fixture home and preferences",
+  "input": "CGEvent key events posted only while the fixture app is active",
+  "verification": "AX focus, selected rows, window titles, completed conflict result and fixture bytes",
+  "languages": [
+    "en",
+    "ko"
+  ],
+  "checks": {
+    "keyboardCopy": true,
+    "keyboardPathEntry": true,
+    "keyboardPaste": true,
+    "keyboardSkipConflict": true,
+    "completedConflictResult": true,
+    "sourcePreserved": true,
+    "originalDestinationPreserved": true,
+    "noUnexpectedDestinationItems": true
+  }
+}
