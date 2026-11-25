@@ -18,3 +18,7 @@ F17 수신 보관본 정리에서 실제 휴지통 이동과 `movedToTrash` 기�
 - 원본 결과·캡처·소스/로그 해시는 [검증 기록](journaled-restart-verification.json)에 저장한다. [한국어 밝게](journaled-restart-ko-light.png), [한국어 어둡게](journaled-restart-ko-dark.png), [영어 밝게](journaled-restart-en-light.png), [영어 어둡게](journaled-restart-en-dark.png).
 
 이는 전용 앱의 프로그램 방식 AppKit 검증이다. 실제 마우스·키보드·SDK 드래그·VoiceOver 수용은 별도다. 이번 단위에서는 전체 283개 UI·마운트 행렬을 재실행하지 않았으며 303단계의 결과를 새 소스의 결과로 옮겨 쓰지 않는다. 최신 소스 두 CPU 원격 검증·장시간 시험·최소 OS·정식 설치 수용은 남아 있다. 기존 8시간 시험은 이전 소스의 기준 실행으로 계속되며 최신 후보 시험과 구분한다. Developer ID 인증서와 notarytool 프로필은 사용자 준비 중이므로 서명·공증·다운로드 후 Gatekeeper 수용을 완료로 표시하지 않는다.
+
+## 같은 앱 소스의 원격 수용 결과
+
+앱 소스 `5284cb3`의 실제 보고서에서 Apple Silicon·Intel 각각 위치 미기록 SIGKILL 재기동 14개와 위치 기록 후 새 프로세스 복원 19개가 모두 통과했다. 두 CPU 수신 계약 53개·제한 실행기 9개도 통과했고, ARM 전체 AppKit 네 조합 각각 283개와 독립 Spotlight 범위 4개를 확인했다. 이 실행의 두 CPU Xcode 빌드도 성공했다. 원격 재기동은 각 CPU의 영어·밝은 테마이고, 다른 언어·외형은 기존 로컬 결과와 구분한다. [원본 중간 결과](5284cb3-ci-verification.json), [ARM 복원 화면](journaled-restart-ci-arm64.png), [Intel 복원 화면](journaled-restart-ci-x86_64.png). Intel 전체 UI·설치 최종 결과와 정식 배포 수용은 진행 중이다.

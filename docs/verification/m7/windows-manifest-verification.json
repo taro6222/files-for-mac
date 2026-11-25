@@ -1,0 +1,15 @@
+{
+  "collectedAtUTC": "2026-11-25T19:03:06.725472+00:00",
+  "baseCommit": "11e948ab81ac3c7411f229932ebf506bea5ac0fb",
+  "sourceSHA256": {
+    "scripts/capture-windows-reference.py": "9f303daae5e2f4c3d755e5354b8b1484ae65c3a69cd6b3d1b6d3b78165337aac",
+    "Tests/FixtureTests/test_windows_progress_capture.py": "bb3e3fe188bdb0cf23f197691b7bd878629f36e180242ae37389fcc2aeb7bdb3"
+  },
+  "localTests": {
+    "passed": 12,
+    "logSHA256": "8a0bb42cce5574a23d5aa40d6ee23615c3fb516e852d334c156c86c52c4f9fb4"
+  },
+  "limits": [
+    "Existing active Windows runs use c0e5065 and the previous file-only digest format. Do not attribute directory-entry coverage to those reports."
+  ]
+}

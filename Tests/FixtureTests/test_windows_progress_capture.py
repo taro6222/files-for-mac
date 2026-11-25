@@ -59,6 +59,33 @@ class ProgressEvidenceTests(unittest.TestCase):
             item.rename(root / 'renamed.bin')
             self.assertNotEqual(capture.transfer_fixture_manifest(root)['sha256'], before['sha256'])
 
+    def test_empty_directory_rename_and_type_change_cannot_preserve_manifest(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            child = root / 'Workshop'
+            child.mkdir()
+            before = capture.transfer_fixture_manifest(root)
+            self.assertEqual((before['files'], before['directories'], before['bytes']), (0, 1, 0))
+            renamed = root / 'Renamed'
+            child.rename(renamed)
+            self.assertNotEqual(capture.transfer_fixture_manifest(root)['sha256'], before['sha256'])
+            renamed.rename(child)
+            self.assertEqual(capture.transfer_fixture_manifest(root), before)
+            child.rmdir()
+            child.touch()
+            after = capture.transfer_fixture_manifest(root)
+            self.assertEqual((after['files'], after['directories'], after['bytes']), (1, 0, 0))
+            self.assertNotEqual(after['sha256'], before['sha256'])
+
+    def test_missing_or_linked_fixture_root_is_not_an_empty_success(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            for unavailable in [root / 'missing', root / 'linked']:
+                if unavailable.name == 'linked':
+                    unavailable.symlink_to(root, target_is_directory=True)
+                with self.subTest(root=unavailable.name), self.assertRaises(RuntimeError):
+                    capture.transfer_fixture_manifest(unavailable)
+
     def test_manifest_rejects_links_instead_of_reading_their_targets(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

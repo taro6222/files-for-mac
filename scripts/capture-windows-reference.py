@@ -222,19 +222,26 @@ def bulk_rename_controls(tree, *, enabled, invalid=False):
 
 
 def transfer_fixture_manifest(root):
-    """Hash every regular payload by relative name; unknown links and special files abort evidence collection."""
-    entries = []
+    """Hash names, types and file bytes, including empty directories; reject unknown locations and links."""
+    if root.is_symlink() or not root.is_dir():
+        raise RuntimeError("The transfer fixture root is unavailable or is a symbolic link")
+    entries, files, directories, total_bytes = [], 0, 0, 0
     for path in sorted(root.rglob("*")):
         if path.is_symlink():
             raise RuntimeError("A transfer fixture contains an unexpected symbolic link")
+        name = path.relative_to(root).as_posix()
         if path.is_dir():
+            entries.append((name, "directory", 0, None))
+            directories += 1
             continue
         if not path.is_file():
             raise RuntimeError("A transfer fixture contains an unexpected special file")
         data = path.read_bytes()
-        entries.append((path.relative_to(root).as_posix(), len(data), hashlib.sha256(data).hexdigest()))
+        entries.append((name, "file", len(data), hashlib.sha256(data).hexdigest()))
+        files += 1
+        total_bytes += len(data)
     digest = hashlib.sha256(json.dumps(entries, separators=(",", ":")).encode()).hexdigest()
-    return {"files": len(entries), "bytes": sum(entry[1] for entry in entries), "sha256": digest}
+    return {"files": files, "directories": directories, "bytes": total_bytes, "sha256": digest}
 
 
 def capture(output, app_id, window_handle, fixture=None, scope="all"):
