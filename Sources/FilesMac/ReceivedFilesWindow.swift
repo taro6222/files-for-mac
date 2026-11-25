@@ -45,6 +45,11 @@ final class ReceivedFilesWindow: NSWindowController, NSTableViewDataSource, NSTa
     private let copy = NSButton(title: L("복사 재개…", "Resume Copy…"), target: nil, action: #selector(resumeCopy))
     private let reveal = NSButton(title: L("보관된 파일 보기", "Show Retained Files"), target: nil, action: #selector(revealFiles))
     private let refresh = NSButton(title: L("새로 고침", "Refresh"), target: nil, action: #selector(reload))
+    private let history = NSButton(title: L("이전 정리 기록…", "Cleanup History…"), target: nil, action: #selector(showCleanupHistory))
+    private static var journalDirectory: URL {
+        FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent(Bundle.main.bundleIdentifier ?? "org.taro6222.files-for-mac").appendingPathComponent("operations")
+    }
 
     static func present(prepare: @escaping Prepare) {
         let controller = shared ?? ReceivedFilesWindow(storage: FilePromiseReceiveWindow.storageDirectory, prepare: prepare)
@@ -66,10 +71,10 @@ final class ReceivedFilesWindow: NSWindowController, NSTableViewDataSource, NSTa
         status.maximumNumberOfLines = 3
         let scroll = NSScrollView(); scroll.hasVerticalScroller = true; scroll.borderType = .bezelBorder; scroll.documentView = table
         let intro = NSTextField(wrappingLabelWithString: L("다른 앱에서 받은 파일은 앱을 종료해도 보관됩니다. 복사를 재개하면 파일을 다시 검증하고 이름 충돌 처리 방법을 묻습니다.", "Files received from other apps remain available after quitting. Resuming a copy verifies the files again and asks how to handle name conflicts."))
-        let buttons = NSStackView(views: [copy, reveal, refresh]); buttons.spacing = 10
+        let buttons = NSStackView(views: [copy, reveal, refresh, history]); buttons.spacing = 10
         let cleanupButtons = NSStackView(views: [cleanup, cancelCleanup, cleanupDetails]); cleanupButtons.spacing = 10
         let cleanupHelp = NSTextField(wrappingLabelWithString: L("정리는 원본과 복사본을 다시 검증한 보관본만 휴지통으로 옮깁니다. 수신 중이거나 일부만 복사된 작업은 보존합니다.", "Cleanup rechecks the retained files and their copies before moving exports to Trash. Active or partly copied receive jobs are retained."))
-        for button in [copy, reveal, refresh, cleanup, cancelCleanup, cleanupDetails] { button.target = self }
+        for button in [copy, reveal, refresh, history, cleanup, cancelCleanup, cleanupDetails] { button.target = self }
         let stack = NSStackView(views: [intro, scroll, status, buttons, cleanupHelp, cleanupButtons]); stack.orientation = .vertical; stack.alignment = .leading; stack.spacing = 12
         stack.translatesAutoresizingMaskIntoConstraints = false; window.contentView!.addSubview(stack)
         NSLayoutConstraint.activate([
@@ -84,6 +89,9 @@ final class ReceivedFilesWindow: NSWindowController, NSTableViewDataSource, NSTa
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
     private var selected: [PromisedFileRecovery] { table.selectedRowIndexes.compactMap { rows.indices.contains($0) ? rows[$0] : nil } }
+    @objc private func showCleanupHistory() {
+        CleanupHistoryWindow.present(journals: Self.journalDirectory, storage: storage)
+    }
     @objc private func reload() { load(message: nil) }
     private func load(message: String?) {
         guard !busy else { return }; busy = true; updateButtons()
@@ -281,7 +289,7 @@ final class ReceivedFilesWindow: NSWindowController, NSTableViewDataSource, NSTa
             }
             if let window = controller.window, let view = window.contentView {
                 window.setFrame(NSRect(origin: window.frame.origin, size: window.minSize), display: false); view.layoutSubtreeIfNeeded()
-                let buttons = [controller.copy, controller.reveal, controller.refresh, controller.cleanup]
+                let buttons = [controller.copy, controller.reveal, controller.refresh, controller.history, controller.cleanup]
                 checks["cleanupControlsFitMinimumWindow"] = buttons.allSatisfy {
                     view.bounds.contains(view.convert($0.bounds, from: $0)) && $0.frame.width >= $0.fittingSize.width - 1
                 }
@@ -314,6 +322,7 @@ final class ReceivedFilesWindow: NSWindowController, NSTableViewDataSource, NSTa
                 && controller.cleanupResultLocations.allSatisfy { FileManager.default.fileExists(atPath: $0.path) }
             checks["cleanupRefreshesListAndReleasesOperationGuard"] = !controller.busy && !BrowserWindow.entryOperationRunning && controller.rows.count == 1 && controller.rows.first?.problem != nil
             checks["cleanupClosesFinishedReceiveWindow"] = FilePromiseReceiveWindow.verifyFinishedIntakeCleanup(intake)
+            checks.merge(await CleanupHistoryWindow.verify(journals: journals, storage: storage)) { _, new in new }
             if let (result, identity) = probe.result, result.state == "trashed", let identity, identity.isCurrent {
                 let retained = storage.deletingLastPathComponent().appendingPathComponent("verified-trash-fixture-\(UUID())")
                 try FileManager.default.moveItem(at: identity.url, to: retained)
@@ -342,4 +351,149 @@ final class ReceivedFilesWindow: NSWindowController, NSTableViewDataSource, NSTa
             } catch { busy = false; status.stringValue = L("수신 파일을 재검증하지 못했습니다. 보관된 파일을 확인하세요. ", "Could not verify received files. Inspect the retained files. ") + error.localizedDescription; updateButtons() }
         }
     }
+}
+
+/// A fresh controller reads durable journals, including jobs interrupted in a previous process.
+@MainActor
+private final class CleanupHistoryWindow: NSWindowController, NSTableViewDataSource, NSTableViewDelegate {
+    private static var shared: CleanupHistoryWindow?
+    private let journals: URL
+    private let storage: URL
+    private var rows: [PromisedFileCleanupRecovery] = []
+    private var busy = false
+    private let table = NSTableView()
+    private let details = NSTextField(wrappingLabelWithString: "")
+    private let reveal = NSButton(title: L("보관 위치 보기", "Show Retained Location"), target: nil, action: #selector(showLocation))
+    private let record = NSButton(title: L("기록 파일 보기", "Show Record File"), target: nil, action: #selector(showRecord))
+    private let refresh = NSButton(title: L("새로 고침", "Refresh"), target: nil, action: #selector(reload))
+    static func present(journals: URL, storage: URL) {
+        let controller = CleanupHistoryWindow(journals: journals, storage: storage)
+        shared = controller; controller.showWindow(nil); controller.window?.makeKeyAndOrderFront(nil); controller.reload()
+    }
+    private init(journals: URL, storage: URL) {
+        self.journals = journals; self.storage = storage
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 780, height: 480),
+                              styleMask: [.titled, .closable, .resizable, .miniaturizable], backing: .buffered, defer: false)
+        super.init(window: window)
+        window.title = L("수신 보관본 정리 기록", "Received Export Cleanup History")
+        window.minSize = NSSize(width: 620, height: 480); window.isReleasedWhenClosed = false; window.center()
+        table.dataSource = self; table.delegate = self; table.setAccessibilityLabel(window.title)
+        for (id, title, width) in [("job", L("수신 작업", "Receive Job"), 240.0), ("state", L("현재 보관 위치", "Current Retention"), 260.0)] {
+            let column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier(id)); column.title = title; column.width = width; table.addTableColumn(column)
+        }
+        table.columnAutoresizingStyle = .uniformColumnAutoresizingStyle
+        let scroll = NSScrollView(); scroll.hasVerticalScroller = true; scroll.borderType = .bezelBorder; scroll.documentView = table
+        let intro = NSTextField(wrappingLabelWithString: L("앱을 다시 실행해도 이전 정리 기록을 확인할 수 있습니다. 중단되거나 위치를 확인하지 못한 작업은 기록을 보존합니다. 자동 이동이나 삭제는 하지 않습니다.", "Review cleanup records after restarting the app. Interrupted jobs and unknown locations remain recorded. Files are never moved or deleted automatically."))
+        let help = NSTextField(wrappingLabelWithString: L("표시는 폴더와 수신 기록의 동일성 확인 결과입니다. 원본·복사본 내용이 현재 일치한다는 뜻은 아닙니다. 위치를 찾지 못하면 기록 파일에서 마지막 상태를 확인하세요.", "Locations are checked against the folder identity and receive receipt. This does not verify current original or copy contents. If a location is unknown, inspect the record for its last saved state."))
+        details.maximumNumberOfLines = 3
+        let buttons = NSStackView(views: [reveal, record, refresh]); buttons.spacing = 10
+        for button in [reveal, record, refresh] { button.target = self }
+        let stack = NSStackView(views: [intro, scroll, details, help, buttons]); stack.orientation = .vertical; stack.alignment = .leading; stack.spacing = 12
+        stack.translatesAutoresizingMaskIntoConstraints = false; window.contentView!.addSubview(stack)
+        NSLayoutConstraint.activate([
+            stack.leadingAnchor.constraint(equalTo: window.contentView!.leadingAnchor, constant: 20),
+            stack.trailingAnchor.constraint(equalTo: window.contentView!.trailingAnchor, constant: -20),
+            stack.topAnchor.constraint(equalTo: window.contentView!.topAnchor, constant: 20),
+            stack.bottomAnchor.constraint(equalTo: window.contentView!.bottomAnchor, constant: -20),
+            scroll.widthAnchor.constraint(equalTo: stack.widthAnchor), scroll.heightAnchor.constraint(greaterThanOrEqualToConstant: 140)
+        ])
+        updateSelection()
+    }
+    required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
+    private var selected: PromisedFileCleanupRecovery? { rows.indices.contains(table.selectedRow) ? rows[table.selectedRow] : nil }
+    @objc private func reload() {
+        guard !busy else { return }; busy = true; updateSelection()
+        details.stringValue = L("이전 정리 기록 확인 중…", "Checking previous cleanup records…")
+        let journals = journals, storage = storage
+        Task { [self] in
+            let result: Result<[PromisedFileCleanupRecovery], Error> = await withCheckedContinuation { continuation in
+                DispatchQueue.global(qos: .userInitiated).async {
+                    continuation.resume(returning: Result { try PromisedFileCleanupRecovery.discover(in: journals, storage: storage) })
+                }
+            }
+            busy = false
+            switch result {
+            case .success(let records): rows = records; table.reloadData(); updateSelection()
+            case .failure(let error): rows = []; table.reloadData(); updateSelection(); details.stringValue = error.localizedDescription
+            }
+        }
+    }
+    private func stateText(_ row: PromisedFileCleanupRecovery) -> String {
+        switch row.status {
+        case .atOriginal: return L("원래 위치에 보관 중", "Retained at original location")
+        case .retainedElsewhere: return L("기록된 이동 위치에 보관 중", "Retained at recorded moved location")
+        case .unlocated: return L("위치 확인 필요", "Location needs review")
+        case .legacy: return L("이전 형식 · 직접 확인 필요", "Older record · manual review")
+        case .invalid: return L("기록 확인 필요", "Record needs review")
+        }
+    }
+    func numberOfRows(in tableView: NSTableView) -> Int { rows.count }
+    func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
+        guard rows.indices.contains(row) else { return nil }
+        let item = rows[row]
+        let name = item.receivedNames.isEmpty ? (item.original?.lastPathComponent ?? item.journal.lastPathComponent) : item.receivedNames.prefix(3).joined(separator: ", ")
+        let text = tableColumn?.identifier.rawValue == "job" ? name : stateText(item)
+        let field = NSTextField(labelWithString: text); field.lineBreakMode = .byTruncatingTail; field.toolTip = text; return field
+    }
+    func tableViewSelectionDidChange(_ notification: Notification) { updateSelection() }
+    private func updateSelection() {
+        reveal.isEnabled = !busy && selected?.location != nil; record.isEnabled = !busy && selected != nil; refresh.isEnabled = !busy
+        if let row = selected {
+            let savedState = row.recordedState ?? L("읽기 실패", "Unreadable")
+            let interrupted = ["verified", "movedToTrash", "needsReview"].contains(savedState)
+            details.stringValue = (interrupted ? L("미완료 정리 · ", "Interrupted cleanup · ") : "") + stateText(row)
+                + "\n" + (row.location?.path ?? row.journal.path)
+                + (row.message.map { "\n" + $0 } ?? "")
+        } else { details.stringValue = rows.isEmpty ? L("이전 정리 기록이 없습니다.", "No previous cleanup records.") : L("정리 기록 \(rows.count)개 · 작업을 선택하세요.", "\(rows.count) cleanup records · select a job.") }
+        details.toolTip = details.stringValue
+    }
+    @objc private func showRecord() { if let row = selected { NSWorkspace.shared.activateFileViewerSelecting([row.journal]) } }
+    @objc private func showLocation() {
+        guard let row = selected, let location = row.location else { return }
+        // This is a read-only Finder action; a fresh reload rechecks location ownership.
+        NSWorkspace.shared.activateFileViewerSelecting([location]); reload()
+    }
+#if DEBUG
+    static func verify(journals: URL, storage: URL) async -> [String: Bool] {
+        let damaged = journals.appendingPathComponent("promise-cleanup-ui-damaged-\(UUID()).json")
+        do { try Data("interrupted invalid fixture".utf8).write(to: damaged) }
+        catch { return ["cleanupHistoryDamagedSetup": false] }
+        defer { try? FileManager.default.removeItem(at: damaged) }
+        let controller = CleanupHistoryWindow(journals: journals, storage: storage)
+        defer { controller.window?.close() }
+        controller.reload()
+        for _ in 0..<500 where controller.busy { try? await Task.sleep(for: .milliseconds(10)) }
+        var checks = ["cleanupHistoryFreshControllerReadsDurableRecord": !controller.busy && controller.rows.count == 2]
+        if let invalid = controller.rows.firstIndex(where: { $0.status == .invalid }) {
+            controller.table.selectRowIndexes(IndexSet(integer: invalid), byExtendingSelection: false); controller.updateSelection()
+            checks["cleanupHistoryDamagedRecordAllowsJournalOnly"] = !controller.reveal.isEnabled && controller.record.isEnabled
+        }
+        if let owned = controller.rows.firstIndex(where: { $0.status == .retainedElsewhere }) {
+            controller.table.selectRowIndexes(IndexSet(integer: owned), byExtendingSelection: false); controller.updateSelection()
+        }
+        checks["cleanupHistoryFindsOwnedTrashLocation"] = controller.selected?.status == .retainedElsewhere && controller.reveal.isEnabled && controller.record.isEnabled
+        if let window = controller.window, let view = window.contentView {
+            window.setFrame(NSRect(origin: window.frame.origin, size: window.minSize), display: false); view.layoutSubtreeIfNeeded()
+            checks["cleanupHistoryControlsFitMinimumWindow"] = [controller.reveal, controller.record, controller.refresh].allSatisfy {
+                view.bounds.contains(view.convert($0.bounds, from: $0)) && $0.frame.width >= $0.fittingSize.width - 1
+            }
+            if let bitmap = view.bitmapImageRepForCachingDisplay(in: view.bounds) {
+                view.effectiveAppearance.performAsCurrentDrawingAppearance {
+                    view.cacheDisplay(in: view.bounds, to: bitmap)
+                    if let context = NSGraphicsContext(bitmapImageRep: bitmap)?.cgContext {
+                        context.setBlendMode(.destinationOver); context.setFillColor(NSColor.windowBackgroundColor.cgColor)
+                        context.fill(CGRect(x: 0, y: 0, width: bitmap.pixelsWide, height: bitmap.pixelsHigh))
+                    }
+                }
+                if let png = bitmap.representation(using: .png, properties: [:]) {
+                    do {
+                        try png.write(to: storage.deletingLastPathComponent().appendingPathComponent("received-cleanup-history.png"))
+                        checks["cleanupHistoryCaptureWritten"] = true
+                    } catch { checks["cleanupHistoryCaptureWritten"] = false }
+                }
+            }
+        }
+        return checks
+    }
+#endif
 }

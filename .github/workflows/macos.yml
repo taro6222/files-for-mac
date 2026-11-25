@@ -136,6 +136,7 @@ jobs:
             ${{ runner.temp }}/files-promise-verification.*/report.json
             ${{ runner.temp }}/files-promise-verification.*/run.log
             ${{ runner.temp }}/files-promise-verification.*/received-cleanup-controls.png
+            ${{ runner.temp }}/files-promise-verification.*/received-cleanup-history.png
           if-no-files-found: ignore
       - name: Prepare Spotlight for AppKit content search
         if: github.event_name == 'workflow_dispatch' && inputs.verify_full_appkit
