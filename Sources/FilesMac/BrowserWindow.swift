@@ -6329,9 +6329,13 @@ extension BrowserWindow {
             }
             fputs("File operation QA: copy and folder merge\n", stderr)
             controller.navigate(target); try await settle()
+            let mergeSources = [source.appendingPathComponent("new.txt"), mergeSource, source.appendingPathComponent("conflict.txt")]
+            let mergeEvents = MergeProgressQARecorder()
             let report = await CopyMergeBatch.run(
-                sources: [source.appendingPathComponent("new.txt"), mergeSource, source.appendingPathComponent("conflict.txt")],
-                destination: target, journalDirectory: journals, cancellation: CopyCancellation())
+                sources: mergeSources, destination: target, journalDirectory: journals,
+                cancellation: CopyCancellation()) { mergeEvents.append($0) }
+            checks["mergeLiveBytesAndLateFrames"] = FolderMergeWindow.qaVerifyProgress(
+                mergeEvents.values, sources: mergeSources, destination: target, captures: destination)
             controller.refresh(nil); try await settle()
             checks["batchCompleted"] = report.state == "completed" && report.items.map(\.state) == ["completed", "merged", "conflict"]
             checks["listReflectsCopy"] = controller.model.items.contains { $0.name == "new.txt" }

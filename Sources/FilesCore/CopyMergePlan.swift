@@ -114,17 +114,28 @@ public struct CopyMergeExecutionReport: Codable, Sendable {
     public var journalError: String?
 }
 
+/// Progress of the current missing entry; bytes describe staging before verification/publication.
+public struct CopyMergeProgress: Sendable {
+    public let index: Int
+    public let total: Int
+    public let relativePath: String
+    public let phase: String
+    public var liveTransfer: LiveTransferProgress? = nil
+}
+
 public enum CopyMergeExecutor {
     public static func run(plan: CopyMergePlan, journalDirectory: URL,
-                           cancellation: CopyCancellation, recordUndo: Bool = true) async -> CopyMergeExecutionReport {
+                           cancellation: CopyCancellation, recordUndo: Bool = true,
+                           progress: @escaping @Sendable (CopyMergeProgress) -> Void = { _ in }) async -> CopyMergeExecutionReport {
         await Task.detached(priority: .userInitiated) {
             execute(plan: plan, journalDirectory: journalDirectory,
-                    cancellation: cancellation, recordUndo: recordUndo)
+                    cancellation: cancellation, recordUndo: recordUndo, progress: progress)
         }.value
     }
 
     private static func execute(plan: CopyMergePlan, journalDirectory: URL,
-                                cancellation: CopyCancellation, recordUndo: Bool) -> CopyMergeExecutionReport {
+                                cancellation: CopyCancellation, recordUndo: Bool,
+                                progress: @escaping @Sendable (CopyMergeProgress) -> Void) -> CopyMergeExecutionReport {
         let fm = FileManager.default
         var report = CopyMergeExecutionReport(version: 1, id: UUID(), state: "running",
             items: plan.actions.map { CopyMergeExecutionItem(relativePath: $0.relativePath,
@@ -144,6 +155,11 @@ public enum CopyMergeExecutor {
         var undoItems: [CopyUndoItem] = []
         for index in plan.actions.indices {
             let action = plan.actions[index]
+            func emit(_ phase: String) {
+                progress(CopyMergeProgress(index: index, total: plan.actions.count,
+                    relativePath: action.relativePath, phase: phase))
+            }
+            emit("planning")
             if cancellation.isCancelled { report.items[index].state = "cancelled"; continue }
             do {
                 let parent = action.target.deletingLastPathComponent()
@@ -164,11 +180,24 @@ public enum CopyMergeExecutor {
                 case .copyMissing:
                     report.items[index].state = "copying"; try save(); try cancellation.check()
                     let before = try CopyEngine.makeSnapshot(action.source, cancellation: cancellation)
-                    let temporary = parent.appendingPathComponent(".files-merge-\(report.id.uuidString)-\(index)")
-                    try fm.copyItem(at: action.source, to: temporary)
-                    defer { try? fm.removeItem(at: temporary) }
+                    let staging = parent.appendingPathComponent(".files-merge-\(report.id.uuidString)-\(index)")
+                    guard mkdir(staging.path, 0o700) == 0 else {
+                        throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
+                    }
+                    defer { try? fm.removeItem(at: staging) }
+                    let stageFD = open(staging.path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
+                    guard stageFD >= 0 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
+                    defer { close(stageFD) }
+                    let temporary = staging.appendingPathComponent("payload")
+                    try NativeFileCopy.run(from: action.source, to: temporary,
+                                           totalBytes: before.logicalDataBytes, cancellation: cancellation) { live in
+                        progress(CopyMergeProgress(index: index, total: plan.actions.count,
+                            relativePath: action.relativePath, phase: "copying", liveTransfer: live))
+                    }
                     try before.restoreCreationTimes(in: temporary, cancellation: cancellation)
+                    try before.restoreDirectoryModificationTimes(in: temporary, cancellation: cancellation)
                     try cancellation.check()
+                    emit("verifying")
                     let copied = try CopyEngine.makeSnapshot(temporary, cancellation: cancellation)
                     guard try CopyEngine.makeSnapshot(action.source, cancellation: cancellation).matchesOriginal(before) else {
                         throw MergeFailure(text: "Source changed during copying.")
@@ -176,15 +205,21 @@ public enum CopyMergeExecutor {
                     try copied.verifyTransferredContents(of: before)
                     try before.restoreAccessTimes(in: temporary, verifiedCopy: copied, cancellation: cancellation)
                     let targetIdentity = try identity(temporary)
+                    emit("committing"); try cancellation.check()
                     guard try identity(parent) == action.expectedParentIdentity else {
                         throw MergeFailure(text: "Destination parent changed before publication.")
                     }
                     let parentFD = open(parent.path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
                     guard parentFD >= 0 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
                     defer { close(parentFD) }
+                    guard try identity(parent) == action.expectedParentIdentity,
+                          CopyEngine.matches(parent, descriptor: parentFD),
+                          CopyEngine.matches(staging, descriptor: stageFD) else {
+                        throw MergeFailure(text: "Destination or staging directory changed before publication.")
+                    }
                     do {
                         try CopyEngine.publishNoReplace(payload: temporary, target: action.target,
-                            sourceDirectoryFD: parentFD, sourceName: temporary.lastPathComponent,
+                            sourceDirectoryFD: stageFD, sourceName: temporary.lastPathComponent,
                             destinationDirectoryFD: parentFD, destinationName: action.target.lastPathComponent)
                     } catch CopyPublicationError.conflict { throw MergeConflict() }
                     report.items[index].state = "completed"
@@ -201,6 +236,7 @@ public enum CopyMergeExecutor {
                 report.items[index].state = cancellation.isCancelled ? "cancelled" : "failed"
                 report.items[index].message = error.localizedDescription
             }
+            emit(report.items[index].state)
             do { try save() } catch { report.journalError = error.localizedDescription; break }
         }
         let failed = report.items.filter { $0.state == "failed" }.count

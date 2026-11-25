@@ -9,6 +9,10 @@ final class FolderMergeWindow: NSWindowController, NSWindowDelegate {
     static var isRunning: Bool { operations.contains { $0.running } }
     static var activities: [FileOperationActivity] { operations.map(\.activity) }
     let operationID = UUID()
+    private var latestIndex = -1
+    private var latestAction = -1
+    private var latestPhase = -1
+    private var latestBytes: Int64?
     private let destinationPath: String
     private var running = true
     private let cancellation = CopyCancellation()
@@ -68,14 +72,41 @@ final class FolderMergeWindow: NSWindowController, NSWindowDelegate {
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 
     private func update(_ update: CopyMergeBatchProgress) {
-        guard running else { return }
-        progress.doubleValue = Double(update.index + 1)
-        label.stringValue = "\(update.index + 1)/\(update.total) · \(update.state) · \(update.source.lastPathComponent)"
+        guard running, !cancellation.isCancelled else { return }
+        let rank = ["planning": 0, "copying": 1, "verifying": 2, "committing": 3][update.state] ?? 4
+        guard update.index >= latestIndex else { return }
+        if update.index == latestIndex {
+            guard update.actionIndex >= latestAction else { return }
+            if update.actionIndex == latestAction {
+                guard rank >= latestPhase else { return }
+                if rank == 1, let latestBytes {
+                    guard let live = update.liveTransfer, live.bytes >= latestBytes else { return }
+                }
+            } else { latestBytes = nil }
+        } else { latestBytes = nil }
+        latestIndex = update.index; latestAction = update.actionIndex; latestPhase = rank
+        if let live = update.liveTransfer { latestBytes = live.bytes }
+        progress.doubleValue = Double(update.index) + (rank == 4 && update.actionIndex == Int.max ? 1 : 0)
+        progress.showCurrentFileActivity(rank == 1 || rank == 2)
+        let phase: String
+        switch update.state {
+        case "planning": phase = L("원본 확인", "Checking source")
+        case "copying": phase = L("복사", "Copying")
+        case "verifying": phase = L("내용 검증", "Verifying contents")
+        case "committing": phase = L("결과 확정", "Committing")
+        case "completed", "merged", "verified": phase = L("완료", "Completed")
+        case "conflict": phase = L("충돌 보존", "Conflict preserved")
+        case "cancelled": phase = L("취소됨", "Cancelled")
+        default: phase = L("실패", "Failed")
+        }
+        label.stringValue = "\(update.index + 1)/\(update.total) · \(phase) · \(update.source.lastPathComponent)"
+        if let path = update.relativePath { label.stringValue += " · \(path)" }
+        if let live = update.liveTransfer { label.stringValue += liveTransferDescription(live) }
         FileOperationCenter.activityChanged()
     }
 
     private func finish(_ report: CopyMergeBatchReport) {
-        running = false; progress.doubleValue = progress.maxValue
+        running = false; progress.showCurrentFileActivity(false); progress.doubleValue = progress.maxValue
         let added = report.items.reduce(0) { $0 + $1.addedCount }
         let conflicts = report.items.reduce(0) { $0 + $1.conflictCount }
         label.stringValue = L("병합 종료 · 추가 \(added) · 보존한 충돌 \(conflicts)",
@@ -106,4 +137,58 @@ final class FolderMergeWindow: NSWindowController, NSWindowDelegate {
         FileOperationCenter.retainResult(activity)
         FileOperationCenter.activityChanged()
     }
+#if DEBUG
+    /// Replays real engine callbacks through the actual view, independently of MainActor scheduling.
+    static func qaVerifyProgress(_ events: [CopyMergeBatchProgress], sources: [URL], destination: URL,
+                                 captures: URL) -> Bool {
+        let controller = FolderMergeWindow(sources: sources, destination: destination)
+        controller.showWindow(nil)
+        defer { controller.close() }
+        guard let liveEvent = events.first(where: { $0.relativePath != nil && ($0.liveTransfer?.bytes ?? 0) > 0 }),
+              let live = liveEvent.liveTransfer,
+              let verifying = events.first(where: { $0.index == liveEvent.index && $0.actionIndex == liveEvent.actionIndex && $0.state == "verifying" }),
+              let earlier = events.first(where: { $0.index == liveEvent.index && $0.actionIndex == liveEvent.actionIndex && $0.liveTransfer?.bytes == 0 }),
+              let later = events.last else { return false }
+        controller.update(liveEvent)
+        guard controller.label.stringValue.contains(liveTransferDescription(live)), controller.progress.isIndeterminate else { return false }
+        let text = controller.label.stringValue
+        controller.update(earlier)
+        guard controller.label.stringValue == text else { return false }
+        if let content = controller.window?.contentView {
+            content.layoutSubtreeIfNeeded(); content.displayIfNeeded()
+            guard let bitmap = content.bitmapImageRepForCachingDisplay(in: content.bounds) else { return false }
+            content.effectiveAppearance.performAsCurrentDrawingAppearance {
+                content.cacheDisplay(in: content.bounds, to: bitmap)
+                if let context = NSGraphicsContext(bitmapImageRep: bitmap)?.cgContext {
+                    context.setBlendMode(.destinationOver)
+                    context.setFillColor(NSColor.windowBackgroundColor.cgColor)
+                    context.fill(CGRect(x: 0, y: 0, width: bitmap.pixelsWide, height: bitmap.pixelsHigh))
+                }
+            }
+            guard let png = bitmap.representation(using: .png, properties: [:]),
+                  (try? png.write(to: captures.appendingPathComponent("merge-live-data.png"))) != nil else { return false }
+        } else { return false }
+        controller.update(verifying)
+        let verificationText = controller.label.stringValue
+        controller.update(liveEvent)
+        guard controller.label.stringValue == verificationText, controller.progress.isIndeterminate else { return false }
+        controller.update(later)
+        let terminalText = controller.label.stringValue
+        controller.update(liveEvent)
+        guard controller.label.stringValue == terminalText, !controller.progress.isIndeterminate else { return false }
+        controller.cancelMerge(nil)
+        controller.update(liveEvent)
+        return controller.label.stringValue.contains(L("취소", "Cancelling")) && !controller.cancel.isEnabled
+    }
+#endif
+
 }
+
+#if DEBUG
+final class MergeProgressQARecorder: @unchecked Sendable {
+    private let lock = NSLock()
+    private var events: [CopyMergeBatchProgress] = []
+    func append(_ event: CopyMergeBatchProgress) { lock.lock(); defer { lock.unlock() }; events.append(event) }
+    var values: [CopyMergeBatchProgress] { lock.lock(); defer { lock.unlock() }; return events }
+}
+#endif

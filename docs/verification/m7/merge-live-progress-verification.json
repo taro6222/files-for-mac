@@ -1,0 +1,100 @@
+{
+  "sourceBaseSHA": "c4b72552d98d2ed632b254b4a04d59585fa9eea6",
+  "sourceFilesSHA256": {
+    "Sources/FilesCore/NativeFileCopy.swift": "cd0a38e876dfe4f5007c07cf61edf6b808207f029cd5901787a89d6e8b674b78",
+    "Sources/FilesCore/CopyMergePlan.swift": "e970e710a68414b646427fbdbb9b53f7e4bc4f640ee2519ed24a4beee402fc1e",
+    "Sources/FilesCore/CopyMergeBatch.swift": "db67b199ad591621c99b7fa5147410781b375cbd04a77677b790764ac66c420b",
+    "Sources/FilesMac/BrowserWindow.swift": "5df0151922e6c53e3803417373f40705efb16079250c508a103c87150a6da3b3",
+    "Sources/FilesMac/FolderMergeWindow.swift": "90fc74faa70fcdef45ef8bdc54a1bf35bf71cac3d1cbe4102795849434cfbea2",
+    "Tests/FilesCoreTests/CopyEngineTests.swift": "90565982fb4d4fce01284c8261efd4822f6b1161a71202617f2f988c0f0e1bb8",
+    "Tests/FilesCoreTests/CopyMergeProgressTests.swift": "50c9202dbc3278e760d16fbe863e87e43b0b7fe3dc4ae352a581754b5f3a3cb3"
+  },
+  "debugSHA256": "6fb058840c505a93298904e9945ff872d0c1b1cbb63f41d53834d925ca175a0c",
+  "releaseSHA256": "9eb899961174a589f0f0998bfbb07f618d471e8e5679af3b2ca8ea6aa0ed8719",
+  "swiftTests": {
+    "reported": 347,
+    "passed": 329,
+    "environmentSkipped": 18
+  },
+  "mountedVolumeTests": 7,
+  "strictExecutorTests": {
+    "state": "passed",
+    "tests": {
+      "gitConcurrentSnapshotsCompleteWithoutBlockingSwiftTasks": true,
+      "gitWaitingForProcessAllowsOtherSwiftTasksToResume": true,
+      "gitCancellationTerminatesProcessAndCleansCloneStaging": true,
+      "directoryWaitingForFileSystemAllowsOtherSwiftTasksToResume": true,
+      "directoryCancellationWhileFileSystemIsBlockedStopsBeforeFirstBatch": true,
+      "directoryMetadataCancellationReturnsWhileBoundedReadersAreStillBlocked": true,
+      "folderSizingWaitingForFileSystemAllowsOtherSwiftTasksToResume": true,
+      "folderSizingCancellationWhileFileSystemIsBlockedReturnsBeforeIO": true,
+      "folderBulkSizingCancellationDiscardsLateResults": true,
+      "cloudDiscoveryCancellationWhileFileSystemIsBlockedReturnsBeforeIO": true
+    },
+    "exitCode": 0,
+    "timedOut": false,
+    "elapsedSeconds": 0.4746331659844145,
+    "testBinary": "/Users/changhun/Desktop/Workspace/Files/.build/out/Products/Debug/FilesCoreTests.xctest/Contents/MacOS/FilesCoreTests",
+    "constrainedProcess": "swiftpm-testing-helper",
+    "swiftVersion": "Apple Swift version 6.4.2 (swiftlang-6.4.2.1.9 clang-2100.4.1.1)\nTarget: arm64-apple-macosx27.2.0",
+    "sourceCommit": null,
+    "strictCooperativePool": true
+  },
+  "cases": {
+    "ko-light": {
+      "fileOperationChecks": 80,
+      "fullChecks": 283,
+      "mergeLiveBytesAndLateFrames": true,
+      "fileOperationReportSHA256": "dffa4b377b8e3aff8a327c1a7a2931127dd63b9fa76852eee48983da6b0c96b9",
+      "fullReportSHA256": "f6f5469127e0ef837e042e20801b3a40751186f2c95ed2907b2df302b0a1f7b4",
+      "capture": "merge-live-progress-ko-light.png",
+      "captureSHA256": "00a886f41633cc02c5173c6b27c339e06a8231c968f678647d8c5e1503857d8a"
+    },
+    "ko-dark": {
+      "fileOperationChecks": 80,
+      "fullChecks": 283,
+      "mergeLiveBytesAndLateFrames": true,
+      "fileOperationReportSHA256": "7c5128b8c8cf0bc75415ff775a39e5d502823e682e3e321bf3d909365fa919cc",
+      "fullReportSHA256": "0b92359a901cccf5bdeab6430ca9e0130918e2204299af09c2ff24295d035bc5",
+      "capture": "merge-live-progress-ko-dark.png",
+      "captureSHA256": "5e4543313166dbfbfbdf30bd807ec02b589f1f56de45671c1f8b5a0136e53d0c"
+    },
+    "en-light": {
+      "fileOperationChecks": 80,
+      "fullChecks": 283,
+      "mergeLiveBytesAndLateFrames": true,
+      "fileOperationReportSHA256": "da6b4b96e50850c8e2e9ccc7b3b2e7b20764cb58ecee71d58f1895d511a51128",
+      "fullReportSHA256": "3984686c82a1184b9a0be3b03e700a3fd4d3bec7d626dd6f4de370220457ce5a",
+      "capture": "merge-live-progress-en-light.png",
+      "captureSHA256": "d2590ee246b6a80f758cea509c61144c35ce2fb88a4ddf37099ed63f988e3e6f"
+    },
+    "en-dark": {
+      "fileOperationChecks": 80,
+      "fullChecks": 283,
+      "mergeLiveBytesAndLateFrames": true,
+      "fileOperationReportSHA256": "fc11a63458dffcd6435ca5d780925735ec4cc9d399bcfdcc7247621c253ae4e2",
+      "fullReportSHA256": "7e88f2de94d78847b155fa0e48e4664c287043b1ea88b60b56f228fa4fb9ac49",
+      "capture": "merge-live-progress-en-dark.png",
+      "captureSHA256": "f21fd94d7a89f88a250ebb5c87aec959bb553f72ece7753a4ef3d71e53a085b7"
+    }
+  },
+  "logsSHA256": {
+    "merge-live-final-build.log": "171a2918f3670bdedff9233f48fe735f1123723a5493d44a2ebf8a710cb7c14a",
+    "merge-live-final-tests.log": "e46fd6af6cda24d4439e5416fc86d5e98975bd54911dadfd560b44674bfa6921",
+    "merge-live-final-release.log": "fe22fff2e4c4bec3a6635c05ca34cbe20dd457aeb1a431614f437b681c7c64db",
+    "merge-live-volume-ui.log": "eb78c8d276f2d8cdeef00e812989d94ac09f9ea377a1d6d58510352bf063630a",
+    "merge-live-full-ui.log": "a39c07ce371e081291c537cd995499e542115a5ddc3dbf5df8bcef4d4fd1726b",
+    "merge-live-strict.log": "2b2924490ff49653766e0b03bc7110bea97e7dbe1503c6fb354e53f42d711718"
+  },
+  "limitedPermissionStrictAttempt": {
+    "exitCode": -5,
+    "outputBytes": 0,
+    "resultSHA256": "f8461efada5972c700f84438acf1b94081df20449593b0e71a7b2c9541ed9d32",
+    "note": "Retried with macOS service access; underlying initial host termination cause not established."
+  },
+  "limitations": [
+    "Current missing-entry staging bytes, not whole-selection byte totals or physical I/O throughput.",
+    "AppKit component captures and replay of real engine callbacks, not physical input or VoiceOver acceptance.",
+    "New remote CI, latest-source eight-hour run and residual memory growth remain open."
+  ]
+}

@@ -476,7 +476,7 @@ func copyUndoPreservesMetadataChangesInCopyAndMerge(merge: Bool) async throws {
 
     let report = await CopyMergeBatch.run(sources: [first, second], destination: f.destination,
         journalDirectory: f.journal, cancellation: cancellation) { update in
-        if update.index == 0 { cancellation.cancel() }
+        if update.index == 0 && update.state == "completed" { cancellation.cancel() }
     }
 
     #expect(report.state == "cancelled")

@@ -1,0 +1,13 @@
+{
+  "sourceSHA": "740ebf4789f73fe57c4302661a148491fbb13284",
+  "workflowURL": "https://github.com/taro6222/files-for-mac/actions/runs/45705238611",
+  "workflowConclusion": "failure",
+  "failedLogSHA256": "038640449ae83ec7efc4ac0102da3b27390e44efe6131ce9e26dbfd7cb17b049",
+  "failure": [
+    "2026-11-25T21:52:23.4769270Z UI verification failed: Error Domain=NSCocoaErrorDomain Code=4 \"The folder “qa-untracked.txt” doesn’t exist.\" UserInfo={NSUserStringVariant=(",
+    "2026-11-25T21:52:23.7903880Z     \"gitCloneWindow\" : false,",
+    "2026-11-25T21:57:11.1364630Z UI verification failed: Error Domain=NSCocoaErrorDomain Code=4 \"The folder “qa-untracked.txt” doesn’t exist.\" UserInfo={NSUserStringVariant=(",
+    "2026-11-25T21:57:11.2101380Z     \"gitCloneWindow\" : false,"
+  ],
+  "interpretation": "Both CPU Swift test steps and ARM full verification passed; Intel full AppKit failed in en/light clone fixture. This does not establish the cause of clone failure. The automatic-folder-size pending flag in diagnostics is not a failed check."
+}
