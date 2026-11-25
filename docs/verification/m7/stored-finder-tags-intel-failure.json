@@ -9,5 +9,5 @@
     "2026-11-25T21:57:11.1364630Z UI verification failed: Error Domain=NSCocoaErrorDomain Code=4 \"The folder “qa-untracked.txt” doesn’t exist.\" UserInfo={NSUserStringVariant=(",
     "2026-11-25T21:57:11.2101380Z     \"gitCloneWindow\" : false,"
   ],
-  "interpretation": "Both CPU Swift test steps and ARM full verification passed; Intel full AppKit failed in en/light clone fixture. This does not establish the cause of clone failure. The automatic-folder-size pending flag in diagnostics is not a failed check."
+  "interpretation": "Both CPU Swift test steps and ARM full verification passed; Intel full AppKit failed in ko/light and en/light clone fixtures. This does not establish the cause of clone failure. The automatic-folder-size pending flag in diagnostics is not a failed check."
 }

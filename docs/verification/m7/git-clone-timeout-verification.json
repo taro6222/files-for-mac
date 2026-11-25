@@ -1,0 +1,171 @@
+{
+  "sourceBaseSHA": "2fc89278bfb202ecd7cde16a2f146e5efb6852d9",
+  "sourceFilesSHA256": {
+    "Sources/FilesCore/GitProvider.swift": "8af36f82223919ca685a172ba00f692499a63ea046da7176b90a730fea36bcab",
+    "Sources/FilesMac/GitCloneWindow.swift": "59a594b1f79fc5b2a2d8bb7de55f7821894d8d8520b3b9259208b825989d0f01",
+    "Sources/FilesMac/BrowserWindow.swift": "dcca9c9b46fa9f11f64b5ed3a05402ccf541d38865c45eddfb0bce147896b118"
+  },
+  "debugSHA256": "a571ed8026ad0f75eeb109977d5bbf44699855e69c7b371f8cc3359235fa02bc",
+  "releaseSHA256": "64b08af4b1e2a0e160842d878ed99351b51ffd757233506993f83ae0b6c6a6e4",
+  "swiftTests": {
+    "reported": 347,
+    "passed": 329,
+    "environmentSkipped": 18
+  },
+  "originalCI": {
+    "sourceSHA": "740ebf4789f73fe57c4302661a148491fbb13284",
+    "runID": 45705238611,
+    "artifactID": 15066282478,
+    "artifactName": "files-appkit-macos15-x86_64",
+    "cases": {
+      "ko-light": {
+        "state": "failed",
+        "gitCloneWindow": false,
+        "progressSHA256": "53d11001fe9c8cd7aed3254a26b58ce280cda2a1726ff21c6cffd0232789eee9",
+        "originalCapture": "intel-clone-740ebf4-ko-light-original.png",
+        "originalCaptureSHA256": "95b096ed3fada60df5d1569b23245b630e225c2d3ffdd904593fc8c3b4aa33d2",
+        "whiteComposite": "intel-clone-740ebf4-ko-light-white.png",
+        "whiteCompositeSHA256": "087e1e659d8ca93fc477df958a95cd3cc9b4b02be0f9620ec9537ca448dc2625",
+        "observedStatus": "Cloning into a staging folder; disabled Clone and enabled Stop"
+      },
+      "ko-dark": {
+        "state": "passed",
+        "gitCloneWindow": true,
+        "progressSHA256": "c474a9b60e608c2e514590af09d8b616d2d769279ba0a37cd2e6dc7150be9b55"
+      },
+      "en-light": {
+        "state": "failed",
+        "gitCloneWindow": false,
+        "progressSHA256": "47b52c85bb19bf605fe908b29afb3d929c901c46e07a44d75b5dda3c03f1524e",
+        "originalCapture": "intel-clone-740ebf4-en-light-original.png",
+        "originalCaptureSHA256": "9081909c77a66821479f5f911826301c81a9274f0daa9965438f5808f26a5501",
+        "whiteComposite": "intel-clone-740ebf4-en-light-white.png",
+        "whiteCompositeSHA256": "76258b9df1ed2beca9976539f55dfb93d4b0c6906fcefaac811278c60473d762",
+        "observedStatus": "Cloning into a staging folder; disabled Clone and enabled Stop"
+      },
+      "en-dark": {
+        "state": "passed",
+        "gitCloneWindow": true,
+        "progressSHA256": "fe854a0906f6e1a07a1d81e9e464ab735b2ee8459f5b7c7f3ca80abe23bd354f"
+      }
+    }
+  },
+  "newLocalCases": {
+    "ko-light": {
+      "fileOperationChecks": 80,
+      "fullAppKitChecks": 283,
+      "gatedFixture": {
+        "cancellationSettled": true,
+        "deadlineRemainedRunning": true,
+        "destinationPublished": false,
+        "parentSampleWritten": true,
+        "passed": true
+      },
+      "parentSampleSHA256": "3ac01b11c810c4f7fea942aa8adb7c732357ce3daf87ad727990fc6aaedff1be",
+      "backendWaitObserved": true,
+      "fixtureReportSHA256": "8af6d81b19cbaa598a192566c4e03b3221b62d5634d29a5bbd6d901fe1775c06",
+      "fileOperationReportSHA256": "8e0e6c6252a804206400bc1243dd2b233fe043f1af0cf81acb9b97c0c44faf92",
+      "fullReportSHA256": "65658d4ba5aec804d7c391c53c66c5575e78d613f10302371661163e554c1829",
+      "normalClone": {
+        "gitCloneFinishedBeforeDeadline": true,
+        "gitCloneRunningBeforeCleanup": false,
+        "gitCloneStatusBeforeCleanup": "복제가 완료되었습니다.",
+        "gitCloneWaitSeconds": 0.595141292
+      }
+    },
+    "ko-dark": {
+      "fileOperationChecks": 80,
+      "fullAppKitChecks": 283,
+      "gatedFixture": {
+        "cancellationSettled": true,
+        "deadlineRemainedRunning": true,
+        "destinationPublished": false,
+        "parentSampleWritten": true,
+        "passed": true
+      },
+      "parentSampleSHA256": "4cd9fc7d17eaae7d5bfc9677fb8c1dcdbcc8e9f8af380bb94b211d60d53ccde3",
+      "backendWaitObserved": true,
+      "fixtureReportSHA256": "8af6d81b19cbaa598a192566c4e03b3221b62d5634d29a5bbd6d901fe1775c06",
+      "fileOperationReportSHA256": "f65441c50927f1140f99edc738466fb3868a246cadb95fc9346e0615a1f9b478",
+      "fullReportSHA256": "719cc628f986be666a96544248e25cd506cf284f156b712f4cc6c0d707885a20",
+      "normalClone": {
+        "gitCloneFinishedBeforeDeadline": true,
+        "gitCloneRunningBeforeCleanup": false,
+        "gitCloneStatusBeforeCleanup": "복제가 완료되었습니다.",
+        "gitCloneWaitSeconds": 0.436474
+      }
+    },
+    "en-light": {
+      "fileOperationChecks": 80,
+      "fullAppKitChecks": 283,
+      "gatedFixture": {
+        "cancellationSettled": true,
+        "deadlineRemainedRunning": true,
+        "destinationPublished": false,
+        "parentSampleWritten": true,
+        "passed": true
+      },
+      "parentSampleSHA256": "4d06be203447b5a70d7dcb48f30dd32efab6b2aaa7511fb8d3395f1fcf2f4681",
+      "backendWaitObserved": true,
+      "fixtureReportSHA256": "8af6d81b19cbaa598a192566c4e03b3221b62d5634d29a5bbd6d901fe1775c06",
+      "fileOperationReportSHA256": "73fe384482ef769c4332013a431387d23fa62465846022d1a7211c84b59b54cf",
+      "fullReportSHA256": "d55b3f4fe21fa98bbbbba258a8fb7063fb99cebeb3b893b7817923affeb4822a",
+      "normalClone": {
+        "gitCloneFinishedBeforeDeadline": true,
+        "gitCloneRunningBeforeCleanup": false,
+        "gitCloneStatusBeforeCleanup": "Clone completed.",
+        "gitCloneWaitSeconds": 0.439417958
+      }
+    },
+    "en-dark": {
+      "fileOperationChecks": 80,
+      "fullAppKitChecks": 283,
+      "gatedFixture": {
+        "cancellationSettled": true,
+        "deadlineRemainedRunning": true,
+        "destinationPublished": false,
+        "parentSampleWritten": true,
+        "passed": true
+      },
+      "parentSampleSHA256": "6c36d523bb75d2fe79bf4e113cc2621ab5fb1082c131b5a3c6ac9353dade4edc",
+      "backendWaitObserved": true,
+      "fixtureReportSHA256": "8af6d81b19cbaa598a192566c4e03b3221b62d5634d29a5bbd6d901fe1775c06",
+      "fileOperationReportSHA256": "536aed7318591b05b8e0184452ddeaf754c0041baa0c58bace3c541169278fb6",
+      "fullReportSHA256": "41a916150bce4eacdac919a137d9617b97d7828685218d143edc4965d5acab73",
+      "normalClone": {
+        "gitCloneFinishedBeforeDeadline": true,
+        "gitCloneRunningBeforeCleanup": false,
+        "gitCloneStatusBeforeCleanup": "Clone completed.",
+        "gitCloneWaitSeconds": 0.438827416
+      }
+    }
+  },
+  "releaseSymbolAudit": {
+    "debug": {
+      "qaCaptureTimeout": true,
+      "qaVerifyTimeoutCleanup": true,
+      "verificationExecutable": true
+    },
+    "release": {
+      "qaCaptureTimeout": false,
+      "qaVerifyTimeoutCleanup": false,
+      "verificationExecutable": false
+    }
+  },
+  "logsSHA256": {
+    "build.log": "69889b10f70ff80e46e394a8d9ae9fe80d6201dc6a967173acd28063cdb2e216",
+    "tests.log": "7dda8d3f653968ac4a8d70322f4456383cc22bf7d5ee91cf1a89afe8d2b066ea",
+    "release.log": "a33b71518fdf6e764d6afc50290620287401bf1266cee7e1322a35654a4bf46b",
+    "m2.log": "eeed16ed96ad7a0b3a1d63171d08b125278ea31aee9558e3b8bce8580d583e17",
+    "full-ui.log": "f5c5707dfa1daf72540843fafd52841527d624e81eb5922b04508917e42c3713"
+  },
+  "preservedCloneDeadlineSeconds": 20,
+  "cancellationWaitSeconds": 5,
+  "limitations": [
+    "The underlying Intel clone delay is not resolved by this verifier change.",
+    "Normal local clones finished; actual 20-second timeout stack capture awaits remote recurrence.",
+    "Gated fixture uses a real subprocess through GitProvider with a 50ms diagnostic deadline, not the actual 20-second clone deadline.",
+    "White composites are diagnostic backgrounds; original alpha-bearing captures are preserved separately.",
+    "Release runtime clone behavior is unchanged; no new real-volume or physical-input acceptance claimed."
+  ]
+}

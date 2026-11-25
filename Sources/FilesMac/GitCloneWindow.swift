@@ -82,6 +82,88 @@ final class GitCloneWindow: NSWindowController, NSWindowDelegate, NSTextFieldDel
     }
 #if DEBUG
     func qaClone(source: URL, destination: URL) { sourceField.stringValue = source.absoluteString; destinationField.stringValue = destination.path; updateControls(); startClone(nil) }
+    var qaStatus: String { statusLabel.stringValue }
+    func qaWaitForCompletion(timeout: Duration) async throws -> Bool {
+        let deadline = ContinuousClock.now.advanced(by: timeout)
+        while task != nil && ContinuousClock.now < deadline { try await Task.sleep(for: .milliseconds(20)) }
+        return task == nil
+    }
+    func qaCancelAndWait() async throws -> Bool {
+        task?.cancel()
+        return try await qaWaitForCompletion(timeout: .seconds(5))
+    }
+    static func qaCaptureTimeout(in directory: URL) async -> [String: Int32] {
+        let pid = ProcessInfo.processInfo.processIdentifier
+        var results: [String: Int32] = [:]
+        results["parentSample"] = await qaRunTool("/usr/bin/sample", ["\(pid)", "1", "1", "-file", directory.appendingPathComponent("git-clone-timeout-parent.txt").path], output: directory.appendingPathComponent("git-clone-timeout-sample.log"))
+        let children = directory.appendingPathComponent("git-clone-timeout-children.txt")
+        results["findGitChildren"] = await qaRunTool("/usr/bin/pgrep", ["-P", "\(pid)", "-x", "git"], output: children)
+        let childPIDs = ((try? String(contentsOf: children, encoding: .utf8)) ?? "").split(whereSeparator: \.isNewline).compactMap { Int32($0) }.filter { $0 > 0 }.prefix(2)
+        for child in childPIDs {
+            results["childSample-\(child)"] = await qaRunTool("/usr/bin/sample", ["\(child)", "1", "1", "-file", directory.appendingPathComponent("git-clone-timeout-child-\(child).txt").path], output: directory.appendingPathComponent("git-clone-timeout-child-\(child).log"))
+        }
+        return results
+    }
+    nonisolated private static func qaRunTool(_ executable: String, _ arguments: [String], output: URL) async -> Int32 {
+        await withCheckedContinuation { continuation in
+            DispatchQueue.global(qos: .utility).async {
+                do {
+                    _ = FileManager.default.createFile(atPath: output.path, contents: nil)
+                    let handle = try FileHandle(forWritingTo: output)
+                    defer { try? handle.close() }
+                    let process = Process(); process.executableURL = URL(fileURLWithPath: executable)
+                    process.arguments = arguments; process.standardOutput = handle; process.standardError = handle
+                    try process.run(); process.waitUntilExit()
+                    continuation.resume(returning: process.terminationStatus)
+                } catch { continuation.resume(returning: -1) }
+            }
+        }
+    }
+    static func qaVerifyTimeoutCleanup(in directory: URL) async throws -> Bool {
+        let root = directory.appendingPathComponent("git-clone-timeout-fixture")
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        let executable = root.appendingPathComponent("gated-git.sh")
+        // The child cannot finish normally before the test releases it; the gate removes timing assumptions.
+        try Data("""
+        #!/bin/sh
+        cd "$(/usr/bin/dirname "$0")" || exit 8
+        for arg in "$@"; do destination="$arg"; done
+        /bin/mkdir "$destination" || exit 9
+        : > started
+        i=0
+        while [ ! -f release ]; do
+          [ "$i" -lt 1000 ] || exit 10
+          /bin/sleep 0.01
+          i=$((i + 1))
+        done
+        """.utf8).write(to: executable)
+        try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: executable.path)
+        var didComplete = false
+        let originalActive = Self.activeCount
+        let panel = GitCloneWindow(provider: GitProvider(verificationExecutable: executable)) { _ in didComplete = true }
+        defer { panel.close() }
+        let destination = root.appendingPathComponent("destination")
+        panel.qaClone(source: root.appendingPathComponent("source.git"), destination: destination)
+        let startDeadline = ContinuousClock.now.advanced(by: .seconds(5))
+        while !FileManager.default.fileExists(atPath: root.appendingPathComponent("started").path), ContinuousClock.now < startDeadline {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        guard FileManager.default.fileExists(atPath: root.appendingPathComponent("started").path) else {
+            _ = try await panel.qaCancelAndWait(); return false
+        }
+        let finished = try await panel.qaWaitForCompletion(timeout: .milliseconds(50))
+        let wasRunning = panel.qaRunning && !panel.qaSucceeded && panel.qaStatus == L("저장소를 staging 폴더에 복제하는 중…", "Cloning into a staging folder…")
+        let sampling = await qaCaptureTimeout(in: root)
+        let sampled = sampling["parentSample"] == 0 && FileManager.default.fileExists(atPath: root.appendingPathComponent("git-clone-timeout-parent.txt").path)
+        let settled = try await panel.qaCancelAndWait()
+        let names = try FileManager.default.contentsOfDirectory(atPath: root.path)
+        let result = !finished && wasRunning && sampled && settled && !didComplete && !panel.qaRunning
+            && Self.activeCount == originalActive && !FileManager.default.fileExists(atPath: destination.path)
+            && !names.contains(where: { $0.hasPrefix(".files-git-clone-") })
+            && panel.qaStatus == L("복제가 중단되었으며 staging 파일을 정리했습니다.", "Clone cancelled and staging files were removed.")
+        try JSONSerialization.data(withJSONObject: ["deadlineRemainedRunning": !finished && wasRunning, "parentSampleWritten": sampled, "cancellationSettled": settled, "destinationPublished": FileManager.default.fileExists(atPath: destination.path), "passed": result], options: [.prettyPrinted, .sortedKeys]).write(to: root.appendingPathComponent("report.json"))
+        return result
+    }
     var qaRunning: Bool { task != nil }
     var qaSucceeded: Bool { task == nil && statusLabel.stringValue == L("복제가 완료되었습니다.", "Clone completed.") }
     var qaAccessibilityReady: Bool { sourceField.accessibilityLabel() != nil && destinationField.accessibilityLabel() != nil && statusLabel.accessibilityLabel() != nil }

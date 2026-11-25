@@ -14,13 +14,15 @@ M7 출시 검증이 진행 중이다. [유니버설 개발 프리뷰](verificati
 |---|---|---|
 | 설치·업데이트 | 유니버설 프리뷰의 Sonoma 14.8.7 설치·교체·복원, 두 언어의 실제 업데이트 메뉴 조회 | 서명·공증된 정식 배포본의 다운로드·최초 실행·버전 교체 |
 | SMB | 파일 시각, 이동·실행 취소, 게시 후 세션 재연결과 기록 중 단절 시 원본 보호 | 서버 권한 회수 시험, 장기 단절 및 외부 서버 검증 |
-| 원격 전체 AppKit | `740ebf4`의 ARM·Intel Swift 시험·두 Xcode 빌드·ARM 전체 검증 성공. Intel 영어/밝게의 Git 복제 fixture 실패로 전체 workflow 실패 | Git 복제 실패 원인 확인·수정, 최신 소스의 두 CPU 전체 검증 |
+| 원격 전체 AppKit | `740ebf4`의 ARM·Intel Swift 시험·두 Xcode 빌드·ARM 전체 검증 성공. Intel 한국어·영어/밝게의 Git 복제 fixture 실패로 전체 workflow 실패 | Git 복제 실패 원인 확인·수정, 최신 소스의 두 CPU 전체 검증 |
 | Xcode 진입점 | `5284cb3`의 Apple Silicon·Intel 실제 Xcode 빌드와 preview 채널 확인 | 정식 서명·배포된 산출물의 수용 검증 |
 | 장시간 | `86be2b0` 8시간·9,412사이클 정상 종료. 물리 메모리 시간대 중앙값 115.5→141.6 MiB로 계속 증가 | 증가 원인 조사, 진행 중인 `5284cb3` 기준 실행 종료 판정, 최신 백엔드의 재검증 |
 
 실행별 증거와 정확한 제한은 [설치 프리뷰](verification/m7/INCREMENT_280.md), [SMB 기록 중 단절](verification/m7/INCREMENT_277.md), [서버 권한 회수](verification/m7/INCREMENT_285.md), [Intel UI 진단](verification/m7/INCREMENT_282.md), [Xcode 연결](verification/m7/INCREMENT_284.md), [8시간 시험](verification/m7/INCREMENT_283.md)에 기록했다.
 
 ## 이번 구현 단위
+
+[Git 복제 시간 초과 상태 보존](verification/m7/INCREMENT_317.md)은 기존 20초 대기 기준을 유지하며 실행 상태·문구·소유 프로세스 스택을 보존하고 취소 종료를 기다린다. 실패 후 없는 대상에 파일을 쓰던 검증 흐름을 차단했다. gate 자식의 실제 취소·staging 정리는 네 조합에서 확인했고 파일 작업 UI 각각 80개·전체 UI 각각 283개가 통과했다. 새 진단 코드는 Release에서 제외된다. Intel 지연 원인 해결과 원격 재수용은 미완료다.
 
 [폴더 병합 실제 바이트 진행](verification/m7/INCREMENT_316.md)은 누락 항목의 네이티브 복사 콜백을 진행 창까지 전달하고 이전 작업·단계·바이트의 지연 알림을 차단한다. 하위 복사 실패를 상위 결과에 전파하며 원본 재검증·비덮어쓰기 게시·Undo를 유지한다. Swift 성공 329개·건너뜀 18개, 실제 볼륨 7개·제한 실행기 10개, 네 조합 파일 작업 UI 각각 80개·전체 UI 각각 283개와 Debug·Release 빌드를 통과했다. 전체 선택 바이트 합계·장시간·Intel 재수용·정식 배포 수용은 남아 있다.
 

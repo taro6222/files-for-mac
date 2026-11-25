@@ -120,6 +120,10 @@ public struct GitProvider: Sendable {
     private let executable: URL
     public init() { executable = URL(fileURLWithPath: "/usr/bin/git") }
     init(executable: URL) { self.executable = executable }
+#if DEBUG
+    /// A gated child executable for AppKit cancellation verification; absent from Release.
+    public init(verificationExecutable: URL) { self.executable = verificationExecutable }
+#endif
     public func lastCommit(for file: URL, in repository: URL) async throws -> GitFileCommit? {
         let root = repository.resolvingSymlinksInPath().path
         let path = file.deletingLastPathComponent().resolvingSymlinksInPath().appendingPathComponent(file.lastPathComponent).path

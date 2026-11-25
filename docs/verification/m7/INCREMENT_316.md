@@ -14,6 +14,6 @@
 
 DEBUG 검증은 실제 병합 엔진 콜백을 수집해 실제 진행 창에 재생하고 바이트·검증 단계·늦은 알림·취소 안내를 확인한다. [네 조합 캡처와 소스/바이너리/원본 보고서 해시](merge-live-progress-verification.json)를 연결한다. 컴포넌트 렌더링 검증이며 물리 입력·VoiceOver·화면 합성 프레임 수용을 대신하지 않는다.
 
-별도 이전 소스 `740ebf4`의 [전체 CI](https://github.com/taro6222/files-for-mac/actions/runs/45705238611)는 최종 실패다. 양쪽 CPU Swift 시험·두 Xcode 빌드·ARM 전체 검증은 성공했으나 Intel 영어/밝게의 Git 복제 fixture가 없어 전체 AppKit이 실패했다. [종료 상태](stored-finder-tags-ci-final.json)와 [오류·원본 로그 해시](stored-finder-tags-intel-failure.json)를 보존한다. 원인 확인·수정은 후속 단계이며 관측용 `folderSizeAutomaticTaskPending=false`를 실패 검사로 해석하지 않는다.
+별도 이전 소스 `740ebf4`의 [전체 CI](https://github.com/taro6222/files-for-mac/actions/runs/45705238611)는 최종 실패다. 양쪽 CPU Swift 시험·두 Xcode 빌드·ARM 전체 검증은 성공했으나 Intel 한국어·영어/밝게의 Git 복제 fixture가 없어 전체 AppKit이 실패했다. [종료 상태](stored-finder-tags-ci-final.json)와 [오류·원본 로그 해시](stored-finder-tags-intel-failure.json)를 보존한다. 원인 확인·수정은 후속 단계이며 관측용 `folderSizeAutomaticTaskPending=false`를 실패 검사로 해석하지 않는다.
 
 전체 선택 바이트 합계, 잔여 메모리 증가 해결·최신 소스 8시간, Intel 전체 UI 재수용·성능, 실제 접근성·원본 상태 대조, 정식 서명·공증·설치는 남아 있다. Developer ID 인증서와 공증 프로필은 사용자 준비 중이다.

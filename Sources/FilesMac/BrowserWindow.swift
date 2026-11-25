@@ -4826,11 +4826,25 @@ extension BrowserWindow {
                 clonePanel.present(); let cloneDestination = destination.appendingPathComponent("git-clone-ui", isDirectory: true); try? fm.removeItem(at: cloneDestination)
                 clonePanel.qaClone(source: URL(fileURLWithPath: fm.currentDirectoryPath, isDirectory: true), destination: cloneDestination)
                 let cloneWait = ContinuousClock.now
-                while clonePanel.qaRunning && cloneWait.duration(to: .now) < .seconds(20) { try await Task.sleep(for: .milliseconds(20)) }
+                let cloneFinished = try await clonePanel.qaWaitForCompletion(timeout: .seconds(20))
+                diagnostics["gitCloneFinishedBeforeDeadline"] = cloneFinished
+                diagnostics["gitCloneRunningBeforeCleanup"] = clonePanel.qaRunning
+                diagnostics["gitCloneStatusBeforeCleanup"] = clonePanel.qaStatus
+                let cloneElapsed = cloneWait.duration(to: .now).components
+                diagnostics["gitCloneWaitSeconds"] = Double(cloneElapsed.seconds) + Double(cloneElapsed.attoseconds) / 1e18
                 checks["gitCloneWindow"] = clonePanel.qaSucceeded && clonedLocation?.standardizedFileURL.path == cloneDestination.standardizedFileURL.path && fm.fileExists(atPath: cloneDestination.appendingPathComponent(".git", isDirectory: true).path)
                 checks["gitCloneAccessibility"] = clonePanel.qaAccessibilityReady
                 checks["gitCloneMenuCommand"] = paletteEntries.contains { $0.item.action == #selector(AppDelegate.showGitClone(_:)) }
-                try capture("git-clone", view: clonePanel.window?.contentView); clonePanel.close(); window.makeKeyAndOrderFront(nil)
+                try capture("git-clone", view: clonePanel.window?.contentView)
+                if checks["gitCloneWindow"] != true {
+                    if clonePanel.qaRunning { diagnostics["gitCloneTimeoutSampling"] = await GitCloneWindow.qaCaptureTimeout(in: destination) }
+                    diagnostics["gitCloneCancellationSettled"] = try await clonePanel.qaCancelAndWait()
+                    diagnostics["gitCloneStatusAfterCleanup"] = clonePanel.qaStatus
+                    clonePanel.close()
+                    throw NSError(domain: "FilesGitCloneQA", code: cloneFinished ? 1 : 2,
+                        userInfo: [NSLocalizedDescriptionKey: cloneFinished ? "Clone failed; see gitCloneStatusBeforeCleanup." : "Clone exceeded its unchanged 20-second deadline; see clone state and timeout samples."])
+                }
+                clonePanel.close(); window.makeKeyAndOrderFront(nil)
                 let qaGitFile = cloneDestination.appendingPathComponent("qa-untracked.txt")
                 try Data("Git column QA".utf8).write(to: qaGitFile, options: .atomic)
                 let unusualName = "  -한글\\name\tline\r\nend.txt"
@@ -6341,6 +6355,7 @@ extension BrowserWindow {
             checks["listReflectsCopy"] = controller.model.items.contains { $0.name == "new.txt" }
             checks["mergePreservesConflict"] = (try String(contentsOf: target.appendingPathComponent("conflict.txt"), encoding: .utf8)) == "target"
             checks["mergeAddsNested"] = fm.fileExists(atPath: mergeTarget.appendingPathComponent("nested.txt").path)
+            checks["gitCloneTimeoutCleanup"] = try await GitCloneWindow.qaVerifyTimeoutCleanup(in: destination)
             fputs("File operation QA: rename in file properties\n", stderr)
             let renameInput = target.appendingPathComponent("rename-input.txt")
             let renameOutput = target.appendingPathComponent("rename-result.txt")
