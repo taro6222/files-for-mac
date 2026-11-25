@@ -1,0 +1,31 @@
+--- a/Sources/FilesMac/BrowserWindow.swift
++++ b/Sources/FilesMac/BrowserWindow.swift
+@@ -217,7 +217,7 @@
+         w.title = "Files macOS"; w.minSize = NSSize(width: 900, height: 600)
+         w.center()
+         if restoresFrame { w.setFrameAutosaveName("BrowserWindow") }
+-        w.titlebarAppearsTransparent = true
++        w.titlebarAppearsTransparent = ProcessInfo.processInfo.environment["FILES_SOAK_OPAQUE_TITLEBAR"] != "1"
+         w.isReleasedWhenClosed = false
+         w.appearance = Self.appearance(preferences.appearance)
+         w.contentView = BrowserBackgroundView()
+@@ -7647,6 +7647,9 @@
+                     try await tab.waitForSoakListing(at: destination, count: 0)
+                 }
+                 tab.onClose = { didClose = true }
++                if usesNativeTabs, environment["FILES_SOAK_DETACH_BEFORE_CLOSE"] == "1" {
++                    tabWindow.tabGroup?.removeWindow(tabWindow)
++                }
+                 tab.close()
+                 let closeDeadline = clock.now.advanced(by: .seconds(5))
+                 while !didClose {
+@@ -7683,6 +7686,9 @@
+                 try Data().write(to: source.appendingPathComponent("file-\(index).txt"))
+             }
+             browser.showWindow(nil)
++            if environment["FILES_SOAK_KEEP_TABBAR"] == "1", window.tabGroup?.isTabBarVisible != true {
++                window.toggleTabBar(nil)
++            }
+             try report(state: "running")
+ 
+             // The same window, preference store and process span all cycles.

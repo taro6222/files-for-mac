@@ -1,0 +1,339 @@
+{
+  "sourceBaseSHA": "83a2a5b1ea7fba15696508289b3120e15b34cb3e",
+  "os": "macOS-27.2.1-arm64-arm-64bit",
+  "durationSeconds": 180,
+  "productChanged": false,
+  "stabilityGatePassed": false,
+  "experiments": {
+    "detachBeforeClose": {
+      "rawComparisonSHA256": "282de7f4b15ec4580032a59eebce979da7f9b4fc449772227e2501d9c76bb455",
+      "cases": {
+        "baseline": {
+          "binarySHA256": "06ce3ab3f7e36ffe7b5a14a980d8e4e4373875fc05f63cb03aba03ccd6c678f7",
+          "browserSourceSHA256": "124bb945761a0c295417ffc7b2a7c2f48657d0a16ea16a5bea7904fb41d1323f",
+          "exitStatus": 0,
+          "observations": [
+            {
+              "cyclesBefore": 5,
+              "cyclesAfter": 5,
+              "counts": {
+                "NSKeyValueDependencyContext": 1056,
+                "NSKeyValueDependency": 3302,
+                "NSStackView": 15,
+                "BrowserWindow": 1,
+                "BrowserFileTable": 1,
+                "LocationButton": 7
+              },
+              "heapSHA256": "0154f78f12e76267b83eb1f7d097306d542f1098790d3ed120d1289c161d2646"
+            },
+            {
+              "cyclesBefore": 40,
+              "cyclesAfter": 40,
+              "counts": {
+                "NSKeyValueDependencyContext": 1231,
+                "NSKeyValueDependency": 3477,
+                "NSStackView": 15,
+                "BrowserWindow": 1,
+                "BrowserFileTable": 1,
+                "LocationButton": 7
+              },
+              "heapSHA256": "04a647927daa7dcb24bec192dc94fee6ea3dd189b928d24291f1aeee179779d0"
+            }
+          ],
+          "report": {
+            "state": "completed",
+            "workload": "full",
+            "cycles": 62,
+            "elapsedSeconds": 182.408441125,
+            "error": null
+          },
+          "contextGrowthPerCycle": 5.0,
+          "reportSHA256": "f6b1b5bd669acf1e1069e69b27d9435c008797751bf85b0a03e20f74a72472cf"
+        },
+        "candidate": {
+          "binarySHA256": "06ce3ab3f7e36ffe7b5a14a980d8e4e4373875fc05f63cb03aba03ccd6c678f7",
+          "browserSourceSHA256": "124bb945761a0c295417ffc7b2a7c2f48657d0a16ea16a5bea7904fb41d1323f",
+          "exitStatus": 0,
+          "observations": [
+            {
+              "cyclesBefore": 5,
+              "cyclesAfter": 5,
+              "counts": {
+                "NSKeyValueDependencyContext": 1056,
+                "NSKeyValueDependency": 3302,
+                "NSStackView": 15,
+                "BrowserWindow": 1,
+                "BrowserFileTable": 1,
+                "LocationButton": 7
+              },
+              "heapSHA256": "d40651c6a218895f60d6caea87ccac62562764290f949384fbc79d0fc2ffa2dd"
+            },
+            {
+              "cyclesBefore": 40,
+              "cyclesAfter": 40,
+              "counts": {
+                "NSKeyValueDependencyContext": 1231,
+                "NSKeyValueDependency": 3477,
+                "NSStackView": 15,
+                "BrowserWindow": 1,
+                "BrowserFileTable": 1,
+                "LocationButton": 7
+              },
+              "heapSHA256": "ae28bacc6614fde67e5e2f48b0582ed9a79946df46003585c56e4f08776b6d9b"
+            }
+          ],
+          "report": {
+            "state": "completed",
+            "workload": "full",
+            "cycles": 62,
+            "elapsedSeconds": 182.106558333,
+            "error": null
+          },
+          "contextGrowthPerCycle": 5.0,
+          "reportSHA256": "0bf67c56c1a4cc14853f73b6946cad6180f06fe682415086c762c02f98874e46"
+        }
+      }
+    },
+    "initialTabBarRequest": {
+      "rawComparisonSHA256": "dff7031464d49e1380e34f5fe37af0ee382787c0122aa7683a8eaf77320361d8",
+      "cases": {
+        "baseline": {
+          "binarySHA256": "47bdff98f5620719cafad08cf7787722fb8cf7601a7dc4068c4ba9388f207590",
+          "browserSourceSHA256": "76be040496b1082aa8a5745987d01805ee7e27cd5f2de36ed878c2d0bae89a8a",
+          "exitStatus": 0,
+          "observations": [
+            {
+              "cyclesBefore": 5,
+              "cyclesAfter": 5,
+              "counts": {
+                "NSKeyValueDependencyContext": 1061,
+                "NSKeyValueDependency": 3307,
+                "NSStackView": 15,
+                "BrowserWindow": 1,
+                "BrowserFileTable": 1,
+                "LocationButton": 7
+              },
+              "heapSHA256": "bd24c43d87b9730472a06570bd5b56391f166ca5e0ff11c29bcbe740a1b499a3"
+            },
+            {
+              "cyclesBefore": 40,
+              "cyclesAfter": 40,
+              "counts": {
+                "NSKeyValueDependencyContext": 1236,
+                "NSKeyValueDependency": 3482,
+                "NSStackView": 15,
+                "BrowserWindow": 1,
+                "BrowserFileTable": 1,
+                "LocationButton": 7
+              },
+              "heapSHA256": "b30e2a7548370506510d3c319f8c28fd213ef48a359cac7f0d98bd4ed0140dda"
+            }
+          ],
+          "report": {
+            "state": "completed",
+            "workload": "tabs",
+            "cycles": 68,
+            "elapsedSeconds": 180.828075542,
+            "error": null
+          },
+          "contextGrowthPerCycle": 5.0,
+          "reportSHA256": "612c2af9da17c3e9c3d535ccc892af898f1c8e3c6256018a0d38e7643db31df0"
+        },
+        "candidate": {
+          "binarySHA256": "47bdff98f5620719cafad08cf7787722fb8cf7601a7dc4068c4ba9388f207590",
+          "browserSourceSHA256": "76be040496b1082aa8a5745987d01805ee7e27cd5f2de36ed878c2d0bae89a8a",
+          "exitStatus": 0,
+          "observations": [
+            {
+              "cyclesBefore": 6,
+              "cyclesAfter": 6,
+              "counts": {
+                "NSKeyValueDependencyContext": 1066,
+                "NSKeyValueDependency": 3312,
+                "NSStackView": 15,
+                "BrowserWindow": 1,
+                "BrowserFileTable": 1,
+                "LocationButton": 7
+              },
+              "heapSHA256": "e0e34d29ef3bdca9d4f5b6f93dfb626941d57490f7c4a38347459797836f5498"
+            },
+            {
+              "cyclesBefore": 41,
+              "cyclesAfter": 41,
+              "counts": {
+                "NSKeyValueDependencyContext": 1241,
+                "NSKeyValueDependency": 3487,
+                "NSStackView": 15,
+                "BrowserWindow": 1,
+                "BrowserFileTable": 1,
+                "LocationButton": 7
+              },
+              "heapSHA256": "5ba685c600315ec26397937b181af728f5202a1320910b5ad84f5513f30d38b2"
+            }
+          ],
+          "report": {
+            "state": "completed",
+            "workload": "tabs",
+            "cycles": 68,
+            "elapsedSeconds": 180.82808225,
+            "error": null
+          },
+          "contextGrowthPerCycle": 5.0,
+          "reportSHA256": "c93cf6904f16aa9967c04b80c2141682517c95950d0d63f3c1766642d9dd35aa"
+        }
+      }
+    },
+    "opaqueTitleBar": {
+      "rawComparisonSHA256": "3cd3e46100bfdb97cbf0703ada5caf4eb04f0bdb5c7fa4d8eecb2fbff60148af",
+      "cases": {
+        "baseline": {
+          "binarySHA256": "6dfc7c2b3ea593a2d489533322b87fb67386595d061b5315b45d0af91ea8a9f6",
+          "browserSourceSHA256": "597f0a5b0480a823569414afdd4e3718025fbab3998f96313e0783d29164cd6c",
+          "exitStatus": 0,
+          "observations": [
+            {
+              "cyclesBefore": 5,
+              "cyclesAfter": 5,
+              "counts": {
+                "NSKeyValueDependencyContext": 1056,
+                "NSKeyValueDependency": 3302,
+                "NSStackView": 15,
+                "BrowserWindow": 1,
+                "BrowserFileTable": 1,
+                "LocationButton": 7
+              },
+              "heapSHA256": "567d2df61c000bf1b5bf4f40c7b2022ae16daa4b1b1cc2b4046ee06281bc5332"
+            },
+            {
+              "cyclesBefore": 40,
+              "cyclesAfter": 40,
+              "counts": {
+                "NSKeyValueDependencyContext": 1231,
+                "NSKeyValueDependency": 3477,
+                "NSStackView": 15,
+                "BrowserWindow": 1,
+                "BrowserFileTable": 1,
+                "LocationButton": 7
+              },
+              "heapSHA256": "8d5f60ad79b0ea77827cc6bcc6afd5b0b153097a2a1500502d9d240ef227434a"
+            }
+          ],
+          "report": {
+            "state": "completed",
+            "workload": "tabs",
+            "cycles": 71,
+            "elapsedSeconds": 181.367538375,
+            "error": null
+          },
+          "contextGrowthPerCycle": 5.0,
+          "reportSHA256": "56d87a1f6ad8271366ceaa23b79b56452a70d8c64d39b434f18a75f327d424ef"
+        },
+        "candidate": {
+          "binarySHA256": "6dfc7c2b3ea593a2d489533322b87fb67386595d061b5315b45d0af91ea8a9f6",
+          "browserSourceSHA256": "597f0a5b0480a823569414afdd4e3718025fbab3998f96313e0783d29164cd6c",
+          "exitStatus": 0,
+          "observations": [
+            {
+              "cyclesBefore": 5,
+              "cyclesAfter": 5,
+              "counts": {
+                "NSKeyValueDependencyContext": 1056,
+                "NSKeyValueDependency": 3305,
+                "NSStackView": 15,
+                "BrowserWindow": 1,
+                "BrowserFileTable": 1,
+                "LocationButton": 7
+              },
+              "heapSHA256": "3ef48969ad1e76087972287078087ebed1ae0d352b2a814982af2367f98febc4"
+            },
+            {
+              "cyclesBefore": 40,
+              "cyclesAfter": 40,
+              "counts": {
+                "NSKeyValueDependencyContext": 1231,
+                "NSKeyValueDependency": 3480,
+                "NSStackView": 15,
+                "BrowserWindow": 1,
+                "BrowserFileTable": 1,
+                "LocationButton": 7
+              },
+              "heapSHA256": "1c8e3d00f6ef0e57f495fcd2e4cce2487dbbd9e81690538aaea3582bd7441601"
+            }
+          ],
+          "report": {
+            "state": "completed",
+            "workload": "tabs",
+            "cycles": 71,
+            "elapsedSeconds": 181.367531917,
+            "error": null
+          },
+          "contextGrowthPerCycle": 5.0,
+          "reportSHA256": "81a0b0500bd3e6e3492cb0bc189d4126bca2b823768d9fdbff2f826662f9171d"
+        }
+      }
+    },
+    "nativeTabsVsIndependentWindows": {
+      "cases": {
+        "baseline": {
+          "report": {
+            "state": "completed",
+            "workload": "tabs",
+            "cycles": 73,
+            "elapsedSeconds": 182.121242875,
+            "error": null
+          },
+          "observations": [
+            {
+              "cycles": 5,
+              "NSKeyValueDependencyContext": 1056,
+              "heapSHA256": "a116d36e2296881e868d02772345663269646f009e99378dce3965c16e9cde89"
+            },
+            {
+              "cycles": 40,
+              "NSKeyValueDependencyContext": 1231,
+              "heapSHA256": "20312e89979810e7b135a1220b9bbfad5555f291ab0a802460069cd097e32f26"
+            }
+          ],
+          "reportSHA256": "349448eb5d2de1fea89c192cc2f9da2152d30c57ddd27f370495d395bbd7f78d",
+          "binarySHA256": "06ce3ab3f7e36ffe7b5a14a980d8e4e4373875fc05f63cb03aba03ccd6c678f7"
+        },
+        "candidate": {
+          "report": {
+            "state": "failed",
+            "workload": "windows",
+            "cycles": 62,
+            "elapsedSeconds": 170.218711375,
+            "error": "Expected 0 rows at destination with an active watcher. Actual: 0 rows at destination, loading=true, watcher=active, loadFailed=false"
+          },
+          "observations": [
+            {
+              "cycles": 5,
+              "NSKeyValueDependencyContext": 990,
+              "heapSHA256": "22b89beae2550f38319afe450b8e50f8248bbda0295451ab8d297b36788957c7"
+            },
+            {
+              "cycles": 40,
+              "NSKeyValueDependencyContext": 990,
+              "heapSHA256": "560da5e031492d793cb51ce9a9d0444a634880f09df055938c63826aefee080d"
+            }
+          ],
+          "reportSHA256": "f8a587b1e7db7c8b287f8dc90be117f4154a1364cd38d24cf91f5493eec6fb95",
+          "binarySHA256": "06ce3ab3f7e36ffe7b5a14a980d8e4e4373875fc05f63cb03aba03ccd6c678f7"
+        }
+      },
+      "completedSuccessfully": false
+    }
+  },
+  "limitations": [
+    "Short diagnostic runs with overlapping host activity, not eight-hour or throughput acceptance.",
+    "AppKit allocation paths do not establish OS fault.",
+    "Independent-window run failed after the intermediate observations; its failure is preserved.",
+    "Initial tab-bar request does not assert visibility each cycle.",
+    "MallocStackLogging changes allocation sizes; compare object counts only."
+  ],
+  "allocationStacksSHA256": {
+    "baseline": "a18614bbb7e55871bfebf59fdd21ca0d55d2be5e88f56055a63b04d5406281af",
+    "candidate": "2d6a67f1e9308561a1950badf07729ccb052ead795bdc4779305e852d4e333ec"
+  },
+  "diagnosticPatchSHA256": "11c92c24d66ce59ba0287d5a117c14d50ccfcedbce88fe24150558b79c495be0"
+}

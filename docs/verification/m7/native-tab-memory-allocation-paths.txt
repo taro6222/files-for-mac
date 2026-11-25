@@ -1,0 +1,15 @@
+Diagnostic allocation frames from owned QA process with MallocStackLogging=1.
+These are allocation paths, not proof of OS fault or ownership of every retained object.
+Command: malloc_history <owned-pid> -fullStacks <12 newly observed context addresses>
+
+-[NSView(NSViewGlassContext) computed_effectiveGlassMaterialContext] + 76
+-[NSTextFieldCell _hierarchicalColorForVCMBlendingForControlView:] + 92
+-[NSTextFieldCell _preferredAppearanceForAppearance:inView:] + 112
+-[NSTextField _preferredAppearance] + 140
+-[NSView effectiveAppearance] + 144
+-[NSWindowStackController _addSyncedTabBarItemForWindow:atIndex:] + 472
+-[NSWindow(NSWindowTabbing_Private) _addTabbedWindow:ordered:] + 176
+-[NSTabButton initWithFrame:tabBarViewItem:] + 1360
+-[NSTabBar _insertTabButtonWithTabViewItem:atIndex:] + 268
+-[NSWindowStackController _addSyncedTabBarItemForWindow:atIndex:] + 216
+-[NSTabButton initWithFrame:tabBarViewItem:] + 2164
