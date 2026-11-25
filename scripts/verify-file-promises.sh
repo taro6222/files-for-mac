@@ -51,6 +51,10 @@ if mode == "contract":
         "cleanupHistoryFreshControllerReadsDurableRecord", "cleanupHistoryFindsOwnedTrashLocation",
         "cleanupHistoryControlsFitMinimumWindow", "cleanupHistoryCaptureWritten",
         "cleanupHistoryDamagedRecordAllowsJournalOnly",
+        "restoreActionAvailableForCurrentProof", "restoreControlsFitMinimumWindow", "restoreCaptureWritten",
+        "restorePreventsConcurrentFileJobs", "restoreReturnsFixtureToOriginalStorage",
+        "restorePreservesSourceCleanupJournal", "restoreHistoryPreventsRepeatedRestore",
+        "restoreTableColumnsAlign",
     }
     if language and not result.get("language", "").startswith(language): raise SystemExit("Contract language differs from request")
     if theme and result.get("theme") != theme: raise SystemExit("Contract appearance differs from request")

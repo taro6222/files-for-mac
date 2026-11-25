@@ -19,8 +19,8 @@ private final class CleanupVerificationProbe: @unchecked Sendable {
 final class ReceivedFilesWindow: NSWindowController, NSTableViewDataSource, NSTableViewDelegate {
     typealias Prepare = ([URL], [PromisedFileIntake], URL, @escaping (Bool) -> Void) -> Void
     private static weak var cleaningController: ReceivedFilesWindow?
-    static var isCleaning: Bool { cleaningController != nil }
-    static var activities: [FileOperationActivity] { cleaningController.map { [$0.activity] } ?? [] }
+    static var isCleaning: Bool { cleaningController != nil || CleanupHistoryWindow.isRestoring }
+    static var activities: [FileOperationActivity] { (cleaningController.map { [$0.activity] } ?? []) + CleanupHistoryWindow.activities }
     private static var shared: ReceivedFilesWindow?
     private let prepare: Prepare
     private let storage: URL
@@ -55,6 +55,7 @@ final class ReceivedFilesWindow: NSWindowController, NSTableViewDataSource, NSTa
         let controller = shared ?? ReceivedFilesWindow(storage: FilePromiseReceiveWindow.storageDirectory, prepare: prepare)
         shared = controller; controller.showWindow(nil); controller.window?.makeKeyAndOrderFront(nil); controller.reload()
     }
+    static func refreshAfterRestore() { shared?.reload() }
     private init(storage: URL, prepare: @escaping Prepare) {
         self.storage = storage; self.prepare = prepare
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 760, height: 500),
@@ -288,24 +289,16 @@ final class ReceivedFilesWindow: NSWindowController, NSTableViewDataSource, NSTa
                 controller.updateButtons()
             }
             if let window = controller.window, let view = window.contentView {
-                window.setFrame(NSRect(origin: window.frame.origin, size: window.minSize), display: false); view.layoutSubtreeIfNeeded()
+                await prepareReceivedVerificationFrame(window, table: controller.table)
                 let buttons = [controller.copy, controller.reveal, controller.refresh, controller.history, controller.cleanup]
                 checks["cleanupControlsFitMinimumWindow"] = buttons.allSatisfy {
                     view.bounds.contains(view.convert($0.bounds, from: $0)) && $0.frame.width >= $0.fittingSize.width - 1
                 }
-                if let bitmap = view.bitmapImageRepForCachingDisplay(in: view.bounds) {
-                    view.effectiveAppearance.performAsCurrentDrawingAppearance {
-                        view.cacheDisplay(in: view.bounds, to: bitmap)
-                        if let context = NSGraphicsContext(bitmapImageRep: bitmap)?.cgContext {
-                            context.setBlendMode(.destinationOver); context.setFillColor(NSColor.windowBackgroundColor.cgColor)
-                            context.fill(CGRect(x: 0, y: 0, width: bitmap.pixelsWide, height: bitmap.pixelsHigh))
-                        }
-                    }
-                    if let png = bitmap.representation(using: .png, properties: [:]) {
-                        try png.write(to: storage.deletingLastPathComponent().appendingPathComponent("received-cleanup-controls.png"))
-                        checks["cleanupControlsCaptureWritten"] = true
-                    }
-                }
+                do {
+                    let png = try await captureReceivedVerificationPNG(window, table: controller.table)
+                    try png.write(to: storage.deletingLastPathComponent().appendingPathComponent("received-cleanup-controls.png"))
+                    checks["cleanupControlsCaptureWritten"] = true
+                } catch { checks["cleanupControlsCaptureWritten"] = false }
             }
 
             controller.cleanupMove = { intake, cancellation in
@@ -323,6 +316,13 @@ final class ReceivedFilesWindow: NSWindowController, NSTableViewDataSource, NSTa
             checks["cleanupRefreshesListAndReleasesOperationGuard"] = !controller.busy && !BrowserWindow.entryOperationRunning && controller.rows.count == 1 && controller.rows.first?.problem != nil
             checks["cleanupClosesFinishedReceiveWindow"] = FilePromiseReceiveWindow.verifyFinishedIntakeCleanup(intake)
             checks.merge(await CleanupHistoryWindow.verify(journals: journals, storage: storage)) { _, new in new }
+            checks.merge(await CleanupHistoryWindow.verifyRestore(journals: journals, storage: storage)) { _, new in new }
+            if FileManager.default.fileExists(atPath: intake.directoryURL.path) {
+                _ = try intake.verifiedSources()
+                let retained = storage.deletingLastPathComponent().appendingPathComponent("verified-restored-fixture-\(UUID())")
+                try FileManager.default.moveItem(at: intake.directoryURL, to: retained)
+                checks["cleanupFixtureReturnedFromTrash"] = FileManager.default.fileExists(atPath: retained.appendingPathComponent("Files/received.txt").path)
+            }
             if let (result, identity) = probe.result, result.state == "trashed", let identity, identity.isCurrent {
                 let retained = storage.deletingLastPathComponent().appendingPathComponent("verified-trash-fixture-\(UUID())")
                 try FileManager.default.moveItem(at: identity.url, to: retained)
@@ -357,15 +357,23 @@ final class ReceivedFilesWindow: NSWindowController, NSTableViewDataSource, NSTa
 @MainActor
 final class CleanupHistoryWindow: NSWindowController, NSTableViewDataSource, NSTableViewDelegate {
     private static var shared: CleanupHistoryWindow?
+    private static weak var restoringController: CleanupHistoryWindow?
+    static var isRestoring: Bool { restoringController != nil }
+    static var activities: [FileOperationActivity] { restoringController.map { [$0.activity] } ?? [] }
     private let journals: URL
     private let storage: URL
     private var rows: [PromisedFileCleanupRecovery] = []
     private var busy = false
+    private var restoreCancellation: CopyCancellation?
+    private var restoreID = UUID()
+    private var restoreNames = ""
     private let table = NSTableView()
     private let details = NSTextField(wrappingLabelWithString: "")
     private let reveal = NSButton(title: L("보관 위치 보기", "Show Retained Location"), target: nil, action: #selector(showLocation))
     private let record = NSButton(title: L("기록 파일 보기", "Show Record File"), target: nil, action: #selector(showRecord))
     private let refresh = NSButton(title: L("새로 고침", "Refresh"), target: nil, action: #selector(reload))
+    private let restore = NSButton(title: L("보관소로 복원", "Restore to Storage"), target: nil, action: #selector(restoreSelected))
+    private let stop = NSButton(title: L("복원 중지", "Stop Restore"), target: nil, action: #selector(stopRestore))
     static func present(journals: URL, storage: URL) {
         let controller = CleanupHistoryWindow(journals: journals, storage: storage)
         shared = controller; controller.showWindow(nil); controller.window?.makeKeyAndOrderFront(nil); controller.reload()
@@ -378,16 +386,18 @@ final class CleanupHistoryWindow: NSWindowController, NSTableViewDataSource, NST
         window.title = L("수신 보관본 정리 기록", "Received Export Cleanup History")
         window.minSize = NSSize(width: 620, height: 480); window.isReleasedWhenClosed = false; window.center()
         table.dataSource = self; table.delegate = self; table.setAccessibilityLabel(window.title)
-        for (id, title, width) in [("job", L("수신 작업", "Receive Job"), 240.0), ("state", L("현재 보관 위치", "Current Retention"), 260.0)] {
-            let column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier(id)); column.title = title; column.width = width; table.addTableColumn(column)
+        for (id, title, width) in [("job", L("수신 작업", "Receive Job"), 190.0), ("kind", L("작업", "Action"), 80.0), ("state", L("현재 보관 위치", "Current Retention"), 250.0)] {
+            let column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier(id)); column.title = title; column.width = width
+            column.minWidth = id == "job" ? 160 : id == "kind" ? 70 : 200; table.addTableColumn(column)
         }
-        table.columnAutoresizingStyle = .uniformColumnAutoresizingStyle
+        table.columnAutoresizingStyle = .lastColumnOnlyAutoresizingStyle
         let scroll = NSScrollView(); scroll.hasVerticalScroller = true; scroll.borderType = .bezelBorder; scroll.documentView = table
         let intro = NSTextField(wrappingLabelWithString: L("앱을 다시 실행해도 이전 정리 기록을 확인할 수 있습니다. 중단되거나 위치를 확인하지 못한 작업은 기록을 보존합니다. 자동 이동이나 삭제는 하지 않습니다.", "Review cleanup records after restarting the app. Interrupted jobs and unknown locations remain recorded. Files are never moved or deleted automatically."))
         let help = NSTextField(wrappingLabelWithString: L("표시는 폴더와 수신 기록의 동일성 확인 결과입니다. 원본·복사본 내용이 현재 일치한다는 뜻은 아닙니다. 위치를 찾지 못하면 기록 파일에서 마지막 상태를 확인하세요.", "Locations are checked against the folder identity and receive receipt. This does not verify current original or copy contents. If a location is unknown, inspect the record for its last saved state."))
         details.maximumNumberOfLines = 3
-        let buttons = NSStackView(views: [reveal, record, refresh]); buttons.spacing = 10
-        for button in [reveal, record, refresh] { button.target = self }
+        let buttons = NSStackView(views: [restore, stop, reveal, record, refresh]); buttons.spacing = 10; buttons.detachesHiddenViews = true
+        restore.toolTip = L("보관본을 다시 검증한 뒤 원래 보관소로 옮깁니다. 같은 경로에 있는 항목은 덮어쓰지 않습니다.", "Recheck retained files and move them to the original storage. Existing items are never overwritten.")
+        for button in [restore, stop, reveal, record, refresh] { button.target = self }
         let stack = NSStackView(views: [intro, scroll, details, help, buttons]); stack.orientation = .vertical; stack.alignment = .leading; stack.spacing = 12
         stack.translatesAutoresizingMaskIntoConstraints = false; window.contentView!.addSubview(stack)
         NSLayoutConstraint.activate([
@@ -401,7 +411,8 @@ final class CleanupHistoryWindow: NSWindowController, NSTableViewDataSource, NST
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
     private var selected: PromisedFileCleanupRecovery? { rows.indices.contains(table.selectedRow) ? rows[table.selectedRow] : nil }
-    @objc private func reload() {
+    @objc private func reload() { load(message: nil) }
+    private func load(message: String?) {
         guard !busy else { return }; busy = true; updateSelection()
         details.stringValue = L("이전 정리 기록 확인 중…", "Checking previous cleanup records…")
         let journals = journals, storage = storage
@@ -413,14 +424,14 @@ final class CleanupHistoryWindow: NSWindowController, NSTableViewDataSource, NST
             }
             busy = false
             switch result {
-            case .success(let records): rows = records; table.reloadData(); updateSelection()
+            case .success(let records): rows = records; table.reloadData(); updateSelection(); if let message { details.stringValue = message; details.toolTip = message }
             case .failure(let error): rows = []; table.reloadData(); updateSelection(); details.stringValue = error.localizedDescription
             }
         }
     }
     private func stateText(_ row: PromisedFileCleanupRecovery) -> String {
         switch row.status {
-        case .atOriginal: return L("원래 위치에 보관 중", "Retained at original location")
+        case .atOriginal: return row.recordedState == "restored" ? L("보관소로 복원됨", "Restored to storage") : L("원래 위치에 보관 중", "Retained at original location")
         case .retainedElsewhere: return L("기록된 이동 위치에 보관 중", "Retained at recorded moved location")
         case .unlocated: return L("위치 확인 필요", "Location needs review")
         case .legacy: return L("이전 형식 · 직접 확인 필요", "Older record · manual review")
@@ -432,15 +443,24 @@ final class CleanupHistoryWindow: NSWindowController, NSTableViewDataSource, NST
         guard rows.indices.contains(row) else { return nil }
         let item = rows[row]
         let name = item.receivedNames.isEmpty ? (item.original?.lastPathComponent ?? item.journal.lastPathComponent) : item.receivedNames.prefix(3).joined(separator: ", ")
-        let text = tableColumn?.identifier.rawValue == "job" ? name : stateText(item)
+        let text: String
+        switch tableColumn?.identifier.rawValue {
+        case "job": text = name
+        case "kind": text = item.isRestoreRecord ? L("복원", "Restore") : L("정리", "Cleanup")
+        default: text = stateText(item)
+        }
         let field = NSTextField(labelWithString: text); field.lineBreakMode = .byTruncatingTail; field.toolTip = text; return field
     }
     func tableViewSelectionDidChange(_ notification: Notification) { updateSelection() }
+    func selectionShouldChange(in tableView: NSTableView) -> Bool { !busy }
     private func updateSelection() {
         reveal.isEnabled = !busy && selected?.location != nil; record.isEnabled = !busy && selected != nil; refresh.isEnabled = !busy
+        restore.isEnabled = !busy && selected?.canRestore == true
+        restore.isHidden = restoreCancellation != nil; stop.isHidden = restoreCancellation == nil
+        stop.isEnabled = restoreCancellation?.isCancelled == false
         if let row = selected {
             let savedState = row.recordedState ?? L("읽기 실패", "Unreadable")
-            let interrupted = ["verified", "movedToTrash", "needsReview"].contains(savedState)
+            let interrupted = ["verified", "movedToTrash", "needsReview", "restorePrepared"].contains(savedState)
             details.stringValue = (interrupted ? L("미완료 정리 · ", "Interrupted cleanup · ") : "") + stateText(row)
                 + "\n" + (row.location?.path ?? row.journal.path)
                 + (row.message.map { "\n" + $0 } ?? "")
@@ -448,12 +468,99 @@ final class CleanupHistoryWindow: NSWindowController, NSTableViewDataSource, NST
         details.toolTip = details.stringValue
     }
     @objc private func showRecord() { if let row = selected { NSWorkspace.shared.activateFileViewerSelecting([row.journal]) } }
+    @objc private func stopRestore() {
+        restoreCancellation?.cancel(); updateSelection()
+        details.stringValue = L("안전한 지점에서 복원을 중지하는 중…", "Stopping restore at a safe point…"); details.toolTip = details.stringValue
+        FileOperationCenter.activityChanged()
+    }
+    @objc private func restoreSelected() {
+        guard !busy, let row = selected, row.canRestore else { return }
+        guard !BrowserWindow.entryOperationRunning, !CopyWindow.isRunning, !MoveWindow.isRunning, !FolderMergeWindow.isRunning else {
+            details.stringValue = L("다른 파일 작업이 끝난 뒤 복원하세요.", "Restore after the other file operation finishes."); return
+        }
+        let cancellation = CopyCancellation(), storage = storage
+        restoreCancellation = cancellation; restoreID = UUID(); restoreNames = row.receivedNames.prefix(3).joined(separator: ", ")
+        busy = true; Self.restoringController = self; updateSelection()
+        details.stringValue = L("보관본 재검증 및 복원 중…", "Rechecking and restoring retained files…"); FileOperationCenter.activityChanged()
+        Task { [self] in
+            let outcome: Result<PromisedFileCleanupResult, Error> = await withCheckedContinuation { continuation in
+                DispatchQueue.global(qos: .userInitiated).async {
+                    continuation.resume(returning: Result { try row.restore(storage: storage, cancellation: cancellation) })
+                }
+            }
+            busy = false; restoreCancellation = nil; Self.restoringController = nil
+            let message: String
+            switch outcome {
+            case .success(let result):
+                let summary: String
+                if result.state == "restored" {
+                    summary = L("보관소로 복원했습니다. 복사본은 유지됩니다.", "Restored to storage. Published copies remain available.")
+                    ReceivedFilesWindow.refreshAfterRestore()
+                }
+                else if result.restoreFailure == .conflict { summary = L("원래 경로에 다른 항목이 있어 복원하지 않았습니다. 기존 항목과 보관본을 유지했습니다.", "Another item occupies the original path. Both it and the retained files were kept.") }
+                else if result.restoreFailure == .cancelled { summary = L("복원을 중지했습니다. 아래 보관 위치를 확인하세요.", "Restore stopped. Inspect the retained location below.") }
+                else { summary = L("복원을 완료하지 못했습니다. 기록과 보관 위치를 확인하세요.", "Restore did not complete. Inspect the record and retained location.") }
+                message = summary + "\n" + (result.retainedAt?.path ?? result.journal.path)
+            case .failure(let error):
+#if DEBUG
+                if ProcessInfo.processInfo.environment["FILES_PROMISE_QA_OUTPUT"] != nil { print("Restore failure:", String(reflecting: error)) }
+#endif
+                if error is CancellationError {
+                    message = L("복원을 중지했습니다. 보관본은 유지됩니다.", "Restore stopped. Retained files were kept.")
+                } else if (error as? PromisedFileRestoreFailure) == .conflict {
+                    message = L("원래 경로에 다른 항목이 있어 복원하지 않았습니다. 기존 항목과 보관본을 유지했습니다.", "Another item occupies the original path. Both it and the retained files were kept.")
+                } else {
+                    message = L("보관본이나 기록이 바뀌었거나 접근할 수 없어 복원하지 않았습니다. 보관 위치와 기록을 확인하세요.", "Retained files or records changed or could not be accessed. Inspect the retained location and record.")
+                }
+            }
+            details.stringValue = message; FileOperationCenter.retainResult(activity); FileOperationCenter.activityChanged()
+            load(message: message)
+        }
+    }
+    private var activity: FileOperationActivity {
+        FileOperationActivity(id: restoreID, title: L("수신 보관본 복원", "Restore Received Exports"), destination: restoreNames,
+            status: details.stringValue, progress: nil,
+            showDetails: { [weak self] in self?.showWindow(nil); self?.window?.makeKeyAndOrderFront(nil) },
+            cancel: restoreCancellation != nil ? { [weak self] in self?.stopRestore() } : nil)
+    }
     @objc private func showLocation() {
         guard let row = selected, let location = row.location else { return }
         // This is a read-only Finder action; a fresh reload rechecks location ownership.
         NSWorkspace.shared.activateFileViewerSelecting([location]); reload()
     }
 #if DEBUG
+    static func verifyRestore(journals: URL, storage: URL) async -> [String: Bool] {
+        let controller = CleanupHistoryWindow(journals: journals, storage: storage)
+        defer { controller.window?.close() }
+        controller.reload()
+        for _ in 0..<500 where controller.busy { try? await Task.sleep(for: .milliseconds(10)) }
+        var checks: [String: Bool] = [:]
+        guard let owned = controller.rows.firstIndex(where: { $0.canRestore }) else { return ["restoreActionAvailableForCurrentProof": false] }
+        controller.table.selectRowIndexes(IndexSet(integer: owned), byExtendingSelection: false); controller.updateSelection()
+        guard let row = controller.selected, let original = row.original, let bytes = try? Data(contentsOf: row.journal) else { return ["restoreSetup": false] }
+        checks["restoreActionAvailableForCurrentProof"] = controller.restore.isEnabled
+        if let window = controller.window, let view = window.contentView {
+            await prepareReceivedVerificationFrame(window, table: controller.table)
+            checks["restoreControlsFitMinimumWindow"] = [controller.restore, controller.reveal, controller.record, controller.refresh].allSatisfy {
+                view.bounds.contains(view.convert($0.bounds, from: $0)) && $0.frame.width >= $0.fittingSize.width - 1
+            }
+            checks["restoreTableColumnsAlign"] = receivedVerificationColumnsAlign(controller.table)
+            do {
+                    let png = try await captureReceivedVerificationPNG(window, table: controller.table)
+                    try png.write(to: storage.deletingLastPathComponent().appendingPathComponent("received-restore-controls.png"))
+                    checks["restoreCaptureWritten"] = true
+                } catch { checks["restoreCaptureWritten"] = false }
+        }
+        controller.restoreSelected()
+        checks["restorePreventsConcurrentFileJobs"] = isRestoring && BrowserWindow.entryOperationRunning && controller.stop.isEnabled
+            && activities.count == 1 && activities.first?.cancel != nil
+        for _ in 0..<1000 where controller.busy { try? await Task.sleep(for: .milliseconds(10)) }
+        checks["restoreReturnsFixtureToOriginalStorage"] = FileManager.default.fileExists(atPath: original.appendingPathComponent("Files/received.txt").path)
+        checks["restorePreservesSourceCleanupJournal"] = (try? Data(contentsOf: row.journal)) == bytes
+        checks["restoreHistoryPreventsRepeatedRestore"] = !controller.busy && !isRestoring && !BrowserWindow.entryOperationRunning
+            && !controller.rows.contains(where: \.canRestore) && controller.rows.contains { $0.recordedState == "restored" && $0.isRestoreRecord }
+        return checks
+    }
     static func verifyInterruptedRestart(journals: URL, storage: URL, output: URL) async -> [String: Bool] {
         let controller = CleanupHistoryWindow(journals: journals, storage: storage)
         defer { controller.window?.close() }
@@ -461,28 +568,19 @@ final class CleanupHistoryWindow: NSWindowController, NSTableViewDataSource, NST
         for _ in 0..<500 where controller.busy { try? await Task.sleep(for: .milliseconds(10)) }
         var checks = ["restartHistoryReadsInterruptedJournal": !controller.busy && controller.rows.count == 1]
         controller.table.selectRowIndexes(IndexSet(integer: 0), byExtendingSelection: false); controller.updateSelection()
-        checks["restartHistoryDoesNotInventMovedLocation"] = controller.selected?.status == .unlocated && !controller.reveal.isEnabled && controller.record.isEnabled
+        checks["restartHistoryDoesNotInventMovedLocation"] = controller.selected?.status == .unlocated && !controller.reveal.isEnabled && controller.record.isEnabled && !controller.restore.isEnabled
         checks["restartHistoryExplainsInterruptedState"] = controller.selected?.recordedState == "verified"
             && controller.details.stringValue.contains(L("미완료 정리", "Interrupted cleanup"))
         if let window = controller.window, let view = window.contentView {
-            window.setFrame(NSRect(origin: window.frame.origin, size: window.minSize), display: false); view.layoutSubtreeIfNeeded()
-            checks["restartHistoryControlsFitMinimumWindow"] = [controller.reveal, controller.record, controller.refresh].allSatisfy {
+            await prepareReceivedVerificationFrame(window, table: controller.table)
+            checks["restartHistoryControlsFitMinimumWindow"] = [controller.restore, controller.reveal, controller.record, controller.refresh].allSatisfy {
                 view.bounds.contains(view.convert($0.bounds, from: $0)) && $0.frame.width >= $0.fittingSize.width - 1
             }
-            if let bitmap = view.bitmapImageRepForCachingDisplay(in: view.bounds) {
-                view.effectiveAppearance.performAsCurrentDrawingAppearance {
-                    view.cacheDisplay(in: view.bounds, to: bitmap)
-                    if let context = NSGraphicsContext(bitmapImageRep: bitmap)?.cgContext {
-                        context.setBlendMode(.destinationOver); context.setFillColor(NSColor.windowBackgroundColor.cgColor)
-                        context.fill(CGRect(x: 0, y: 0, width: bitmap.pixelsWide, height: bitmap.pixelsHigh))
-                    }
-                }
-                do {
-                    guard let png = bitmap.representation(using: .png, properties: [:]) else { throw CocoaError(.fileWriteUnknown) }
+            do {
+                    let png = try await captureReceivedVerificationPNG(window, table: controller.table)
                     try png.write(to: output.appendingPathComponent("interrupted-cleanup-history.png"))
                     checks["restartHistoryCaptureWritten"] = true
                 } catch { checks["restartHistoryCaptureWritten"] = false }
-            }
         }
         return checks
     }
@@ -505,27 +603,71 @@ final class CleanupHistoryWindow: NSWindowController, NSTableViewDataSource, NST
         }
         checks["cleanupHistoryFindsOwnedTrashLocation"] = controller.selected?.status == .retainedElsewhere && controller.reveal.isEnabled && controller.record.isEnabled
         if let window = controller.window, let view = window.contentView {
-            window.setFrame(NSRect(origin: window.frame.origin, size: window.minSize), display: false); view.layoutSubtreeIfNeeded()
-            checks["cleanupHistoryControlsFitMinimumWindow"] = [controller.reveal, controller.record, controller.refresh].allSatisfy {
+            await prepareReceivedVerificationFrame(window, table: controller.table)
+            checks["cleanupHistoryControlsFitMinimumWindow"] = [controller.restore, controller.reveal, controller.record, controller.refresh].allSatisfy {
                 view.bounds.contains(view.convert($0.bounds, from: $0)) && $0.frame.width >= $0.fittingSize.width - 1
             }
-            if let bitmap = view.bitmapImageRepForCachingDisplay(in: view.bounds) {
-                view.effectiveAppearance.performAsCurrentDrawingAppearance {
-                    view.cacheDisplay(in: view.bounds, to: bitmap)
-                    if let context = NSGraphicsContext(bitmapImageRep: bitmap)?.cgContext {
-                        context.setBlendMode(.destinationOver); context.setFillColor(NSColor.windowBackgroundColor.cgColor)
-                        context.fill(CGRect(x: 0, y: 0, width: bitmap.pixelsWide, height: bitmap.pixelsHigh))
-                    }
-                }
-                if let png = bitmap.representation(using: .png, properties: [:]) {
-                    do {
-                        try png.write(to: storage.deletingLastPathComponent().appendingPathComponent("received-cleanup-history.png"))
-                        checks["cleanupHistoryCaptureWritten"] = true
-                    } catch { checks["cleanupHistoryCaptureWritten"] = false }
-                }
-            }
+            do {
+                    let png = try await captureReceivedVerificationPNG(window, table: controller.table)
+                    try png.write(to: storage.deletingLastPathComponent().appendingPathComponent("received-cleanup-history.png"))
+                    checks["cleanupHistoryCaptureWritten"] = true
+                } catch { checks["cleanupHistoryCaptureWritten"] = false }
         }
         return checks
     }
 #endif
 }
+
+#if DEBUG
+@MainActor
+private func prepareReceivedVerificationFrame(_ window: NSWindow, table: NSTableView) async {
+    let selection = table.selectedRowIndexes
+    window.setFrame(NSRect(origin: window.frame.origin, size: window.minSize), display: true)
+    window.orderFront(nil); window.contentView?.layoutSubtreeIfNeeded(); table.reloadData(); window.displayIfNeeded()
+    // Let AppKit finish its queued column sizing and cell reuse before caching pixels.
+    try? await Task.sleep(for: .milliseconds(20))
+    window.contentView?.layoutSubtreeIfNeeded(); table.reloadData(); table.layoutSubtreeIfNeeded(); window.displayIfNeeded()
+    table.selectRowIndexes(selection, byExtendingSelection: false)
+}
+
+@MainActor
+private func receivedVerificationColumnsAlign(_ table: NSTableView) -> Bool {
+    guard table.numberOfRows > 0 else { return false }
+    return table.tableColumns.indices.allSatisfy { column in
+        let body = table.rect(ofColumn: column)
+        guard let header = table.headerView?.headerRect(ofColumn: column),
+              abs(header.minX - body.minX) < 1, abs(header.width - body.width) < 1,
+              let cell = table.view(atColumn: column, row: 0, makeIfNecessary: true) else { return false }
+        let frame = table.convert(cell.bounds, from: cell)
+        return frame.minX >= body.minX - 1 && frame.maxX <= body.maxX + 1
+    }
+}
+#endif
+
+#if DEBUG
+@MainActor
+private func captureReceivedVerificationPNG(_ window: NSWindow, table: NSTableView) async throws -> Data {
+    guard let view = window.contentView else { throw CocoaError(.fileWriteUnknown) }
+    let selection = table.selectedRowIndexes
+    var previous: [CGFloat]?
+    for _ in 0..<4 {
+        view.layoutSubtreeIfNeeded(); table.reloadData(); table.selectRowIndexes(selection, byExtendingSelection: false)
+        table.layoutSubtreeIfNeeded(); window.displayIfNeeded()
+        try await Task.sleep(for: .milliseconds(20))
+        let before = table.tableColumns.map(\.width)
+        guard let bitmap = view.bitmapImageRepForCachingDisplay(in: view.bounds) else { throw CocoaError(.fileWriteUnknown) }
+        view.effectiveAppearance.performAsCurrentDrawingAppearance {
+            view.cacheDisplay(in: view.bounds, to: bitmap)
+            if let context = NSGraphicsContext(bitmapImageRep: bitmap)?.cgContext {
+                context.setBlendMode(.destinationOver); context.setFillColor(NSColor.windowBackgroundColor.cgColor)
+                context.fill(CGRect(x: 0, y: 0, width: bitmap.pixelsWide, height: bitmap.pixelsHigh))
+            }
+        }
+        let after = table.tableColumns.map(\.width)
+        if previous == before, before == after, receivedVerificationColumnsAlign(table),
+           let png = bitmap.representation(using: .png, properties: [:]) { return png }
+        previous = after
+    }
+    throw CocoaError(.fileWriteUnknown)
+}
+#endif

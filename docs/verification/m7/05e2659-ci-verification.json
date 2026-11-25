@@ -1,0 +1,170 @@
+{
+  "sourceCommit": "05e2659b12589264365aa76f77b6a3c64e508ae6",
+  "runURL": "https://github.com/taro6222/files-for-mac/actions/runs/45658308934",
+  "conclusion": "failure",
+  "xcode": {
+    "arm64": "success",
+    "x86_64": "success"
+  },
+  "fullAppKit": {
+    "arm64": {
+      "en-dark": {
+        "checks": 283,
+        "passed": 283,
+        "failed": [],
+        "diagnostics": {
+          "folderSizeAutomaticBytes": 21,
+          "folderSizeAutomaticTaskPending": false,
+          "folderSizeListingReady": true,
+          "folderSizeLoadedItemCount": 10000,
+          "folderSizeRequestButtonAvailable": true,
+          "folderSizeRequestResult": "Optional(FilesCore.BrowserModel.DirectorySizeStatus.available(21))",
+          "folderSizeRequestWasPending": true
+        },
+        "reportSHA256": "8093bf649f5437f66da5b5b19bb398f92862bc41531a622fde92f19711accb4d"
+      },
+      "ko-light": {
+        "checks": 283,
+        "passed": 283,
+        "failed": [],
+        "diagnostics": {
+          "folderSizeAutomaticBytes": 21,
+          "folderSizeAutomaticTaskPending": false,
+          "folderSizeListingReady": true,
+          "folderSizeLoadedItemCount": 10000,
+          "folderSizeRequestButtonAvailable": true,
+          "folderSizeRequestResult": "Optional(FilesCore.BrowserModel.DirectorySizeStatus.available(21))",
+          "folderSizeRequestWasPending": true
+        },
+        "reportSHA256": "1b855dfd53a71fa3af8beab859f1e976d056148b630a777be4af4221e2176d04"
+      },
+      "en-light": {
+        "checks": 283,
+        "passed": 283,
+        "failed": [],
+        "diagnostics": {
+          "folderSizeAutomaticBytes": 21,
+          "folderSizeAutomaticTaskPending": false,
+          "folderSizeListingReady": true,
+          "folderSizeLoadedItemCount": 10000,
+          "folderSizeRequestButtonAvailable": true,
+          "folderSizeRequestResult": "Optional(FilesCore.BrowserModel.DirectorySizeStatus.available(21))",
+          "folderSizeRequestWasPending": true
+        },
+        "reportSHA256": "f31cc7c29db8595ecd2185d7ba51772a0039e8ecbb323d2240b3171c8f285d8c"
+      },
+      "ko-dark": {
+        "checks": 283,
+        "passed": 283,
+        "failed": [],
+        "diagnostics": {
+          "folderSizeAutomaticBytes": 21,
+          "folderSizeAutomaticTaskPending": false,
+          "folderSizeListingReady": true,
+          "folderSizeLoadedItemCount": 10000,
+          "folderSizeRequestButtonAvailable": true,
+          "folderSizeRequestResult": "Optional(FilesCore.BrowserModel.DirectorySizeStatus.available(21))",
+          "folderSizeRequestWasPending": true
+        },
+        "reportSHA256": "6e421787b0e8252f1fe5e0a8654becf25a14aa4c89b7dbb6d64abf903bc048a2"
+      }
+    },
+    "x86_64": {
+      "en-dark": {
+        "checks": 283,
+        "passed": 281,
+        "failed": [
+          "folderSizeCalculation",
+          "folderSizeRequestFromDetails"
+        ],
+        "diagnostics": {
+          "folderSizeAutomaticBytes": -1,
+          "folderSizeAutomaticTaskPending": false,
+          "folderSizeListingReady": false,
+          "folderSizeLoadedItemCount": 7296,
+          "folderSizeRequestButtonAvailable": false,
+          "folderSizeRequestResult": "nil",
+          "folderSizeRequestWasPending": false
+        },
+        "reportSHA256": "eac2732f4613340ff2750998424be8e790e233bb474176198bb9a398173ff256"
+      },
+      "ko-light": {
+        "checks": 283,
+        "passed": 278,
+        "failed": [
+          "folderSizeCalculation",
+          "folderSizeRequestFromDetails",
+          "remoteBrowserDownloadSelection",
+          "remoteBrowserNavigation",
+          "remoteBrowserRows"
+        ],
+        "diagnostics": {
+          "folderSizeAutomaticBytes": -1,
+          "folderSizeAutomaticTaskPending": false,
+          "folderSizeListingReady": false,
+          "folderSizeLoadedItemCount": 3200,
+          "folderSizeRequestButtonAvailable": false,
+          "folderSizeRequestResult": "nil",
+          "folderSizeRequestWasPending": false
+        },
+        "reportSHA256": "312fa902c785bae508ac89288f5f5c537e650d57d228516d946eaf6111762342"
+      },
+      "en-light": {
+        "checks": 283,
+        "passed": 282,
+        "failed": [
+          "folderSizeCalculation"
+        ],
+        "diagnostics": {
+          "folderSizeAutomaticBytes": -1,
+          "folderSizeAutomaticTaskPending": true,
+          "folderSizeListingReady": false,
+          "folderSizeLoadedItemCount": 7296,
+          "folderSizeRequestButtonAvailable": true,
+          "folderSizeRequestResult": "Optional(FilesCore.BrowserModel.DirectorySizeStatus.available(21))",
+          "folderSizeRequestWasPending": true
+        },
+        "reportSHA256": "14a55f86289e0e76562afac847a825aca722ac02b7448a2f63c17cce4bafe47e"
+      },
+      "ko-dark": {
+        "checks": 283,
+        "passed": 280,
+        "failed": [
+          "cloudLocations",
+          "folderSizeCalculation",
+          "folderSizeRequestFromDetails"
+        ],
+        "diagnostics": {
+          "folderSizeAutomaticBytes": -1,
+          "folderSizeAutomaticTaskPending": false,
+          "folderSizeListingReady": false,
+          "folderSizeLoadedItemCount": 3200,
+          "folderSizeRequestButtonAvailable": false,
+          "folderSizeRequestResult": "nil",
+          "folderSizeRequestWasPending": false
+        },
+        "reportSHA256": "55b5596de5f63a736eda86776f0abdc82261c6f71fc8217b7933cca0855358d0"
+      }
+    }
+  },
+  "spotlight": {
+    "arm64": {
+      "state": "indexed",
+      "cleaned": true,
+      "readOnlyCleanupInspection": "passed",
+      "stateSHA256": "da850268e8627181bafc7051334a60868991a6c64f2868c21c1c2567398ad2d5"
+    },
+    "x86_64": {
+      "state": "indexed",
+      "cleaned": false,
+      "readOnlyCleanupInspection": null,
+      "stateSHA256": "b0e580f14c2b27dd32ecda18aac9845473e5f6c5c07f93d8505897e504b6b915"
+    }
+  },
+  "limitations": [
+    "Previous source, not the current restore implementation",
+    "Intel full UI and fixture cleanup failed; do not treat the workflow as fully passing"
+  ],
+  "intelCleanupFailure": "hdiutil detach returned 16 (Resource busy); owned source-only image retained without forced detach",
+  "failedLogSHA256": "12af573d52e90f7d1ae8037e0250f620c7653828017d581ce8e8a3c4ebec2a7d"
+}

@@ -303,6 +303,8 @@ public final class PromisedFileIntake: @unchecked Sendable {
             var result = PromisedFileCleanupResult(original: directoryURL, retainedAt: directoryURL, state: "verified", message: nil, journal: journal)
             result.directoryIdentity = header.directoryIdentity
             result.receivedNames = receivedNames
+            result.storageIdentity = try Self.directoryIdentity(directoryURL.deletingLastPathComponent())
+            result.retainedFingerprint = try Self.cleanupFingerprint(directoryURL, cancellation: cancellation)
             func save() throws { try JSONEncoder().encode(result).write(to: journal, options: .atomic) }
             try save(); try cancellation.check(); try requireOwnedDirectories()
             let trashed: URL
@@ -361,6 +363,24 @@ public final class PromisedFileIntake: @unchecked Sendable {
         guard errno == ENOENT else { throw PromisedFileIntakeError.invalidManifest }
         return nil
     }
+    static func cleanupFingerprint(_ root: URL, cancellation: CopyCancellation) throws -> String {
+        let snapshot = try CopyEngine.verifiedSnapshot(root, cancellation: cancellation)
+        let encoder = JSONEncoder(); encoder.outputFormatting = [.sortedKeys]
+        return SHA256.hash(data: try encoder.encode(snapshot)).map { String(format: "%02x", $0) }.joined()
+    }
+    func verifyForRestoration(cancellation: CopyCancellation) throws {
+        _ = try verifiedSources(cancellation: cancellation)
+        try processing.withLock {
+            try requireOwnedDirectories(); try cancellation.check()
+            let current = state.withLock { order.compactMap { items[$0] } }
+            let names: (URL) throws -> Set<String> = { Set(try FileManager.default.contentsOfDirectory(atPath: $0.path)) }
+            guard !current.isEmpty, try names(directoryURL) == Set([Self.manifestName, "Files", "Receipts"]),
+                  try names(receivingDirectory) == Set(current.map(\.name)),
+                  try names(receiptsDirectory) == Set(current.map { Self.receiptKey($0.name) + ".json" }) else {
+                throw PromisedFileIntakeError.unknownContents
+            }
+        }
+    }
     private static func readItem(_ url: URL) throws -> Item {
         do {
             let before = try fileIdentity(url)
@@ -393,4 +413,9 @@ public struct PromisedFileCleanupResult: Codable, Sendable {
     public let journal: URL
     public var directoryIdentity: String? // Older journals remain readable, without adopting a location.
     public var receivedNames: [String]? // Available even when a crash prevented recording the moved location.
+    public var storageIdentity: String?
+    public var retainedFingerprint: String?
+    public var recoveryOf: URL?
+    public var restoreAttempt: UUID?
+    public var restoreFailure: PromisedFileRestoreFailure?
 }

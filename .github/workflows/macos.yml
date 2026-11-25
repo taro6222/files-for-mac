@@ -137,6 +137,7 @@ jobs:
             ${{ runner.temp }}/files-promise-verification.*/run.log
             ${{ runner.temp }}/files-promise-verification.*/received-cleanup-controls.png
             ${{ runner.temp }}/files-promise-verification.*/received-cleanup-history.png
+            ${{ runner.temp }}/files-promise-verification.*/received-restore-controls.png
           if-no-files-found: ignore
       - name: Verify interrupted received cleanup in a fresh app process
         if: github.event_name != 'workflow_dispatch' || !inputs.verify_upgrade
