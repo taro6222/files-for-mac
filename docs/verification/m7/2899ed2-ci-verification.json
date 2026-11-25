@@ -1,0 +1,181 @@
+{
+  "sourceBaseSHA": "2899ed2ddcdbc98bfb5f88c2bd36c3dccd575478",
+  "workflowURL": "https://github.com/taro6222/files-for-mac/actions/runs/45685695780",
+  "workflowConclusion": "failure",
+  "jobs": [
+    {
+      "name": "Xcode (arm64)",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "name": "Xcode (x86_64)",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "name": "macOS 15 (x86_64)",
+      "status": "completed",
+      "conclusion": "failure"
+    },
+    {
+      "name": "macOS 15 (arm64)",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "name": "Optimized performance (${{ matrix.architecture }})",
+      "status": "completed",
+      "conclusion": "skipped"
+    }
+  ],
+  "appkit": {
+    "arm64": {
+      "en-dark": {
+        "checks": 283,
+        "failedChecks": [],
+        "diagnostics": {
+          "folderSizeAutomaticBytes": 21,
+          "folderSizeAutomaticTaskPending": false,
+          "folderSizeListingReady": true,
+          "folderSizeLoadedItemCount": 10000,
+          "folderSizeRequestButtonAvailable": true,
+          "folderSizeRequestResult": "Optional(FilesCore.BrowserModel.DirectorySizeStatus.available(21))",
+          "folderSizeRequestWasPending": true,
+          "remoteCloseCancelledPendingLoad": true,
+          "remoteDownloadSelected": true
+        },
+        "rawReport": "build/batch-input-ci-2899ed2/files-appkit-macos15-arm64/files-ui-verification.sNlveb/en-dark/report.json",
+        "rawReportSHA256": "4f80a343d6bd7c317b1689062a6c9f18e06c004e2b6039dce809d5970e0b8c96"
+      },
+      "en-light": {
+        "checks": 283,
+        "failedChecks": [],
+        "diagnostics": {
+          "folderSizeAutomaticBytes": 21,
+          "folderSizeAutomaticTaskPending": false,
+          "folderSizeListingReady": true,
+          "folderSizeLoadedItemCount": 10000,
+          "folderSizeRequestButtonAvailable": true,
+          "folderSizeRequestResult": "Optional(FilesCore.BrowserModel.DirectorySizeStatus.available(21))",
+          "folderSizeRequestWasPending": true,
+          "remoteCloseCancelledPendingLoad": true,
+          "remoteDownloadSelected": true
+        },
+        "rawReport": "build/batch-input-ci-2899ed2/files-appkit-macos15-arm64/files-ui-verification.sNlveb/en-light/report.json",
+        "rawReportSHA256": "3347d7c0df4e51180a7efd7f06e508dfa1fdc4a46c2b77f2f25b1a940fd786d5"
+      },
+      "ko-dark": {
+        "checks": 283,
+        "failedChecks": [],
+        "diagnostics": {
+          "folderSizeAutomaticBytes": 21,
+          "folderSizeAutomaticTaskPending": false,
+          "folderSizeListingReady": true,
+          "folderSizeLoadedItemCount": 10000,
+          "folderSizeRequestButtonAvailable": true,
+          "folderSizeRequestResult": "Optional(FilesCore.BrowserModel.DirectorySizeStatus.available(21))",
+          "folderSizeRequestWasPending": true,
+          "remoteCloseCancelledPendingLoad": true,
+          "remoteDownloadSelected": true
+        },
+        "rawReport": "build/batch-input-ci-2899ed2/files-appkit-macos15-arm64/files-ui-verification.sNlveb/ko-dark/report.json",
+        "rawReportSHA256": "2b4a0b39ff3a1c5015a7cb1ba3453b25966a280936c5aa297c6eef771d9ccbb7"
+      },
+      "ko-light": {
+        "checks": 283,
+        "failedChecks": [],
+        "diagnostics": {
+          "folderSizeAutomaticBytes": 21,
+          "folderSizeAutomaticTaskPending": false,
+          "folderSizeListingReady": true,
+          "folderSizeLoadedItemCount": 10000,
+          "folderSizeRequestButtonAvailable": true,
+          "folderSizeRequestResult": "Optional(FilesCore.BrowserModel.DirectorySizeStatus.available(21))",
+          "folderSizeRequestWasPending": true,
+          "remoteCloseCancelledPendingLoad": true,
+          "remoteDownloadSelected": true
+        },
+        "rawReport": "build/batch-input-ci-2899ed2/files-appkit-macos15-arm64/files-ui-verification.sNlveb/ko-light/report.json",
+        "rawReportSHA256": "0e51ba3a1b464fddbd83bfd8dd07764336c08f4fd8ba4127d7bebd0ff5c88f7a"
+      }
+    },
+    "x86_64": {
+      "en-dark": {
+        "checks": 283,
+        "failedChecks": [],
+        "diagnostics": {
+          "folderSizeAutomaticBytes": 21,
+          "folderSizeAutomaticTaskPending": false,
+          "folderSizeListingReady": true,
+          "folderSizeLoadedItemCount": 10000,
+          "folderSizeRequestButtonAvailable": true,
+          "folderSizeRequestResult": "Optional(FilesCore.BrowserModel.DirectorySizeStatus.available(21))",
+          "folderSizeRequestWasPending": true,
+          "remoteCloseCancelledPendingLoad": true,
+          "remoteDownloadSelected": true
+        },
+        "rawReport": "build/batch-input-ci-2899ed2/files-appkit-macos15-x86_64/files-ui-verification.lZkQl8/en-dark/report.json",
+        "rawReportSHA256": "e97048c99a64a3db1c2d23bb46a30b9bd4b3e2aeb71b7dcaa3297960090a264e"
+      },
+      "en-light": {
+        "checks": 283,
+        "failedChecks": [
+          "folderSizeCalculation"
+        ],
+        "diagnostics": {
+          "folderSizeAutomaticBytes": -1,
+          "folderSizeAutomaticTaskPending": true,
+          "folderSizeListingReady": true,
+          "folderSizeLoadedItemCount": 10000,
+          "folderSizeRequestButtonAvailable": true,
+          "folderSizeRequestResult": "Optional(FilesCore.BrowserModel.DirectorySizeStatus.available(21))",
+          "folderSizeRequestWasPending": true,
+          "remoteCloseCancelledPendingLoad": true,
+          "remoteDownloadSelected": true
+        },
+        "rawReport": "build/batch-input-ci-2899ed2/files-appkit-macos15-x86_64/files-ui-verification.lZkQl8/en-light/report.json",
+        "rawReportSHA256": "f22c32d10ebee4da7cbd8a12ded92a5dc35f25a76f08e631b36faed6a4680e85"
+      },
+      "ko-dark": {
+        "checks": 283,
+        "failedChecks": [],
+        "diagnostics": {
+          "folderSizeAutomaticBytes": 21,
+          "folderSizeAutomaticTaskPending": false,
+          "folderSizeListingReady": true,
+          "folderSizeLoadedItemCount": 10000,
+          "folderSizeRequestButtonAvailable": true,
+          "folderSizeRequestResult": "Optional(FilesCore.BrowserModel.DirectorySizeStatus.available(21))",
+          "folderSizeRequestWasPending": true,
+          "remoteCloseCancelledPendingLoad": true,
+          "remoteDownloadSelected": true
+        },
+        "rawReport": "build/batch-input-ci-2899ed2/files-appkit-macos15-x86_64/files-ui-verification.lZkQl8/ko-dark/report.json",
+        "rawReportSHA256": "de4a6a7177b6ff98694edd181bdd8a639843bf147009dec2b63953583d2bd012"
+      },
+      "ko-light": {
+        "checks": 283,
+        "failedChecks": [],
+        "diagnostics": {
+          "folderSizeAutomaticBytes": 21,
+          "folderSizeAutomaticTaskPending": false,
+          "folderSizeListingReady": true,
+          "folderSizeLoadedItemCount": 10000,
+          "folderSizeRequestButtonAvailable": true,
+          "folderSizeRequestResult": "Optional(FilesCore.BrowserModel.DirectorySizeStatus.available(21))",
+          "folderSizeRequestWasPending": true,
+          "remoteCloseCancelledPendingLoad": true,
+          "remoteDownloadSelected": true
+        },
+        "rawReport": "build/batch-input-ci-2899ed2/files-appkit-macos15-x86_64/files-ui-verification.lZkQl8/ko-light/report.json",
+        "rawReportSHA256": "4ca01ecf974a1632fd448574c42f89b366f82819f338cf7cc253aa0da99bf584"
+      }
+    }
+  },
+  "limits": [
+    "Intel en-light automatic folder-size check did not complete within the unchanged five-second budget; this workflow failed.",
+    "The per-folder manual size request succeeded in that same process; no cause or fix is inferred from this alone.",
+    "Later source 4a19117 is running separately and does not retroactively change this result."
+  ]
+}

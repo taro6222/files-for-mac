@@ -1,0 +1,30 @@
+{
+  "state": "passed",
+  "checks": {
+    "first100DisplayedWithin500msP95": true,
+    "modelEnumerationWithin2SecondsP95": true
+  },
+  "sourceBaseSHA": "4a19117ba4c2a78f6078a0d502d27078cfd7768b",
+  "architecture": "arm64",
+  "binarySHA256": "3c714e0bee40a4bac71700503fd4703b5b8093374b3ff2318fcea407bf6c7f43",
+  "samples": 20,
+  "computed": {
+    "firstDisplaySeconds": {
+      "max": 0.053263042,
+      "p95": 0.05299125
+    },
+    "modelLoadFinishedSeconds": {
+      "max": 0.446129833,
+      "p95": 0.444648375
+    },
+    "listingSeconds": {
+      "max": 0.454340833,
+      "p95": 0.453041083
+    }
+  },
+  "limits": [
+    "Optimized QA executable with warm OS caches; not a signed installed distribution.",
+    "AppKit display completion does not measure compositor frames or actual keyboard input.",
+    "Cold startup, 100k acceptance, idle memory, and eight-hour stability remain separate gates."
+  ]
+}
