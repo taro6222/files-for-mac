@@ -11,3 +11,5 @@ Sonoma 14.8.7(23J520) arm64 VM에서 Git과 Spotlight 시험 입력을 준비했
 [macOS 15 CI](https://github.com/taro6222/files-for-mac/actions/runs/44087558524)의 아키텍처별 실행 결과는 워크플로가 끝나면 기록한다.
 
 이전 [macOS 15 회귀 실행](https://github.com/taro6222/files-for-mac/actions/runs/44084563628)에서 Apple Silicon은 통과했다. Intel은 컴파일 109개 단계 중 106개까지 진행하고 12분 제한에 도달했다. Intel 러너의 디버그 빌드 제한을 20분으로 늘렸다. 새 설정에서는 전체 AppKit 시험 단계까지 도달하는지 확인한다.
+
+[후속 Intel 실행](INCREMENT_282.md)에서 빌드와 파일 작업 검사는 통과했으며 전체 AppKit 네 조합은 180초에 도달했다. 시간 초과 시 앱 스택을 수집해 다시 진단한다.

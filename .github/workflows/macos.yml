@@ -98,6 +98,7 @@ jobs:
           path: |
             ${{ runner.temp }}/files-ui-verification.*/*/report.json
             ${{ runner.temp }}/files-ui-verification.*/*/run.log
+            ${{ runner.temp }}/files-ui-verification.*/*/timeout-sample.txt
             ${{ runner.temp }}/files-ui-verification.*/*/*.png
           if-no-files-found: ignore
       - name: Build and launch the installed developer preview
