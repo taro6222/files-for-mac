@@ -14,8 +14,8 @@ M7 출시 검증이 진행 중이다. [유니버설 개발 프리뷰](verificati
 |---|---|---|
 | 설치·업데이트 | 유니버설 프리뷰의 Sonoma 14.8.7 설치·교체·복원, 두 언어의 실제 업데이트 메뉴 조회 | 서명·공증된 정식 배포본의 다운로드·최초 실행·버전 교체 |
 | SMB | 파일 시각, 이동·실행 취소, 게시 후 세션 재연결과 기록 중 단절 시 원본 보호 | 서버 권한 회수 시험, 장기 단절 및 외부 서버 검증 |
-| 원격 전체 AppKit | `05e2659`의 Apple Silicon 네 조합 각각 283개 통과. Intel은 이전 `3a65d40` 네 조합 각각 283개 통과 | `05e2659` Intel의 폴더 크기·원격·클라우드 준비 실패와 시험 이미지 resource busy 후 후속 소스 재검증 |
-| Xcode 진입점 | `bf8380c`의 Apple Silicon·Intel 실제 Xcode 빌드와 preview 채널 확인 | `396866c` Intel 성공, Apple Silicon과 `5284cb3`의 두 CPU 후속 결과 대기 |
+| 원격 전체 AppKit | `396866c` Apple Silicon 네 조합 각각 283개와 두 CPU 수신 계약 53개·재기동 14개·제한 실행기 9개 통과 | Intel 전체 UI·설치, 최신 `5284cb3`의 전체 실행 최종 결과 |
+| Xcode 진입점 | `5284cb3`의 Apple Silicon·Intel 실제 Xcode 빌드와 preview 채널 확인 | 정식 서명·배포된 산출물의 수용 검증 |
 | 장시간 | `86be2b0` 기준 소스의 최적화 QA 8시간 시험 실행 중, 실제 프로세스 확인 | 기준 실행 정상 종료와 추세 판정, `5284cb3`의 별도 8시간 실행·종료 판정 |
 
 실행별 증거와 정확한 제한은 [설치 프리뷰](verification/m7/INCREMENT_280.md), [SMB 기록 중 단절](verification/m7/INCREMENT_277.md), [서버 권한 회수](verification/m7/INCREMENT_285.md), [Intel UI 진단](verification/m7/INCREMENT_282.md), [Xcode 연결](verification/m7/INCREMENT_284.md), [8시간 시험](verification/m7/INCREMENT_283.md)에 기록했다.

@@ -16,3 +16,11 @@
 원본의 [StatusCenter XAML](https://github.com/files-community/Files/blob/99951c66928c4da714da8b1dd46039421182cbab/src/Files.App/UserControls/StatusCenter/StatusCenter.xaml), [상태 변환](https://github.com/files-community/Files/blob/99951c66928c4da714da8b1dd46039421182cbab/src/Files.App/Utils/StatusCenter/StatusCenterHelper.cs), [영문 문구](https://github.com/files-community/Files/blob/99951c66928c4da714da8b1dd46039421182cbab/src/Files.App/Strings/en-US/Resources.resw)의 고정 SHA를 확인해 카드·진행·메뉴 ID와 제목을 연결했다. 완료 카드·다른 대상·숨은 카드·다른 행의 버튼을 활성 증거로 인정하지 않으며 실행 기회를 놓치면 실패 결과·마지막 화면을 보존한다.
 
 로컬 Python 구문 검사와 보호 시험 5개가 통과했다. 보호 시험은 실제 Windows UI 성공 증거가 아니며 WinAppDriver 실행 후 원본 캡처와 기록을 다시 판정해야 한다. 이 단위는 앱 소스를 바꾸지 않았으므로 Swift·전체 AppKit을 반복 실행하지 않았다. 현재 앱의 검증은 304단계와 요청한 두 CPU 실행에 연결한다. 서명·공증 자격 증명과 실제 접근성 수용은 계속 미완료다.
+
+## 업로드된 중간 원격 증거 확인
+
+`396866c`의 실제 보고서를 다운로드했다. Apple Silicon 전체 AppKit 네 언어·외형 조합 각각 283개, 두 CPU 각각 제한 실행기 9개·수신 계약 53개·위치 미기록 SIGKILL 재기동 14개가 모두 통과했다. Apple Silicon 독립 APFS Spotlight 범위 4개도 통과했다. Intel 파일 작업·수신 단계는 이전 실패 지점을 넘어섰으며 전체 UI의 최종 결과는 진행 중이다. [원본 결과와 실행 상태](396866c-ci-verification.json)를 부분 결과로 보존했다.
+
+ARM 네 실행의 전체 AppKit 표시 관찰값은 1.803–2.356초, 첫 표시는 22.0–32.7ms였다. 이는 서로 다른 언어·외형 네 실행이며 20회 p95 성능 기준 충족으로 표시하지 않는다.
+
+더 최신 앱 소스 `5284cb3`의 Apple Silicon·Intel Xcode 빌드는 모두 성공했다. 같은 실행의 전체 UI·설치 검증은 별도 최종 판정한다. Windows 전송·취소 수집은 [실제 실행](https://github.com/taro6222/files-for-mac/actions/runs/45677056571)의 원본 빌드 단계이며 결과를 기다린다. 이 상태는 305단계 전체 완료를 뜻하지 않는다.
