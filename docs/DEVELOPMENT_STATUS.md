@@ -1,10 +1,24 @@
 # 개발 현황
 
-갱신: 2026-11-15
+갱신 2026-11-25
 
 ## 현재 단계
 
 M7 출시 검증이 진행 중이다. [유니버설 개발 프리뷰](verification/m7/PREVIEW_0.1.0.md)의 Apple Silicon 설치·교체·복원은 통과했다. 정식 서명·공증, Intel과 최소 macOS, 실제 서버, Windows 실행 화면, VoiceOver와 장시간 검증은 [출시 검증 현황](verification/m7/RELEASE_GATES.md)에서 추적한다.
+
+원본 명령 202개, 설정 143개, 화면 33개가 대응표에 분류돼 있으며 구조 감사가 통과했다. 이 수치는 각 항목의 실제 수용 검증률과 별도로 관리한다. 전체 UI 상태 대조와 VoiceOver 동선, 외부 서비스 및 지원 환경별 미검증 항목이 있어 전체 대응 완료 판정은 진행 중이다.
+
+## 최신 검증과 남은 실행
+
+| 항목 | 확인한 결과 | 남은 실행 |
+|---|---|---|
+| 설치·업데이트 | 유니버설 프리뷰의 Sonoma 14.8.7 설치·교체·복원, 두 언어의 실제 업데이트 메뉴 조회 | 서명·공증된 정식 배포본의 다운로드·최초 실행·버전 교체 |
+| SMB | 파일 시각, 이동·실행 취소, 게시 후 세션 재연결과 기록 중 단절 시 원본 보호 | 서버 권한 회수 시험, 장기 단절 및 외부 서버 검증 |
+| Intel 전체 AppKit | 빌드·Swift 회귀·실마운트와 파일 작업 네 조합 통과, 전체 UI 검사는 시간 초과 | 스택 수집을 추가한 전체 UI 재시험과 원인 진단 |
+| Xcode 진입점 | 현재 앱 소스와 로컬 코어 연결, 모듈 생성·전체 앱 타입 검사 통과 | Apple Silicon·Intel의 실제 Xcode 빌드 |
+| 장시간 | 현재 커밋의 최적화 QA 앱으로 8시간 시험 시작, 해시·프로세스·초기 사이클 확인 | 정상 종료와 최종 보고서·메모리 추세·누수 판정 |
+
+실행별 증거와 정확한 제한은 [설치 프리뷰](verification/m7/INCREMENT_280.md), [SMB 기록 중 단절](verification/m7/INCREMENT_277.md), [서버 권한 회수](verification/m7/INCREMENT_285.md), [Intel UI 진단](verification/m7/INCREMENT_282.md), [Xcode 연결](verification/m7/INCREMENT_284.md), [8시간 시험](verification/m7/INCREMENT_283.md)에 기록했다.
 
 ## 이번 구현 단위
 
