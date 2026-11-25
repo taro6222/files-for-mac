@@ -147,6 +147,24 @@ public final class PromisedFileIntake: @unchecked Sendable {
             items[item.name] = item
         }
     }
+    static func validate(_ url: URL, snapshot: CopyEngine.VerificationSnapshot, in intakes: [PromisedFileIntake]) throws {
+        guard !intakes.isEmpty else { return }
+        guard let intake = intakes.first(where: { url.deletingLastPathComponent().standardizedFileURL == $0.receivingDirectory }) else {
+            throw PromisedFileIntakeError.invalidLocation
+        }
+        try intake.validateSource(url, snapshot: snapshot)
+    }
+    func validateSource(_ url: URL, snapshot: CopyEngine.VerificationSnapshot) throws {
+        try processing.withLock {
+            try requireOwnedDirectories()
+            let item = state.withLock { items[url.lastPathComponent] }
+            guard let item, url.standardizedFileURL == receivingDirectory.appendingPathComponent(item.name),
+                  LocalEntryIdentity.read(url) == item.identity,
+                  snapshot.withPermissions == item.fingerprint, snapshot.metadata == item.metadata else {
+                throw PromisedFileIntakeError.changedItem
+            }
+        }
+    }
     private func requireOwnedDirectories() throws {
         let url = directoryURL.appendingPathComponent(Self.manifestName)
         guard (try? Self.directoryIdentity(directoryURL)) == header.directoryIdentity,

@@ -10,6 +10,7 @@ final class SecondaryBrowserPane: NSView, NSTableViewDataSource, NSTableViewDele
     var onActivate: (() -> Void)?
     var onLocationChange: (() -> Void)?
     var onSelectionChange: (() -> Void)?
+    var onPromiseDrop: (([NSFilePromiseReceiver], URL) -> Bool)?
     var onFileDrop: (([URL], URL, FileDropIntent) -> Bool)?
     var onOpenFolderInNewTab: ((URL) -> Void)?
     var onOpenFile: ((URL) -> Void)?
@@ -241,7 +242,7 @@ final class SecondaryBrowserPane: NSView, NSTableViewDataSource, NSTableViewDele
         table.delegate = self; table.dataSource = self; table.onActivate = { [weak self] in self?.activate() }
         table.onDoubleClickBackground = { [weak self] in self?.handleBackgroundDoubleClick() }
         table.doubleAction = #selector(openSelection(_:)); table.target = self
-        table.registerForDraggedTypes([.fileURL])
+        table.registerForDraggedTypes(FilePromiseDrop.types)
         table.setDraggingSourceOperationMask([.copy, .move], forLocal: true)
         table.setDraggingSourceOperationMask(.copy, forLocal: false)
         for (key, title, width) in [("name", L("이름", "Name"), 240.0), ("tag", L("Finder 태그", "Finder Tags"), 100.0), ("syncStatus", L("동기화 상태", "Sync Status"), 150.0), ("created", L("생성일", "Date Created"), 200.0), ("modified", L("수정일", "Date Modified"), 185.0), ("kind", L("종류", "Kind"), 120.0), ("size", L("크기", "Size"), 90.0)] {
@@ -270,6 +271,16 @@ final class SecondaryBrowserPane: NSView, NSTableViewDataSource, NSTableViewDele
         gridView.onActivate = { [weak self] in self?.activate() }
         gridView.onOpen = { [weak self] item in self?.openGridItem(item) }
         gridView.onDoubleClickBackground = { [weak self] in self?.handleBackgroundDoubleClick() }
+        gridView.onPromiseDrop = { [weak self] receivers, item in
+            guard let self, let destination = item?.isBrowsable == true ? item?.url : self.model.location else { return false }
+            self.activate()
+            return self.onPromiseDrop?(receivers, destination) ?? false
+        }
+        listView.onPromiseDrop = gridView.onPromiseDrop
+        columnView.onPromiseDrop = { [weak self] receivers, item, columnURL in
+            guard let self else { return false }; self.activate()
+            return self.onPromiseDrop?(receivers, item?.isBrowsable == true ? item!.url : columnURL) ?? false
+        }
         gridView.onFileDrop = { [weak self] sources, item, intent in
             guard let self, let destination = item?.isBrowsable == true ? item?.url : self.model.location else { return false }
             self.activate()
@@ -535,7 +546,8 @@ final class SecondaryBrowserPane: NSView, NSTableViewDataSource, NSTableViewDele
     func tableView(_ tableView: NSTableView, validateDrop info: any NSDraggingInfo,
                    proposedRow row: Int, proposedDropOperation dropOperation: NSTableView.DropOperation) -> NSDragOperation {
         guard dropDestination(row: row, operation: dropOperation) != nil,
-              !draggedURLs(info).isEmpty else { return [] }
+              (FilePromiseDrop.isExternalPromise(info) || !draggedURLs(info).isEmpty) else { return [] }
+        if FilePromiseDrop.isExternalPromise(info) { return .copy }
         let intent = dropIntent(info)
         return intent == .move ? .move : .copy
     }
@@ -543,6 +555,7 @@ final class SecondaryBrowserPane: NSView, NSTableViewDataSource, NSTableViewDele
                    row: Int, dropOperation: NSTableView.DropOperation) -> Bool {
         activate()
         guard let destination = dropDestination(row: row, operation: dropOperation) else { return false }
+        if FilePromiseDrop.isExternalPromise(info) { return onPromiseDrop?(FilePromiseDrop.receivers(info), destination) ?? false }
         let urls = draggedURLs(info); guard !urls.isEmpty else { return false }
         return onFileDrop?(urls, destination, dropIntent(info)) ?? false
     }

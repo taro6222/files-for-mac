@@ -115,12 +115,13 @@ public enum CopyEngine {
                            cancellation: CopyCancellation, conflictPolicy: CopyConflictPolicy = .skip,
                            recordUndo: Bool = true,
                            expectedDestination: ShelfEntry? = nil,
+                           sourceIntakes: [PromisedFileIntake] = [],
                            progress: @escaping @Sendable (CopyProgress) -> Void = { _ in }) async -> CopyReport {
         await withTaskCancellationHandler {
             await Task.detached(priority: .userInitiated) {
                 execute(sources: sources, destination: destination, journalDirectory: journalDirectory,
                         cancellation: cancellation, conflictPolicy: conflictPolicy,
-                        recordUndo: recordUndo, expectedDestination: expectedDestination, progress: progress)
+                        recordUndo: recordUndo, expectedDestination: expectedDestination, sourceIntakes: sourceIntakes, progress: progress)
             }.value
         } onCancel: { cancellation.cancel() }
     }
@@ -172,6 +173,7 @@ public enum CopyEngine {
                                 cancellation: CopyCancellation, conflictPolicy: CopyConflictPolicy,
                                 recordUndo: Bool, explicitName: String? = nil, expectedDestination: ShelfEntry? = nil,
                                 expectedTemplate: ShelfEntry? = nil, expectedSource: ShelfEntry? = nil,
+                                sourceIntakes: [PromisedFileIntake] = [],
                                 progress: @Sendable (CopyProgress) -> Void) -> CopyReport {
         let fm = FileManager()
         let delegate = CopyDelegate(cancellation)
@@ -233,6 +235,7 @@ public enum CopyEngine {
                 } else {
                     guard exists || lookupError == ENOENT else { throw POSIXError(POSIXErrorCode(rawValue: lookupError) ?? .EIO) }
                     let before = try makeSnapshot(source, cancellation: cancellation)
+                    try PromisedFileIntake.validate(source, snapshot: before, in: sourceIntakes)
                     let temporary = destination.appendingPathComponent(".files-copy-" + report.id.uuidString + "-\(index)")
                     report.items[index].temporary = temporary
                     report.items[index].state = "copying"; try save()
@@ -262,7 +265,9 @@ public enum CopyEngine {
                     }
                     emit("verifying", stagedTransfer: stagedTransfer)
                     let verifiedPayload = try makeSnapshot(payload, cancellation: cancellation)
-                    guard try makeSnapshot(source, cancellation: cancellation).matchesOriginal(before) else {
+                    let currentSource = try makeSnapshot(source, cancellation: cancellation)
+                    try PromisedFileIntake.validate(source, snapshot: currentSource, in: sourceIntakes)
+                    guard currentSource.matchesOriginal(before) else {
                         throw CopyFailure(text: "Source changed during copying.")
                     }
                     try verifiedPayload.verifyTransferredContents(of: before)

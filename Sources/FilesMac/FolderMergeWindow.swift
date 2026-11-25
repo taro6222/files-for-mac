@@ -17,7 +17,8 @@ final class FolderMergeWindow: NSWindowController, NSWindowDelegate {
     private let details = NSTextView()
     private let cancel = NSButton(title: L("취소", "Cancel"), target: nil, action: #selector(cancelMerge(_:)))
 
-    static func start(sources: [URL], destination: URL, completion: @escaping @MainActor () -> Void) {
+    static func start(sources: [URL], destination: URL, sourceIntakes: [PromisedFileIntake] = [],
+                      completion: @escaping @MainActor () -> Void) {
         guard !isRunning else { return }
         let controller = FolderMergeWindow(sources: sources, destination: destination)
         operations.append(controller); controller.showWindow(nil); controller.window?.makeKeyAndOrderFront(nil)
@@ -28,7 +29,7 @@ final class FolderMergeWindow: NSWindowController, NSWindowDelegate {
         Task { [controller] in
             let report = await CopyMergeBatch.run(sources: sources, destination: destination,
                                                   journalDirectory: journals,
-                                                  cancellation: controller.cancellation) { [weak controller] update in
+                                                  cancellation: controller.cancellation, sourceIntakes: sourceIntakes) { [weak controller] update in
                 Task { @MainActor in controller?.update(update) }
             }
             controller.finish(report)

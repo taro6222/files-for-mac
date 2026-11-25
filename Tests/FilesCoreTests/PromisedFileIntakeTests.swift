@@ -143,3 +143,80 @@ private struct PromiseIntakeFixture {
     #expect(throws: PromisedFileIntakeError.invalidManifest) { try PromisedFileIntake(recovering: f.intake.directoryURL) }
     #expect(try Data(contentsOf: file) == Data("keep this".utf8))
 }
+
+@Test func promisedCopyRejectsChangesAfterReceiptAndPreservesDestination() async throws {
+    let f = try PromiseIntakeFixture(); defer { f.clean() }
+    let file = f.intake.receivingDirectory.appendingPathComponent("payload.txt")
+    try Data("received".utf8).write(to: file)
+    try f.intake.registerReceivedFile(file)
+    let destination = f.root.appendingPathComponent("destination")
+    try FileManager.default.createDirectory(at: destination, withIntermediateDirectories: true)
+    try Data("changed after policy opened".utf8).write(to: file)
+    let report = await CopyEngine.run(sources: [file], destination: destination,
+        journalDirectory: f.root.appendingPathComponent("operations"), cancellation: CopyCancellation(),
+        sourceIntakes: [f.intake])
+    #expect(report.items.first?.state == "failed")
+    #expect(try FileManager.default.contentsOfDirectory(atPath: destination.path).isEmpty)
+    #expect(try Data(contentsOf: file) == Data("changed after policy opened".utf8))
+}
+
+@Test func promisedCopyKeepsSameNamesFromIndependentReceiversInOneUndoBatch() async throws {
+    let f = try PromiseIntakeFixture(); defer { f.clean() }
+    let second = try PromisedFileIntake(storageDirectory: f.root)
+    let sources = [f.intake, second].enumerated().map { index, intake in
+        (intake.receivingDirectory.appendingPathComponent("same.txt"), Data("receiver \(index)".utf8))
+    }
+    for (index, source) in sources.enumerated() {
+        try source.1.write(to: source.0)
+        try [f.intake, second][index].registerReceivedFile(source.0)
+    }
+    let destination = f.root.appendingPathComponent("destination")
+    try FileManager.default.createDirectory(at: destination, withIntermediateDirectories: true)
+    let report = await CopyEngine.run(sources: sources.map(\.0), destination: destination,
+        journalDirectory: f.root.appendingPathComponent("operations"), cancellation: CopyCancellation(),
+        conflictPolicy: .keepBoth, sourceIntakes: [f.intake, second])
+    #expect(report.items.count == 2)
+    #expect(report.items.allSatisfy { $0.state == "completed" })
+    #expect(Set(report.items.map(\.target)).count == 2)
+    for (index, item) in report.items.enumerated() { #expect(try Data(contentsOf: item.target) == sources[index].1) }
+    #expect(f.intake.itemCount == 1 && second.itemCount == 1)
+    let journals = f.root.appendingPathComponent("operations")
+    let undo = try #require(CopyEngine.latestUndoCopy(journalDirectory: journals))
+    #expect(undo.items.count == 2)
+    let result = await CopyEngine.undoCopy(undo, journalDirectory: journals)
+    #expect(result.items.allSatisfy { $0.state == "completed" })
+    #expect(try FileManager.default.contentsOfDirectory(atPath: destination.path).isEmpty)
+    for source in sources { #expect(try Data(contentsOf: source.0) == source.1) }
+}
+
+@Test func promisedMergeRejectsChangedReceiptBeforePlanning() async throws {
+    let f = try PromiseIntakeFixture(); defer { f.clean() }
+    let folder = f.intake.receivingDirectory.appendingPathComponent("folder")
+    try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+    let file = folder.appendingPathComponent("file.txt")
+    try Data("received".utf8).write(to: file)
+    try f.intake.registerReceivedFile(folder)
+    let destination = f.root.appendingPathComponent("destination")
+    let existing = destination.appendingPathComponent("folder")
+    try FileManager.default.createDirectory(at: existing, withIntermediateDirectories: true)
+    try Data("changed".utf8).write(to: file)
+    let report = await CopyMergeBatch.run(sources: [folder], destination: destination,
+        journalDirectory: f.root.appendingPathComponent("operations"), cancellation: CopyCancellation(),
+        sourceIntakes: [f.intake])
+    #expect(report.items.first?.state == "failed")
+    #expect(try FileManager.default.contentsOfDirectory(atPath: existing.path).isEmpty)
+    #expect(try Data(contentsOf: file) == Data("changed".utf8))
+}
+
+@Test func promisedCopyRefusesUnregisteredSourceInIntakeBatch() async throws {
+    let f = try PromiseIntakeFixture(); defer { f.clean() }
+    let file = f.root.appendingPathComponent("unregistered.txt")
+    try Data("not a receipt".utf8).write(to: file)
+    let destination = f.root.appendingPathComponent("destination")
+    try FileManager.default.createDirectory(at: destination, withIntermediateDirectories: true)
+    let report = await CopyEngine.run(sources: [file], destination: destination,
+        journalDirectory: f.root.appendingPathComponent("operations"), cancellation: CopyCancellation(),
+        sourceIntakes: [f.intake])
+    #expect(report.items.first?.state == "failed")
+    #expect(try FileManager.default.contentsOfDirectory(atPath: destination.path).isEmpty)
+}

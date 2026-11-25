@@ -114,7 +114,7 @@ final class FileColumnView: NSView {
             table.onDoubleClickBackground = { [weak self] in self?.owner?.onDoubleClickBackground?() }
             table.onValidateDrop = { [weak self] info, row in self?.owner?.validateDrop(info, column: self, row: row) ?? [] }
             table.onAcceptDrop = { [weak self] info, row in self?.owner?.acceptDrop(info, column: self, row: row) ?? false }
-            table.registerForDraggedTypes([.fileURL]); table.setDraggingSourceOperationMask([.copy, .move], forLocal: true); table.setDraggingSourceOperationMask(.copy, forLocal: false)
+            table.registerForDraggedTypes(FilePromiseDrop.types); table.setDraggingSourceOperationMask([.copy, .move], forLocal: true); table.setDraggingSourceOperationMask(.copy, forLocal: false)
             let name = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("name")); name.resizingMask = .autoresizingMask; table.addTableColumn(name)
             scroll.documentView = table; scroll.hasVerticalScroller = true; scroll.translatesAutoresizingMaskIntoConstraints = false
             view.addSubview(scroll)
@@ -206,6 +206,7 @@ final class FileColumnView: NSView {
     var onDoubleClickBackground: (() -> Void)?
     var onActivate: (() -> Void)?
     var onSelectAncestor: ((URL, URL) -> Void)?
+    var onPromiseDrop: (([NSFilePromiseReceiver], FileItem?, URL) -> Bool)?
     var onFileDrop: (([URL], FileItem?, URL, FileDropIntent) -> Bool)?
     var contextMenu: NSMenu? { didSet { columns.forEach { $0.table.menu = contextMenu } } }
 
@@ -422,13 +423,16 @@ final class FileColumnView: NSView {
         return .resolve(modifiers: modifiers, sourceAllowsMove: info.draggingSourceOperationMask.contains(.move))
     }
     private func validateDrop(_ info: any NSDraggingInfo, column: Column?, row: Int) -> NSDragOperation {
-        guard let column, !draggedURLs(info).isEmpty else { return [] }
+        guard let column, (FilePromiseDrop.isExternalPromise(info) || !draggedURLs(info).isEmpty) else { return [] }
         if row >= 0, column.items.indices.contains(row), !column.items[row].isBrowsable { return [] }
+        if FilePromiseDrop.isExternalPromise(info) { return .copy }
         return dropIntent(info) == .move ? .move : .copy
     }
     private func acceptDrop(_ info: any NSDraggingInfo, column: Column?, row: Int) -> Bool {
-        guard let column else { return false }; let urls = draggedURLs(info); guard !urls.isEmpty else { return false }
+        guard let column else { return false }
         let item = row >= 0 && column.items.indices.contains(row) ? column.items[row] : nil
+        if FilePromiseDrop.isExternalPromise(info) { return onPromiseDrop?(FilePromiseDrop.receivers(info), item, column.url) ?? false }
+        let urls = draggedURLs(info); guard !urls.isEmpty else { return false }
         return onFileDrop?(urls, item, column.url, dropIntent(info)) ?? false
     }
 

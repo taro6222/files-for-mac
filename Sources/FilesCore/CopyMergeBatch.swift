@@ -31,6 +31,7 @@ public struct CopyMergeBatchProgress: Sendable {
 public enum CopyMergeBatch {
     public static func run(sources: [URL], destination: URL, journalDirectory: URL,
                            cancellation: CopyCancellation,
+                           sourceIntakes: [PromisedFileIntake] = [],
                            progress: @escaping @Sendable (CopyMergeBatchProgress) -> Void = { _ in }) async -> CopyMergeBatchReport {
         let id = UUID()
         var report = CopyMergeBatchReport(version: 1, id: id, state: "running", items: sources.map {
@@ -56,12 +57,16 @@ public enum CopyMergeBatch {
             let source = sources[index]
             let target = report.items[index].target
             do {
+                if !sourceIntakes.isEmpty {
+                    let snapshot = try await Task.detached { try CopyEngine.makeSnapshot(source, cancellation: cancellation) }.value
+                    try PromisedFileIntake.validate(source, snapshot: snapshot, in: sourceIntakes)
+                }
                 let sourceKind = try kind(source)
                 let targetKind = try optionalKind(target)
                 if targetKind == nil {
                     let child = await CopyEngine.run(sources: [source], destination: destination,
                         journalDirectory: journalDirectory, cancellation: cancellation,
-                        conflictPolicy: .skip, recordUndo: false)
+                        conflictPolicy: .skip, recordUndo: false, sourceIntakes: sourceIntakes)
                     guard let item = child.items.first else { throw BatchFailure(text: "Copy returned no result.") }
                     report.items[index].state = item.state
                     report.items[index].addedCount = item.state == "completed" ? 1 : 0
@@ -72,6 +77,10 @@ public enum CopyMergeBatch {
                     }
                 } else if sourceKind == .directory && targetKind == .directory {
                     let plan = try CopyMergePlanner.plan(source: source, target: target)
+                    if !sourceIntakes.isEmpty {
+                        let snapshot = try await Task.detached { try CopyEngine.makeSnapshot(source, cancellation: cancellation) }.value
+                        try PromisedFileIntake.validate(source, snapshot: snapshot, in: sourceIntakes)
+                    }
                     let child = await CopyMergeExecutor.run(plan: plan, journalDirectory: journalDirectory,
                                                             cancellation: cancellation, recordUndo: false)
                     report.items[index].addedCount = child.items.filter { $0.state == "completed" }.count

@@ -45,6 +45,7 @@ final class FileListView: NSView, NSTableViewDataSource, NSTableViewDelegate {
     var onOpen: ((FileItem) -> Void)?
     var onDoubleClickBackground: (() -> Void)? { didSet { table.onDoubleClickBackground = onDoubleClickBackground } }
     var onActivate: (() -> Void)?
+    var onPromiseDrop: (([NSFilePromiseReceiver], FileItem?) -> Bool)?
     var onFileDrop: (([URL], FileItem?, FileDropIntent) -> Bool)?
     var contextMenu: NSMenu? { get { table.menu } set { table.menu = newValue } }
 
@@ -55,7 +56,7 @@ final class FileListView: NSView, NSTableViewDataSource, NSTableViewDelegate {
         table.allowsMultipleSelection = true; table.dataSource = self; table.delegate = self
         table.target = self; table.doubleAction = #selector(openSelection(_:))
         table.onActivate = { [weak self] in self?.onActivate?() }
-        table.registerForDraggedTypes([.fileURL])
+        table.registerForDraggedTypes(FilePromiseDrop.types)
         table.setDraggingSourceOperationMask([.copy, .move], forLocal: true)
         table.setDraggingSourceOperationMask(.copy, forLocal: false)
         let column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("name")); column.resizingMask = .autoresizingMask
@@ -139,13 +140,15 @@ final class FileListView: NSView, NSTableViewDataSource, NSTableViewDelegate {
         guard let item = item(at: row) else { return nil }; return FileDragPromise(item: item)
     }
     func tableView(_ tableView: NSTableView, validateDrop info: any NSDraggingInfo, proposedRow row: Int, proposedDropOperation operation: NSTableView.DropOperation) -> NSDragOperation {
-        guard !draggedURLs(info).isEmpty else { return [] }
+        guard (FilePromiseDrop.isExternalPromise(info) || !draggedURLs(info).isEmpty) else { return [] }
         if operation == .on, item(at: row)?.isBrowsable != true { return [] }
+        if FilePromiseDrop.isExternalPromise(info) { return .copy }
         return dropIntent(info) == .move ? .move : .copy
     }
     func tableView(_ tableView: NSTableView, acceptDrop info: any NSDraggingInfo, row: Int, dropOperation operation: NSTableView.DropOperation) -> Bool {
-        let urls = draggedURLs(info); guard !urls.isEmpty else { return false }
         let item = operation == .on ? item(at: row) : nil
+        if FilePromiseDrop.isExternalPromise(info) { return onPromiseDrop?(FilePromiseDrop.receivers(info), item) ?? false }
+        let urls = draggedURLs(info); guard !urls.isEmpty else { return false }
         return onFileDrop?(urls, item, dropIntent(info)) ?? false
     }
     @objc private func openSelection(_ sender: Any?) { if let item = selectedItems.first { onOpen?(item) } }

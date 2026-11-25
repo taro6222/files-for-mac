@@ -99,6 +99,7 @@ final class FileGridView: NSView, NSCollectionViewDataSource, NSCollectionViewDe
     var onOpen: ((FileItem) -> Void)?
     var onDoubleClickBackground: (() -> Void)? { didSet { collection.onDoubleClickBackground = onDoubleClickBackground } }
     var onActivate: (() -> Void)?
+    var onPromiseDrop: (([NSFilePromiseReceiver], FileItem?) -> Bool)?
     var onFileDrop: (([URL], FileItem?, FileDropIntent) -> Bool)?
     var contextMenu: NSMenu? { get { collection.menu } set { collection.menu = newValue } }
 
@@ -111,7 +112,7 @@ final class FileGridView: NSView, NSCollectionViewDataSource, NSCollectionViewDe
         collection.dataSource = self; collection.delegate = self
         collection.register(Item.self, forItemWithIdentifier: Item.identifier)
         collection.register(Header.self, forSupplementaryViewOfKind: NSCollectionView.elementKindSectionHeader, withIdentifier: Header.identifier)
-        collection.registerForDraggedTypes([.fileURL])
+        collection.registerForDraggedTypes(FilePromiseDrop.types)
         collection.setDraggingSourceOperationMask([.copy, .move], forLocal: true)
         collection.setDraggingSourceOperationMask(.copy, forLocal: false)
         collection.setAccessibilityLabel(L("파일 그리드", "File grid"))
@@ -208,13 +209,15 @@ final class FileGridView: NSView, NSCollectionViewDataSource, NSCollectionViewDe
         return .resolve(modifiers: modifiers, sourceAllowsMove: info.draggingSourceOperationMask.contains(.move))
     }
     private func validateDrop(_ info: any NSDraggingInfo, index: IndexPath?) -> NSDragOperation {
-        guard !draggedURLs(info).isEmpty else { return [] }
+        guard (FilePromiseDrop.isExternalPromise(info) || !draggedURLs(info).isEmpty) else { return [] }
         if let index, item(at: index)?.isBrowsable != true { return [] }
+        if FilePromiseDrop.isExternalPromise(info) { return .copy }
         return dropIntent(info) == .move ? .move : .copy
     }
     private func acceptDrop(_ info: any NSDraggingInfo, index: IndexPath?) -> Bool {
-        let urls = draggedURLs(info); guard !urls.isEmpty else { return false }
         let item = index.flatMap(item(at:))
+        if FilePromiseDrop.isExternalPromise(info) { return onPromiseDrop?(FilePromiseDrop.receivers(info), item) ?? false }
+        let urls = draggedURLs(info); guard !urls.isEmpty else { return false }
         return onFileDrop?(urls, item, dropIntent(info)) ?? false
     }
     #if DEBUG

@@ -34,11 +34,13 @@ if mode == "contract":
         "delegateReportsCollision", "delegateProtectsExistingDestination", "delegateRejectsChangedSource",
         "delegatePreservesBothSourceVersions", "offersDirectoryType", "delegateExportsDirectory",
         "delegatePreservesSymbolicLink", "unknownIdentityKeepsOnlyFileURL",
+        "receivePolicyCancellationRetainsRetry", "receiveHandoffIncludesAllIntakes", "receiveAcceptedBatchMarkedOnce",
+        "receiveDoesNotResubmitAcceptedBatch", "receivePauseRetainsVerifiedFiles", "receiveTypesIncludeURLAndPromises",
     }
     checks = result["checks"]
     if status or result.get("mode") != "delegate-contract" or not expected.issubset(checks) or not all(value is True for value in checks.values()):
         raise SystemExit(f"File promise delegate contract checks failed: {json.dumps(result, ensure_ascii=False)}")
-    print(f"{len(checks)} AppKit file promise delegate contract checks passed; actual drag acceptance remains separate")
+    print(f"{len(checks)} AppKit file promise export and receive-handoff contract checks passed; actual SDK drag delivery remains separate")
     raise SystemExit(0)
 app = output / "File Promise QA.app"
 macos = app / "Contents/MacOS"

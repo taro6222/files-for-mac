@@ -143,6 +143,14 @@ enum FilePromiseVerification {
                 checks["delegateExportsDirectory"] = directory.0 == nil
                     && (try? Data(contentsOf: directoryTarget.appendingPathComponent("nested.txt"))) == bytes
                 checks["delegatePreservesSymbolicLink"] = (try? fm.destinationOfSymbolicLink(atPath: directoryTarget.appendingPathComponent("link").path)) == "nested.txt"
+                let intake = try await Task.detached { () throws -> PromisedFileIntake in
+                    let intake = try PromisedFileIntake(storageDirectory: root.appendingPathComponent("intake-contract"))
+                    let url = intake.receivingDirectory.appendingPathComponent("received.txt")
+                    try bytes.write(to: url)
+                    try intake.registerReceivedFile(url)
+                    return intake
+                }.value
+                checks.merge(await FilePromiseReceiveWindow.verifyHandoff(intakes: [intake], destination: target)) { _, new in new }
                 diagnostics["collisionError"] = collision.0 ?? ""
                 diagnostics["staleSourceError"] = stale.0 ?? ""
             }

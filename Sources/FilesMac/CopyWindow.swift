@@ -25,7 +25,8 @@ final class CopyWindow: NSWindowController, NSWindowDelegate {
 
     static func start(sources: [URL], destination: URL, conflictPolicy: CopyConflictPolicy = .skip,
                       expectedDestination: ShelfEntry? = nil,
-                      journalDirectory: URL, completion: @escaping @MainActor () -> Void) {
+                      journalDirectory: URL, sourceIntakes: [PromisedFileIntake] = [],
+                      completion: @escaping @MainActor () -> Void) {
         guard !isRunning, !MoveWindow.isRunning, !FolderMergeWindow.isRunning,
               !BrowserWindow.entryOperationRunning else { return }
         let destinationIdentity = expectedDestination ?? ShelfEntry(destination.resolvingSymlinksInPath())
@@ -37,7 +38,7 @@ final class CopyWindow: NSWindowController, NSWindowDelegate {
         Task { [controller] in
             let report = await CopyEngine.run(sources: sources, destination: destination, journalDirectory: journalDirectory,
                                               cancellation: controller.cancellation, conflictPolicy: conflictPolicy,
-                                              expectedDestination: destinationIdentity) { [weak controller] update in
+                                              expectedDestination: destinationIdentity, sourceIntakes: sourceIntakes) { [weak controller] update in
                 Task { @MainActor in controller?.update(update) }
             }
             controller.finish(report)
@@ -45,7 +46,8 @@ final class CopyWindow: NSWindowController, NSWindowDelegate {
             if report.journalError == nil, let destinationIdentity, !retrySources.isEmpty {
                 controller.retryAction = {
                     start(sources: retrySources, destination: destinationIdentity.url,
-                          expectedDestination: destinationIdentity, journalDirectory: journalDirectory, completion: completion)
+                          expectedDestination: destinationIdentity, journalDirectory: journalDirectory,
+                          sourceIntakes: sourceIntakes, completion: completion)
                 }
                 controller.retry.isHidden = false
             }

@@ -462,7 +462,7 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         table.autosaveTableColumns = restoresLayout
         table.columnAutoresizingStyle = .lastColumnOnlyAutoresizingStyle
         table.delegate = self; table.dataSource = self; table.target = self; table.doubleAction = #selector(openSelection(_:))
-        table.registerForDraggedTypes([.fileURL])
+        table.registerForDraggedTypes(FilePromiseDrop.types)
         table.setDraggingSourceOperationMask([.copy, .move], forLocal: true)
         table.setDraggingSourceOperationMask(.copy, forLocal: false)
         table.setAccessibilityLabel(L("파일 목록", "File list"))
@@ -509,6 +509,17 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         gridView.onActivate = { [weak self] in self?.setSecondaryActive(false) }
         gridView.onOpen = { [weak self] item in self?.openGridItem(item) }
         gridView.onDoubleClickBackground = { [weak self] in self?.handleBackgroundDoubleClick() }
+        gridView.onPromiseDrop = { [weak self] receivers, item in
+            guard let self, let destination = item?.isBrowsable == true ? item?.url : self.model.location else { return false }
+            self.setSecondaryActive(false)
+            return self.receivePromises(receivers, destination: destination)
+        }
+        listView.onPromiseDrop = gridView.onPromiseDrop
+        columnView.onPromiseDrop = { [weak self] receivers, item, columnURL in
+            guard let self else { return false }
+            self.setSecondaryActive(false)
+            return self.receivePromises(receivers, destination: item?.isBrowsable == true ? item!.url : columnURL)
+        }
         gridView.onFileDrop = { [weak self] sources, item, intent in
             guard let self, let destination = item?.isBrowsable == true ? item?.url : self.model.location else { return false }
             if intent == .move { self.prepareMove(sources: sources, destination: destination) }
@@ -1457,13 +1468,15 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
     func tableView(_ tableView: NSTableView, validateDrop info: any NSDraggingInfo,
                    proposedRow row: Int, proposedDropOperation dropOperation: NSTableView.DropOperation) -> NSDragOperation {
         guard primaryDropDestination(row: row, operation: dropOperation) != nil,
-              !draggedURLs(info).isEmpty else { return [] }
+              (FilePromiseDrop.isExternalPromise(info) || !draggedURLs(info).isEmpty) else { return [] }
+        if FilePromiseDrop.isExternalPromise(info) { return .copy }
         return dropIntent(info) == .move ? .move : .copy
     }
     func tableView(_ tableView: NSTableView, acceptDrop info: any NSDraggingInfo,
                    row: Int, dropOperation: NSTableView.DropOperation) -> Bool {
         setSecondaryActive(false)
         guard let destination = primaryDropDestination(row: row, operation: dropOperation) else { return false }
+        if FilePromiseDrop.isExternalPromise(info) { return receivePromises(FilePromiseDrop.receivers(info), destination: destination) }
         let sources = draggedURLs(info); guard !sources.isEmpty else { return false }
         if dropIntent(info) == .move { prepareMove(sources: sources, destination: destination) }
         else { prepareCopy(sources: sources, destination: destination) }
@@ -2739,8 +2752,18 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
             }
         }
     }
-    private func prepareCopy(sources: [URL], destination: URL, validateSources: @escaping () -> Bool = { true }) {
-        guard !Self.entryOperationRunning, !CopyWindow.isRunning, !FolderMergeWindow.isRunning, let window else { return }
+    private func receivePromises(_ receivers: [NSFilePromiseReceiver], destination: URL) -> Bool {
+        guard let identity = ShelfEntry(destination.resolvingSymlinksInPath()) else { return false }
+        return FilePromiseReceiveWindow.start(receivers: receivers, destination: destination) { [weak self] sources, intakes, decision in
+            guard let self, self.window?.isVisible == true else { decision(false); return }
+            self.prepareCopy(sources: sources, destination: destination,
+                             validateSources: { identity.isCurrent }, sourceIntakes: intakes, onDecision: decision)
+        }
+    }
+    private func prepareCopy(sources: [URL], destination: URL, validateSources: @escaping () -> Bool = { true },
+                             sourceIntakes: [PromisedFileIntake] = [], onDecision: ((Bool) -> Void)? = nil) {
+        guard !Self.entryOperationRunning, !CopyWindow.isRunning, !MoveWindow.isRunning,
+              !FolderMergeWindow.isRunning, let window else { onDecision?(false); return }
         let targetModel = activeModel
         let canMergeFolders = sources.contains { hasFolderMergeConflict(source: $0, destination: destination) }
         let alert = NSAlert()
@@ -2759,22 +2782,26 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         let comparison = addConflictComparison(to: alert, sources: sources, destination: destination)
         alert.beginSheetModal(for: window) { response in
             comparison.cancel()
+            guard !Self.entryOperationRunning, !CopyWindow.isRunning, !MoveWindow.isRunning,
+                  !FolderMergeWindow.isRunning else { onDecision?(false); return }
             if canMergeFolders, response == .alertFirstButtonReturn {
-                guard validateSources() else { return }
-                FolderMergeWindow.start(sources: sources, destination: destination) { targetModel.reload() }
+                guard validateSources() else { onDecision?(false); return }
+                FolderMergeWindow.start(sources: sources, destination: destination, sourceIntakes: sourceIntakes) { targetModel.reload() }
+                onDecision?(true)
                 return
             }
             let keepResponse: NSApplication.ModalResponse = canMergeFolders ? .alertSecondButtonReturn : .alertFirstButtonReturn
             let skipResponse = NSApplication.ModalResponse(rawValue: keepResponse.rawValue + 1)
-            guard response == keepResponse || response == skipResponse else { return }
-            guard validateSources() else { return }
+            guard response == keepResponse || response == skipResponse else { onDecision?(false); return }
+            guard validateSources() else { onDecision?(false); return }
             CopyWindow.start(sources: sources, destination: destination,
                              conflictPolicy: response == keepResponse ? .keepBoth : .skip,
-                             journalDirectory: journals) {
+                             journalDirectory: journals, sourceIntakes: sourceIntakes) {
                 if targetModel.location?.resolvingSymlinksInPath() == destination.resolvingSymlinksInPath() {
                     targetModel.reload()
                 }
             }
+            onDecision?(true)
         }
     }
     private func hasFolderMergeConflict(source: URL, destination: URL) -> Bool {
@@ -3390,6 +3417,11 @@ extension BrowserWindow {
                 if intent == .move { self.prepareMove(sources: sources, destination: destination) }
                 else { self.prepareCopy(sources: sources, destination: destination) }
                 return true
+            }
+            pane.onPromiseDrop = { [weak self] receivers, destination in
+                guard let self else { return false }
+                self.setSecondaryActive(true)
+                return self.receivePromises(receivers, destination: destination)
             }
             pane.setContextMenu(table.menu)
             secondaryPane = pane
