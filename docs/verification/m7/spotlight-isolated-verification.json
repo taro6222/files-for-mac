@@ -1,0 +1,193 @@
+{
+  "collectedAtUTC": "2026-11-25T16:50:01.259232+00:00",
+  "baseCommit": "8a06e92af43c77b225ff02f1cd03640048774175",
+  "appSHA256": "a0d2163221bd50ed5019e2ae9cc82d169a7c919c70b34b905780f4753961f424",
+  "sourceSHA256": {
+    "scripts/spotlight_volume_fixture.py": "6ea031ded203dc669fdf051e9469acf1d09aebf9c6e1b89822f357b5187906a7",
+    "scripts/prepare-spotlight-fixture.py": "bc65991f36ecce4e2f3f4aad4103f38425c7c9926ce6bdd1ca9c6046f828c65e",
+    "Tests/FixtureTests/test_spotlight_volume_fixture.py": "413a8ef3516c34e9cf446dee89478dccf6352ae0ae2912cd05993e695f096505",
+    "Sources/FilesMac/SpotlightFileSearch.swift": "965ffbbad7cf6fb2ede5a4b30b28149b9c87a105d53e5a598c9da9ed8d96e1e0",
+    ".github/workflows/macos.yml": "45ac7502b16f6368a85b8b41c50dca815d84d592a72abfda160d1e28dd012104"
+  },
+  "exactSourceSHA256": "804efcedca423e04ccf23070736835b0a22fd6f1987059c334e5cf2a3c7ad788",
+  "isolatedFixture": {
+    "state": "indexed",
+    "id": "d434f365dd5348fbad5b6217c6a81b1e",
+    "sourceSHA256": "804efcedca423e04ccf23070736835b0a22fd6f1987059c334e5cf2a3c7ad788",
+    "query": "kMDItemTextContent == \"*SearchRouter*\"cd",
+    "sourcePublished": true,
+    "fixtureKind": "isolated-apfs-volume",
+    "resourceDirectory": "/Users/changhun/Desktop/Workspace/Files/build/spotlight-isolated-local/volume.ysjwghgq",
+    "resourceIdentity": [
+      16777231,
+      62874737
+    ],
+    "image": "/Users/changhun/Desktop/Workspace/Files/build/spotlight-isolated-local/volume.ysjwghgq/source.dmg",
+    "mountPoint": "/Users/changhun/Desktop/Workspace/Files/build/spotlight-isolated-local/volume.ysjwghgq/Volume",
+    "fixtureRoot": "/Users/changhun/Desktop/Workspace/Files/build/spotlight-isolated-local/volume.ysjwghgq/Volume/Fixture",
+    "createVolume": "created: /Users/changhun/Desktop/Workspace/Files/build/spotlight-isolated-local/volume.ysjwghgq/source.dmg\n",
+    "imageIdentity": [
+      16777231,
+      62874741
+    ],
+    "imageDevice": "/dev/disk6",
+    "volumeUUID": "4EC79453-B7AE-43DF-A3DC-7B68832A2B73",
+    "attachedReadOnly": true,
+    "device": 16777243,
+    "inode": 18,
+    "expectedFile": "/Users/changhun/Desktop/Workspace/Files/build/spotlight-isolated-local/volume.ysjwghgq/Volume/Fixture/Sources/FilesCore/LocalSearch.swift",
+    "enableIndexing": {
+      "arguments": [
+        "/usr/bin/mdutil",
+        "-i",
+        "on",
+        "/Users/changhun/Desktop/Workspace/Files/build/spotlight-isolated-local/volume.ysjwghgq/Volume"
+      ],
+      "exitCode": 0,
+      "stdout": "/System/Volumes/Data/Users/changhun/Desktop/Workspace/Files/build/spotlight-isolated-local/volume.ysjwghgq/Volume:\n\tIndexing enabled. \n",
+      "stderr": ""
+    },
+    "import": {
+      "arguments": [
+        "/usr/bin/mdimport",
+        "-i",
+        "/Users/changhun/Desktop/Workspace/Files/build/spotlight-isolated-local/volume.ysjwghgq/Volume/Fixture/Sources/FilesCore/LocalSearch.swift"
+      ],
+      "exitCode": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    "indexHits": [
+      "/Users/changhun/Desktop/Workspace/Files/build/spotlight-isolated-local/volume.ysjwghgq/Volume/Fixture/Sources/FilesCore/LocalSearch.swift"
+    ],
+    "indexWaitSeconds": 2.066401624993887,
+    "indexedFile": "/Users/changhun/Desktop/Workspace/Files/build/spotlight-isolated-local/volume.ysjwghgq/Volume/Fixture/Sources/FilesCore/LocalSearch.swift",
+    "searchRoot": "/Users/changhun/Desktop/Workspace/Files/build/spotlight-isolated-local/volume.ysjwghgq/Volume/Fixture",
+    "readOnlyCleanupInspection": "passed",
+    "cleaned": true,
+    "volumeDetached": true
+  },
+  "finalLifecycle": {
+    "state": "indexed",
+    "id": "8282ea1742fd4413b482a85c225ead30",
+    "sourceSHA256": "804efcedca423e04ccf23070736835b0a22fd6f1987059c334e5cf2a3c7ad788",
+    "query": "kMDItemTextContent == \"*SearchRouter*\"cd",
+    "sourcePublished": true,
+    "fixtureKind": "isolated-apfs-volume",
+    "resourceDirectory": "/Users/changhun/Desktop/Workspace/Files/build/spotlight-isolated-final/volume.ir5n2ocm",
+    "resourceIdentity": [
+      16777231,
+      62922938
+    ],
+    "image": "/Users/changhun/Desktop/Workspace/Files/build/spotlight-isolated-final/volume.ir5n2ocm/source.dmg",
+    "mountPoint": "/Users/changhun/Desktop/Workspace/Files/build/spotlight-isolated-final/volume.ir5n2ocm/Volume",
+    "fixtureRoot": "/Users/changhun/Desktop/Workspace/Files/build/spotlight-isolated-final/volume.ir5n2ocm/Volume/Fixture",
+    "createVolume": "created: /Users/changhun/Desktop/Workspace/Files/build/spotlight-isolated-final/volume.ir5n2ocm/source.dmg\n",
+    "imageIdentity": [
+      16777231,
+      62922942
+    ],
+    "imageDevice": "/dev/disk4",
+    "volumeUUID": "712E2282-6E00-4E6B-988C-0BCE1F897A3E",
+    "attachedReadOnly": true,
+    "device": 16777239,
+    "inode": 18,
+    "expectedFile": "/Users/changhun/Desktop/Workspace/Files/build/spotlight-isolated-final/volume.ir5n2ocm/Volume/Fixture/Sources/FilesCore/LocalSearch.swift",
+    "enableIndexing": {
+      "arguments": [
+        "/usr/bin/mdutil",
+        "-i",
+        "on",
+        "/Users/changhun/Desktop/Workspace/Files/build/spotlight-isolated-final/volume.ir5n2ocm/Volume"
+      ],
+      "exitCode": 0,
+      "stdout": "/System/Volumes/Data/Users/changhun/Desktop/Workspace/Files/build/spotlight-isolated-final/volume.ir5n2ocm/Volume:\n\tIndexing enabled. \n",
+      "stderr": ""
+    },
+    "import": {
+      "arguments": [
+        "/usr/bin/mdimport",
+        "-i",
+        "/Users/changhun/Desktop/Workspace/Files/build/spotlight-isolated-final/volume.ir5n2ocm/Volume/Fixture/Sources/FilesCore/LocalSearch.swift"
+      ],
+      "exitCode": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    "indexHits": [
+      "/Users/changhun/Desktop/Workspace/Files/build/spotlight-isolated-final/volume.ir5n2ocm/Volume/Fixture/Sources/FilesCore/LocalSearch.swift"
+    ],
+    "indexWaitSeconds": 2.1102220000175294,
+    "indexedFile": "/Users/changhun/Desktop/Workspace/Files/build/spotlight-isolated-final/volume.ir5n2ocm/Volume/Fixture/Sources/FilesCore/LocalSearch.swift",
+    "searchRoot": "/Users/changhun/Desktop/Workspace/Files/build/spotlight-isolated-final/volume.ir5n2ocm/Volume/Fixture",
+    "readOnlyCleanupInspection": "passed",
+    "cleaned": true,
+    "volumeDetached": true
+  },
+  "nativeQueries": {
+    "checks": {
+      "currentFolderExcludesNestedSwiftSource": true,
+      "descendantsFindExactSwiftSource": true,
+      "indexedLocationsFindSourceOutsideCurrentFolder": true,
+      "unknownContentHasNoResults": true
+    },
+    "descendantResults": [
+      "/Users/changhun/Desktop/Workspace/Files/build/spotlight-isolated-local/volume.ysjwghgq/Volume/Fixture/Sources/FilesCore/LocalSearch.swift"
+    ],
+    "expectedFile": "/Users/changhun/Desktop/Workspace/Files/build/spotlight-isolated-local/volume.ysjwghgq/Volume/Fixture/Sources/FilesCore/LocalSearch.swift",
+    "os": "Version 27.2.1 (Build 26B131)",
+    "sourceRoot": "/Users/changhun/Desktop/Workspace/Files/build/spotlight-isolated-local/volume.ysjwghgq/Volume/Fixture"
+  },
+  "tmpAliasNativeQueries": {
+    "checks": {
+      "currentFolderExcludesNestedSwiftSource": true,
+      "descendantsFindExactSwiftSource": true,
+      "indexedLocationsFindSourceOutsideCurrentFolder": true,
+      "unknownContentHasNoResults": true
+    },
+    "descendantResults": [
+      "/tmp/files-spotlight-volume-probe.g6b8ws3k/Volume/Fixture/Sources/FilesCore/LocalSearch.swift"
+    ],
+    "expectedFile": "/tmp/files-spotlight-volume-probe.g6b8ws3k/Volume/Fixture/Sources/FilesCore/LocalSearch.swift",
+    "os": "Version 27.2.1 (Build 26B131)",
+    "sourceRoot": "/private/tmp/files-spotlight-volume-probe.g6b8ws3k/Volume/Fixture"
+  },
+  "fullAppKit": {
+    "ko-light": {
+      "passed": 283,
+      "reportSHA256": "b8bc1cc05521de709de254bee87600c562d11a4da5a8481f1a4ec29bbd0691d2"
+    },
+    "ko-dark": {
+      "passed": 283,
+      "reportSHA256": "8055d70202c3dcada8742be6a7f3921f46d116a94e2eb4efca05c875d74ffdb9"
+    },
+    "en-light": {
+      "passed": 283,
+      "reportSHA256": "4488383674829bbacb842c5b035f7eac61ce2440978651cdcdfe13b48926db83"
+    },
+    "en-dark": {
+      "passed": 283,
+      "reportSHA256": "47758bb0f0dfe567a4fc4134d9e07e7f4c1e47809561c0f9c369d3a236d506a6"
+    }
+  },
+  "ownershipTests": {
+    "passed": 10,
+    "logSHA256": "2d407504d003cfe404f23be48347e686ae1f67393860d4067d9a0bf06b1ddd60"
+  },
+  "mountedForeignResourceRefusal": "passed; sentinel and source retained before sentinel removed",
+  "cleanupIdempotence": "passed",
+  "prototypeCleanup": "exact image mapping, UUID and source-only readonly inspection passed; removed",
+  "hostDataIndexConfigurationChanged": false,
+  "priorXcode": {
+    "source": "8a06e92",
+    "run": 45654995926,
+    "arm64": "success",
+    "x86_64": "success"
+  },
+  "limitations": [
+    "Hosted isolated fixture and full UI not yet verified on either CPU",
+    "Real mouse/keyboard/VoiceOver acceptance remains open",
+    "Developer ID and notary profile preparing",
+    "M7 not complete"
+  ]
+}

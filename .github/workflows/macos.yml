@@ -96,6 +96,8 @@ jobs:
           swift --version
       - name: Audit parity inventories
         run: python3 scripts/audit-parity.py
+      - name: Verify Spotlight fixture ownership guards
+        run: PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s Tests/FixtureTests -p 'test_spotlight_volume_fixture.py'
       - name: Build app and test targets
         if: github.event_name != 'workflow_dispatch' || !inputs.verify_upgrade || inputs.verify_full_appkit
         timeout-minutes: ${{ matrix.debug_build_minutes }}
@@ -133,11 +135,12 @@ jobs:
           path: |
             ${{ runner.temp }}/files-promise-verification.*/report.json
             ${{ runner.temp }}/files-promise-verification.*/run.log
+            ${{ runner.temp }}/files-promise-verification.*/received-cleanup-controls.png
           if-no-files-found: ignore
       - name: Prepare Spotlight for AppKit content search
         if: github.event_name == 'workflow_dispatch' && inputs.verify_full_appkit
         timeout-minutes: 4
-        run: python3 scripts/prepare-spotlight-fixture.py prepare --enable-indexing
+        run: python3 scripts/prepare-spotlight-fixture.py prepare --isolated-volume --enable-indexing
       - name: Verify native Spotlight query scopes
         if: github.event_name == 'workflow_dispatch' && inputs.verify_full_appkit
         timeout-minutes: 2

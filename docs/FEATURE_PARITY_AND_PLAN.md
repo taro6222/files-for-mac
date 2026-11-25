@@ -125,3 +125,5 @@ Windows 실행 환경이 없으면 소스 조사와 맥 실험을 진행하되 �
 기능 상태는 `planned → implementing → implemented → verified`를 사용한다. `blocked`, `platform-adapted`, `not-applicable`은 이유와 증거가 필요하다. implemented는 빌드 가능한 코드가 있다는 뜻이고 verified만 완료로 집계한다.
 
 PR 또는 변경 단위에는 기능 ID, 바뀐 동작, 테스트 결과, UI 캡처, 데이터 손상 위험과 잔여 차이를 포함한다. 원본 버전 업데이트는 새로운 비교 작업으로 처리하며 개발 도중 기준을 조용히 바꾸지 않는다.
+
+[독립 APFS Spotlight 검증](verification/m7/INCREMENT_299.md)은 원본 SHA를 유지한 실제 콘텐츠 검색과 범위 검사를 수행한다. 로컬 네이티브 4개·전체 UI 네 조합 각각 283개, 소유권 보호 10개와 읽기 전용 최종 정리가 통과했다. 두 CPU 원격 결과와 실제 접근성·정식 서명 수용은 별도로 판정한다.

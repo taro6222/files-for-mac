@@ -10,7 +10,7 @@ extension SpotlightFileSearch {
                 throw CocoaError(.fileReadNoSuchFile)
             }
             let root = URL(fileURLWithPath: path, isDirectory: true)
-            let expected = root.appendingPathComponent("Sources/FilesCore/LocalSearch.swift")
+            let expected = root.appendingPathComponent("Sources/FilesCore/LocalSearch.swift").standardizedFileURL
             try FileManager.default.createDirectory(at: destination, withIntermediateDirectories: true)
             let outside = destination.appendingPathComponent("empty-folder", isDirectory: true)
             try FileManager.default.createDirectory(at: outside, withIntermediateDirectories: true)

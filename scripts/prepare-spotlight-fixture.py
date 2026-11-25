@@ -12,12 +12,14 @@ import sys
 import tempfile
 import time
 import uuid
+import spotlight_volume_fixture as volume_fixture
 
 project = Path(__file__).resolve().parent.parent
 parser = argparse.ArgumentParser()
 parser.add_argument("action", choices=["prepare", "cleanup"])
 parser.add_argument("--state", type=Path, default=project / "build/spotlight-fixture/state.json")
 parser.add_argument("--enable-indexing", action="store_true")
+parser.add_argument("--isolated-volume", action="store_true")
 args = parser.parse_args()
 state_path = args.state.resolve()
 relative_source = Path("Sources/FilesCore/LocalSearch.swift")
@@ -58,6 +60,9 @@ if args.action == "cleanup":
         print("No Spotlight fixture was created.")
         sys.exit(0)
     state = json.loads(state_path.read_text())
+    if state.get("fixtureKind") == "isolated-apfs-volume":
+        volume_fixture.cleanup(state, state_path, save)
+        sys.exit(0)
     root = Path(state["fixtureRoot"])
     if not root.exists() and not root.is_symlink():
         print("Spotlight fixture is already absent.")
@@ -83,25 +88,40 @@ if args.action == "cleanup":
     print("Removed the owned Spotlight source fixture.")
     sys.exit(0)
 
-root = Path(tempfile.mkdtemp(prefix="FilesMac-Spotlight-QA.", dir=Path.home()))
-root.chmod(0o755)  # Public repository source only; permit the metadata importer to read it.
-info = root.lstat()
+if state_path.exists():
+    prior = json.loads(state_path.read_text())
+    if not prior.get("cleaned") and any(Path(prior[key]).exists() for key in ["fixtureRoot", "resourceDirectory"] if prior.get(key)):
+        raise SystemExit("An earlier owned fixture still exists; clean it before preparing another one")
 source = project / relative_source
-expected = root / relative_source
-state = {"state": "preparing", "id": uuid.uuid4().hex, "fixtureRoot": str(root),
-         "device": info.st_dev, "inode": info.st_ino, "sourceSHA256": digest(source),
-         "expectedFile": str(expected), "query": 'kMDItemTextContent == "*SearchRouter*"cd'}
-save(state)
+state = {"state": "preparing", "id": uuid.uuid4().hex, "sourceSHA256": digest(source),
+         "query": 'kMDItemTextContent == "*SearchRouter*"cd', "sourcePublished": False}
 try:
+    if args.isolated_volume:
+        root = volume_fixture.create(state, state_path, save)
+    else:
+        root = Path(tempfile.mkdtemp(prefix="FilesMac-Spotlight-QA.", dir=Path.home()))
+        root.chmod(0o755)
+        info = root.lstat()
+        state.update(fixtureRoot=str(root), device=info.st_dev, inode=info.st_ino)
+    expected = root / relative_source
+    state["expectedFile"] = str(expected)
+    save(state)
     (root / marker_name).write_text(json.dumps({"id": state["id"], "sourceSHA256": state["sourceSHA256"]}))
     expected.parent.mkdir(parents=True)
     shutil.copy2(source, expected)
     if digest(expected) != state["sourceSHA256"]:
         raise RuntimeError("Copied source fixture differs from the repository source")
+    state["sourcePublished"] = True
+    save(state)
     if args.enable_indexing:
-        if os.environ.get("GITHUB_ACTIONS") != "true":
-            raise RuntimeError("Indexing configuration is restricted to the disposable GitHub Actions runner")
-        state["enableIndexing"] = run(["sudo", "/usr/bin/mdutil", "-i", "on", "/System/Volumes/Data"])
+        if args.isolated_volume:
+            volume_fixture.validate_resource(state, state_path)
+            volume_fixture.mounted_volume(state)
+            state["enableIndexing"] = run(["/usr/bin/mdutil", "-i", "on", state["mountPoint"]])
+        else:
+            if os.environ.get("GITHUB_ACTIONS") != "true":
+                raise RuntimeError("Host indexing configuration is restricted to the disposable GitHub Actions runner")
+            state["enableIndexing"] = run(["sudo", "/usr/bin/mdutil", "-i", "on", "/System/Volumes/Data"])
         if state["enableIndexing"]["exitCode"]:
             raise RuntimeError("Could not enable Spotlight indexing on the disposable runner")
     state["import"] = run(["/usr/bin/mdimport", "-i", str(expected)], timeout=30)
@@ -130,10 +150,11 @@ try:
 except Exception as error:
     state["state"] = "failed"
     state["error"] = str(error)
+    diagnostic_expected = state.get("expectedFile", str(source))
     state["diagnostics"] = [run(command) for command in [
-        ["/usr/bin/mdutil", "-s", "/System/Volumes/Data"],
-        ["/usr/bin/mdls", "-name", "kMDItemContentType", "-name", "kMDItemFSName", str(expected)],
-        ["/usr/bin/mdimport", "-t", "-d2", str(expected)],
+        ["/usr/bin/mdutil", "-s", state.get("mountPoint", "/System/Volumes/Data")],
+        ["/usr/bin/mdls", "-name", "kMDItemContentType", "-name", "kMDItemFSName", diagnostic_expected],
+        ["/usr/bin/mdimport", "-t", "-d2", diagnostic_expected],
         ["/usr/bin/mdimport", "-L"],
     ]]
     save(state)
