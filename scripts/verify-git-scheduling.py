@@ -41,6 +41,10 @@ tests = [
     "gitCancellationTerminatesProcessAndCleansCloneStaging",
     "directoryWaitingForFileSystemAllowsOtherSwiftTasksToResume",
     "directoryCancellationWhileFileSystemIsBlockedStopsBeforeFirstBatch",
+    "folderSizingWaitingForFileSystemAllowsOtherSwiftTasksToResume",
+    "folderSizingCancellationWhileFileSystemIsBlockedReturnsBeforeIO",
+    "folderBulkSizingCancellationDiscardsLateResults",
+    "cloudDiscoveryCancellationWhileFileSystemIsBlockedReturnsBeforeIO",
 ]
 arguments = [str(helper), "--test-bundle-path", str(test_binary), "--filter", "|".join(tests),
              "--testing-library", "swift-testing"]

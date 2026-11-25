@@ -1,0 +1,296 @@
+{
+  "collectedAtUTC": "2026-11-25T18:25:32.797728+00:00",
+  "baseCommit": "bf8380c05084aec3c41db09bfacc9fae4866b530",
+  "sourceSHA256": {
+    "Sources/FilesCore/FileSystemWork.swift": "8ef6c217f57cf206b7eb674aa6ccdfe13ad552276263283e008ed586cb0c3954",
+    "Sources/FilesCore/FolderSizeCalculator.swift": "24e85f5e164ec13d3a503ed05dc31666d5906f6a879262b94a5f527a4b0c7479",
+    "Sources/FilesCore/CloudLocations.swift": "2fe28d29a15b3bbb7d66f35b58f420d25e1e3be1df0292aa958eedaf1727761a",
+    "Sources/FilesCore/LocalFileSystem.swift": "93b1b974ed9bb237db94a8136d14450a1e38426ecd53fa44d0534270d92b5a42",
+    "Sources/FilesCore/RemoteBrowserModel.swift": "c7b0cb0a73c765557eafc7d683f7a4f7a252742fa6ca5f1229ec9cbf3b9545e3",
+    "Sources/FilesMac/BrowserWindow.swift": "25b3b59931ced05f83552242e38e13cf95751747dc789e937e4c2a563bfed1cc",
+    "Sources/FilesMac/RemoteBrowserWindow.swift": "8d61908fc22706ea40b45249964e382b0280402dfecc9c0b1aba25642d7eecd9",
+    "Tests/FilesCoreTests/FileSystemWorkTests.swift": "1402f3766a61ece90cde864a144bbd2e89c420db76094370f7a255f47109d1c8",
+    "Tests/FilesCoreTests/DirectorySchedulingTests.swift": "1923503fdf7b33f9fa4dd280b4e58fbd6e3c6ca424453a1c75cd38780339faa4",
+    "Tests/FilesCoreTests/RemoteBrowserModelTests.swift": "fcbb7436581a21f16aec2aafac5e5d93985d0d04cc8ccb544171b2faaddbe198",
+    "Tests/FixtureTests/test_spotlight_volume_fixture.py": "e1328a225ed2d4c6ab94f0ba0c804d53cfd86694625af5ea11a8978921e22828",
+    "scripts/spotlight_volume_fixture.py": "1f209ff96f78b6a10669d7a3c76fdccbf5894b3ab5e2d8bdd173020dbc252bd4",
+    "scripts/verify-spotlight-busy-cleanup.py": "9ab4a6f65199c569e0eb736451ccfff1c81ea96344b8b926879ce904e0df329b",
+    "scripts/verify-git-scheduling.py": "6da0a5ef75d105eea13a7acb8ecf8316483b98098aee9d19d873259646aef3fe"
+  },
+  "candidate": {
+    "capturedAtUTC": "2026-11-25T18:10:15.020580+00:00",
+    "appSHA256": "151bf9a26892cce59f9bec2370becc5ab9330b5004a22fc90438ed1d600ff2f0"
+  },
+  "debugBuild": {
+    "exitCode": 0,
+    "logSHA256": "d8614763a6c3a968bd64daa9a5cf104bef0fd4801dd38167e8e398a71030ecd3"
+  },
+  "releaseBuild": {
+    "exitCode": 0,
+    "appSHA256": "71d8c612ec18189225b31a49747f0b3d851f3877d544efb286f49f33fa4bedaf",
+    "logSHA256": "f8a6f7e9596ebce9035383e1eab4655979c567244e34ef8a0667590e6bd0aef6",
+    "debugQAEntryAbsent": true
+  },
+  "swiftTests": {
+    "reported": 322,
+    "passed": 304,
+    "skipped": 18,
+    "logSHA256": "8330d60939c9109711c5cff237c62d1a4c72c660d53b2605cab34c618f18f38c"
+  },
+  "strictExecutor": {
+    "state": "passed",
+    "tests": {
+      "gitConcurrentSnapshotsCompleteWithoutBlockingSwiftTasks": true,
+      "gitWaitingForProcessAllowsOtherSwiftTasksToResume": true,
+      "gitCancellationTerminatesProcessAndCleansCloneStaging": true,
+      "directoryWaitingForFileSystemAllowsOtherSwiftTasksToResume": true,
+      "directoryCancellationWhileFileSystemIsBlockedStopsBeforeFirstBatch": true,
+      "folderSizingWaitingForFileSystemAllowsOtherSwiftTasksToResume": true,
+      "folderSizingCancellationWhileFileSystemIsBlockedReturnsBeforeIO": true,
+      "folderBulkSizingCancellationDiscardsLateResults": true,
+      "cloudDiscoveryCancellationWhileFileSystemIsBlockedReturnsBeforeIO": true
+    },
+    "exitCode": 0,
+    "timedOut": false,
+    "elapsedSeconds": 0.2122092499921564,
+    "testBinary": "/Users/changhun/Desktop/Workspace/Files/.build/out/Products/Debug/FilesCoreTests.xctest/Contents/MacOS/FilesCoreTests",
+    "constrainedProcess": "swiftpm-testing-helper",
+    "swiftVersion": "Apple Swift version 6.4.2 (swiftlang-6.4.2.1.9 clang-2100.4.1.1)\nTarget: arm64-apple-macosx27.2.0",
+    "sourceCommit": null,
+    "strictCooperativePool": true
+  },
+  "fullAppKit": {
+    "ko-light": {
+      "passed": 283,
+      "metrics": {
+        "adjustedSplitRatio": 0.5998322147651006,
+        "completeAppKitDisplaySeconds": 0.7971625,
+        "draggedSplitRatio": 0.549496644295302,
+        "firstNonemptyAppKitDisplaySeconds": 0.018024167,
+        "fullSuiteElapsedSeconds": 44.235963333,
+        "minimumWidthSplitRatio": 0.5998322147651006,
+        "multiwindowCycleMaximumSeconds": 1.615600125,
+        "multiwindowCycleMinimumSeconds": 1.547990167,
+        "multiwindowCycleP95Seconds": 1.615600125,
+        "restoredSplitRatio_horizontal": 0.35,
+        "restoredSplitRatio_vertical": 0.35,
+        "scrollStepP95Seconds": 0.003152959,
+        "scrollToLastRowDisplaySeconds": 0.016284041
+      },
+      "diagnostics": {
+        "folderSizeAutomaticBytes": 21,
+        "folderSizeAutomaticTaskPending": false,
+        "folderSizeListingReady": true,
+        "folderSizeLoadedItemCount": 10000,
+        "folderSizeRequestButtonAvailable": true,
+        "folderSizeRequestResult": "Optional(FilesCore.BrowserModel.DirectorySizeStatus.available(21))",
+        "folderSizeRequestWasPending": true,
+        "remoteCloseCancelledPendingLoad": true,
+        "remoteDownloadSelected": true
+      },
+      "reportSHA256": "08b25c2a855d991ecf506f96c6d2d8dfb516f3d34b90e13ac421d10a2cfc7b84",
+      "progressSHA256": "11a735356b9ca25f8978e8958ba907306c16648f9535ee3b2c271e1824390a81"
+    },
+    "ko-dark": {
+      "passed": 283,
+      "metrics": {
+        "adjustedSplitRatio": 0.5998322147651006,
+        "completeAppKitDisplaySeconds": 0.820247208,
+        "draggedSplitRatio": 0.549496644295302,
+        "firstNonemptyAppKitDisplaySeconds": 0.018673083,
+        "fullSuiteElapsedSeconds": 44.569226666,
+        "minimumWidthSplitRatio": 0.5998322147651006,
+        "multiwindowCycleMaximumSeconds": 1.6342956659999999,
+        "multiwindowCycleMinimumSeconds": 1.564921208,
+        "multiwindowCycleP95Seconds": 1.6342956659999999,
+        "restoredSplitRatio_horizontal": 0.35,
+        "restoredSplitRatio_vertical": 0.35,
+        "scrollStepP95Seconds": 0.003076541,
+        "scrollToLastRowDisplaySeconds": 0.015151458
+      },
+      "diagnostics": {
+        "folderSizeAutomaticBytes": 21,
+        "folderSizeAutomaticTaskPending": false,
+        "folderSizeListingReady": true,
+        "folderSizeLoadedItemCount": 10000,
+        "folderSizeRequestButtonAvailable": true,
+        "folderSizeRequestResult": "Optional(FilesCore.BrowserModel.DirectorySizeStatus.available(21))",
+        "folderSizeRequestWasPending": true,
+        "remoteCloseCancelledPendingLoad": true,
+        "remoteDownloadSelected": true
+      },
+      "reportSHA256": "1834ba11ae8a265ae91e65bf186046e33324d677cc55209bf21558ef041a06e2",
+      "progressSHA256": "1517252cd954f022e142c07e969c7b1b923007295246c0404c803479a87345af"
+    },
+    "en-light": {
+      "passed": 283,
+      "metrics": {
+        "adjustedSplitRatio": 0.6,
+        "completeAppKitDisplaySeconds": 0.826275584,
+        "draggedSplitRatio": 0.55,
+        "firstNonemptyAppKitDisplaySeconds": 0.018351167,
+        "fullSuiteElapsedSeconds": 44.34470025,
+        "minimumWidthSplitRatio": 0.6,
+        "multiwindowCycleMaximumSeconds": 1.657107875,
+        "multiwindowCycleMinimumSeconds": 1.596857625,
+        "multiwindowCycleP95Seconds": 1.657107875,
+        "restoredSplitRatio_horizontal": 0.35,
+        "restoredSplitRatio_vertical": 0.35,
+        "scrollStepP95Seconds": 0.00301325,
+        "scrollToLastRowDisplaySeconds": 0.015563292
+      },
+      "diagnostics": {
+        "folderSizeAutomaticBytes": 21,
+        "folderSizeAutomaticTaskPending": false,
+        "folderSizeListingReady": true,
+        "folderSizeLoadedItemCount": 10000,
+        "folderSizeRequestButtonAvailable": true,
+        "folderSizeRequestResult": "Optional(FilesCore.BrowserModel.DirectorySizeStatus.available(21))",
+        "folderSizeRequestWasPending": true,
+        "remoteCloseCancelledPendingLoad": true,
+        "remoteDownloadSelected": true
+      },
+      "reportSHA256": "57e5e8034bf857c6e2086564dfa39f4fb899b7094d0353ce09b4ed72c4412918",
+      "progressSHA256": "99d2de6ea965f0a9a40d8eeb315f5defe3d7a60bf2f9eb2801b1998e08643602"
+    },
+    "en-dark": {
+      "passed": 283,
+      "metrics": {
+        "adjustedSplitRatio": 0.6,
+        "completeAppKitDisplaySeconds": 0.838569083,
+        "draggedSplitRatio": 0.55,
+        "firstNonemptyAppKitDisplaySeconds": 0.018761083,
+        "fullSuiteElapsedSeconds": 45.221935666,
+        "minimumWidthSplitRatio": 0.6,
+        "multiwindowCycleMaximumSeconds": 1.6443028750000002,
+        "multiwindowCycleMinimumSeconds": 1.589865042,
+        "multiwindowCycleP95Seconds": 1.6443028750000002,
+        "restoredSplitRatio_horizontal": 0.35,
+        "restoredSplitRatio_vertical": 0.35,
+        "scrollStepP95Seconds": 0.003159917,
+        "scrollToLastRowDisplaySeconds": 0.014692667
+      },
+      "diagnostics": {
+        "folderSizeAutomaticBytes": 21,
+        "folderSizeAutomaticTaskPending": false,
+        "folderSizeListingReady": true,
+        "folderSizeLoadedItemCount": 10000,
+        "folderSizeRequestButtonAvailable": true,
+        "folderSizeRequestResult": "Optional(FilesCore.BrowserModel.DirectorySizeStatus.available(21))",
+        "folderSizeRequestWasPending": true,
+        "remoteCloseCancelledPendingLoad": true,
+        "remoteDownloadSelected": true
+      },
+      "reportSHA256": "8dbcec9c6589001248d74102313ee62c968b319655149e6dea71439b194b7aa2",
+      "progressSHA256": "9a85b2fd5992a17a6fe7568634a92fe632ea0978a3baadcfcabad1bd9cd3e8ae"
+    }
+  },
+  "promiseContract": {
+    "passed": 53,
+    "reportSHA256": "5aa21e5a29c114e3a7b217d745e3899000430e0aca53bf7931699de012a0ca25"
+  },
+  "mountedMatrix": {
+    "passedFunctions": 7,
+    "appKitCombinations": 4,
+    "passedPerCombination": 79,
+    "logSHA256": "2890d2e0222a72fa1c8011ee0ff2ffc6a45fea43df832dfa6c1840445e2d8c52"
+  },
+  "volumeOwnershipTests": {
+    "passed": 14,
+    "logSHA256": "65e028d9927eea93eda6259d5cea618c53e56cb2cd899853ffdf58495fe731d1"
+  },
+  "realBusyCleanup": {
+    "statePath": "/Users/changhun/Desktop/Workspace/Files/build/async-metadata-spotlight/state.json",
+    "volumeUUID": "40855D0E-6B0F-4B0E-A040-E3C13EE404A5",
+    "detachCommands": [
+      [
+        "/usr/bin/hdiutil",
+        "detach",
+        "/dev/disk4"
+      ],
+      [
+        "/usr/bin/hdiutil",
+        "detach",
+        "/dev/disk4"
+      ],
+      [
+        "/usr/bin/hdiutil",
+        "detach",
+        "/dev/disk4"
+      ]
+    ],
+    "busyExitCodes": [
+      16
+    ],
+    "holderPID": 69585,
+    "cleaned": true,
+    "readOnlyCleanupInspection": "passed",
+    "passed": true,
+    "holderExitCode": -15,
+    "elapsedSeconds": 12.696783082996262
+  },
+  "spotlightFixture": {
+    "state": "indexed",
+    "id": "ac04de3172cb4840bc62d1027532bfbe",
+    "sourceSHA256": "804efcedca423e04ccf23070736835b0a22fd6f1987059c334e5cf2a3c7ad788",
+    "query": "kMDItemTextContent == \"*SearchRouter*\"cd",
+    "sourcePublished": true,
+    "fixtureKind": "isolated-apfs-volume",
+    "resourceDirectory": "/Users/changhun/Desktop/Workspace/Files/build/async-metadata-spotlight/volume.t0kdm_ke",
+    "resourceIdentity": [
+      16777231,
+      63258363
+    ],
+    "image": "/Users/changhun/Desktop/Workspace/Files/build/async-metadata-spotlight/volume.t0kdm_ke/source.dmg",
+    "mountPoint": "/Users/changhun/Desktop/Workspace/Files/build/async-metadata-spotlight/volume.t0kdm_ke/Volume",
+    "fixtureRoot": "/Users/changhun/Desktop/Workspace/Files/build/async-metadata-spotlight/volume.t0kdm_ke/Volume/Fixture",
+    "createVolume": "created: /Users/changhun/Desktop/Workspace/Files/build/async-metadata-spotlight/volume.t0kdm_ke/source.dmg\n",
+    "imageIdentity": [
+      16777231,
+      63258369
+    ],
+    "imageDevice": "/dev/disk4",
+    "volumeUUID": "40855D0E-6B0F-4B0E-A040-E3C13EE404A5",
+    "attachedReadOnly": true,
+    "device": 16777239,
+    "inode": 18,
+    "expectedFile": "/Users/changhun/Desktop/Workspace/Files/build/async-metadata-spotlight/volume.t0kdm_ke/Volume/Fixture/Sources/FilesCore/LocalSearch.swift",
+    "enableIndexing": {
+      "arguments": [
+        "/usr/bin/mdutil",
+        "-i",
+        "on",
+        "/Users/changhun/Desktop/Workspace/Files/build/async-metadata-spotlight/volume.t0kdm_ke/Volume"
+      ],
+      "exitCode": 0,
+      "stdout": "/System/Volumes/Data/Users/changhun/Desktop/Workspace/Files/build/async-metadata-spotlight/volume.t0kdm_ke/Volume:\n\tIndexing enabled. \n",
+      "stderr": ""
+    },
+    "import": {
+      "arguments": [
+        "/usr/bin/mdimport",
+        "-i",
+        "/Users/changhun/Desktop/Workspace/Files/build/async-metadata-spotlight/volume.t0kdm_ke/Volume/Fixture/Sources/FilesCore/LocalSearch.swift"
+      ],
+      "exitCode": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    "indexHits": [
+      "/Users/changhun/Desktop/Workspace/Files/build/async-metadata-spotlight/volume.t0kdm_ke/Volume/Fixture/Sources/FilesCore/LocalSearch.swift"
+    ],
+    "indexWaitSeconds": 2.087014167016605,
+    "indexedFile": "/Users/changhun/Desktop/Workspace/Files/build/async-metadata-spotlight/volume.t0kdm_ke/Volume/Fixture/Sources/FilesCore/LocalSearch.swift",
+    "searchRoot": "/Users/changhun/Desktop/Workspace/Files/build/async-metadata-spotlight/volume.t0kdm_ke/Volume/Fixture",
+    "readOnlyCleanupInspection": "passed",
+    "cleaned": true,
+    "volumeDetached": true
+  },
+  "limitations": [
+    "Local arm64 evidence does not prove Intel parity or 20-run performance percentiles",
+    "Same-source hosted verification remains pending",
+    "Journaled-move SIGKILL followed by UI restore remains acceptance work",
+    "Installed app, actual SDK drag, keyboard and VoiceOver acceptance remain open",
+    "Latest-source 8-hour soak and Developer ID/notary release remain open"
+  ]
+}

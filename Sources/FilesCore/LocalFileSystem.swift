@@ -72,11 +72,14 @@ public struct LocalFileSystem: DirectoryStreaming {
                                 reachedEnd = true
                                 return nil
                             }
-                            let child = url.appendingPathComponent(enumerated.lastPathComponent)
+                            let name = enumerated.lastPathComponent
                             do {
                                 // Use the resource values prefetched by the directory enumerator.
                                 // Keep a fresh URL in the model for later operations and refreshes.
                                 let v = try enumerated.resourceValues(forKeys: keys)
+                                // The enumerator already supplied the type. Do not perform another
+                                // filesystem probe just to construct a fresh URL for every child.
+                                let child = url.appending(component: name, directoryHint: v.isDirectory == true ? .isDirectory : .notDirectory)
                                 return FileItem(url: child, name: child.lastPathComponent,
                                     isDirectory: v.isDirectory ?? false, identity: LocalEntryIdentity.read(child),
                                     isPackage: v.isPackage ?? false,
@@ -88,7 +91,7 @@ public struct LocalFileSystem: DirectoryStreaming {
                             } catch {
                                 let e = error as NSError
                                 if e.domain == NSCocoaErrorDomain && e.code == NSFileReadNoSuchFileError { return nil }
-                                return FileItem(url: child, name: child.lastPathComponent, isDirectory: false, kind: "—")
+                                return FileItem(url: url.appending(component: name, directoryHint: .notDirectory), name: name, isDirectory: false, kind: "—")
                             }
                         }
                         if reachedEnd { break }

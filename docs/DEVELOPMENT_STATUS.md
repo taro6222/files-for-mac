@@ -15,12 +15,14 @@ M7 출시 검증이 진행 중이다. [유니버설 개발 프리뷰](verificati
 | 설치·업데이트 | 유니버설 프리뷰의 Sonoma 14.8.7 설치·교체·복원, 두 언어의 실제 업데이트 메뉴 조회 | 서명·공증된 정식 배포본의 다운로드·최초 실행·버전 교체 |
 | SMB | 파일 시각, 이동·실행 취소, 게시 후 세션 재연결과 기록 중 단절 시 원본 보호 | 서버 권한 회수 시험, 장기 단절 및 외부 서버 검증 |
 | 원격 전체 AppKit | `05e2659`의 Apple Silicon 네 조합 각각 283개 통과. Intel은 이전 `3a65d40` 네 조합 각각 283개 통과 | `05e2659` Intel의 폴더 크기·원격·클라우드 준비 실패와 시험 이미지 resource busy 후 후속 소스 재검증 |
-| Xcode 진입점 | `05e2659`의 Apple Silicon·Intel 실제 Xcode 빌드와 preview 채널 확인 | `05e2659` 이후 소스의 Xcode 재검증 |
+| Xcode 진입점 | `bf8380c`의 Apple Silicon·Intel 실제 Xcode 빌드와 preview 채널 확인 | `05e2659` 이후 소스의 Xcode 재검증 |
 | 장시간 | `86be2b0` 기준 소스의 최적화 QA 8시간 시험 실행 중, 실제 프로세스 확인 | 기준 실행 정상 종료와 추세 판정, 최신 후보의 별도 장시간 검증 |
 
 실행별 증거와 정확한 제한은 [설치 프리뷰](verification/m7/INCREMENT_280.md), [SMB 기록 중 단절](verification/m7/INCREMENT_277.md), [서버 권한 회수](verification/m7/INCREMENT_285.md), [Intel UI 진단](verification/m7/INCREMENT_282.md), [Xcode 연결](verification/m7/INCREMENT_284.md), [8시간 시험](verification/m7/INCREMENT_283.md)에 기록했다.
 
 ## 이번 구현 단위
+
+[메타데이터 조회 실행 분리](verification/m7/INCREMENT_303.md): 폴더 크기·클라우드·볼륨 조회를 Swift 협력 실행기 밖으로 옮기고 취소 대기를 먼저 반환한다. URL 생성 시 중복 유형 조회를 피하면서 identity·메타데이터 신선도를 유지한다. 원격 실제 요청 완료와 창 닫기 취소를 대조하고 시험 이미지 busy 재시도는 소유권을 매번 재검증한다. Swift 성공 304개·건너뜀 18개, 제한 실행기 9개, 전체 UI 네 조합 각각 283개와 파일 작업 UI 각각 79개, 실제 EBUSY 정리를 통과했다. Intel 후속 결과와 성능 목표 판정은 남아 있다.
 
 [수신 보관본의 보관소 복원](verification/m7/INCREMENT_302.md): 부모·보관본 identity와 전체 트리 fingerprint, 원본 receipt를 다시 검사한 뒤 원래 보관소로 덮어쓰지 않고 복원한다. 취소·작업 센터·목록 갱신을 연결하고 원본 정리 기록은 불변으로 보존한다. Swift 성공 297개·건너뜀 18개, 수신·복원 계약 네 조합 각각 53개와 전체 AppKit 각각 283개를 통과했다. 위치 기록 후 실제 SIGKILL 복원과 설치·접근성·정식 배포 수용은 남아 있다.
 

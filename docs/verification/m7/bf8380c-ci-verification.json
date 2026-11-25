@@ -1,0 +1,173 @@
+{
+  "sourceCommit": "bf8380c05084aec3c41db09bfacc9fae4866b530",
+  "runURL": "https://github.com/taro6222/files-for-mac/actions/runs/45667965409",
+  "status": "completed",
+  "conclusion": "failure",
+  "jobs": [
+    {
+      "name": "macOS 15 (arm64)",
+      "conclusion": "cancelled",
+      "steps": []
+    },
+    {
+      "name": "Xcode (x86_64)",
+      "conclusion": "success",
+      "steps": [
+        {
+          "name": "Set up job",
+          "conclusion": "success"
+        },
+        {
+          "name": "Run actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803",
+          "conclusion": "success"
+        },
+        {
+          "name": "Check generated project and build the native app",
+          "conclusion": "success"
+        },
+        {
+          "name": "Post Run actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803",
+          "conclusion": "success"
+        },
+        {
+          "name": "Complete job",
+          "conclusion": "success"
+        }
+      ]
+    },
+    {
+      "name": "macOS 15 (x86_64)",
+      "conclusion": "failure",
+      "steps": [
+        {
+          "name": "Set up job",
+          "conclusion": "success"
+        },
+        {
+          "name": "Run actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803",
+          "conclusion": "success"
+        },
+        {
+          "name": "Verify runner and toolchain",
+          "conclusion": "success"
+        },
+        {
+          "name": "Audit parity inventories",
+          "conclusion": "success"
+        },
+        {
+          "name": "Verify Spotlight fixture ownership guards",
+          "conclusion": "success"
+        },
+        {
+          "name": "Build app and test targets",
+          "conclusion": "success"
+        },
+        {
+          "name": "Run Swift tests",
+          "conclusion": "success"
+        },
+        {
+          "name": "Verify Git and directory scheduling with a constrained Swift executor",
+          "conclusion": "success"
+        },
+        {
+          "name": "Retain Git scheduling diagnostics",
+          "conclusion": "success"
+        },
+        {
+          "name": "Verify mounted file systems and AppKit file operations",
+          "conclusion": "failure"
+        },
+        {
+          "name": "Verify AppKit file promise export contracts",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Retain file promise contract diagnostics",
+          "conclusion": "success"
+        },
+        {
+          "name": "Verify interrupted received cleanup in a fresh app process",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Retain cleanup restart diagnostics",
+          "conclusion": "success"
+        },
+        {
+          "name": "Prepare Spotlight for AppKit content search",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Verify native Spotlight query scopes",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Verify the complete AppKit suite",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Retain AppKit reports and window captures",
+          "conclusion": "success"
+        },
+        {
+          "name": "Remove the owned Spotlight source fixture",
+          "conclusion": "success"
+        },
+        {
+          "name": "Retain Spotlight preparation diagnostics",
+          "conclusion": "success"
+        },
+        {
+          "name": "Build and launch the installed developer preview",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Check out the previous preview source",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Verify preview replacement and rollback",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Post Run actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803",
+          "conclusion": "success"
+        },
+        {
+          "name": "Complete job",
+          "conclusion": "success"
+        }
+      ]
+    },
+    {
+      "name": "Xcode (arm64)",
+      "conclusion": "success",
+      "steps": [
+        {
+          "name": "Set up job",
+          "conclusion": "success"
+        },
+        {
+          "name": "Run actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803",
+          "conclusion": "success"
+        },
+        {
+          "name": "Check generated project and build the native app",
+          "conclusion": "success"
+        },
+        {
+          "name": "Post Run actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803",
+          "conclusion": "success"
+        },
+        {
+          "name": "Complete job",
+          "conclusion": "success"
+        }
+      ]
+    }
+  ],
+  "intelFailure": "Mounted Swift tests passed 7 functions; M2 AppKit ko/light stopped in copy/merge phase with NSCocoaErrorDomain 1570. Promise/restart/full AppKit not reached.",
+  "failedLogSHA256": "671c266a53410480fb16c96ec71f223dc8cda1ff24c4f6e3f4b519db10e9347a"
+}

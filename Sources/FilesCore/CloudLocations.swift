@@ -49,23 +49,39 @@ public struct CloudLocationProvider: Sendable {
         self.iCloudDriveRoot = iCloudDriveRoot ?? home.appendingPathComponent("Library/Mobile Documents/com~apple~CloudDocs", isDirectory: true)
     }
 
+    public func locationsAsync() async -> [CloudLocation] { await locationsAsync(beforeReading: nil) }
+    func locationsAsync(beforeReading: (@Sendable () -> Void)?) async -> [CloudLocation] {
+        (try? await FileSystemWork.run(qos: .utility) { cancellation in
+            beforeReading?(); try cancellation.check()
+            let result = try discover(fileManager: .default, cancellation: cancellation); try cancellation.check(); return result
+        }) ?? []
+    }
+
     public func locations(fileManager: FileManager = .default) -> [CloudLocation] {
+        (try? discover(fileManager: fileManager, cancellation: nil)) ?? []
+    }
+    private func discover(fileManager: FileManager, cancellation: CopyCancellation?) throws -> [CloudLocation] {
+        try cancellation?.check()
         var urls: [URL] = []
         if (try? iCloudDriveRoot.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true { urls.append(iCloudDriveRoot) }
         if let children = try? fileManager.contentsOfDirectory(at: cloudStorageRoot, includingPropertiesForKeys: [.isDirectoryKey, .isHiddenKey], options: [.skipsHiddenFiles]) {
-            urls += children.filter {
-                let values = try? $0.resourceValues(forKeys: [.isDirectoryKey, .isHiddenKey])
-                return values?.isDirectory == true && values?.isHidden != true
+            for child in children {
+                try cancellation?.check()
+                let values = try? child.resourceValues(forKeys: [.isDirectoryKey, .isHiddenKey])
+                if values?.isDirectory == true && values?.isHidden != true { urls.append(child) }
             }
         }
         var seen = Set<String>()
-        return urls.compactMap { url in
+        var result: [CloudLocation] = []
+        for url in urls {
+            try cancellation?.check()
             let standardized = url.standardizedFileURL
-            guard seen.insert(standardized.path).inserted else { return nil }
+            guard seen.insert(standardized.path).inserted else { continue }
             let provider = providerName(for: standardized)
-            return CloudLocation(id: standardized.path, name: displayName(for: standardized, provider: provider), providerName: provider,
-                                 url: standardized, state: state(of: standardized), exposesUbiquitousState: isUbiquitous(standardized))
-        }.sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+            result.append(CloudLocation(id: standardized.path, name: displayName(for: standardized, provider: provider), providerName: provider,
+                                 url: standardized, state: state(of: standardized), exposesUbiquitousState: isUbiquitous(standardized)))
+        }
+        return result.sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
     }
 
     public func state(of url: URL) -> CloudItemState {

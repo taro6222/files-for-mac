@@ -4,7 +4,7 @@ import Testing
 
 @MainActor
 private func settleRemote(_ model: RemoteBrowserModel) async {
-    for _ in 0..<100 where model.isLoading { await Task.yield() }
+    await model.waitForCurrentLoad()
 }
 
 @Test @MainActor func remoteBrowserNavigatesDirectoriesAndHistoryWithoutFileURLs() async throws {
@@ -34,4 +34,26 @@ private func settleRemote(_ model: RemoteBrowserModel) async {
     try model.navigate(to: "/slow"); try model.navigate(to: "/fresh"); await settleRemote(model)
     #expect(model.path == "/fresh"); #expect(model.entries.map(\.name) == ["fresh"])
     model.reload(); model.cancel(); #expect(model.wasCancelled); #expect(!model.isLoading)
+}
+
+private actor RemoteLoadGate {
+    private var continuation: CheckedContinuation<Void, Never>?
+    private(set) var started = false
+    func wait() async { started = true; await withCheckedContinuation { continuation = $0 } }
+    func open() { continuation?.resume(); continuation = nil }
+}
+
+@Test @MainActor func remoteBrowserWaitsForRequestCompletionWithoutAFixedSleep() async throws {
+    let gate = RemoteLoadGate()
+    let model = try RemoteBrowserModel(path: "/team") { path in
+        await gate.wait(); return [.init(name: "ready.txt", remotePath: path + "/ready.txt")]
+    }
+    model.start()
+    #expect(model.isLoading && model.entries.isEmpty)
+    let waiting = Task { await model.waitForCurrentLoad(); return model.entries.map(\.name) }
+    while !(await gate.started) { await Task.yield() }
+    #expect(model.isLoading && model.entries.isEmpty)
+    await gate.open()
+    #expect(await waiting.value == ["ready.txt"])
+    #expect(!model.isLoading && model.error == nil)
 }

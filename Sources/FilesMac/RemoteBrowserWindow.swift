@@ -14,7 +14,7 @@ private final class RemoteBrowserTableView: NSTableView {
 }
 
 @MainActor
-final class RemoteBrowserWindow: NSWindowController, NSTableViewDataSource, NSTableViewDelegate {
+final class RemoteBrowserWindow: NSWindowController, NSTableViewDataSource, NSTableViewDelegate, NSWindowDelegate {
     private let model: RemoteBrowserModel
     private let onDownload: (RemoteDirectoryEntry, NSWindow?) -> Void
     private let path = NSTextField(labelWithString: "/"), status = NSTextField(labelWithString: "")
@@ -26,13 +26,14 @@ final class RemoteBrowserWindow: NSWindowController, NSTableViewDataSource, NSTa
         self.model = model; self.onDownload = onDownload
         let panel = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 720, height: 500),
             styleMask: [.titled, .closable, .resizable], backing: .buffered, defer: false)
-        super.init(window: panel); panel.title = title; panel.isReleasedWhenClosed = false
+        super.init(window: panel); panel.title = title; panel.isReleasedWhenClosed = false; panel.delegate = self
         if let frameAutosaveName { panel.setFrameAutosaveName(frameAutosaveName) }
         buildUI(); model.onChange = { [weak self] in guard let self else { return }; self.render(); onPathChange?(self.model.path) }; render()
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
 
     func present() { window?.center(); showWindow(nil); window?.makeKeyAndOrderFront(nil); model.start() }
+    func windowWillClose(_ notification: Notification) { model.cancel() }
 
     private func buildUI() {
         guard let content = window?.contentView else { return }
@@ -83,6 +84,7 @@ final class RemoteBrowserWindow: NSWindowController, NSTableViewDataSource, NSTa
     @objc private func stopLoading(_ sender: Any?) { model.cancel() }
 #if DEBUG
     var qaRowCount: Int { model.entries.count }
+    var qaLoadingFeedbackReady: Bool { model.isLoading && stop.isEnabled && status.stringValue == L("불러오는 중…", "Loading…") }
     var qaPath: String { model.path }
     var qaDownloadEnabled: Bool { download.isEnabled }
     var qaContentView: NSView? { window?.contentView }

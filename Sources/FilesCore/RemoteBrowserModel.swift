@@ -31,6 +31,8 @@ public final class RemoteBrowserModel {
     public var canGoUp: Bool { path != "/" }
 
     public func start() { reload() }
+    /// Wait for the request scheduled now; a later navigation owns a separate task.
+    public func waitForCurrentLoad() async { await task?.value }
     public func navigate(to path: String) throws {
         let normalized = try Self.normalized(path)
         guard normalized != self.path else { reload(); return }
@@ -57,6 +59,7 @@ public final class RemoteBrowserModel {
         task?.cancel(); entries = []; error = nil; wasCancelled = false; isLoading = true; onChange?()
         let requestedPath = path
         task = Task { [weak self, loader] in
+            guard self?.generation == request, !Task.isCancelled else { return }
             do {
                 let loaded = try await loader(requestedPath)
                 guard let self, self.generation == request, self.path == requestedPath, !Task.isCancelled else { return }

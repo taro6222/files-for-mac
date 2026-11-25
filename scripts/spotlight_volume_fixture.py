@@ -8,16 +8,24 @@ import re
 import stat
 import subprocess
 import tempfile
+import time
 
 MARKER = '.files-mac-spotlight-volume.json'
 FIXTURE_MARKER = '.files-mac-spotlight-qa.json'
 SOURCE = Path('Sources/FilesCore/LocalSearch.swift')
 
 
+class CommandFailure(RuntimeError):
+    def __init__(self, arguments, returncode, stderr):
+        self.arguments = arguments
+        self.returncode = returncode
+        super().__init__(f'{arguments[0]} failed ({returncode}): ' + os.fsdecode(stderr))
+
+
 def command(arguments, timeout=60, plist=False):
     result = subprocess.run(arguments, capture_output=True, timeout=timeout)
     if result.returncode:
-        raise RuntimeError(f'{arguments[0]} failed ({result.returncode}): ' + os.fsdecode(result.stderr))
+        raise CommandFailure(arguments, result.returncode, result.stderr)
     return plistlib.loads(result.stdout) if plist else os.fsdecode(result.stdout)
 
 
@@ -166,11 +174,24 @@ def validate_source_only(state):
 
 
 
-def detach(state):
-    device, _ = mounted_volume(state)
-    command(['/usr/bin/hdiutil', 'detach', device], timeout=60)
-    if image_mapping(state):
-        raise RuntimeError('Image remains attached; resources retained')
+def detach(state, state_path):
+    # Indexers may briefly retain the just-finished query volume. Never force an unmount.
+    for attempt in range(5):
+        validate_resource(state, state_path)
+        device, _ = mounted_volume(state)
+        validate_source_only(state)
+        try:
+            command(['/usr/bin/hdiutil', 'detach', device], timeout=60)
+        except CommandFailure as error:
+            if error.returncode != 16 or attempt == 4:
+                raise
+            if not image_mapping(state):
+                return
+            time.sleep(1)
+            continue
+        if image_mapping(state):
+            raise RuntimeError('Image remains attached; resources retained')
+        return
 
 
 def cleanup(state, state_path, save):
@@ -181,7 +202,7 @@ def cleanup(state, state_path, save):
     if image_mapping(state):
         mounted_volume(state)
         validate_source_only(state)
-        detach(state)
+        detach(state, state_path)
     # Inspect the final immutable filesystem, avoiding a write between inspection and unmount.
     if Path(state['image']).exists():
         attach(state, save, readonly=True)
@@ -191,7 +212,7 @@ def cleanup(state, state_path, save):
         except Exception:
             # Keep the mounted image and backing file for inspection; never delete unknown data.
             raise
-        detach(state)
+        detach(state, state_path)
     validate_resource(state, state_path)
     mount = Path(state['mountPoint'])
     if mount.is_symlink() or (mount.exists() and any(mount.iterdir())):

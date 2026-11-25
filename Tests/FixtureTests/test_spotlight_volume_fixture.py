@@ -108,6 +108,47 @@ class SpotlightVolumeOwnershipTests(unittest.TestCase):
             fixture.validate_source_only(self.state)
         self.assertEqual(metadata.read_text(), 'foreign bytes')
 
+    def test_busy_detach_revalidates_ownership_and_current_device(self):
+        busy = fixture.CommandFailure(['hdiutil'], 16, b'Resource busy')
+        with patch.object(fixture, 'mounted_volume', side_effect=[('/dev/disk2', {}), ('/dev/disk9', {})]), \
+             patch.object(fixture, 'image_mapping', side_effect=[{'attached': True}, None]), \
+             patch.object(fixture, 'command', side_effect=[busy, 'detached']) as command, \
+             patch.object(fixture.time, 'sleep'):
+            fixture.detach(self.state, self.state_path)
+        self.assertEqual([call.args[0] for call in command.call_args_list],
+                         [['/usr/bin/hdiutil', 'detach', '/dev/disk2'], ['/usr/bin/hdiutil', 'detach', '/dev/disk9']])
+        self.assertTrue(self.image.exists())
+
+    def test_busy_detach_refuses_new_data_before_retry(self):
+        unknown = self.mount / 'new-user-file.txt'
+        def busy(*_, **__):
+            unknown.write_text('must remain')
+            raise fixture.CommandFailure(['hdiutil'], 16, b'Resource busy')
+        with patch.object(fixture, 'mounted_volume', return_value=('/dev/disk2', {})), \
+             patch.object(fixture, 'image_mapping', return_value={'attached': True}), \
+             patch.object(fixture, 'command', side_effect=busy) as command, patch.object(fixture.time, 'sleep'):
+            with self.assertRaisesRegex(RuntimeError, 'Unrecognized data'):
+                fixture.detach(self.state, self.state_path)
+        self.assertEqual(command.call_count, 1)
+        self.assertEqual(unknown.read_text(), 'must remain')
+        self.assertTrue(self.image.exists())
+
+    def test_persistent_busy_detach_is_bounded_and_preserves_image(self):
+        with patch.object(fixture, 'mounted_volume', return_value=('/dev/disk2', {})), \
+             patch.object(fixture, 'image_mapping', return_value={'attached': True}), \
+             patch.object(fixture, 'command', side_effect=fixture.CommandFailure(['hdiutil'], 16, b'busy')) as command, \
+             patch.object(fixture.time, 'sleep'):
+            with self.assertRaises(fixture.CommandFailure): fixture.detach(self.state, self.state_path)
+        self.assertEqual(command.call_count, 5)
+        self.assertTrue(self.image.exists())
+
+    def test_other_detach_failures_are_not_retried(self):
+        with patch.object(fixture, 'mounted_volume', return_value=('/dev/disk2', {})), \
+             patch.object(fixture, 'command', side_effect=fixture.CommandFailure(['hdiutil'], 1, b'permission')) as command:
+            with self.assertRaises(fixture.CommandFailure): fixture.detach(self.state, self.state_path)
+        self.assertEqual(command.call_count, 1)
+        self.assertTrue(self.image.exists())
+
 
 if __name__ == '__main__':
     unittest.main()

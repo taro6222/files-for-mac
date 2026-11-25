@@ -3744,7 +3744,7 @@ extension BrowserWindow {
     private func refreshVolumes() {
         volumeTask?.cancel()
         volumeTask = Task { [weak self, loadMountedVolumes] in
-            let result = await Task.detached(priority: .utility, operation: loadMountedVolumes).value
+            let result = (try? await FileSystemWork.run(qos: .utility) { _ in loadMountedVolumes() }) ?? []
             guard let self, !Task.isCancelled else { return }
             self.volumes = result; self.buildSidebar()
             self.invalidateHome()
@@ -3753,7 +3753,7 @@ extension BrowserWindow {
     private func refreshCloudLocations() {
         cloudTask?.cancel()
         cloudTask = Task { [weak self, cloudProvider] in
-            let result = await Task.detached(priority: .utility) { cloudProvider.locations() }.value
+            let result = await cloudProvider.locationsAsync()
             guard let self, !Task.isCancelled else { return }
             self.cloudLocations = result; self.buildSidebar()
         }
@@ -4204,6 +4204,7 @@ extension BrowserWindow {
             window.setFrame(NSRect(x: 80, y: 80, width: 900, height: 600), display: true)
             controller.showWindow(nil)
             NSApp.activate(ignoringOtherApps: true)
+            let initialHomeVisible = window.isVisible
             var capturesUseRequestedTheme = true
             func capture(_ name: String, view: NSView? = nil, backingColor: NSColor? = nil) throws {
                 checkpoint(checks, phase: "capture:" + name)
@@ -4228,7 +4229,11 @@ extension BrowserWindow {
                 try png.write(to: destination.appendingPathComponent(name + ".png"))
             }
             try await Task.sleep(for: .milliseconds(500))
-            checks["cloudLocations"] = controller.cloudLocations.count == 3 && controller.cloudLocations.allSatisfy { $0.state == .unknown }
+            checkpoint(checks, phase: "await:initial-cloud-discovery")
+            await controller.cloudTask?.value
+            checkpoint(checks, phase: "await:initial-volume-discovery")
+            await controller.volumeTask?.value
+            checks["cloudLocations"] = initialHomeVisible && controller.cloudLocations.count == 3 && controller.cloudLocations.allSatisfy { $0.state == .unknown }
             try capture("home")
             let sampleVolumes = controller.volumes
             let local = MountedVolume(url: fixture, name: "QA Local", isLocal: true)
@@ -4756,18 +4761,26 @@ extension BrowserWindow {
                 }
                 var requestedRemoteDownload: String?
                 let remotePane = RemoteBrowserWindow(title: "QA SFTP", model: remoteModel) { entry, _ in requestedRemoteDownload = entry.remotePath }
-                remotePane.present(); try await Task.sleep(for: .milliseconds(50))
-                checks["remoteBrowserRows"] = remotePane.qaRowCount == 2 && remotePane.qaPath == "/team"
+                remotePane.present(); let immediateRemoteFeedback = remotePane.qaLoadingFeedbackReady
+                await remoteModel.waitForCurrentLoad()
+                checks["remoteBrowserRows"] = immediateRemoteFeedback && remotePane.qaRowCount == 2 && remotePane.qaPath == "/team"
                 checks["remoteBrowserAccessibility"] = remotePane.qaAccessibilityReady
                 remotePane.qaSelect(row: 0); checks["remoteBrowserFolderNotDownloadable"] = !remotePane.qaDownloadEnabled
-                remotePane.qaOpen(row: 0); try await Task.sleep(for: .milliseconds(50))
+                remotePane.qaOpen(row: 0); await remoteModel.waitForCurrentLoad()
                 let openedRemoteFolder = remotePane.qaPath == "/team/Folder" && remotePane.qaRowCount == 1
-                remotePane.qaBack(); try await Task.sleep(for: .milliseconds(50)); let remoteBack = remotePane.qaPath == "/team"
-                remotePane.qaForward(); try await Task.sleep(for: .milliseconds(50)); let remoteForward = remotePane.qaPath == "/team/Folder"
-                remotePane.qaUp(); try await Task.sleep(for: .milliseconds(50)); let remoteUp = remotePane.qaPath == "/team"
+                remotePane.qaBack(); await remoteModel.waitForCurrentLoad(); let remoteBack = remotePane.qaPath == "/team"
+                remotePane.qaForward(); await remoteModel.waitForCurrentLoad(); let remoteForward = remotePane.qaPath == "/team/Folder"
+                remotePane.qaUp(); await remoteModel.waitForCurrentLoad(); let remoteUp = remotePane.qaPath == "/team"
                 checks["remoteBrowserNavigation"] = openedRemoteFolder && remoteBack && remoteForward && remoteUp
-                remotePane.qaSelect(row: 1); remotePane.qaOpen(row: 1); checks["remoteBrowserDownloadSelection"] = remotePane.qaDownloadEnabled && remotePane.qaDeleteUnavailable && requestedRemoteDownload == "/team/한글 file.txt"
-                try capture("remote-browser", view: remotePane.qaContentView); remotePane.close(); window.makeKeyAndOrderFront(nil)
+                remotePane.qaSelect(row: 1); remotePane.qaOpen(row: 1)
+                let remoteDownloadReady = remotePane.qaDownloadEnabled && remotePane.qaDeleteUnavailable && requestedRemoteDownload == "/team/한글 file.txt"
+                try capture("remote-browser", view: remotePane.qaContentView)
+                try remoteModel.navigate(to: "/team/cancel-on-close"); remotePane.close()
+                let remoteCloseCancelled = remoteModel.wasCancelled && !remoteModel.isLoading
+                diagnostics["remoteDownloadSelected"] = remoteDownloadReady
+                diagnostics["remoteCloseCancelledPendingLoad"] = remoteCloseCancelled
+                checks["remoteBrowserDownloadSelection"] = remoteDownloadReady && remoteCloseCancelled
+                window.makeKeyAndOrderFront(nil)
                 let gitPanel = GitWindow(); gitPanel.present(location: URL(fileURLWithPath: fm.currentDirectoryPath, isDirectory: true))
                 let gitLoad = ContinuousClock.now
                 while !gitPanel.qaLoaded && gitLoad.duration(to: .now) < .seconds(10) { try await Task.sleep(for: .milliseconds(10)) }
