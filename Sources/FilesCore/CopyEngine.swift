@@ -18,6 +18,7 @@ public struct CopyProgress: Sendable {
     public let phase: String
     public let stagedTransfer: StagedFileTransfer?
     public var liveTransfer: LiveTransferProgress? = nil
+    public var selectionTransfer: SelectionTransferProgress? = nil
 }
 
 /// Logical bytes staged by one completed copy call and its elapsed time.
@@ -52,6 +53,7 @@ public struct CopyReport: Codable, Sendable {
     public var state: String
     public var items: [CopyRecord]
     public var journalError: String? = nil
+    public var selectionTransfer: SelectionTransferProgress? = nil
 }
 
 public struct CopyUndoItem: Codable, Sendable {
@@ -185,14 +187,57 @@ public enum CopyEngine {
         }
         let destinationFD = open(destination.path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
         defer { if destinationFD >= 0 { close(destinationFD) } }
+        // Reuse the required original snapshots; no second recursive size scan or duplicate hashing.
+        // Each consumed snapshot is released as its root starts, bounding retention alongside the journal.
+        var prepared = [Result<VerificationSnapshot, any Error>?](repeating: nil, count: sources.count)
+        var plans = [Int64?](repeating: nil, count: sources.count)
+        if destinationFD >= 0, matches(destination, descriptor: destinationFD),
+           expectedDestination.map({ $0.url.path == destination.path && $0.isCurrent }) != false {
+            for index in sources.indices {
+                if cancellation.isCancelled { break }
+                let source = sources[index].standardizedFileURL
+                progress(CopyProgress(index: 0, total: sources.count, name: source.lastPathComponent,
+                                      phase: "sizing", stagedTransfer: nil))
+                let name = explicitName ?? source.lastPathComponent
+                var existing = stat()
+                if conflictPolicy == .skip && fstatat(destinationFD, name, &existing, AT_SYMLINK_NOFOLLOW) == 0 {
+                    plans[index] = 0
+                    continue
+                }
+                let result = Result { () throws -> VerificationSnapshot in
+                    try cancellation.check()
+                    let attrs = try fm.attributesOfItem(atPath: source.path)
+                    if let expectedSource, expectedSource.url != source || !expectedSource.isCurrent {
+                        throw EntryOperationError.sourceChanged
+                    }
+                    if let expectedTemplate,
+                       !expectedTemplate.isCurrent || attrs[.type] as? FileAttributeType != .typeRegular {
+                        throw EntryOperationError.sourceChanged
+                    }
+                    if attrs[.type] as? FileAttributeType == .typeDirectory {
+                        let root = source.resolvingSymlinksInPath().standardizedFileURL.path
+                        let path = destination.path
+                        guard path != root, !path.hasPrefix(root == "/" ? "/" : root + "/") else {
+                            throw CopyFailure(text: "Cannot copy a folder into itself or a descendant.")
+                        }
+                    }
+                    return try makeSnapshot(source, cancellation: cancellation)
+                }
+                prepared[index] = result
+                if case .success(let snapshot) = result { plans[index] = snapshot.logicalDataBytes }
+            }
+        }
+        let selection = SelectionTransferTracker(plans: plans)
         for index in report.items.indices {
+            let preparedSource = prepared[index]
+            prepared[index] = nil
             if cancellation.isCancelled { report.items[index].state = "cancelled"; continue }
             let source = sources[index].standardizedFileURL
             var stage: URL?
             var stageFD: Int32 = -1
             func emit(_ phase: String, stagedTransfer: StagedFileTransfer? = nil) {
                 progress(CopyProgress(index: index, total: sources.count, name: source.lastPathComponent,
-                                      phase: phase, stagedTransfer: stagedTransfer))
+                                      phase: phase, stagedTransfer: stagedTransfer, selectionTransfer: selection.snapshot()))
             }
             do {
                 guard destinationFD >= 0, matches(destination, descriptor: destinationFD),
@@ -222,9 +267,12 @@ public enum CopyEngine {
                 if exists && conflictPolicy == .skip {
                     report.items[index].state = "conflict"
                     report.items[index].message = "An item with this name already exists; skipped."
+                    selection.excludeUnstaged(index); emit("planning")
                 } else {
                     guard exists || lookupError == ENOENT else { throw POSIXError(POSIXErrorCode(rawValue: lookupError) ?? .EIO) }
-                    let before = try makeSnapshot(source, cancellation: cancellation)
+                    let before: VerificationSnapshot
+                    if let preparedSource { before = try preparedSource.get() }
+                    else { before = try makeSnapshot(source, cancellation: cancellation) }
                     try PromisedFileIntake.validate(source, snapshot: before, in: sourceIntakes)
                     let temporary = destination.appendingPathComponent(".files-copy-" + report.id.uuidString + "-\(index)")
                     report.items[index].temporary = temporary
@@ -246,7 +294,8 @@ public enum CopyEngine {
                     try NativeFileCopy.run(from: source, to: payload, totalBytes: before.logicalDataBytes,
                                            cancellation: cancellation) { update in
                         progress(CopyProgress(index: index, total: sources.count, name: source.lastPathComponent,
-                                              phase: "copying", stagedTransfer: nil, liveTransfer: update))
+                                              phase: "copying", stagedTransfer: nil, liveTransfer: update,
+                                              selectionTransfer: selection.record(index, live: update)))
                     }
                     try before.restoreCreationTimes(in: payload, cancellation: cancellation)
                     try before.restoreDirectoryModificationTimes(in: payload, cancellation: cancellation)
@@ -339,6 +388,7 @@ public enum CopyEngine {
                 break // Keep truthful completed states if persistence fails after publication.
             }
         }
+        report.selectionTransfer = selection.snapshot()
         let completed = report.items.filter { $0.state == "completed" }.count
         report.state = cancellation.isCancelled ? "cancelled" :
             (completed == sources.count && report.journalError == nil ? "completed" : (completed > 0 ? "partiallyCompleted" : "failed"))

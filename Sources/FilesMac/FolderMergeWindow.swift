@@ -73,7 +73,7 @@ final class FolderMergeWindow: NSWindowController, NSWindowDelegate {
 
     private func update(_ update: CopyMergeBatchProgress) {
         guard running, !cancellation.isCancelled else { return }
-        let rank = ["planning": 0, "copying": 1, "verifying": 2, "committing": 3][update.state] ?? 4
+        let rank = ["sizing": -1, "planning": 0, "copying": 1, "verifying": 2, "committing": 3][update.state] ?? 4
         guard update.index >= latestIndex else { return }
         if update.index == latestIndex {
             guard update.actionIndex >= latestAction else { return }
@@ -87,9 +87,10 @@ final class FolderMergeWindow: NSWindowController, NSWindowDelegate {
         latestIndex = update.index; latestAction = update.actionIndex; latestPhase = rank
         if let live = update.liveTransfer { latestBytes = live.bytes }
         progress.doubleValue = Double(update.index) + (rank == 4 && update.actionIndex == Int.max ? 1 : 0)
-        progress.showCurrentFileActivity(rank == 1 || rank == 2)
+        progress.showCurrentFileActivity(rank == -1 || rank == 1 || rank == 2)
         let phase: String
         switch update.state {
+        case "sizing": phase = L("전체 데이터 확인", "Checking selected data")
         case "planning": phase = L("원본 확인", "Checking source")
         case "copying": phase = L("복사", "Copying")
         case "verifying": phase = L("내용 검증", "Verifying contents")

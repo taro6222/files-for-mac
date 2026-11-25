@@ -1,0 +1,110 @@
+{
+  "sourceBaseSHA": "6287f3e6b26c7fee066537d94e9e4c10c37fa9ac",
+  "sourceFilesSHA256": {
+    "Sources/FilesCore/CopyEngine.swift": "00f256d9638823690aa3cc2abfe730e9c4734ad644c30b9c5e5190c1b69415d0",
+    "Sources/FilesCore/SelectionTransferProgress.swift": "9fa82c4fb478a569d1d6dbda9c490b70269ac67536701d5fae131b9b598955d7",
+    "Sources/FilesMac/CopyWindow.swift": "56e6b46e0b76e8d0a92c3c267fe011040dae2d1e351e1866d78b24b814e730a1",
+    "Sources/FilesMac/FolderMergeWindow.swift": "62de409b0e2aa029e831ef62efd0cff4d83386f3393d1715fd86fb60d5088e7b",
+    "Sources/FilesMac/BrowserWindow.swift": "9fe203fcb0aec73c42fda9f6f8ba49502da2de6b3aecf0fe36d4cfb841d77eab",
+    "Tests/FilesCoreTests/SelectionCopyProgressTests.swift": "94be5b11b0d0d8f2e209baf3bb07105e0fc26a493c20d3f5ff071942e33ea5d1"
+  },
+  "debugSHA256": "3e72e0b340ec50a6a2acd25c6eb574c4a9ae2d95a30197ee69ae2d27464e9e81",
+  "releaseSHA256": "24154bc94ba5888d3006cd3a2f18e76ee430501f7bda40c39b4ddedeb0ada4ba",
+  "swiftTests": {
+    "reported": 352,
+    "passed": 334,
+    "environmentSkipped": 18
+  },
+  "mountedVolumeTests": 7,
+  "strictExecutor": {
+    "state": "passed",
+    "tests": {
+      "gitConcurrentSnapshotsCompleteWithoutBlockingSwiftTasks": true,
+      "gitWaitingForProcessAllowsOtherSwiftTasksToResume": true,
+      "gitCancellationTerminatesProcessAndCleansCloneStaging": true,
+      "directoryWaitingForFileSystemAllowsOtherSwiftTasksToResume": true,
+      "directoryCancellationWhileFileSystemIsBlockedStopsBeforeFirstBatch": true,
+      "directoryMetadataCancellationReturnsWhileBoundedReadersAreStillBlocked": true,
+      "folderSizingWaitingForFileSystemAllowsOtherSwiftTasksToResume": true,
+      "folderSizingCancellationWhileFileSystemIsBlockedReturnsBeforeIO": true,
+      "folderBulkSizingCancellationDiscardsLateResults": true,
+      "cloudDiscoveryCancellationWhileFileSystemIsBlockedReturnsBeforeIO": true
+    },
+    "exitCode": 0,
+    "timedOut": false,
+    "elapsedSeconds": 0.24219662498217076,
+    "testBinary": "/Users/changhun/Desktop/Workspace/Files/.build/out/Products/Debug/FilesCoreTests.xctest/Contents/MacOS/FilesCoreTests",
+    "constrainedProcess": "swiftpm-testing-helper",
+    "swiftVersion": "Apple Swift version 6.4.2 (swiftlang-6.4.2.1.9 clang-2100.4.1.1)\nTarget: arm64-apple-macosx27.2.0",
+    "sourceCommit": null,
+    "strictCooperativePool": true
+  },
+  "cases": {
+    "ko-light": {
+      "fileOperationChecks": 82,
+      "fullChecks": 283,
+      "selectionBytesAndLateFrames": true,
+      "remainingItems": true,
+      "fileOperationReportSHA256": "87e0ee027e8d06a88ab1c5ed54e5d1f3f10d37f8fe093727d381bf4e3bb3cee9",
+      "fullReportSHA256": "446efc03ee405e0329c7bc2782a85a66b3a0815efc84f700f5f1ff07fc4eeeb9",
+      "capture": "selection-copy-ko-light.png",
+      "captureSHA256": "6ae35fe8b3f934b8677747e776fd53269b140f4ae59cb63fb67655a425b75f58"
+    },
+    "ko-dark": {
+      "fileOperationChecks": 82,
+      "fullChecks": 283,
+      "selectionBytesAndLateFrames": true,
+      "remainingItems": true,
+      "fileOperationReportSHA256": "4f93fee2b5125fe1cbb177d8da3f8cbfe58665b5f86464049ed6d40d34b2de2e",
+      "fullReportSHA256": "250a32b4f99254cff22a87df674ae09f21d1fa754d244bfb954d9de047e6271b",
+      "capture": "selection-copy-ko-dark.png",
+      "captureSHA256": "9344075b5de84c644f7eda03a8512c9c0310e073db7470e72e6b749de5c13483"
+    },
+    "en-light": {
+      "fileOperationChecks": 82,
+      "fullChecks": 283,
+      "selectionBytesAndLateFrames": true,
+      "remainingItems": true,
+      "fileOperationReportSHA256": "f888ecb31e7f74b4c9eb6cc781b67244fcac00912e2375642689dd097147b08a",
+      "fullReportSHA256": "06b3b02b4bf7a38c9dcd718574ee201229cf20e117b0892554a35e264eac07e7",
+      "capture": "selection-copy-en-light.png",
+      "captureSHA256": "1ad7eb32c720d8d6c9fd2f0c73a1d94714f74fa7c64b6666edbaf0dfc6da6750"
+    },
+    "en-dark": {
+      "fileOperationChecks": 82,
+      "fullChecks": 283,
+      "selectionBytesAndLateFrames": true,
+      "remainingItems": true,
+      "fileOperationReportSHA256": "0590ac845be5754ab8ca5fc032e5056d9bafe1a1495eb624c60bb798804088bb",
+      "fullReportSHA256": "848ccb56b425e4dc2bbb39dbb81fa0ddc81dc28ac53978434ea48032264cfb9b",
+      "capture": "selection-copy-en-dark.png",
+      "captureSHA256": "b654a1501163f42cfaf515bb75cc0b126875041f003114122029eb370a7f5718"
+    }
+  },
+  "logsSHA256": {
+    "final-build": "0c7a605d0a09d6b7b4eab8a0f9bc1c20c1ca53a3495f994071120bea7a7f76cf",
+    "tests": "d5c70ce1e94c43ec1f3da2bdef1853fabdafb7ebebe0879036793a680ea5add6",
+    "volume-ui": "23c3839f4b74929946058e0040e097158a3e0bc790867a832aab4fefacf31745",
+    "full-ui": "2424745dec00ef6e1c0888f4db1e77ecba0c877d629dbfb80c93b5d81c96fc71",
+    "release": "08c2c732130ed2a0c24cbb56dd997ae41c3bb27160d262197c328e24acf1e952",
+    "strict": "17bf6e02a96f3dfdc3cce5012e841ee20d7c4b031030df8d9834c36727dfbca5"
+  },
+  "fixture": {
+    "sourceBytes": [
+      32768,
+      65536,
+      131072
+    ],
+    "skippedRootIndex": 2,
+    "expectedStagedBytes": 98304,
+    "expectedTotalBytes": 98304
+  },
+  "limitations": [
+    "Aggregates selected CopyEngine roots; selection-wide move/merge aggregation remains open.",
+    "Data staging percentage is separate from verification/publication and operation success.",
+    "Final failure/cancellation data may be the last callback observation and include discarded attempts.",
+    "Prepared snapshots are not an atomic snapshot of the complete selection.",
+    "The work indicator remains active during verification; the new data fraction is a text line.",
+    "New remote acceptance, latest-source eight-hour memory stability, physical input and signed release remain open."
+  ]
+}

@@ -17,6 +17,7 @@ final class CopyWindow: NSWindowController, NSWindowDelegate {
     private let details = NSTextView()
     private var latestProgressIndex = -1
     private var latestProgressPhase = -1
+    private var latestSelection: SelectionTransferProgress?
     private var latestLiveBytes: Int64?
 #if DEBUG
     private(set) var qaLastProgress = ""
@@ -97,9 +98,11 @@ final class CopyWindow: NSWindowController, NSWindowDelegate {
 
     private func update(_ update: CopyProgress) {
         guard running, !cancellation.isCancelled else { return }
-        let rank = ["planning": 0, "copying": 1, "verifying": 2, "committing": 3][update.phase] ?? 3
+        let rank = ["sizing": -1, "planning": 0, "copying": 1, "verifying": 2, "committing": 3][update.phase] ?? 3
         // Callback deliveries use MainActor tasks; discard a delayed earlier item/phase or byte sample.
         guard update.index >= latestProgressIndex else { return }
+        if let value = update.selectionTransfer, let latestSelection,
+           value.sequence < latestSelection.sequence { return }
         if update.index == latestProgressIndex {
             guard rank >= latestProgressPhase else { return }
             if rank == 1, let latestLiveBytes {
@@ -108,23 +111,30 @@ final class CopyWindow: NSWindowController, NSWindowDelegate {
         } else { latestLiveBytes = nil }
         latestProgressIndex = update.index; latestProgressPhase = rank
         if let live = update.liveTransfer { latestLiveBytes = live.bytes }
+        if let selection = update.selectionTransfer { latestSelection = selection }
         let phase: String
         switch update.phase {
+        case "sizing": phase = L("전체 데이터 확인", "Checking selected data")
         case "planning": phase = L("원본 확인", "Checking source")
         case "copying": phase = L("복사", "Copying")
         case "verifying": phase = L("내용 검증", "Verifying contents")
         default: phase = L("결과 확정", "Committing")
         }
         let remaining = update.total - update.index - 1
-        label.stringValue = "\(update.index + 1)/\(update.total) · \(phase) · \(update.name)"
-            + L(" · 이후 \(remaining)개", " · \(remaining) after this item")
+        if update.phase == "sizing" {
+            label.stringValue = phase + " · " + update.name + L(" · 원본 \(update.total)개", " · \(update.total) sources")
+        } else {
+            label.stringValue = "\(update.index + 1)/\(update.total) · \(phase) · \(update.name)"
+                + L(" · 이후 \(remaining)개", " · \(remaining) after this item")
+        }
         if let transfer = update.stagedTransfer { label.stringValue += stagedTransferDescription(transfer) }
         if let transfer = update.liveTransfer { label.stringValue += liveTransferDescription(transfer) }
+        if let transfer = update.selectionTransfer { label.stringValue += selectionTransferDescription(transfer) }
 #if DEBUG
         qaLastProgress = label.stringValue
 #endif
         progress.doubleValue = Double(update.index)
-        progress.showCurrentFileActivity(update.phase == "copying" || update.phase == "verifying")
+        progress.showCurrentFileActivity(update.phase == "sizing" || update.phase == "copying" || update.phase == "verifying")
         FileOperationCenter.activityChanged()
     }
     @objc private func cancelCopy(_ sender: Any?) {
@@ -153,6 +163,7 @@ final class CopyWindow: NSWindowController, NSWindowDelegate {
         if failed > 0 { label.stringValue += L(" · 실패 \(failed)", " · Failed \(failed)") }
         if pending > 0 { label.stringValue += L(" · 실행 안 됨 \(pending)", " · Not attempted \(pending)") }
         if cancelled > 0 { label.stringValue += L(" · 취소 \(cancelled)", " · Cancelled \(cancelled)") }
+        if let transfer = report.selectionTransfer { label.stringValue += selectionTransferDescription(transfer) }
         progress.showCurrentFileActivity(false)
         progress.isHidden = true
         let itemDetails: [String] = report.items.map { item in
@@ -203,6 +214,50 @@ final class CopyWindow: NSWindowController, NSWindowDelegate {
         var feedbackTime: Duration?
         var liveFeedback = false
         var liveUpdate: CopyProgress?
+    }
+
+    static func qaSelectionCopy(in directory: URL) async throws -> Bool {
+        let root = directory.appendingPathComponent("selection-copy-fixture")
+        let source = root.appendingPathComponent("source"), target = root.appendingPathComponent("target")
+        for url in [source,target] { try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true) }
+        let first = source.appendingPathComponent("first"), second = source.appendingPathComponent("second"), skip = source.appendingPathComponent("skip")
+        try Data(repeating: 1, count: 32768).write(to: first)
+        try Data(repeating: 2, count: 65536).write(to: second)
+        try Data(repeating: 3, count: 131072).write(to: skip)
+        try Data("preserved".utf8).write(to: target.appendingPathComponent("skip"))
+        let controller = CopyWindow(sources: [first,second,skip], destination: target, conflictPolicy: .skip)
+        controller.showWindow(nil); defer { controller.close() }
+        let recorder = CopySelectionQARecorder()
+        let report = await CopyEngine.run(sources: [first,second,skip], destination: target,
+            journalDirectory: root.appendingPathComponent("journals"), cancellation: CopyCancellation()) { recorder.append($0) }
+        let events = recorder.values
+        guard let lastLive = events.last(where: { $0.liveTransfer?.bytes == 65536 }),
+              let firstFrame = events.first(where: { $0.selectionTransfer != nil }),
+              let total = lastLive.selectionTransfer, total.bytes == 98304, total.totalBytes == 98304 else { return false }
+        controller.update(lastLive)
+        let text = controller.label.stringValue
+        guard text.contains(selectionTransferDescription(total)), text.contains("100%") else { return false }
+        controller.update(firstFrame)
+        guard controller.label.stringValue == text else { return false }
+        if let view = controller.window?.contentView {
+            view.layoutSubtreeIfNeeded(); view.displayIfNeeded()
+            guard let bitmap = view.bitmapImageRepForCachingDisplay(in: view.bounds) else { return false }
+            view.effectiveAppearance.performAsCurrentDrawingAppearance {
+                view.cacheDisplay(in: view.bounds, to: bitmap)
+                if let context = NSGraphicsContext(bitmapImageRep: bitmap)?.cgContext {
+                    context.setBlendMode(.destinationOver); context.setFillColor(NSColor.windowBackgroundColor.cgColor)
+                    context.fill(CGRect(x: 0,y: 0,width: bitmap.pixelsWide,height: bitmap.pixelsHigh))
+                }
+            }
+            guard let png = bitmap.representation(using: .png, properties: [:]) else { return false }
+            try png.write(to: directory.appendingPathComponent("selection-copy-live.png"))
+        } else { return false }
+        controller.finish(report)
+        let terminal = controller.label.stringValue
+        controller.update(lastLive)
+        return report.items.map(\.state) == ["completed", "completed", "conflict"]
+            && report.selectionTransfer?.bytes == 98304 && terminal.contains(selectionTransferDescription(total))
+            && controller.label.stringValue == terminal && controller.progress.isHidden
     }
 
     static func qaCancellationDuringVerification(source: URL, destination: URL,
@@ -383,3 +438,23 @@ func liveTransferDescription(_ transfer: LiveTransferProgress) -> String {
     }
     return description
 }
+
+@MainActor
+func selectionTransferDescription(_ transfer: SelectionTransferProgress) -> String {
+    let unit = BrowserPreferences.shared.sizeUnit
+    var text = L("\n전체 임시 복사 데이터 ", "\nTotal staged copy data ") + formatByteCount(transfer.bytes, unit: unit)
+    if let total = transfer.totalBytes {
+        text += " / " + formatByteCount(total, unit: unit)
+        if total > 0 { text += String(format: " · %.0f%%", Double(transfer.bytes) / Double(total) * 100) }
+    } else { text += L(" · 전체 크기 미확인", " · Total size unknown") }
+    return text
+}
+
+#if DEBUG
+private final class CopySelectionQARecorder: @unchecked Sendable {
+    private let lock = NSLock()
+    private var storage: [CopyProgress] = []
+    func append(_ event: CopyProgress) { lock.withLock { storage.append(event) } }
+    var values: [CopyProgress] { lock.withLock { storage } }
+}
+#endif

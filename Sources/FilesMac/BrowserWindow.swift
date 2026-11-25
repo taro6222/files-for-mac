@@ -6356,6 +6356,7 @@ extension BrowserWindow {
             checks["mergePreservesConflict"] = (try String(contentsOf: target.appendingPathComponent("conflict.txt"), encoding: .utf8)) == "target"
             checks["mergeAddsNested"] = fm.fileExists(atPath: mergeTarget.appendingPathComponent("nested.txt").path)
             checks["gitCloneTimeoutCleanup"] = try await GitCloneWindow.qaVerifyTimeoutCleanup(in: destination)
+            checks["copySelectionBytesAndLateFrames"] = try await CopyWindow.qaSelectionCopy(in: destination)
             fputs("File operation QA: rename in file properties\n", stderr)
             let renameInput = target.appendingPathComponent("rename-input.txt")
             let renameOutput = target.appendingPathComponent("rename-result.txt")
@@ -6821,7 +6822,7 @@ extension BrowserWindow {
                 && !fm.fileExists(atPath: ordinaryMove.path)
             let lastItem = L(" · 이후 0개", " · 0 after this item")
             checks["transferProgressShowsRemainingItems"] =
-                mixedCopy?.qaLastProgress.hasSuffix(missingSource.lastPathComponent + lastItem) == true
+                mixedCopy?.qaLastProgress.components(separatedBy: .newlines).first?.hasSuffix(missingSource.lastPathComponent + lastItem) == true
                 && moveResult?.qaLastProgress.hasSuffix(blockedMove.lastPathComponent + lastItem) == true
             try fm.setAttributes([.posixPermissions: 0o700], ofItemAtPath: restricted.path)
             moveResult?.qaRetry()
