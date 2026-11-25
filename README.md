@@ -21,6 +21,8 @@ Apple Silicon·Intel 유니버설 로컬 프리뷰 설치 이미지와 SHA-256 �
 
 또는 `FilesMac.xcodeproj`를 Xcode에서 열고 `Files macOS` scheme을 실행합니다. SwiftPM에서는 `Package.swift`로 코어 테스트와 앱을 빌드합니다.
 
+Xcode 앱은 같은 저장소의 로컬 `FilesCore` 패키지를 사용합니다. `Sources/FilesMac`에 파일을 추가하거나 삭제하면 `python3 scripts/generate-xcode-project.py`로 프로젝트의 앱 소스 목록을 갱신합니다.
+
 ```sh
 CLANG_MODULE_CACHE_PATH="$PWD/.build/ModuleCache" swift test --disable-sandbox
 ```

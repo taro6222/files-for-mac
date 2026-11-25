@@ -15,11 +15,47 @@ on:
         description: Verify the complete AppKit suite and capture windows
         type: boolean
         default: false
+      verify_xcode:
+        description: Build the native Xcode project on both architectures
+        type: boolean
+        default: false
 
 permissions:
   contents: read
 
 jobs:
+  verify-xcode:
+    if: github.event_name == 'workflow_dispatch' && inputs.verify_xcode
+    name: Xcode (${{ matrix.architecture }})
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-15
+            architecture: arm64
+          - runner: macos-15-intel
+            architecture: x86_64
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.3.app/Contents/Developer
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - name: Check generated project and build the native app
+        env:
+          EXPECTED_ARCH: ${{ matrix.architecture }}
+        run: |
+          test "$(uname -m)" = "$EXPECTED_ARCH"
+          python3 scripts/generate-xcode-project.py
+          git diff --exit-code -- FilesMac.xcodeproj/project.pbxproj
+          xcodebuild -project FilesMac.xcodeproj -scheme 'Files macOS' \
+            -configuration Debug -destination "platform=macOS,arch=$EXPECTED_ARCH" \
+            -derivedDataPath build/xcode-verification CODE_SIGNING_ALLOWED=NO build
+          app='build/xcode-verification/Build/Products/Debug/Files macOS.app'
+          test -x "$app/Contents/MacOS/Files macOS"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :FilesReleaseChannel' "$app/Contents/Info.plist")" = preview
   verify:
     name: macOS 15 (${{ matrix.architecture }})
     runs-on: ${{ matrix.runner }}
