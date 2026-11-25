@@ -53,7 +53,7 @@ jobs:
         run: |
           test "$(uname -m)" = "$EXPECTED_ARCH"
           python3 scripts/generate-xcode-project.py
-          git diff --exit-code -- FilesMac.xcodeproj/project.pbxproj
+          git diff --exit-code -- FilesMac.xcodeproj
           xcodebuild -project FilesMac.xcodeproj -scheme 'Files macOS' \
             -configuration Debug -destination "platform=macOS,arch=$EXPECTED_ARCH" \
             -derivedDataPath build/xcode-verification CODE_SIGNING_ALLOWED=NO build
