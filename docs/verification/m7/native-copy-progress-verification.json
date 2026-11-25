@@ -1,0 +1,265 @@
+{
+  "collectedAtUTC": "2026-11-25T20:39:53.001936+00:00",
+  "sourceBaseSHA": "6029cccd4533068c41d68b7f9e795761a88c3852",
+  "state": "local-verification-passed-remote-and-M7-open",
+  "debugBinarySHA256": "ede47de7d11e64bec238c0a8c70952d613572d4bebb4e3f9d45c820bdddc68dd",
+  "sourceFileSHA256": {
+    "Sources/FilesCore/NativeFileCopy.swift": "cd0a38e876dfe4f5007c07cf61edf6b808207f029cd5901787a89d6e8b674b78",
+    "Sources/FilesCore/CopyEngine.swift": "4da4f7677956e69613aad0cf76149c44e4eda8061660830835f8bd9f16708b19",
+    "Sources/FilesMac/CopyWindow.swift": "bd5a8082c4654996d86797cb6fe2bde7f98b9e3dd083d62507b85af08130858c",
+    "Sources/FilesMac/BrowserWindow.swift": "912c2c90b46105fdfdbb5f6d80ca0b01113359930c53db8d2a1e58499bb85a62",
+    "Tests/FilesCoreTests/NativeFileCopyTests.swift": "38b64c443302ff3dc6b14b14bb3b44b75e2b463f45f782a052394a0aa756d5bc"
+  },
+  "builds": {
+    "debug": {
+      "path": "build/native-copy-final-build.log",
+      "sha256": "78c1f4f7e74fc97ff445741b5cf20b335b9fa7f0d7465b0bf833c033c6e7bbcd"
+    },
+    "release": {
+      "path": "build/native-copy-final-release.log",
+      "sha256": "477416782570783c6e600c069fb9ef7bd1dd19275594abc109850fb077f09d04"
+    }
+  },
+  "swift": {
+    "reportedTests": 333,
+    "passedTests": 315,
+    "skippedTests": 18,
+    "log": {
+      "path": "build/native-copy-final-tests.log",
+      "sha256": "fbe7a02f2ac9bfb5b5c068b5b830ad9e662fc382d0aa39371531ae5a7ec4ae66"
+    }
+  },
+  "restrictedExecutor": {
+    "state": "passed",
+    "tests": {
+      "gitConcurrentSnapshotsCompleteWithoutBlockingSwiftTasks": true,
+      "gitWaitingForProcessAllowsOtherSwiftTasksToResume": true,
+      "gitCancellationTerminatesProcessAndCleansCloneStaging": true,
+      "directoryWaitingForFileSystemAllowsOtherSwiftTasksToResume": true,
+      "directoryCancellationWhileFileSystemIsBlockedStopsBeforeFirstBatch": true,
+      "directoryMetadataCancellationReturnsWhileBoundedReadersAreStillBlocked": true,
+      "folderSizingWaitingForFileSystemAllowsOtherSwiftTasksToResume": true,
+      "folderSizingCancellationWhileFileSystemIsBlockedReturnsBeforeIO": true,
+      "folderBulkSizingCancellationDiscardsLateResults": true,
+      "cloudDiscoveryCancellationWhileFileSystemIsBlockedReturnsBeforeIO": true
+    },
+    "exitCode": 0,
+    "timedOut": false,
+    "elapsedSeconds": 0.20485541698872112,
+    "testBinary": "/Users/changhun/Desktop/Workspace/Files/.build/out/Products/Debug/FilesCoreTests.xctest/Contents/MacOS/FilesCoreTests",
+    "constrainedProcess": "swiftpm-testing-helper",
+    "swiftVersion": "Apple Swift version 6.4.2 (swiftlang-6.4.2.1.9 clang-2100.4.1.1)\nTarget: arm64-apple-macosx27.2.0",
+    "sourceCommit": null,
+    "strictCooperativePool": true
+  },
+  "mountedVolumes": {
+    "fileSystems": [
+      "APFS",
+      "case-sensitive APFS",
+      "exFAT",
+      "FAT32",
+      "HFS+"
+    ],
+    "reportedTests": 7,
+    "log": {
+      "path": "build/native-copy-final-volume-ui.log",
+      "sha256": "47ffcfa71c37fca7efc6abcf0c3c880cb9a2f99f6d3aa411813e2af757b2aa7c"
+    }
+  },
+  "fileOperationUI": {
+    "ko-light": {
+      "checks": 79,
+      "cancellationDuringVerification": {
+        "feedbackSeconds": [
+          4.675e-05,
+          0.020673166,
+          0.032117083,
+          0.029464417,
+          0.019085667,
+          0.034578625,
+          0.02924,
+          0.003005875,
+          0.03069775,
+          0.043605666
+        ],
+        "settlementSeconds": [
+          0.00071975,
+          0.021464875,
+          0.032761208,
+          0.030258333,
+          0.019807708,
+          0.035292209,
+          0.029969792,
+          0.003611583,
+          0.031366959,
+          0.04427425
+        ]
+      },
+      "report": {
+        "path": "/private/var/folders/lg/xk3px5rn42n0mrrykzn0pw380000gn/T/files-m2-ui.2OZ1WR/ko-light/report.json",
+        "sha256": "df7a8bfce2b247edce45d86ae4085d8be33b5e134e71ab89f6eb487c7641940d"
+      },
+      "capture": {
+        "path": "docs/verification/m7/native-copy-progress-captures/ko-light.png",
+        "sha256": "f2db35f8ea3bd18107e989bab719d33a72e226f105e2c453895da4168b23902c"
+      }
+    },
+    "ko-dark": {
+      "checks": 79,
+      "cancellationDuringVerification": {
+        "feedbackSeconds": [
+          5.1125e-05,
+          0.003626041,
+          0.042531375,
+          0.03037675,
+          0.00649075,
+          0.035205834,
+          0.007434125,
+          0.0040265,
+          0.063911625,
+          0.008668917
+        ],
+        "settlementSeconds": [
+          0.000807792,
+          0.004217875,
+          0.043336083,
+          0.031143,
+          0.007119041,
+          0.063734209,
+          0.008070417,
+          0.004714208,
+          0.064885625,
+          0.009377792
+        ]
+      },
+      "report": {
+        "path": "/private/var/folders/lg/xk3px5rn42n0mrrykzn0pw380000gn/T/files-m2-ui.2OZ1WR/ko-dark/report.json",
+        "sha256": "15888710270cf5f8823a1f1d2a3540ea4fb4aa533b47d23079792bb142d5d97b"
+      },
+      "capture": {
+        "path": "docs/verification/m7/native-copy-progress-captures/ko-dark.png",
+        "sha256": "9523cdeefc88f40879a1164e6350febcb7c27da13f96b9b41586b901ca50d076"
+      }
+    },
+    "en-light": {
+      "checks": 79,
+      "cancellationDuringVerification": {
+        "feedbackSeconds": [
+          8.0958e-05,
+          0.014185,
+          0.027076667,
+          0.048900125,
+          0.007551792,
+          0.031460292,
+          0.011869583,
+          0.01400625,
+          0.056124083,
+          0.018509667
+        ],
+        "settlementSeconds": [
+          0.00124825,
+          0.01478275,
+          0.027884042,
+          0.049690625,
+          0.008241917,
+          0.057737083,
+          0.012622791,
+          0.014597458,
+          0.05698275,
+          0.019216958
+        ]
+      },
+      "report": {
+        "path": "/private/var/folders/lg/xk3px5rn42n0mrrykzn0pw380000gn/T/files-m2-ui.2OZ1WR/en-light/report.json",
+        "sha256": "041d923b93b46d36ec52e217de848f5e76bdd3e67e15d1a0f439e624daed243a"
+      },
+      "capture": {
+        "path": "docs/verification/m7/native-copy-progress-captures/en-light.png",
+        "sha256": "c0554dde4a462e90f111ce9c3395b114040b20838d3111ac93f9fbf8acf1ee15"
+      }
+    },
+    "en-dark": {
+      "checks": 79,
+      "cancellationDuringVerification": {
+        "feedbackSeconds": [
+          5.1917e-05,
+          0.01438025,
+          0.034239,
+          0.034273625,
+          0.02101975,
+          0.028323708,
+          0.00540425,
+          0.019709541,
+          0.051829708,
+          0.009622042
+        ],
+        "settlementSeconds": [
+          0.000885917,
+          0.015054917,
+          0.034956791,
+          0.034940875,
+          0.021648959,
+          0.029061833,
+          0.006043208,
+          0.020585375,
+          0.052569958,
+          0.0102775
+        ]
+      },
+      "report": {
+        "path": "/private/var/folders/lg/xk3px5rn42n0mrrykzn0pw380000gn/T/files-m2-ui.2OZ1WR/en-dark/report.json",
+        "sha256": "ebb84712c3fdbb1a703995d3f6d221fb5727f36f032a5500a2b9e747857f8707"
+      },
+      "capture": {
+        "path": "docs/verification/m7/native-copy-progress-captures/en-dark.png",
+        "sha256": "5497ad3c6206ef74928c16c97af61c64e86f640c017d8e3b363e4e2ce4f4b248"
+      }
+    }
+  },
+  "fullAppKit": {
+    "ko-light": {
+      "checks": 283,
+      "report": {
+        "path": "/private/var/folders/lg/xk3px5rn42n0mrrykzn0pw380000gn/T/files-ui-verification.q2q3RT/ko-light/report.json",
+        "sha256": "450be5a3f8ce2e5d82536b828e671f36539354cd7b50a2b67ce553fcafe03172"
+      }
+    },
+    "ko-dark": {
+      "checks": 283,
+      "report": {
+        "path": "/private/var/folders/lg/xk3px5rn42n0mrrykzn0pw380000gn/T/files-ui-verification.q2q3RT/ko-dark/report.json",
+        "sha256": "07d3c2651fb38110d4182f632216532e14ba3dfc931cae3f5ba3156cf67ed7dd"
+      }
+    },
+    "en-light": {
+      "checks": 283,
+      "report": {
+        "path": "/private/var/folders/lg/xk3px5rn42n0mrrykzn0pw380000gn/T/files-ui-verification.q2q3RT/en-light/report.json",
+        "sha256": "27c15473d5bfe8de56c78379bffcb52d7b8487d8840fa05af5569c5185c21da6"
+      }
+    },
+    "en-dark": {
+      "checks": 283,
+      "report": {
+        "path": "/private/var/folders/lg/xk3px5rn42n0mrrykzn0pw380000gn/T/files-ui-verification.q2q3RT/en-dark/report.json",
+        "sha256": "37bb64c87c41f4526df3f2aec3809beffcb990e50ac078de2d5c774db8e4b9fd"
+      }
+    }
+  },
+  "filePromiseContract": {
+    "checks": 53,
+    "language": "ko",
+    "theme": "dark",
+    "report": {
+      "path": "/private/var/folders/lg/xk3px5rn42n0mrrykzn0pw380000gn/T/files-promise-verification.vEM992/report.json",
+      "sha256": "7fc749262c3a16bc399f0fe17d6a82f6a770d115ef6bce12ba7c65ddd53e2bed"
+    }
+  },
+  "limits": [
+    "Only CopyEngine and CopyWindow use this native live progress; move, merge, remote protocols and whole-selection byte totals remain open.",
+    "Bytes and rates describe logical data-fork bytes, including completed clones and sparse files, not physical I/O.",
+    "AppKit snapshots and programmatic button clicks do not prove actual keyboard, SDK drag, compositor frames, or VoiceOver acceptance.",
+    "The earlier eight-hour runs belong to their original source SHAs and do not validate this new backend.",
+    "Developer ID and notarytool credentials are still being prepared by the user."
+  ]
+}

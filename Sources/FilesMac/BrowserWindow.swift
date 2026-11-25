@@ -6926,7 +6926,7 @@ extension BrowserWindow {
             let cancellationSource = source.appendingPathComponent("cancel-verify.bin")
             try Data(repeating: 0x5A, count: 8 * 1024 * 1024).write(to: cancellationSource)
             diagnostics["copyCancellationDuringVerification"] = try await CopyWindow.qaCancellationDuringVerification(
-                source: cancellationSource, destination: target, journals: journals)
+                source: cancellationSource, destination: target, journals: journals, captureDirectory: destination)
             checks["copyCancellationDuringVerification"] = true
             fputs("File operation QA: folder watcher recovery\n", stderr)
             let recoveryFolder = root.appendingPathComponent("recoverable", isDirectory: true)

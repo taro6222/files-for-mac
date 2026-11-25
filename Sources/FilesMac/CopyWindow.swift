@@ -15,6 +15,9 @@ final class CopyWindow: NSWindowController, NSWindowDelegate {
     private let label = NSTextField(wrappingLabelWithString: "")
     private let progress = NSProgressIndicator()
     private let details = NSTextView()
+    private var latestProgressIndex = -1
+    private var latestProgressPhase = -1
+    private var latestLiveBytes: Int64?
 #if DEBUG
     private(set) var qaLastProgress = ""
 #endif
@@ -94,6 +97,17 @@ final class CopyWindow: NSWindowController, NSWindowDelegate {
 
     private func update(_ update: CopyProgress) {
         guard running, !cancellation.isCancelled else { return }
+        let rank = ["planning": 0, "copying": 1, "verifying": 2, "committing": 3][update.phase] ?? 3
+        // Callback deliveries use MainActor tasks; discard a delayed earlier item/phase or byte sample.
+        guard update.index >= latestProgressIndex else { return }
+        if update.index == latestProgressIndex {
+            guard rank >= latestProgressPhase else { return }
+            if rank == 1, let latestLiveBytes {
+                guard let live = update.liveTransfer, live.bytes >= latestLiveBytes else { return }
+            }
+        } else { latestLiveBytes = nil }
+        latestProgressIndex = update.index; latestProgressPhase = rank
+        if let live = update.liveTransfer { latestLiveBytes = live.bytes }
         let phase: String
         switch update.phase {
         case "planning": phase = L("원본 확인", "Checking source")
@@ -105,6 +119,7 @@ final class CopyWindow: NSWindowController, NSWindowDelegate {
         label.stringValue = "\(update.index + 1)/\(update.total) · \(phase) · \(update.name)"
             + L(" · 이후 \(remaining)개", " · \(remaining) after this item")
         if let transfer = update.stagedTransfer { label.stringValue += stagedTransferDescription(transfer) }
+        if let transfer = update.liveTransfer { label.stringValue += liveTransferDescription(transfer) }
 #if DEBUG
         qaLastProgress = label.stringValue
 #endif
@@ -186,17 +201,19 @@ final class CopyWindow: NSWindowController, NSWindowDelegate {
     private final class CancellationSample {
         var clickTime: ContinuousClock.Instant?
         var feedbackTime: Duration?
+        var liveFeedback = false
+        var liveUpdate: CopyProgress?
     }
 
     static func qaCancellationDuringVerification(source: URL, destination: URL,
-                                                 journals: URL) async throws -> [String: [Double]] {
+                                                 journals: URL, captureDirectory: URL? = nil) async throws -> [String: [Double]] {
         let fm = FileManager.default
         let output = destination.appendingPathComponent(source.lastPathComponent)
         let original = try Data(contentsOf: source)
         let initialNames = try Set(fm.contentsOfDirectory(atPath: destination.path))
         var feedback: [Double] = []
         var settlement: [Double] = []
-        for _ in 0..<10 {
+        for iteration in 0..<10 {
             let controller = CopyWindow(sources: [source], destination: destination, conflictPolicy: .skip)
             controller.showWindow(nil)
             defer { controller.close() }
@@ -205,18 +222,51 @@ final class CopyWindow: NSWindowController, NSWindowDelegate {
             let sample = CancellationSample()
             let report = await CopyEngine.run(sources: [source], destination: destination,
                 journalDirectory: journals, cancellation: controller.cancellation) { update in
+                if let live = update.liveTransfer {
+                    Task { @MainActor in
+                        defer { gate.signal() }
+                        controller.update(update)
+                        if live.bytes == Int64(original.count) && live.totalBytes == Int64(original.count) {
+                            sample.liveUpdate = update
+                            sample.liveFeedback = controller.label.stringValue.contains(L("현재 항목 데이터", "Current item data"))
+                                && controller.label.stringValue.contains("100%")
+                                && controller.progress.isIndeterminate
+                            if iteration == 0, let captureDirectory, let view = controller.window?.contentView {
+                                view.layoutSubtreeIfNeeded(); view.displayIfNeeded()
+                                if let bitmap = view.bitmapImageRepForCachingDisplay(in: view.bounds) {
+                                    view.effectiveAppearance.performAsCurrentDrawingAppearance {
+                                        view.cacheDisplay(in: view.bounds, to: bitmap)
+                                        if let context = NSGraphicsContext(bitmapImageRep: bitmap)?.cgContext {
+                                            context.setBlendMode(.destinationOver)
+                                            context.setFillColor(NSColor.windowBackgroundColor.cgColor)
+                                            context.fill(CGRect(x: 0, y: 0, width: bitmap.pixelsWide, height: bitmap.pixelsHigh))
+                                        }
+                                    }
+                                    if let png = bitmap.representation(using: .png, properties: [:]) {
+                                        sample.liveFeedback = sample.liveFeedback && (try? png.write(to: captureDirectory.appendingPathComponent("copy-live-data.png"))) != nil
+                                    } else { sample.liveFeedback = false }
+                                } else { sample.liveFeedback = false }
+                            }
+                        }
+                    }
+                    _ = gate.wait(timeout: .now() + 5)
+                    return
+                }
                 guard update.phase == "verifying" else { return }
                 // Place the click after staging, before the engine can publish the output.
                 Task { @MainActor in
                     defer { gate.signal() }
                     controller.update(update)
+                    let verifiedLabel = controller.label.stringValue
+                    if let delayed = sample.liveUpdate { controller.update(delayed) }
+                    let delayedUpdateDiscarded = controller.label.stringValue == verifiedLabel
                     let started = clock.now
                     let staged = update.stagedTransfer?.bytes == Int64(original.count)
                         && controller.label.stringValue.contains(L("준비된 데이터", "Data staged"))
                         && controller.progress.isIndeterminate
                     controller.cancel.performClick(nil)
                     sample.clickTime = started
-                    if staged && controller.cancellation.isCancelled && !controller.cancel.isEnabled
+                    if staged && sample.liveFeedback && delayedUpdateDiscarded && controller.cancellation.isCancelled && !controller.cancel.isEnabled
                         && controller.progress.isIndeterminate
                         && controller.label.stringValue.hasPrefix(L("취소 요청됨", "Cancellation requested")) {
                         sample.feedbackTime = started.duration(to: clock.now)
@@ -313,6 +363,23 @@ func stagedTransferDescription(_ transfer: StagedFileTransfer) -> String {
        let rate = Int64(exactly: (Double(transfer.bytes) / transfer.seconds).rounded()) {
         let speed = formatByteCount(rate, unit: unit)
         description += L(" · 평균 \(speed)/초", " · Average \(speed)/s")
+    }
+    return description
+}
+
+@MainActor
+func liveTransferDescription(_ transfer: LiveTransferProgress) -> String {
+    let unit = BrowserPreferences.shared.sizeUnit
+    let bytes = formatByteCount(transfer.bytes, unit: unit)
+    var description = L(" · 현재 항목 데이터 \(bytes)", " · Current item data \(bytes)")
+    if let total = transfer.totalBytes {
+        description += " / " + formatByteCount(total, unit: unit)
+        if total > 0 { description += String(format: " · %.0f%%", Double(transfer.bytes) / Double(total) * 100) }
+    }
+    if transfer.bytes > 0, transfer.seconds >= 0.1,
+       let rate = Int64(exactly: (Double(transfer.bytes) / transfer.seconds).rounded()) {
+        let speed = formatByteCount(rate, unit: unit)
+        description += L(" · 평균 논리 데이터 \(speed)/초", " · Average logical data \(speed)/s")
     }
     return description
 }

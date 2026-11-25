@@ -17,6 +17,7 @@ public struct CopyProgress: Sendable {
     public let name: String
     public let phase: String
     public let stagedTransfer: StagedFileTransfer?
+    public var liveTransfer: LiveTransferProgress? = nil
 }
 
 /// Logical bytes staged by one completed copy call and its elapsed time.
@@ -100,14 +101,6 @@ private struct CopyFailure: LocalizedError {
 
 enum CopyPublicationError: Error { case conflict }
 
-private final class CopyDelegate: NSObject, FileManagerDelegate, @unchecked Sendable {
-    let cancellation: CopyCancellation
-    init(_ cancellation: CopyCancellation) { self.cancellation = cancellation }
-    func fileManager(_ fileManager: FileManager, shouldCopyItemAt srcURL: URL, to dstURL: URL) -> Bool {
-        !cancellation.isCancelled
-    }
-}
-
 public enum CopyConflictPolicy: Sendable { case skip, keepBoth }
 
 public enum CopyEngine {
@@ -174,11 +167,8 @@ public enum CopyEngine {
                                 recordUndo: Bool, explicitName: String? = nil, expectedDestination: ShelfEntry? = nil,
                                 expectedTemplate: ShelfEntry? = nil, expectedSource: ShelfEntry? = nil,
                                 sourceIntakes: [PromisedFileIntake] = [],
-                                progress: @Sendable (CopyProgress) -> Void) -> CopyReport {
+                                progress: @escaping @Sendable (CopyProgress) -> Void) -> CopyReport {
         let fm = FileManager()
-        let delegate = CopyDelegate(cancellation)
-        fm.delegate = delegate
-        defer { withExtendedLifetime(delegate) {} }
         let destination = destination.resolvingSymlinksInPath().standardizedFileURL
         var report = CopyReport(version: 1, id: UUID(), state: "running", items: sources.map {
             CopyRecord(source: $0, target: destination.appendingPathComponent(explicitName ?? $0.lastPathComponent))
@@ -253,8 +243,13 @@ public enum CopyEngine {
                         throw EntryOperationError.sourceChanged
                     }
                     let copyStarted = ContinuousClock.now
-                    try fm.copyItem(at: source, to: payload)
+                    try NativeFileCopy.run(from: source, to: payload, totalBytes: before.logicalDataBytes,
+                                           cancellation: cancellation) { update in
+                        progress(CopyProgress(index: index, total: sources.count, name: source.lastPathComponent,
+                                              phase: "copying", stagedTransfer: nil, liveTransfer: update))
+                    }
                     try before.restoreCreationTimes(in: payload, cancellation: cancellation)
+                    try before.restoreDirectoryModificationTimes(in: payload, cancellation: cancellation)
                     let copyElapsed = copyStarted.duration(to: .now)
                     if expectedTemplate?.isCurrent == false || expectedSource?.isCurrent == false {
                         throw EntryOperationError.sourceChanged
@@ -567,6 +562,7 @@ public enum CopyEngine {
         var modificationTimeResolution: TimeInterval = 0
         var filesystemType = ""
         var hasNativePermissions = true
+        var logicalDataBytes: Int64? = 0
 
         private static func creationTimeResolution(for filesystem: String) -> TimeInterval? {
             switch filesystem {
@@ -642,6 +638,32 @@ public enum CopyEngine {
 
         func matchesOriginal(_ original: Self) -> Bool {
             withPermissions == original.withPermissions && content == original.content && metadata == original.metadata
+        }
+
+        /// Creating children can change directory timestamps during recursive native copying.
+        /// Restore only staged directories through non-following descriptors; verification still follows.
+        func restoreDirectoryModificationTimes(in payload: URL, cancellation: CopyCancellation) throws {
+            let directories = metadata.modificationDates.filter { content[$0.key] == "directory" }
+            guard !directories.isEmpty else { return }
+            let parent = open(payload.deletingLastPathComponent().path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
+            guard parent >= 0 else { throw TransferMismatch.modificationTime }
+            defer { close(parent) }
+            for (path, date) in directories {
+                try cancellation.check()
+                let descriptor = try openTransferEntry(parent: parent, name: payload.lastPathComponent,
+                    path: path, isDirectory: true, mismatch: .modificationTime)
+                defer { close(descriptor) }
+                let seconds = date.timeIntervalSinceReferenceDate
+                let whole = floor(seconds)
+                var modification = timespec(tv_sec: Int(whole) + Int(Date.timeIntervalBetween1970AndReferenceDate),
+                                            tv_nsec: Int((seconds - whole) * 1_000_000_000))
+                var attributes = attrlist()
+                attributes.bitmapcount = UInt16(ATTR_BIT_MAP_COUNT)
+                attributes.commonattr = attrgroup_t(ATTR_CMN_MODTIME)
+                guard fsetattrlist(descriptor, &attributes, &modification, MemoryLayout<timespec>.size, 0) == 0 else {
+                    throw TransferMismatch.modificationTime
+                }
+            }
         }
 
         func restoreCreationTimes(in payload: URL, cancellation: CopyCancellation) throws {
@@ -848,6 +870,10 @@ public enum CopyEngine {
                     try visit(child, relative: relative + "/" + child.lastPathComponent)
                 }
             case .typeRegular:
+                if let total = snapshot.logicalDataBytes, let size = attrs[.size] as? NSNumber, size.int64Value >= 0 {
+                    let (sum, overflow) = total.addingReportingOverflow(size.int64Value)
+                    snapshot.logicalDataBytes = overflow ? nil : sum
+                } else { snapshot.logicalDataBytes = nil }
                 let handle = try FileHandle(forReadingFrom: url)
                 defer { try? handle.close() }
                 var hash = SHA256()

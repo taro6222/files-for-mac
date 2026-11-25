@@ -1,0 +1,93 @@
+{
+  "workflowURL": "https://github.com/taro6222/files-for-mac/actions/runs/45691450973",
+  "sourceBaseSHA": "4a19117ba4c2a78f6078a0d502d27078cfd7768b",
+  "conclusion": "failure",
+  "jobs": [
+    {
+      "name": "Optimized performance (x86_64)",
+      "status": "completed",
+      "conclusion": "failure"
+    },
+    {
+      "name": "Optimized performance (arm64)",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "name": "macOS 15 (${{ matrix.architecture }})",
+      "status": "completed",
+      "conclusion": "skipped"
+    },
+    {
+      "name": "Xcode (${{ matrix.architecture }})",
+      "status": "completed",
+      "conclusion": "skipped"
+    }
+  ],
+  "assessments": {
+    "arm64": {
+      "state": "passed",
+      "checks": {
+        "first100DisplayedWithin500msP95": true,
+        "modelEnumerationWithin2SecondsP95": true
+      },
+      "sourceBaseSHA": "4a19117ba4c2a78f6078a0d502d27078cfd7768b",
+      "architecture": "arm64",
+      "binarySHA256": "9b5d907c24119375397665a9923e1521f2742f1987b849ddf3c5cb66aaf5d589",
+      "samples": 20,
+      "computed": {
+        "firstDisplaySeconds": {
+          "max": 0.571652333,
+          "p95": 0.343047
+        },
+        "modelLoadFinishedSeconds": {
+          "max": 2.519016083,
+          "p95": 1.54453325
+        },
+        "listingSeconds": {
+          "max": 2.572640875,
+          "p95": 1.579673875
+        }
+      },
+      "limits": [
+        "Optimized QA executable with warm OS caches; not a signed installed distribution.",
+        "AppKit display completion does not measure compositor frames or actual keyboard input.",
+        "Cold startup, 100k acceptance, idle memory, and eight-hour stability remain separate gates."
+      ]
+    },
+    "x86_64": {
+      "state": "failed",
+      "checks": {
+        "first100DisplayedWithin500msP95": false,
+        "modelEnumerationWithin2SecondsP95": false
+      },
+      "sourceBaseSHA": "4a19117ba4c2a78f6078a0d502d27078cfd7768b",
+      "architecture": "x86_64",
+      "binarySHA256": "26a4a08a05196eacbf67ae19b87520c3d8b4200a98ec9a66e7219403099f7528",
+      "samples": 20,
+      "computed": {
+        "firstDisplaySeconds": {
+          "max": 0.833888534,
+          "p95": 0.55809112
+        },
+        "modelLoadFinishedSeconds": {
+          "max": 4.147010698,
+          "p95": 3.137665203
+        },
+        "listingSeconds": {
+          "max": 4.213440456,
+          "p95": 3.201093138
+        }
+      },
+      "limits": [
+        "Optimized QA executable with warm OS caches; not a signed installed distribution.",
+        "AppKit display completion does not measure compositor frames or actual keyboard input.",
+        "Cold startup, 100k acceptance, idle memory, and eight-hour stability remain separate gates."
+      ]
+    }
+  },
+  "limits": [
+    "Hosted ARM has 7 GiB and Intel has 14 GiB; formal reference hardware requires at least 16 GiB.",
+    "Workflow failed because Intel failed both unchanged thresholds. Local ARM success does not replace Intel acceptance."
+  ]
+}
