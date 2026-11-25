@@ -529,7 +529,7 @@ final class CleanupHistoryWindow: NSWindowController, NSTableViewDataSource, NST
         NSWorkspace.shared.activateFileViewerSelecting([location]); reload()
     }
 #if DEBUG
-    static func verifyRestore(journals: URL, storage: URL) async -> [String: Bool] {
+    static func verifyRestore(journals: URL, storage: URL, payloadName: String = "received.txt") async -> [String: Bool] {
         let controller = CleanupHistoryWindow(journals: journals, storage: storage)
         defer { controller.window?.close() }
         controller.reload()
@@ -555,7 +555,7 @@ final class CleanupHistoryWindow: NSWindowController, NSTableViewDataSource, NST
         checks["restorePreventsConcurrentFileJobs"] = isRestoring && BrowserWindow.entryOperationRunning && controller.stop.isEnabled
             && activities.count == 1 && activities.first?.cancel != nil
         for _ in 0..<1000 where controller.busy { try? await Task.sleep(for: .milliseconds(10)) }
-        checks["restoreReturnsFixtureToOriginalStorage"] = FileManager.default.fileExists(atPath: original.appendingPathComponent("Files/received.txt").path)
+        checks["restoreReturnsFixtureToOriginalStorage"] = FileManager.default.fileExists(atPath: original.appendingPathComponent("Files/" + payloadName).path)
         checks["restorePreservesSourceCleanupJournal"] = (try? Data(contentsOf: row.journal)) == bytes
         checks["restoreHistoryPreventsRepeatedRestore"] = !controller.busy && !isRestoring && !BrowserWindow.entryOperationRunning
             && !controller.rows.contains(where: \.canRestore) && controller.rows.contains { $0.recordedState == "restored" && $0.isRestoreRecord }

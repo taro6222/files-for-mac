@@ -14,6 +14,7 @@ import uuid
 parser = argparse.ArgumentParser()
 parser.add_argument('--binary', type=Path, required=True)
 parser.add_argument('--language', choices=['ko', 'en'], default='ko')
+parser.add_argument('--checkpoint', choices=['unrecorded', 'journaled'], default='unrecorded')
 parser.add_argument('--theme', choices=['light', 'dark'], default='light')
 args = parser.parse_args()
 binary = args.binary.resolve(strict=True)
@@ -22,7 +23,8 @@ token = uuid.uuid4().hex
 (root / '.files-cleanup-restart-qa.json').write_text(json.dumps({'id': token}))
 print(f'Cleanup restart verification results: {root}', flush=True)
 environment = dict(os.environ, FILES_CLEANUP_RESTART_QA_OUTPUT=str(root), FILES_CLEANUP_RESTART_QA_ID=token,
-                   FILES_PROMISE_QA_THEME=args.theme, FILES_CLEANUP_RESTART_QA_PHASE='interrupt')
+                   FILES_PROMISE_QA_THEME=args.theme, FILES_CLEANUP_RESTART_QA_PHASE='interrupt',
+                   FILES_CLEANUP_RESTART_QA_CHECKPOINT=args.checkpoint)
 arguments = [str(binary), '-AppleLanguages', f'({args.language})', '-AppleLocale', args.language]
 checkpoint = root / 'checkpoint.json'
 with (root / 'interrupt.log').open('wb') as log:
@@ -36,11 +38,12 @@ with (root / 'interrupt.log').open('wb') as log:
                 raise TimeoutError('No live cleanup checkpoint; do not restart the interrupted job')
             time.sleep(.1)
         state = json.loads(checkpoint.read_text())
-        if state['id'] != token or state['preparePID'] != app.pid or app.poll() is not None:
+        if state['id'] != token or state['kind'] != args.checkpoint or state['preparePID'] != app.pid or app.poll() is not None:
             raise RuntimeError('Checkpoint does not identify the live QA child')
         journals = list((root / 'operations').glob('promise-cleanup-*.json'))
-        if len(journals) != 1 or json.loads(journals[0].read_text())['state'] != 'verified':
-            raise RuntimeError('Expected last journal state before the OS move location was recorded')
+        expected_state = 'movedToTrash' if args.checkpoint == 'journaled' else 'verified'
+        if len(journals) != 1 or json.loads(journals[0].read_text())['state'] != expected_state:
+            raise RuntimeError(f'Expected journal state {expected_state} before killing the child')
         journal_sha = hashlib.sha256(journals[0].read_bytes()).hexdigest()
         app.kill()
         status = app.wait(timeout=10)
@@ -63,6 +66,19 @@ expected = {'freshFilesMacProcess', 'restartReadsLastVerifiedCheckpoint',
             'restartHistoryReadsInterruptedJournal', 'restartHistoryDoesNotInventMovedLocation',
             'restartHistoryExplainsInterruptedState', 'restartHistoryControlsFitMinimumWindow',
             'restartHistoryCaptureWritten', 'restartDoesNotRewriteInterruptedJournal', 'restartFixtureReturnedFromTrash'}
+if args.checkpoint == 'journaled':
+    expected -= {'restartReadsLastVerifiedCheckpoint', 'restartShowsNamesWithoutInventingLocation',
+                 'restartLeavesUnrecordedTrashLocationUnknown', 'restartHistoryReadsInterruptedJournal',
+                 'restartHistoryDoesNotInventMovedLocation', 'restartHistoryExplainsInterruptedState',
+                 'restartHistoryControlsFitMinimumWindow', 'restartHistoryCaptureWritten'}
+    expected |= {'restartReadsJournaledMoveCheckpoint', 'restartFindsJournaledTrashLocation',
+                 'restartShowsJournaledReceivedNames', 'restoreActionAvailableForCurrentProof',
+                 'restoreControlsFitMinimumWindow', 'restoreTableColumnsAlign', 'restoreCaptureWritten',
+                 'restorePreventsConcurrentFileJobs', 'restoreReturnsFixtureToOriginalStorage',
+                 'restorePreservesSourceCleanupJournal', 'restoreHistoryPreventsRepeatedRestore',
+                 'restartRestoredPayloadMatches', 'restartPublishedCopyStillMatches'}
+if result.get('checkpointKind') != args.checkpoint:
+    raise RuntimeError('Reported checkpoint differs from request')
 if set(result['checks']) != expected or not all(value is True for value in result['checks'].values()):
     raise RuntimeError(f'Cleanup restart checks failed: {result}')
 if result['preparePID'] != app.pid or result['inspectPID'] == app.pid:

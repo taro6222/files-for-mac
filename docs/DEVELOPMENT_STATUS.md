@@ -571,3 +571,5 @@ M6 추가 검증: [파일 미리보기 메모리 캐시](verification/m6/INCREME
 M6 추가 검증: [최근 파일 전송 실행 취소](verification/m6/INCREMENT_101.md).
 M6 추가 검증: [이동 재실행](verification/m6/INCREMENT_102.md).
 M6 추가 검증: [템플릿으로 파일 생성](verification/m6/INCREMENT_103.md).
+
+[이동 위치 기록 후 재기동 복원](verification/m7/INCREMENT_304.md)은 실제 `movedToTrash` 기록 직후 QA 자식을 SIGKILL하고 다른 앱 PID의 복원 동작으로 보관소에 되돌린다. 네 언어·외형 조합 각각 19개, 위치 미기록 회귀 14개, 기존 수신 계약 53개와 Swift 성공 304개·건너뜀 18개를 확인했다. 원본 기록·수신 내용·게시 복사본을 보존하며 Release에는 종료 지점 진입을 포함하지 않는다. 최신 두 CPU·장시간·실제 접근성·정식 서명 수용은 진행 중이다.

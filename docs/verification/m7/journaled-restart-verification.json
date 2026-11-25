@@ -1,0 +1,380 @@
+{
+  "collectedAtUTC": "2026-11-25T18:31:10.049242+00:00",
+  "baseCommit": "396866cc4c32b087aee8ff2a253973ce9813c839",
+  "sourceSHA256": {
+    "Sources/FilesCore/PromisedFileIntake.swift": "ad1cab7aad82e5940868190f7988ba53291738cfbe05729d0bdc2a703835c343",
+    "Sources/FilesMac/CleanupRestartVerification.swift": "75b4dfa776779d467f738e68de635a96df9a8e0318742fa1be1253796cb70560",
+    "Sources/FilesMac/ReceivedFilesWindow.swift": "ba4b0c2e73c41c68a0d026be5574cd2091b2c1ea1b1c64ef3241f33d56e9a45d",
+    "scripts/verify-cleanup-restart.py": "65a3d84222c0346015c36cc21d8e49cda3622957f8dafcb68ad5d1f70d7c4e2f",
+    ".github/workflows/macos.yml": "3037d1e010174d053197ff0a1d743092964dd256c935637adbd4bc908aeab8ab"
+  },
+  "candidateSHA256": "e290687243f9d0bcdd2532c3ec51e352bd77a3437d5c637865f0a81a1e172029",
+  "debugBuild": {
+    "exitCode": 0,
+    "logSHA256": "f4dcf7b1cfd94b5f11a094503f7b1d45612d450270a28de02fcbde528da9a7d9"
+  },
+  "releaseBuild": {
+    "exitCode": 0,
+    "appSHA256": "b291e3540fa5ed5f4a44dce2863c26d94a090682bd1cb7cfdc5e178ea7792949",
+    "logSHA256": "211ff6171ea1ec779c2c3f4f4fb52893fa44b6c87d7bb965457f7d6ba0b62846",
+    "debugCheckpointEntryAbsent": true
+  },
+  "swiftTests": {
+    "reported": 322,
+    "passed": 304,
+    "skipped": 18,
+    "exitCode": 0,
+    "logSHA256": "9e2e3b2fee34f46ef17334df0b4d68e09a9b93aa1d3e9e11be821c053a6177a6"
+  },
+  "journaledRestart": [
+    {
+      "combination": "ko-light",
+      "report": {
+        "checkpointKind": "journaled",
+        "checks": {
+          "freshFilesMacProcess": true,
+          "restartDoesNotRecreateOriginalDirectory": true,
+          "restartDoesNotRewriteInterruptedJournal": true,
+          "restartFindsJournaledTrashLocation": true,
+          "restartFixtureReturnedFromTrash": true,
+          "restartPreservesPublishedCopy": true,
+          "restartPreservesReceivedPayload": true,
+          "restartPublishedCopyStillMatches": true,
+          "restartReadsJournaledMoveCheckpoint": true,
+          "restartRestoredPayloadMatches": true,
+          "restartShowsJournaledReceivedNames": true,
+          "restoreActionAvailableForCurrentProof": true,
+          "restoreCaptureWritten": true,
+          "restoreControlsFitMinimumWindow": true,
+          "restoreHistoryPreventsRepeatedRestore": true,
+          "restorePreservesSourceCleanupJournal": true,
+          "restorePreventsConcurrentFileJobs": true,
+          "restoreReturnsFixtureToOriginalStorage": true,
+          "restoreTableColumnsAlign": true
+        },
+        "inspectPID": 70790,
+        "journal": "/private/var/folders/lg/xk3px5rn42n0mrrykzn0pw380000gn/T/files-cleanup-restart.3l_bgdgg/operations/promise-cleanup-9148C75F-C1F5-4DE8-A1B7-ADA2EB7E7016.json",
+        "language": "ko",
+        "os": "Version 27.2.1 (Build 26B131)",
+        "preparePID": 70788,
+        "theme": "light"
+      },
+      "interruption": {
+        "preparePID": 70788,
+        "exitCode": -9,
+        "checkpoint": {
+          "original": "file:///var/folders/lg/xk3px5rn42n0mrrykzn0pw380000gn/T/files-cleanup-restart.3l_bgdgg/intakes/promise-B4A0C25E-BE9E-4286-89FD-7B8FE0DDA86E/",
+          "identity": [
+            16777231,
+            63393030,
+            1795631396,
+            104823760
+          ],
+          "id": "354ca79b2bf740068f937d02696284fc",
+          "kind": "journaled",
+          "moved": "file:///Users/changhun/.Trash/promise-B4A0C25E-BE9E-4286-89FD-7B8FE0DDA86E",
+          "preparePID": 70788
+        },
+        "journalSHA256BeforeKill": "7eed90341f8f6c28eb9f1120e962a0606c167d18ad6441065e7de6928d7fe0c8"
+      },
+      "logSHA256": "daec2cff6e4d446de179e8b6e850159e3d8731ff2cbeb499a09fbd10285d9f9c",
+      "capture": "journaled-restart-ko-light.png",
+      "captureSHA256": "561781b6163d8435b33ca3267ed3fac03bcc378c4b5f465dad63bb485692d1cc",
+      "fixtureReturned": true,
+      "originalAbsentAfterQACleanup": true,
+      "trashFixtureAbsentAfterQACleanup": true
+    },
+    {
+      "combination": "ko-dark",
+      "report": {
+        "checkpointKind": "journaled",
+        "checks": {
+          "freshFilesMacProcess": true,
+          "restartDoesNotRecreateOriginalDirectory": true,
+          "restartDoesNotRewriteInterruptedJournal": true,
+          "restartFindsJournaledTrashLocation": true,
+          "restartFixtureReturnedFromTrash": true,
+          "restartPreservesPublishedCopy": true,
+          "restartPreservesReceivedPayload": true,
+          "restartPublishedCopyStillMatches": true,
+          "restartReadsJournaledMoveCheckpoint": true,
+          "restartRestoredPayloadMatches": true,
+          "restartShowsJournaledReceivedNames": true,
+          "restoreActionAvailableForCurrentProof": true,
+          "restoreCaptureWritten": true,
+          "restoreControlsFitMinimumWindow": true,
+          "restoreHistoryPreventsRepeatedRestore": true,
+          "restorePreservesSourceCleanupJournal": true,
+          "restorePreventsConcurrentFileJobs": true,
+          "restoreReturnsFixtureToOriginalStorage": true,
+          "restoreTableColumnsAlign": true
+        },
+        "inspectPID": 70802,
+        "journal": "/private/var/folders/lg/xk3px5rn42n0mrrykzn0pw380000gn/T/files-cleanup-restart.4lt890qi/operations/promise-cleanup-084474E9-270F-40EE-B310-F058735FF96B.json",
+        "language": "ko",
+        "os": "Version 27.2.1 (Build 26B131)",
+        "preparePID": 70801,
+        "theme": "dark"
+      },
+      "interruption": {
+        "preparePID": 70801,
+        "exitCode": -9,
+        "checkpoint": {
+          "kind": "journaled",
+          "original": "file:///var/folders/lg/xk3px5rn42n0mrrykzn0pw380000gn/T/files-cleanup-restart.4lt890qi/intakes/promise-B879F0BF-3100-4CBF-9A47-282FC6E1BB8A/",
+          "preparePID": 70801,
+          "moved": "file:///Users/changhun/.Trash/promise-B879F0BF-3100-4CBF-9A47-282FC6E1BB8A",
+          "id": "fc2879916aca4299a9f87f584c9b68de",
+          "identity": [
+            16777231,
+            63393117,
+            1795631408,
+            206794815
+          ]
+        },
+        "journalSHA256BeforeKill": "450dde0de3689c8c8f5f284dcd2a694210479b34cf21a4cf537e56b181c2dd22"
+      },
+      "logSHA256": "07520e2e652ad1a5e73efddf51988c9c48db29a101bc63133859ad80294a1476",
+      "capture": "journaled-restart-ko-dark.png",
+      "captureSHA256": "c4c42640860306b29fc01caa8b5fb5063810d167816236e25a0faedc20ba03fa",
+      "fixtureReturned": true,
+      "originalAbsentAfterQACleanup": true,
+      "trashFixtureAbsentAfterQACleanup": true
+    },
+    {
+      "combination": "en-light",
+      "report": {
+        "checkpointKind": "journaled",
+        "checks": {
+          "freshFilesMacProcess": true,
+          "restartDoesNotRecreateOriginalDirectory": true,
+          "restartDoesNotRewriteInterruptedJournal": true,
+          "restartFindsJournaledTrashLocation": true,
+          "restartFixtureReturnedFromTrash": true,
+          "restartPreservesPublishedCopy": true,
+          "restartPreservesReceivedPayload": true,
+          "restartPublishedCopyStillMatches": true,
+          "restartReadsJournaledMoveCheckpoint": true,
+          "restartRestoredPayloadMatches": true,
+          "restartShowsJournaledReceivedNames": true,
+          "restoreActionAvailableForCurrentProof": true,
+          "restoreCaptureWritten": true,
+          "restoreControlsFitMinimumWindow": true,
+          "restoreHistoryPreventsRepeatedRestore": true,
+          "restorePreservesSourceCleanupJournal": true,
+          "restorePreventsConcurrentFileJobs": true,
+          "restoreReturnsFixtureToOriginalStorage": true,
+          "restoreTableColumnsAlign": true
+        },
+        "inspectPID": 70805,
+        "journal": "/private/var/folders/lg/xk3px5rn42n0mrrykzn0pw380000gn/T/files-cleanup-restart.j2g84_77/operations/promise-cleanup-23A09975-FF52-4A06-8738-397C91E3B3A8.json",
+        "language": "en",
+        "os": "Version 27.2.1 (Build 26B131)",
+        "preparePID": 70804,
+        "theme": "light"
+      },
+      "interruption": {
+        "preparePID": 70804,
+        "exitCode": -9,
+        "checkpoint": {
+          "preparePID": 70804,
+          "moved": "file:///Users/changhun/.Trash/promise-C9F034D9-8B07-4149-A1B8-4E77636F214A",
+          "kind": "journaled",
+          "original": "file:///var/folders/lg/xk3px5rn42n0mrrykzn0pw380000gn/T/files-cleanup-restart.j2g84_77/intakes/promise-C9F034D9-8B07-4149-A1B8-4E77636F214A/",
+          "identity": [
+            16777231,
+            63393153,
+            1795631408,
+            605200928
+          ],
+          "id": "71ce6b050b7a468d8fc5e2e1544dd417"
+        },
+        "journalSHA256BeforeKill": "2544fe6393a4de5b4d87edd1330712fd329dffa3af8dca6aa39b15ed74811853"
+      },
+      "logSHA256": "17b93b0695a648c4e9bd194af8a5ca5df5b4c54ea17e96f90fc690985fb25b55",
+      "capture": "journaled-restart-en-light.png",
+      "captureSHA256": "368851586f37423989200cd36ee9b7a0842f931157640745038d788792a16bfe",
+      "fixtureReturned": true,
+      "originalAbsentAfterQACleanup": true,
+      "trashFixtureAbsentAfterQACleanup": true
+    },
+    {
+      "combination": "en-dark",
+      "report": {
+        "checkpointKind": "journaled",
+        "checks": {
+          "freshFilesMacProcess": true,
+          "restartDoesNotRecreateOriginalDirectory": true,
+          "restartDoesNotRewriteInterruptedJournal": true,
+          "restartFindsJournaledTrashLocation": true,
+          "restartFixtureReturnedFromTrash": true,
+          "restartPreservesPublishedCopy": true,
+          "restartPreservesReceivedPayload": true,
+          "restartPublishedCopyStillMatches": true,
+          "restartReadsJournaledMoveCheckpoint": true,
+          "restartRestoredPayloadMatches": true,
+          "restartShowsJournaledReceivedNames": true,
+          "restoreActionAvailableForCurrentProof": true,
+          "restoreCaptureWritten": true,
+          "restoreControlsFitMinimumWindow": true,
+          "restoreHistoryPreventsRepeatedRestore": true,
+          "restorePreservesSourceCleanupJournal": true,
+          "restorePreventsConcurrentFileJobs": true,
+          "restoreReturnsFixtureToOriginalStorage": true,
+          "restoreTableColumnsAlign": true
+        },
+        "inspectPID": 70808,
+        "journal": "/private/var/folders/lg/xk3px5rn42n0mrrykzn0pw380000gn/T/files-cleanup-restart.vq72u9vf/operations/promise-cleanup-8C5F1D41-458D-4705-A710-93B5CE7B47FC.json",
+        "language": "en",
+        "os": "Version 27.2.1 (Build 26B131)",
+        "preparePID": 70807,
+        "theme": "dark"
+      },
+      "interruption": {
+        "preparePID": 70807,
+        "exitCode": -9,
+        "checkpoint": {
+          "preparePID": 70807,
+          "moved": "file:///Users/changhun/.Trash/promise-6918E670-E95D-4E26-A24D-F306BF90BA72",
+          "identity": [
+            16777231,
+            63393186,
+            1795631408,
+            998839097
+          ],
+          "id": "a73e733733fc461eb9467673a8646a09",
+          "original": "file:///var/folders/lg/xk3px5rn42n0mrrykzn0pw380000gn/T/files-cleanup-restart.vq72u9vf/intakes/promise-6918E670-E95D-4E26-A24D-F306BF90BA72/",
+          "kind": "journaled"
+        },
+        "journalSHA256BeforeKill": "32265188834b1720f232452564db4888a056cce72cd87303f0857a700e43242a"
+      },
+      "logSHA256": "da649e680ffc352287c0820c189d3af348e44ef5a2cb3d847be5e83c9b326ee1",
+      "capture": "journaled-restart-en-dark.png",
+      "captureSHA256": "66daf75ab8fde16ec7b701aa83b704d34b93d04cdb81b606ee2fda3cee4727f3",
+      "fixtureReturned": true,
+      "originalAbsentAfterQACleanup": true,
+      "trashFixtureAbsentAfterQACleanup": true
+    }
+  ],
+  "unrecordedRestartRegression": {
+    "combination": "unrecorded",
+    "report": {
+      "checkpointKind": "unrecorded",
+      "checks": {
+        "freshFilesMacProcess": true,
+        "restartDoesNotRecreateOriginalDirectory": true,
+        "restartDoesNotRewriteInterruptedJournal": true,
+        "restartFixtureReturnedFromTrash": true,
+        "restartHistoryCaptureWritten": true,
+        "restartHistoryControlsFitMinimumWindow": true,
+        "restartHistoryDoesNotInventMovedLocation": true,
+        "restartHistoryExplainsInterruptedState": true,
+        "restartHistoryReadsInterruptedJournal": true,
+        "restartLeavesUnrecordedTrashLocationUnknown": true,
+        "restartPreservesPublishedCopy": true,
+        "restartPreservesReceivedPayload": true,
+        "restartReadsLastVerifiedCheckpoint": true,
+        "restartShowsNamesWithoutInventingLocation": true
+      },
+      "inspectPID": 70811,
+      "journal": "/private/var/folders/lg/xk3px5rn42n0mrrykzn0pw380000gn/T/files-cleanup-restart.9v1w17_k/operations/promise-cleanup-2E7CBCD0-4422-4CAD-8354-229376378720.json",
+      "language": "ko",
+      "os": "Version 27.2.1 (Build 26B131)",
+      "preparePID": 70810,
+      "theme": "light"
+    },
+    "interruption": {
+      "preparePID": 70810,
+      "exitCode": -9,
+      "checkpoint": {
+        "kind": "unrecorded",
+        "preparePID": 70810,
+        "original": "file:///var/folders/lg/xk3px5rn42n0mrrykzn0pw380000gn/T/files-cleanup-restart.9v1w17_k/intakes/promise-32A8854B-FE7E-4935-9DA9-A8A261C68A4B/",
+        "id": "3eca458b884349bb876b9e15fbaa34e8",
+        "moved": "file:///Users/changhun/.Trash/promise-32A8854B-FE7E-4935-9DA9-A8A261C68A4B",
+        "identity": [
+          16777231,
+          63393219,
+          1795631409,
+          401200365
+        ]
+      },
+      "journalSHA256BeforeKill": "86ac4a699248e98f4e1ccc237b36e858bc909af2bd43ca82885ff9bcf2bca095"
+    },
+    "logSHA256": "258b7b32fb8d1c1308f099ad0410f3590744d619ff1ecef35347abd25e54d4c2",
+    "capture": "journaled-restart-unrecorded.png",
+    "captureSHA256": "4c9bc8a69701aff4794ab906453502b6bf3545f44e07eea62053fbbbb59d6261",
+    "fixtureReturned": true,
+    "originalAbsentAfterQACleanup": true,
+    "trashFixtureAbsentAfterQACleanup": true
+  },
+  "existingPromiseContract": {
+    "count": 53,
+    "report": {
+      "checks": {
+        "cleanupBlocksOtherJobsAndOffersCancellation": true,
+        "cleanupBlocksPendingSDKReceiver": true,
+        "cleanupClosesFinishedReceiveWindow": true,
+        "cleanupControlsCaptureWritten": true,
+        "cleanupControlsFitMinimumWindow": true,
+        "cleanupEnablesOnlyRecordedCopyCandidates": true,
+        "cleanupFixtureReturnedFromTrash": true,
+        "cleanupHistoryCaptureWritten": true,
+        "cleanupHistoryControlsFitMinimumWindow": true,
+        "cleanupHistoryDamagedRecordAllowsJournalOnly": true,
+        "cleanupHistoryFindsOwnedTrashLocation": true,
+        "cleanupHistoryFreshControllerReadsDurableRecord": true,
+        "cleanupMovesVerifiedIntakeToSystemTrash": true,
+        "cleanupReceiptsPersistAfterVerifiedCopy": true,
+        "cleanupRefreshesListAndReleasesOperationGuard": true,
+        "cleanupRejectsUncopiedAndDamagedSelections": true,
+        "cleanupResultsCanBeRevealed": true,
+        "delegateCompletesWithoutError": true,
+        "delegateExportsDirectory": true,
+        "delegateNamesOriginalFile": true,
+        "delegatePreservesBothSourceVersions": true,
+        "delegatePreservesMode": true,
+        "delegatePreservesSymbolicLink": true,
+        "delegateProtectsExistingDestination": true,
+        "delegateRejectsChangedSource": true,
+        "delegateReportsCollision": true,
+        "delegateUsesReceiversName": true,
+        "offersDirectoryType": true,
+        "offersPromiseTypes": true,
+        "preservesFileURLRepresentation": true,
+        "promiseIsLazy": true,
+        "readsOnePromiseReceiver": true,
+        "receiveAcceptedBatchMarkedOnce": true,
+        "receiveDoesNotResubmitAcceptedBatch": true,
+        "receiveHandoffIncludesAllIntakes": true,
+        "receivePauseRetainsVerifiedFiles": true,
+        "receivePolicyCancellationRetainsRetry": true,
+        "receiveTypesIncludeURLAndPromises": true,
+        "recoveryDamagedReceiptAllowsRevealOnly": true,
+        "recoveryEnablesVerifiedCopyRequest": true,
+        "recoveryListsPersistedJobs": true,
+        "recoveryMixedSelectionProtectsDamagedData": true,
+        "restoreActionAvailableForCurrentProof": true,
+        "restoreCaptureWritten": true,
+        "restoreControlsFitMinimumWindow": true,
+        "restoreHistoryPreventsRepeatedRestore": true,
+        "restorePreservesSourceCleanupJournal": true,
+        "restorePreventsConcurrentFileJobs": true,
+        "restoreReturnsFixtureToOriginalStorage": true,
+        "restoreTableColumnsAlign": true,
+        "unknownIdentityKeepsOnlyFileURL": true,
+        "usesBackgroundPromiseQueue": true,
+        "writesPasteboard": true
+      },
+      "diagnostics": {
+        "collisionError": "An item with this name already exists; skipped.",
+        "staleSourceError": "The operation couldn’t be completed. (FilesCore.EntryOperationError error 2.)"
+      },
+      "language": "ko-KR",
+      "mode": "delegate-contract",
+      "os": "Version 27.2.1 (Build 26B131)",
+      "theme": "dark"
+    },
+    "logSHA256": "4251c3f0cc55c8308fb851c4e0a885fb52259e47aa4259106bcfdc8f79804e91"
+  }
+}

@@ -289,10 +289,21 @@ public final class PromisedFileIntake: @unchecked Sendable {
             return moved as URL
         }
     }
+    /// The QA runner can terminate after the moved location has been saved by the cleanup path.
+    public func interruptibleJournaledCleanupForVerification(journalDirectory: URL,
+        didJournal: @escaping (PromisedFileCleanupResult) throws -> Void) throws -> PromisedFileCleanupResult {
+        try moveVerifiedCopiesToTrash(journalDirectory: journalDirectory, didJournal: didJournal) { root in
+            var moved: NSURL?
+            try FileManager.default.trashItem(at: root, resultingItemURL: &moved)
+            guard let moved else { throw PromisedFileIntakeError.changedRoot }
+            return moved as URL
+        }
+    }
 #endif
 
     // The injected move permits deterministic race/failure tests using only fixture directories.
     func moveVerifiedCopiesToTrash(journalDirectory: URL, cancellation: CopyCancellation = CopyCancellation(),
+                                   didJournal: ((PromisedFileCleanupResult) throws -> Void)? = nil,
                                    trash: (URL) throws -> URL) throws -> PromisedFileCleanupResult {
         try processing.withLock {
             _ = try verifiedCleanupItems(at: directoryURL, cancellation: cancellation)
@@ -319,6 +330,7 @@ public final class PromisedFileIntake: @unchecked Sendable {
             result.retainedAt = trashed; result.state = "movedToTrash"
             do {
                 try save()
+                try didJournal?(result)
                 _ = try verifiedCleanupItems(at: trashed, cancellation: cancellation)
                 result.state = "trashed"; try save()
                 return result

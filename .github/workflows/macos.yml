@@ -144,7 +144,9 @@ jobs:
         timeout-minutes: 2
         env:
           TMPDIR: ${{ runner.temp }}
-        run: python3 scripts/verify-cleanup-restart.py --binary "$(swift build --show-bin-path)/FilesMac" --language en --theme light
+        run: |
+          python3 scripts/verify-cleanup-restart.py --binary "$(swift build --show-bin-path)/FilesMac" --language en --theme light --checkpoint unrecorded
+          python3 scripts/verify-cleanup-restart.py --binary "$(swift build --show-bin-path)/FilesMac" --language en --theme light --checkpoint journaled
       - name: Retain cleanup restart diagnostics
         if: always() && (github.event_name != 'workflow_dispatch' || !inputs.verify_upgrade)
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
@@ -157,6 +159,7 @@ jobs:
             ${{ runner.temp }}/files-cleanup-restart.*/interrupt.log
             ${{ runner.temp }}/files-cleanup-restart.*/inspect.log
             ${{ runner.temp }}/files-cleanup-restart.*/interrupted-cleanup-history.png
+            ${{ runner.temp }}/files-cleanup-restart.*/received-restore-controls.png
             ${{ runner.temp }}/files-cleanup-restart.*/operations/promise-cleanup-*.json
           if-no-files-found: ignore
       - name: Prepare Spotlight for AppKit content search
