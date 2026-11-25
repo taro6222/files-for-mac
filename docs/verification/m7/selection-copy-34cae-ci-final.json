@@ -1,0 +1,64 @@
+{
+  "sourceSHA": "34cae2c8f5a5e83d00f07e3c343ddd494c0f5ffb",
+  "workflowURL": "https://github.com/taro6222/files-for-mac/actions/runs/45714289083",
+  "workflowConclusion": "failure",
+  "jobs": [
+    {
+      "name": "macOS 15 (x86_64)",
+      "conclusion": "failure"
+    },
+    {
+      "name": "macOS 15 (arm64)",
+      "conclusion": "success"
+    },
+    {
+      "name": "Xcode (x86_64)",
+      "conclusion": "success"
+    },
+    {
+      "name": "Xcode (arm64)",
+      "conclusion": "success"
+    },
+    {
+      "name": "Optimized performance (${{ matrix.architecture }})",
+      "conclusion": "skipped"
+    }
+  ],
+  "artifactID": 15070706848,
+  "artifactName": "files-appkit-macos15-x86_64",
+  "intelCases": {
+    "en-dark": {
+      "state": "passed",
+      "failedChecks": [],
+      "checkCount": 283,
+      "normalCloneWaitSeconds": 0.89050827,
+      "progressSHA256": "ad8f332030a5fbe1cd6730da0f30c7e14bdf4f82ed9866478716010e9a47f4e2"
+    },
+    "ko-light": {
+      "state": "failed",
+      "failedChecks": [
+        "fileInfoACLAccountRule"
+      ],
+      "checkCount": 283,
+      "normalCloneWaitSeconds": 1.382488024,
+      "progressSHA256": "0e31b0239a77c63f114443b39f040682c83393b11ff0c6bf35aeeac83a55ab49"
+    },
+    "en-light": {
+      "state": "passed",
+      "failedChecks": [],
+      "checkCount": 283,
+      "normalCloneWaitSeconds": 0.770718947,
+      "progressSHA256": "fc5f9b1a1e42139e9ee038bd43416ac121e415c7c4593d32eac8aa7e7e9351f4"
+    },
+    "ko-dark": {
+      "state": "passed",
+      "failedChecks": [],
+      "checkCount": 283,
+      "normalCloneWaitSeconds": 0.865214282,
+      "progressSHA256": "7bd862fbc6f055ca3a36874ec590eb878e0a6f4ee12e3cd1878b33a6e484eeaa"
+    }
+  },
+  "failedLogSHA256": "86909c70c4648fe05404f91f91e9510189f194d0595660d45054b814e253ea81",
+  "fullRunResponseSHA256": "a1479c11ea7b32ac8e559303fd90e33eed830e8f1d6e4ebfa913a5d32c7c89d7",
+  "interpretation": "ARM verification and both Xcode builds passed; Intel ko/light ACL account-rule check failed. All four Intel clones completed within the unchanged 20-second deadline. The underlying ACL-check cause remains unestablished. This evidence covers source 34cae2c, not the later merge-selection implementation."
+}
