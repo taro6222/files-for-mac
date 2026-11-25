@@ -1,0 +1,25 @@
+{
+  "baseCommit": "390cdb9de8861a9b858d563e3bb48a939ef86af8",
+  "sourceSHA256": {
+    "Sources/FilesCore/PromisedFileIntake.swift": "c921a40ecacda058c1c60e8c515121b12689b3814e6a6de22d8c087987558596",
+    "Tests/FilesCoreTests/PromisedFileIntakeTests.swift": "2b693d64524cfbdeabd474201cce486fcf713c30ecdc6c78b881eb3cb01e152d"
+  },
+  "testFilter": "promised|template|copy",
+  "passed": 25,
+  "intakeTests": [
+    "promisedIntakeRefusesSymlinkReceivingRootWithoutReadingOutsidePayload",
+    "promisedIntakeRejectsSpecialFilesWithoutConsumingThem",
+    "promisedIntakeRefusesReplacedReceivingDirectory",
+    "promisedIntakeCancellationPreservesUnregisteredAndRegisteredData",
+    "promisedIntakeRefusesCorruptManifestWithoutRemovingPayload",
+    "promisedIntakeProtectsChangedAndReplacedReceivedData",
+    "promisedIntakeDetectsMetadataChangesAfterRecovery",
+    "promisedIntakeRejectsPathsOutsideItsReceivingDirectory",
+    "promisedIntakeRejectsEscapingReceiptNamesAfterRestart",
+    "promisedIntakePersistsAndRecoversReceivedFilesAndFolderLinks"
+  ],
+  "newIntakeTestsPassed": 10,
+  "uiReceiverIntegration": "pending",
+  "actualDragAcceptance": "pending",
+  "automaticVerifiedHandoffCleanup": "pending"
+}

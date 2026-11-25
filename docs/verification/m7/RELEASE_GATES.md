@@ -125,3 +125,5 @@
 [Intel의 네 언어·테마 전체 AppKit 재실행](INCREMENT_293.md)은 각각 283개와 설치·기동 단계를 통과했다. Apple Silicon의 Spotlight 준비 실패에 대해 동일 Swift 원본을 쓰는 전용 fixture와 실제 NSMetadataQuery 범위 검증을 추가했으며 로컬 네 조건을 통과했다. 새 준비 방식의 원격 결과는 확인한다.
 
 [파일 약속 제공자 계약의 두 CPU 결과](file-promise-contract-1eac741-ci.json)는 각각 18개를 통과했다. 실제 마우스 드래그와 수신 수용은 계속 진행 중이다.
+
+[파일 약속 수신 저장소](INCREMENT_294.md)의 신규 10개와 관련 회귀를 포함한 25개 시험이 통과했다. 수신·드롭 UI 연결과 복사 결과 이후의 검증된 정리, 실제 드래그 수용은 진행 중이다.
