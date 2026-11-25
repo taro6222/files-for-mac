@@ -1,0 +1,17 @@
+{
+  "state": "passed",
+  "tests": {
+    "gitConcurrentSnapshotsCompleteWithoutBlockingSwiftTasks": true,
+    "gitWaitingForProcessAllowsOtherSwiftTasksToResume": true,
+    "gitCancellationTerminatesProcessAndCleansCloneStaging": true
+  },
+  "exitCode": 0,
+  "timedOut": false,
+  "elapsedSeconds": 0.3143097080173902,
+  "testBinary": "/Users/changhun/Desktop/Workspace/Files/.build/out/Products/Debug/FilesCoreTests.xctest/Contents/MacOS/FilesCoreTests",
+  "constrainedProcess": "swiftpm-testing-helper",
+  "swiftVersion": "Apple Swift version 6.4.2 (swiftlang-6.4.2.1.9 clang-2100.4.1.1)\nTarget: arm64-apple-macosx27.2.0",
+  "sourceCommit": null,
+  "strictCooperativePool": true,
+  "baseCommit": "5225bfee785d5bce1cdebcf8e2a25ad3ad995bff"
+}
