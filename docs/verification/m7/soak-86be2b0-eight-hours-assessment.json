@@ -1,0 +1,79 @@
+{
+  "rawResultSHA256": "0115342a19ef0416af7171274f3da215e8ff366e98712d0cedf19bad8d347409",
+  "sourceBaseSHA": "86be2b0d92f189103dea5874cfe1a0795e52ca4b",
+  "hours": [
+    {
+      "hour": 1,
+      "samples": 116,
+      "medianMiB": {
+        "physicalFootprintBytes": 115.501,
+        "rssBytes": 130.633
+      }
+    },
+    {
+      "hour": 2,
+      "samples": 114,
+      "medianMiB": {
+        "physicalFootprintBytes": 117.923,
+        "rssBytes": 94.266
+      }
+    },
+    {
+      "hour": 3,
+      "samples": 116,
+      "medianMiB": {
+        "physicalFootprintBytes": 122.572,
+        "rssBytes": 92.602
+      }
+    },
+    {
+      "hour": 4,
+      "samples": 114,
+      "medianMiB": {
+        "physicalFootprintBytes": 128.181,
+        "rssBytes": 95.055
+      }
+    },
+    {
+      "hour": 5,
+      "samples": 114,
+      "medianMiB": {
+        "physicalFootprintBytes": 132.509,
+        "rssBytes": 101.82
+      }
+    },
+    {
+      "hour": 6,
+      "samples": 115,
+      "medianMiB": {
+        "physicalFootprintBytes": 135.611,
+        "rssBytes": 99.484
+      }
+    },
+    {
+      "hour": 7,
+      "samples": 117,
+      "medianMiB": {
+        "physicalFootprintBytes": 137.298,
+        "rssBytes": 99.703
+      }
+    },
+    {
+      "hour": 8,
+      "samples": 116,
+      "medianMiB": {
+        "physicalFootprintBytes": 141.564,
+        "rssBytes": 102.266
+      }
+    }
+  ],
+  "limits": [
+    "Completed baseline predates the live native copy and move backends.",
+    "Process completion and watcher release counts do not alone establish the absence of retained tasks or memory growth."
+  ],
+  "normalExit": true,
+  "memoryGatePassed": false,
+  "hourlyPhysicalFootprintMediansStrictlyIncrease": true,
+  "firstToLastMedianDeltaMiB": 26.063,
+  "assessment": "Persistent hourly physical-footprint increase remains; do not mark M7 stability passed."
+}

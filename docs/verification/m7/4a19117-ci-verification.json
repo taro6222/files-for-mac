@@ -1,0 +1,58 @@
+{
+  "sourceBaseSHA": "4a19117ba4c2a78f6078a0d502d27078cfd7768b",
+  "workflowURL": "https://github.com/taro6222/files-for-mac/actions/runs/45691454121",
+  "conclusion": "failure",
+  "jobs": [
+    {
+      "name": "Xcode (x86_64)",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "name": "macOS 15 (arm64)",
+      "status": "completed",
+      "conclusion": "cancelled"
+    },
+    {
+      "name": "macOS 15 (x86_64)",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "name": "Xcode (arm64)",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "name": "Optimized performance (${{ matrix.architecture }})",
+      "status": "completed",
+      "conclusion": "skipped"
+    }
+  ],
+  "intelFullAppKit": {
+    "en-dark": {
+      "checks": 283,
+      "rawReportSHA256": "c9dc7351a067024d0c3b5738be1ef025daf9ed167ddb7e40982124e6aa707837",
+      "rawReport": "build/parallel-directory-ci-final-intel/files-ui-verification.gUnbUs/en-dark/report.json"
+    },
+    "ko-light": {
+      "checks": 283,
+      "rawReportSHA256": "675026c8d02cffdb3b159c53378b98d5c7b11b1cca891c817a2a0cdb23347f67",
+      "rawReport": "build/parallel-directory-ci-final-intel/files-ui-verification.gUnbUs/ko-light/report.json"
+    },
+    "en-light": {
+      "checks": 283,
+      "rawReportSHA256": "8e72969e5837feb3e87d35bd3596615d6cc437d0de1e531969372faaf218adb8",
+      "rawReport": "build/parallel-directory-ci-final-intel/files-ui-verification.gUnbUs/en-light/report.json"
+    },
+    "ko-dark": {
+      "checks": 283,
+      "rawReportSHA256": "cca332b31a4ee03d7b3d9622135b73e0f18d20d9bf611ac955182f30fdb42df0",
+      "rawReport": "build/parallel-directory-ci-final-intel/files-ui-verification.gUnbUs/ko-dark/report.json"
+    }
+  },
+  "limits": [
+    "ARM full verification job was cancelled; workflow failed despite Intel full verification and both Xcode jobs succeeding.",
+    "These checks use source 4a19117, not the later native byte-progress backends."
+  ]
+}

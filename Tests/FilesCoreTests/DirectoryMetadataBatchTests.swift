@@ -52,7 +52,15 @@ private final class EntryReadGate: @unchecked Sendable {
         #expect(item.isHidden == (expected.isHidden ?? false))
         #expect(item.size == expected.fileSize.map(Int64.init))
         #expect(item.created == expected.creationDate && item.modified == expected.contentModificationDate)
-        #expect(Set(item.tags) == Set(expected.tagNames ?? []))
+        // A new URL's tag query can transiently return [] even after successful enumeration.
+        // Compare assigned tags against fixture truth, not another independently cached query.
+        let assignedTags: Set<String> = ["Review", "한글"]
+        if item.name == tagged.lastPathComponent || item.name == "hard-link.txt" {
+            #expect(Set(item.tags) == assignedTags)
+        } else if item.isSymbolicLink {
+            // No tags were assigned to the link itself; native resolution may expose its target's tags.
+            #expect(item.tags.isEmpty || Set(item.tags) == assignedTags)
+        } else { #expect(item.tags.isEmpty) }
         #expect(item.identity == LocalEntryIdentity.read(item.url))
         #expect(item.cloudState == (expected.isUbiquitousItem == true ? .readUbiquitousState(at: item.url) : nil))
     }

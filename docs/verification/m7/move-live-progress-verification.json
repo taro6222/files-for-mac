@@ -1,0 +1,84 @@
+{
+  "sourceBaseSHA": "5d726e4b549fb0aa56c7c0d6f5c22f94a0019e8b",
+  "debugBinarySHA256": "9288012d72738f61dad4574b14d78785440da4f27c5a12092f36a0098ae489ea",
+  "sourceFileSHA256": {
+    "Sources/FilesCore/EntryOperations.swift": "1c2e9db44db1b8b513cdfb13d2e8c630b775b4b01298fef77878e0f0d9b711f0",
+    "Sources/FilesMac/MoveWindow.swift": "5d1efb8f5e1bd06c653a0c18a87f645748ccc3167f6b9c2930ff638f57541912",
+    "Sources/FilesMac/BrowserWindow.swift": "93146d8c89df0304d6d2881dffdd844d3e745e7d3e904c6bb7dbadb208293f0f",
+    "Tests/FilesCoreTests/MoveLiveProgressTests.swift": "ad6ab687b035b0fb9f2b3a765e4a92bbc1ccb596cbf25aa16562ea9675cba4fc",
+    "Tests/FilesCoreTests/DirectoryMetadataBatchTests.swift": "cf0791b7e017c0f3a30ba98b290a608076c0e55082bdb3d5e865aa26f55a7e87"
+  },
+  "builds": {
+    "build": {
+      "path": "build/move-live-build.log",
+      "sha256": "a55322eb31748e42c6f75a49a0406ec00dddc2f8b1a8ecd2671aa2942b17d204"
+    },
+    "release": {
+      "path": "build/move-live-release.log",
+      "sha256": "c6a8677b668e3e2a6d7d3f57af4b6c20c8c170246773ee9fb3af94a364b1e15f"
+    }
+  },
+  "swift": {
+    "reported": 337,
+    "passed": 319,
+    "skipped": 18,
+    "log": {
+      "path": "build/move-live-tests.log",
+      "sha256": "c728476e0f10224f1cd95d6a428b4df3634d3ea98b707112b648e56dc2bc9564"
+    }
+  },
+  "mountedVolumes": {
+    "tests": 7,
+    "filesystems": [
+      "APFS",
+      "case-sensitive APFS",
+      "exFAT",
+      "FAT32",
+      "HFS+"
+    ],
+    "log": {
+      "path": "build/move-live-volume-ui.log",
+      "sha256": "a044db2f7b196d844111181fb47ac6a2effb518776c7ff314eb90782cc152a20"
+    }
+  },
+  "fileOperationUI": {
+    "ko-light": {
+      "checks": 79,
+      "realDeviceRetryAndProgressPresentation": true,
+      "rawReport": {
+        "path": "/private/var/folders/lg/xk3px5rn42n0mrrykzn0pw380000gn/T/files-m2-ui.zlTesf/ko-light/report.json",
+        "sha256": "4f27005e4b33b4d336179d4e08a77648d6e733d5f0325f43e5bac1169403fbea"
+      }
+    },
+    "ko-dark": {
+      "checks": 79,
+      "realDeviceRetryAndProgressPresentation": true,
+      "rawReport": {
+        "path": "/private/var/folders/lg/xk3px5rn42n0mrrykzn0pw380000gn/T/files-m2-ui.zlTesf/ko-dark/report.json",
+        "sha256": "8378bef481b1e0ceaa4e3a611aec3ee02560e3ddb088ef419b8e43ecd1e90204"
+      }
+    },
+    "en-light": {
+      "checks": 79,
+      "realDeviceRetryAndProgressPresentation": true,
+      "rawReport": {
+        "path": "/private/var/folders/lg/xk3px5rn42n0mrrykzn0pw380000gn/T/files-m2-ui.zlTesf/en-light/report.json",
+        "sha256": "85df08ee410b266044286935e3552f61bf228b32adcbe59cafe2fd99daea9b36"
+      }
+    },
+    "en-dark": {
+      "checks": 79,
+      "realDeviceRetryAndProgressPresentation": true,
+      "rawReport": {
+        "path": "/private/var/folders/lg/xk3px5rn42n0mrrykzn0pw380000gn/T/files-m2-ui.zlTesf/en-dark/report.json",
+        "sha256": "08bab5ffb7d9f48c67a620e04c8b5fe05266a7f6778b7365b94738506f9d1b6c"
+      }
+    }
+  },
+  "limits": [
+    "Forced cross-volume core tests exercise the branch on one filesystem; mounted AppKit retry uses genuinely distinct devices.",
+    "Move-window presentation inspection replays real engine events; it is not physical input, compositor or VoiceOver acceptance.",
+    "Undo restoration copies, folder merge, remote protocols and whole-selection byte totals remain separate.",
+    "The completed 86be2b0 eight-hour baseline predates this backend and still shows growing hourly physical-footprint medians."
+  ]
+}

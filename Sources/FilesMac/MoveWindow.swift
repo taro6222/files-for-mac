@@ -15,8 +15,13 @@ final class MoveWindow: NSWindowController, NSWindowDelegate {
     private let label = NSTextField(wrappingLabelWithString: "")
     private let progress = NSProgressIndicator()
     private let details = NSTextView()
+    private var latestProgressIndex = -1
+    private var copyingFinished = false
+    private var latestLiveBytes: Int64?
 #if DEBUG
     private(set) var qaLastProgress = ""
+    private var qaLiveUpdate: MoveProgress?
+    private var qaVerifiedUpdate: MoveProgress?
 #endif
     private let close = NSButton(title: L("취소", "Cancel"), target: nil, action: #selector(cancelMove(_:)))
     private let retry = NSButton(title: L("실패 항목 다시 시도", "Retry Failed Items"), target: nil,
@@ -129,7 +134,23 @@ final class MoveWindow: NSWindowController, NSWindowDelegate {
     required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
 
     private func update(_ update: MoveProgress) {
+#if DEBUG
+        if update.liveTransfer?.bytes ?? 0 > 0 { qaLiveUpdate = update }
+        if update.phase == "verifying" { qaVerifiedUpdate = update }
+#endif
         guard running, !cancellation.isCancelled else { return }
+        guard update.index >= latestProgressIndex else { return }
+        if update.index > latestProgressIndex {
+            latestProgressIndex = update.index; copyingFinished = false; latestLiveBytes = nil
+        }
+        if update.phase == "copying" {
+            guard !copyingFinished else { return }
+            if let latestLiveBytes {
+                guard let live = update.liveTransfer, live.bytes >= latestLiveBytes else { return }
+            }
+        }
+        if ["verifying", "committing", "removingSource"].contains(update.phase) { copyingFinished = true }
+        if let live = update.liveTransfer { latestLiveBytes = live.bytes }
         let phase: String
         switch update.phase {
         case "planning": phase = L("원본 확인", "Checking source")
@@ -144,6 +165,7 @@ final class MoveWindow: NSWindowController, NSWindowDelegate {
         label.stringValue = "\(update.index + 1)/\(update.total) · \(phase) · \(update.name)"
             + L(" · 이후 \(remaining)개", " · \(remaining) after this item")
         if let transfer = update.stagedTransfer { label.stringValue += stagedTransferDescription(transfer) }
+        if let transfer = update.liveTransfer { label.stringValue += liveTransferDescription(transfer) }
 #if DEBUG
         qaLastProgress = label.stringValue
 #endif
@@ -255,6 +277,23 @@ final class MoveWindow: NSWindowController, NSWindowDelegate {
 
 #if DEBUG
     private var qaLastAnnouncement = ""
+    var qaHasLiveProgress: Bool { qaLiveUpdate != nil && qaVerifiedUpdate != nil }
+    /// Inspect real engine events without claiming physical input or compositor presentation.
+    func qaVerifyLiveTransferPresentation(source: URL) -> Bool {
+        guard let live = qaLiveUpdate, let verified = qaVerifiedUpdate,
+              let transfer = live.liveTransfer, transfer.bytes > 0 else { return false }
+        let probe = MoveWindow(sources: [source], destination: URL(fileURLWithPath: destinationPath), conflictPolicy: .skip)
+        defer { probe.close() }
+        probe.update(live)
+        let dataVisible = probe.label.stringValue.contains(L("현재 항목 데이터", "Current item data"))
+            && probe.label.stringValue.contains(formatByteCount(transfer.bytes, unit: BrowserPreferences.shared.sizeUnit))
+            && probe.progress.isIndeterminate
+        probe.update(verified)
+        let verification = probe.label.stringValue
+        probe.update(live)
+        return dataVisible && probe.label.stringValue == verification
+            && verification.contains(L("내용 검증", "Verifying contents"))
+    }
     var qaCanRetry: Bool { !retry.isHidden }
     func qaRetry() { retry.performClick(nil) }
     var qaAccessibleConflict: Bool {

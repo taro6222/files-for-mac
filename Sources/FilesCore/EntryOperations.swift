@@ -73,6 +73,7 @@ public struct MoveProgress: Sendable {
     public let name: String
     public let phase: String
     public let stagedTransfer: StagedFileTransfer?
+    public var liveTransfer: LiveTransferProgress? = nil
 }
 
 public struct MoveUndoItem: Codable, Sendable {
@@ -1017,8 +1018,14 @@ public enum EntryOperations {
                                 itemStates[index] = MoveItemOperationResult(source: source, target: target, state: "copying", message: nil)
                                 try save(state: finalState); emit("copying"); try cancellation.check()
                                 let copyStarted = ContinuousClock.now
-                                try fm.copyItem(at: source, to: payload)
+                                try NativeFileCopy.run(from: source, to: payload, totalBytes: before.logicalDataBytes,
+                                                       cancellation: cancellation) { update in
+                                    progress(MoveProgress(index: index, total: normalizedSources.count,
+                                                          name: source.lastPathComponent, phase: "copying",
+                                                          stagedTransfer: nil, liveTransfer: update))
+                                }
                                 try before.restoreCreationTimes(in: payload, cancellation: cancellation)
+                                try before.restoreDirectoryModificationTimes(in: payload, cancellation: cancellation)
                                 let copyElapsed = copyStarted.duration(to: .now)
                                 try cancellation.check()
                                 itemStates[index] = MoveItemOperationResult(source: source, target: target, state: "verifying", message: nil)

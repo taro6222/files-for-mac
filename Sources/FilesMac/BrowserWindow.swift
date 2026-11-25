@@ -7118,6 +7118,12 @@ extension BrowserWindow {
         guard completions == 2, !result.qaCanRetry, !fm.fileExists(atPath: source.path),
               try Data(contentsOf: target) == contents,
               let undo = EntryOperations.latestUndoMove(journalDirectory: journalDirectory) else { return false }
+        let progressWait = ContinuousClock.now
+        while !NSApp.windows.compactMap({ $0.windowController as? MoveWindow }).contains(where: { $0.qaHasLiveProgress }),
+              elapsed(progressWait) < 5 { try await Task.sleep(for: .milliseconds(20)) }
+        guard NSApp.windows.compactMap({ $0.windowController as? MoveWindow }).contains(where: {
+            $0.qaVerifyLiveTransferPresentation(source: source)
+        }) else { return false }
         let restored = await EntryOperations.undoMove(undo, journalDirectory: journalDirectory)
         return restored.state == "completed" && !fm.fileExists(atPath: target.path)
             && (try? Data(contentsOf: source)) == contents
