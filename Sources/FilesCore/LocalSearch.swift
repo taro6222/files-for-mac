@@ -94,13 +94,14 @@ public struct LocalFileSearch: FileSearching {
                             if let maximum = query.maximumSize, size == nil || size! > maximum { continue }
                             if let after = query.modifiedAfter, v.contentModificationDate == nil || v.contentModificationDate! < after { continue }
                             if let before = query.modifiedBefore, v.contentModificationDate == nil || v.contentModificationDate! > before { continue }
-                            let searchableTags = (v.tagNames ?? []).joined(separator: " ").folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
+                            let tags = StoredFileTags.names(at: url, fallback: v.tagNames ?? [])
+                            let searchableTags = tags.joined(separator: " ").folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
                             guard tagTerms.allSatisfy(searchableTags.contains) else { continue }
                             batch.append(FileItem(url: url, name: name, isDirectory: isDirectory,
                                 isPackage: v.isPackage ?? false, isSymbolicLink: v.isSymbolicLink ?? false,
                                 isHidden: v.isHidden ?? false, size: size, created: v.creationDate, modified: v.contentModificationDate,
                                 kind: isDirectory ? "Folder" : (url.pathExtension.isEmpty ? "File" : url.pathExtension.uppercased()),
-                                tags: v.tagNames ?? []))
+                                tags: tags))
                         } catch { skipped += 1 }
                         if batch.count >= 128 { continuation.yield(FileSearchBatch(items: batch, skippedLocations: skipped)); batch.removeAll(keepingCapacity: true) }
                     }

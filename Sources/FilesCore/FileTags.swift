@@ -1,4 +1,34 @@
 import Foundation
+import Darwin
+
+/// Prefer the stored Finder tag plist when NSURL's independently cached tag property disagrees.
+/// Unknown, unsupported or malformed storage retains the resource-provider result.
+enum StoredFileTags {
+    static let attribute = "com.apple.metadata:_kMDItemUserTags"
+    static func names(at url: URL, fallback: [String]) -> [String] {
+        for _ in 0..<3 {
+            let size = getxattr(url.path, attribute, nil, 0, 0, XATTR_NOFOLLOW)
+            guard size >= 0 else { return fallback }
+            var data = Data(count: size)
+            let read = data.withUnsafeMutableBytes {
+                getxattr(url.path, attribute, $0.baseAddress, size, 0, XATTR_NOFOLLOW)
+            }
+            if read < 0 && errno == ERANGE { continue }
+            guard read == size,
+                  let values = (try? PropertyListSerialization.propertyList(from: data, format: nil)) as? [String] else {
+                return fallback
+            }
+            return values.map { value in
+                let suffix = value.suffix(2)
+                if suffix.first == "\n", let color = suffix.last, "01234567".contains(color) {
+                    return String(value.dropLast(2))
+                }
+                return value
+            }
+        }
+        return fallback
+    }
+}
 
 public struct FileTagSnapshot: Sendable, Equatable {
     public let identity: String?
@@ -14,7 +44,9 @@ public enum FileTagError: Error, Equatable {
 public struct FileTagService: Sendable {
     public init() {}
     public func snapshot(_ url: URL) throws -> FileTagSnapshot {
-        FileTagSnapshot(identity: try identity(url), tags: try url.resourceValues(forKeys: [.tagNamesKey]).tagNames ?? [])
+        let identifier = try identity(url)
+        let resourceTags = try url.resourceValues(forKeys: [.tagNamesKey]).tagNames ?? []
+        return FileTagSnapshot(identity: identifier, tags: StoredFileTags.names(at: url, fallback: resourceTags))
     }
     public func setTags(_ tags: [String], at url: URL, expectedIdentity: String?) throws -> FileTagSnapshot {
         let normalized = try normalize(tags)

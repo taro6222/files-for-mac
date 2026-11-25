@@ -106,7 +106,7 @@ public struct LocalFileSystem: DirectoryStreaming {
                                             isSymbolicLink: v.isSymbolicLink ?? false, isHidden: v.isHidden ?? false,
                                             size: v.fileSize.map(Int64.init), created: v.creationDate, modified: v.contentModificationDate,
                                             kind: v.isDirectory == true ? "Folder" : (child.pathExtension.isEmpty ? "File" : child.pathExtension.uppercased()),
-                                            tags: v.tagNames ?? [],
+                                            tags: StoredFileTags.names(at: child, fallback: v.tagNames ?? []),
                                             cloudState: v.isUbiquitousItem == true ? .readUbiquitousState(at: child) : nil)
                                     } catch {
                                         let error = error as NSError

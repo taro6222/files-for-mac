@@ -35,6 +35,17 @@ private final class EntryReadGate: @unchecked Sendable {
     try #require(chflags(hidden.path, UInt32(UF_HIDDEN)) == 0)
     let tagged = root.appendingPathComponent("file #?.txt")
     try (tagged as NSURL).setResourceValue(["Review", "한글"], forKey: .tagNamesKey)
+    // Independently verify that the fixture setter persisted metadata, not only URL cache state.
+    let storedSize = getxattr(tagged.path, "com.apple.metadata:_kMDItemUserTags", nil, 0, 0, XATTR_NOFOLLOW)
+    try #require(storedSize > 0, "NSURL tag setter did not persist the fixture attribute")
+    var stored = Data(count: storedSize)
+    let storedRead = stored.withUnsafeMutableBytes {
+        getxattr(tagged.path, "com.apple.metadata:_kMDItemUserTags", $0.baseAddress, storedSize, 0, XATTR_NOFOLLOW)
+    }
+    try #require(storedRead == storedSize)
+    let storedNames = try #require(PropertyListSerialization.propertyList(from: stored, format: nil) as? [String])
+    try #require(storedNames.count == 2 && storedNames.contains { $0 == "Review" || $0.hasPrefix("Review\n") }
+                 && storedNames.contains { $0 == "한글" || $0.hasPrefix("한글\n") })
     try fm.createDirectory(at: root.appendingPathComponent("Bundle.app"), withIntermediateDirectories: false)
     try fm.createSymbolicLink(at: root.appendingPathComponent("link.txt"), withDestinationURL: tagged)
     try fm.linkItem(at: tagged, to: root.appendingPathComponent("hard-link.txt"))

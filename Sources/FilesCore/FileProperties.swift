@@ -172,7 +172,8 @@ public struct FilePropertiesInspector: Sendable {
                 created: values.creationDate, modified: values.contentModificationDate, added: values.addedToDirectoryDate,
                 owner: attributes[.ownerAccountName] as? String, group: attributes[.groupOwnerAccountName] as? String,
                 posixPermissions: (attributes[.posixPermissions] as? NSNumber)?.intValue,
-                typeIdentifier: values.contentType?.identifier, tags: values.tagNames ?? [], volumeName: values.volumeName,
+                typeIdentifier: values.contentType?.identifier,
+                tags: StoredFileTags.names(at: standardized, fallback: values.tagNames ?? []), volumeName: values.volumeName,
                 isReadable: values.isReadable ?? false, isWritable: values.isWritable ?? false,
                 isExecutable: values.isExecutable ?? false)
         }.value
