@@ -2261,16 +2261,12 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         let alert = NSAlert(); alert.messageText = L("일괄 이름 변경", "Batch Rename")
         alert.informativeText = L("방식을 선택하고 값을 입력하세요. 다음 화면에서 실제 변경 이름을 확인합니다.",
                                   "Choose a mode and enter values. Review the resulting names on the next screen.")
-        let stack = NSStackView(); stack.orientation = .vertical; stack.spacing = 8
-        stack.frame = NSRect(x: 0, y: 0, width: 440, height: 96)
-        let mode = NSPopUpButton(); mode.addItems(withTitles: [L("찾기 및 바꾸기", "Find and Replace"), L("번호 매기기", "Numbering"), L("정규식", "Regular Expression")])
-        let first = NSTextField(); first.placeholderString = L("찾을 문자열 / 기본 이름 / 정규식", "Find text / Base name / Regular expression")
-        let second = NSTextField(); second.placeholderString = L("바꿀 문자열 / 시작 번호 / 치환식", "Replacement / Start number / Replacement template")
-        stack.addArrangedSubview(mode); stack.addArrangedSubview(first); stack.addArrangedSubview(second); alert.accessoryView = stack
         alert.addButton(withTitle: L("미리보기", "Preview")); alert.addButton(withTitle: L("취소", "Cancel"))
-        alert.window.initialFirstResponder = first
+        let input = BatchRenameInputForm(sourceCount: sources.count, preview: alert.buttons[0])
+        alert.accessoryView = input.stack; alert.window.initialFirstResponder = input.first
         alert.beginSheetModal(for: window) { [weak self] response in
-            guard response == .alertFirstButtonReturn, !first.stringValue.isEmpty, let self else { return }
+            guard response == .alertFirstButtonReturn, input.isValid, let self else { return }
+            let mode = input.mode, first = input.first, second = input.second
             let requests: [BatchRenameRequest]
             do {
                 switch mode.indexOfSelectedItem {
@@ -6731,6 +6727,8 @@ extension BrowserWindow {
                     checks["moveResultKeyboardClose"] = resultWindow.performKeyEquivalent(with: close) && !resultWindow.isVisible
                 } else { checks["moveResultKeyboardClose"] = false }
             } else { checks["moveConflictKeyboardShortcut"] = false }
+            let inputChecks = await BatchRenameInputForm.verify(parent: window, output: destination)
+            diagnostics["batchRenameInputValidation"] = inputChecks
             let invalidRename = [BatchRenameRequest(source: source.appendingPathComponent("conflict.txt"), name: "bad/name")]
             let invalidPlan = try await EntryOperations.previewBatchRename(invalidRename)
             controller.confirmBatchRename(invalidRename, plan: invalidPlan)
@@ -6748,6 +6746,8 @@ extension BrowserWindow {
                     && !BatchRenameWindow.isRunning
                     && (try? Data(contentsOf: source.appendingPathComponent("conflict.txt"))) == Data("source".utf8)
             } else { checks["batchRenamePreviewBlocksInvalidPlan"] = false }
+            checks["batchRenamePreviewBlocksInvalidPlan"] = checks["batchRenamePreviewBlocksInvalidPlan"] == true
+                && inputChecks.values.allSatisfy { $0 }
             let restricted = source.appendingPathComponent("move-retry-source", isDirectory: true)
             try fm.createDirectory(at: restricted, withIntermediateDirectories: false)
             let blockedMove = restricted.appendingPathComponent("retry-move.txt")

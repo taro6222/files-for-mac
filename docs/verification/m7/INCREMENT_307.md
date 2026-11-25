@@ -1,6 +1,6 @@
 # M7 Increment 307 — 두 CPU 최적화 성능 기준 실행
 
-상태: 진행 중. CI 경로와 로컬 보호 검증을 구현했으며 실제 최적화 성능 결과는 아직 없다.
+상태: 두 CPU 기준 측정 완료. 첫 표시 p95 통과·전체 모델 열거 p95 미달이며 성능 개선은 진행 중이다.
 
 `396866c`의 두 CPU 전체 AppKit 기능 검사는 통과했으나 Intel의 네 Debug 실행 전체 표시는 3.875–5.779초였다. 이 관찰값으로 출시 성능을 통과시키지 않고 기존 `verify-release-performance.sh`의 최적화 QA 실행을 별도 두 CPU CI에 연결한다. 앱 소스·성능 목표·기존 기능 검사 시간 한도는 바꾸지 않는다.
 
@@ -15,3 +15,9 @@
 `396866c`의 두 CPU 검증 작업은 프리뷰 DMG 설치·Launch Services 기동까지 성공했다. 20회 창 표시 p95는 Apple Silicon 551ms·Intel 671ms, 최대는 각각 729ms·1,178ms였다. 이는 Launch Services 요청부터 일치하는 AppKit 창의 WindowServer 표시까지이며 콜드 OS 캐시·키보드 상호작용 완료 지표가 아니다. 원본 로그에서 추출한 JSON과 로그 해시는 [기록](optimized-performance-preparation.json)에 보존한다.
 
 동일 실행의 ARM Xcode 작업은 취소 상태여서 전체 workflow 결론은 실패다. 두 CPU 기능·설치 성공과 전체 workflow 결론을 구분한다. 더 최신 `5284cb3`의 두 CPU Xcode 빌드는 별도 실행에서 성공했고 전체 기능 검증은 진행 중이다. Windows 전송·취소 및 일괄 이름 변경 수집과 8시간 시험은 기존 실행을 유지한다.
+
+## 실제 기준 실행 결과
+
+[실행](https://github.com/taro6222/files-for-mac/actions/runs/45680732514)은 두 CPU 모두 전체 열거 기준 미달로 실패했다. 10,000항목 20회 p95는 ARM 첫 표시 0.153807초·모델 완료 2.069565초·전체 AppKit 표시 2.089953초, Intel 첫 표시 0.275741초·모델 완료 4.144663초·전체 AppKit 표시 4.186543초다. 원본 표본·재계산·실패 상태는 [그대로 보존](optimized-performance-11e948a.json)한다. 임계값을 올리지 않는다.
+
+실제 RAM은 ARM 7 GiB·Intel 14 GiB여서 16 GiB 이상 기준 장비 수용과 구분한다. 이번 결과는 해당 CI 환경의 warm-cache 최적화 QA baseline이며 콜드 시작·정식 설치본 전체 성능으로 확대하지 않는다. 렌더링·열거·정렬·메타데이터 경로를 구분해 후속 분석한다.

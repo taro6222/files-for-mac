@@ -1,0 +1,709 @@
+{
+  "collectedAtUTC": "2026-11-25T19:25:09.534385+00:00",
+  "sourceSHA": "c0e50653aa1ff62f83250aa92c6d5a7e731a209c",
+  "upstreamSHA": "99951c66928c4da714da8b1dd46039421182cbab",
+  "runs": [
+    {
+      "run": {
+        "conclusion": "success",
+        "headSha": "c0e50653aa1ff62f83250aa92c6d5a7e731a209c",
+        "jobs": [
+          {
+            "completedAt": "2026-11-25T19:05:25Z",
+            "conclusion": "success",
+            "databaseId": 139436527757,
+            "name": "capture",
+            "startedAt": "2026-11-25T18:53:17Z",
+            "status": "completed",
+            "steps": [
+              {
+                "completedAt": "2026-11-25T18:53:21Z",
+                "conclusion": "success",
+                "name": "Set up job",
+                "number": 1,
+                "startedAt": "2026-11-25T18:53:19Z",
+                "status": "completed"
+              },
+              {
+                "completedAt": "2026-11-25T18:53:31Z",
+                "conclusion": "success",
+                "name": "Run actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803",
+                "number": 2,
+                "startedAt": "2026-11-25T18:53:21Z",
+                "status": "completed"
+              },
+              {
+                "completedAt": "2026-11-25T18:53:39Z",
+                "conclusion": "success",
+                "name": "Run actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803",
+                "number": 3,
+                "startedAt": "2026-11-25T18:53:31Z",
+                "status": "completed"
+              },
+              {
+                "completedAt": "2026-11-25T18:53:40Z",
+                "conclusion": "success",
+                "name": "Run microsoft/setup-msbuild@30375c66a4eea26614e0d39710365f22f8b0af57",
+                "number": 4,
+                "startedAt": "2026-11-25T18:53:39Z",
+                "status": "completed"
+              },
+              {
+                "completedAt": "2026-11-25T18:53:44Z",
+                "conclusion": "success",
+                "name": "Run actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1",
+                "number": 5,
+                "startedAt": "2026-11-25T18:53:40Z",
+                "status": "completed"
+              },
+              {
+                "completedAt": "2026-11-25T18:53:46Z",
+                "conclusion": "success",
+                "name": "Verify operation evidence matching and fixture manifests",
+                "number": 6,
+                "startedAt": "2026-11-25T18:53:44Z",
+                "status": "completed"
+              },
+              {
+                "completedAt": "2026-11-25T19:00:55Z",
+                "conclusion": "success",
+                "name": "Build and sign the pinned source on the temporary runner",
+                "number": 7,
+                "startedAt": "2026-11-25T18:53:46Z",
+                "status": "completed"
+              },
+              {
+                "completedAt": "2026-11-25T19:04:09Z",
+                "conclusion": "success",
+                "name": "Install the upstream package and runtime",
+                "number": 8,
+                "startedAt": "2026-11-25T19:00:55Z",
+                "status": "completed"
+              },
+              {
+                "completedAt": "2026-11-25T19:05:15Z",
+                "conclusion": "success",
+                "name": "Capture Windows Home and folder layouts",
+                "number": 9,
+                "startedAt": "2026-11-25T19:04:09Z",
+                "status": "completed"
+              },
+              {
+                "completedAt": "2026-11-25T19:05:17Z",
+                "conclusion": "success",
+                "name": "Run actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9",
+                "number": 10,
+                "startedAt": "2026-11-25T19:05:15Z",
+                "status": "completed"
+              },
+              {
+                "completedAt": "2026-11-25T19:05:17Z",
+                "conclusion": "success",
+                "name": "Post Run actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1",
+                "number": 18,
+                "startedAt": "2026-11-25T19:05:17Z",
+                "status": "completed"
+              },
+              {
+                "completedAt": "2026-11-25T19:05:20Z",
+                "conclusion": "success",
+                "name": "Post Run actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803",
+                "number": 19,
+                "startedAt": "2026-11-25T19:05:17Z",
+                "status": "completed"
+              },
+              {
+                "completedAt": "2026-11-25T19:05:22Z",
+                "conclusion": "success",
+                "name": "Post Run actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803",
+                "number": 20,
+                "startedAt": "2026-11-25T19:05:20Z",
+                "status": "completed"
+              },
+              {
+                "completedAt": "2026-11-25T19:05:22Z",
+                "conclusion": "success",
+                "name": "Complete job",
+                "number": 21,
+                "startedAt": "2026-11-25T19:05:22Z",
+                "status": "completed"
+              }
+            ],
+            "url": "https://github.com/taro6222/files-for-mac/actions/runs/45679664842/job/139436527757"
+          }
+        ],
+        "status": "completed",
+        "url": "https://github.com/taro6222/files-for-mac/actions/runs/45679664842"
+      },
+      "capture": {
+        "upstreamSHA": "99951c66928c4da714da8b1dd46039421182cbab",
+        "packageSHA256": "be65de26b118836124df22e16defe74330344c8214ab7c74100de59cf01c4421",
+        "appID": "FilesDev_ykqwq8d6ps0ag!App",
+        "windows": "10.0.26100",
+        "architecture": "AMD64",
+        "scope": "operation-progress",
+        "screen": "UI-01 Home, initial runner defaults",
+        "screenshotSHA256": "384d0129077b16dd30ba40ac5b76321e73700eb22bb7203837b32eb943543158",
+        "folder": {
+          "screens": [
+            "UI-02",
+            "UI-03"
+          ],
+          "entries": [
+            "Alpha",
+            "Workshop",
+            "notes.txt",
+            "preview.txt",
+            "readme.md"
+          ],
+          "visibleEntryNames": [
+            "Alpha",
+            "Workshop",
+            "notes.txt",
+            "preview.txt",
+            "readme.md"
+          ],
+          "detailColumnNames": [
+            "Date modified",
+            "Name",
+            "Size",
+            "Type"
+          ],
+          "screenshotSHA256": "5dac9528753543f4530a91696cb0ef4d2c77107d39ecc429c2cac54c9442bf99"
+        },
+        "activeCopy": {
+          "state": "cancelled",
+          "source": {
+            "files": 24000,
+            "bytes": 24576000,
+            "sha256": "e49695f5415e999c8cd80f03318fd6fc8c653708fbf76ea55cb18756e3636036"
+          },
+          "destination": "Workshop",
+          "copiedFilesBeforeCancel": 357,
+          "visibleControls": [
+            {
+              "AcceleratorKey": "",
+              "AccessKey": "",
+              "AutomationId": "",
+              "ClassName": "ListViewItem",
+              "FrameworkId": "XAML",
+              "HasKeyboardFocus": "False",
+              "HelpText": "",
+              "IsContentElement": "True",
+              "IsControlElement": "True",
+              "IsEnabled": "True",
+              "IsKeyboardFocusable": "True",
+              "IsOffscreen": "False",
+              "IsPassword": "False",
+              "IsRequiredForForm": "False",
+              "ItemStatus": "",
+              "ItemType": "",
+              "LocalizedControlType": "list item",
+              "Name": "Copying 24000 items to \"Workshop\" (0%)",
+              "Orientation": "None",
+              "ProcessId": "8112",
+              "RuntimeId": "42.590326.4.322",
+              "x": "1523",
+              "y": "133",
+              "width": "376",
+              "height": "98"
+            },
+            {
+              "AcceleratorKey": "",
+              "AccessKey": "",
+              "AutomationId": "ContentRoot",
+              "ClassName": "NamedContainerAutomationPeer",
+              "FrameworkId": "XAML",
+              "HasKeyboardFocus": "False",
+              "HelpText": "",
+              "IsContentElement": "True",
+              "IsControlElement": "True",
+              "IsEnabled": "True",
+              "IsKeyboardFocusable": "False",
+              "IsOffscreen": "False",
+              "IsPassword": "False",
+              "IsRequiredForForm": "False",
+              "ItemStatus": "",
+              "ItemType": "",
+              "LocalizedControlType": "group",
+              "Name": "Copying 24000 items to \"Workshop\" (0%)",
+              "Orientation": "None",
+              "ProcessId": "8112",
+              "RuntimeId": "42.590326.4.323",
+              "x": "1523",
+              "y": "133",
+              "width": "376",
+              "height": "98"
+            },
+            {
+              "AcceleratorKey": "",
+              "AccessKey": "",
+              "AutomationId": "StatusCenterItemHeaderTextBlock",
+              "ClassName": "TextBlock",
+              "FrameworkId": "XAML",
+              "HasKeyboardFocus": "False",
+              "HelpText": "",
+              "IsContentElement": "True",
+              "IsControlElement": "True",
+              "IsEnabled": "True",
+              "IsKeyboardFocusable": "False",
+              "IsOffscreen": "False",
+              "IsPassword": "False",
+              "IsRequiredForForm": "False",
+              "ItemStatus": "",
+              "ItemType": "",
+              "LocalizedControlType": "text",
+              "Name": "Copying 24000 items to \"Workshop\" (0%)",
+              "Orientation": "None",
+              "ProcessId": "8112",
+              "RuntimeId": "42.590326.4.324",
+              "x": "1576",
+              "y": "149",
+              "width": "270",
+              "height": "19"
+            },
+            {
+              "AcceleratorKey": "",
+              "AccessKey": "",
+              "AutomationId": "ExpandCollapseChevronItemButton",
+              "ClassName": "ToggleButton",
+              "FrameworkId": "XAML",
+              "HasKeyboardFocus": "False",
+              "HelpText": "",
+              "IsContentElement": "True",
+              "IsControlElement": "True",
+              "IsEnabled": "True",
+              "IsKeyboardFocusable": "True",
+              "IsOffscreen": "False",
+              "IsPassword": "False",
+              "IsRequiredForForm": "False",
+              "ItemStatus": "",
+              "ItemType": "",
+              "LocalizedControlType": "button",
+              "Name": "",
+              "Orientation": "None",
+              "ProcessId": "8112",
+              "RuntimeId": "42.590326.4.325",
+              "x": "1858",
+              "y": "142",
+              "width": "32",
+              "height": "32",
+              "ToggleState": "Off",
+              "IsAvailable": "True"
+            },
+            {
+              "AcceleratorKey": "",
+              "AccessKey": "",
+              "AutomationId": "MainProgressBar",
+              "ClassName": "Microsoft.UI.Xaml.Controls.ProgressBar",
+              "FrameworkId": "XAML",
+              "HasKeyboardFocus": "False",
+              "HelpText": "",
+              "IsContentElement": "True",
+              "IsControlElement": "True",
+              "IsEnabled": "True",
+              "IsKeyboardFocusable": "False",
+              "IsOffscreen": "False",
+              "IsPassword": "False",
+              "IsRequiredForForm": "False",
+              "ItemStatus": "",
+              "ItemType": "",
+              "LocalizedControlType": "progress bar",
+              "Name": "",
+              "Orientation": "None",
+              "ProcessId": "8112",
+              "RuntimeId": "42.590326.4.326",
+              "x": "1536",
+              "y": "186",
+              "width": "314",
+              "height": "3",
+              "Minimum": "0",
+              "Maximum": "100",
+              "LargeChange": "NaN",
+              "SmallChange": "NaN",
+              "Value": "0",
+              "IsReadOnly": "True",
+              "IsAvailable": "True"
+            },
+            {
+              "AcceleratorKey": "",
+              "AccessKey": "",
+              "AutomationId": "StatusCenterItemSubFooterTextBlock",
+              "ClassName": "TextBlock",
+              "FrameworkId": "XAML",
+              "HasKeyboardFocus": "False",
+              "HelpText": "",
+              "IsContentElement": "True",
+              "IsControlElement": "True",
+              "IsEnabled": "True",
+              "IsKeyboardFocusable": "False",
+              "IsOffscreen": "False",
+              "IsPassword": "False",
+              "IsRequiredForForm": "False",
+              "ItemStatus": "",
+              "ItemType": "",
+              "LocalizedControlType": "text",
+              "Name": "69.81 KiB of 23.44 MiB processed",
+              "Orientation": "None",
+              "ProcessId": "8112",
+              "RuntimeId": "42.590326.4.327",
+              "x": "1536",
+              "y": "198",
+              "width": "314",
+              "height": "16"
+            },
+            {
+              "AcceleratorKey": "",
+              "AccessKey": "",
+              "AutomationId": "MoreOptionsButton",
+              "ClassName": "Button",
+              "FrameworkId": "XAML",
+              "HasKeyboardFocus": "False",
+              "HelpText": "",
+              "IsContentElement": "True",
+              "IsControlElement": "True",
+              "IsEnabled": "True",
+              "IsKeyboardFocusable": "True",
+              "IsOffscreen": "False",
+              "IsPassword": "False",
+              "IsRequiredForForm": "False",
+              "ItemStatus": "",
+              "ItemType": "",
+              "LocalizedControlType": "button",
+              "Name": "More options...",
+              "Orientation": "None",
+              "ProcessId": "8112",
+              "RuntimeId": "42.590326.4.328",
+              "x": "1858",
+              "y": "182",
+              "width": "32",
+              "height": "32"
+            }
+          ],
+          "cancelToTerminalSeconds": 3.467999999999961,
+          "sourceAfter": {
+            "files": 24000,
+            "bytes": 24576000,
+            "sha256": "e49695f5415e999c8cd80f03318fd6fc8c653708fbf76ea55cb18756e3636036"
+          },
+          "partialDestination": {
+            "files": 1429,
+            "bytes": 1463296,
+            "sha256": "4e8b097b27f2d93d97b4489fa0d103899d9559e5af5c2bee7e91662fa5b1b0a0"
+          },
+          "sourcePreserved": true,
+          "destinationStable": true
+        },
+        "layouts": {
+          "UI-10-copy-active": {
+            "mode": "status-center",
+            "screenshotSHA256": "53627f0c48e5147a97acb42890b2f4ca758f740c2f7fba8b6009a5bfb1617577"
+          },
+          "UI-10-copy-cancel-menu": {
+            "mode": "status-center",
+            "screenshotSHA256": "e57ccd8b5185692d1c08bf5afffecb53a496c191e53244217730d75ac7ef9d28"
+          },
+          "UI-10-copy-cancelled": {
+            "mode": "status-center",
+            "screenshotSHA256": "90a23ff10ebc31accccf3709a18b9df597d557285edfd83609c39912dcd50001"
+          }
+        }
+      },
+      "screenshots": [
+        {
+          "file": "windows-transfer-active.png",
+          "sha256": "53627f0c48e5147a97acb42890b2f4ca758f740c2f7fba8b6009a5bfb1617577",
+          "xmlSHA256": "cec1536944381eca37991dfb081444c0cb40ebc12394cf60d90f51efa90c9309",
+          "pixels": [
+            1920,
+            1032
+          ]
+        },
+        {
+          "file": "windows-transfer-cancel-menu.png",
+          "sha256": "e57ccd8b5185692d1c08bf5afffecb53a496c191e53244217730d75ac7ef9d28",
+          "xmlSHA256": "478343d43fa6b4815df68f9ada7d5b6d769b396df9aca02b002a32ae35c7399f",
+          "pixels": [
+            1920,
+            1032
+          ]
+        },
+        {
+          "file": "windows-transfer-cancelled.png",
+          "sha256": "90a23ff10ebc31accccf3709a18b9df597d557285edfd83609c39912dcd50001",
+          "xmlSHA256": "449ac35730eca0e81abd4adefc154a1aad37117013579c1fcf29855978f6bae3",
+          "pixels": [
+            1920,
+            1032
+          ]
+        }
+      ],
+      "logSHA256": "2da3164ece1ab62c99ff31799c8ae7f588d98e4ee353a7deb2b8625ac28b28f6",
+      "generatedSourceAndRetainedPrefixDigestsMatch": true
+    },
+    {
+      "run": {
+        "conclusion": "success",
+        "headSha": "c0e50653aa1ff62f83250aa92c6d5a7e731a209c",
+        "jobs": [
+          {
+            "completedAt": "2026-11-25T19:07:51Z",
+            "conclusion": "success",
+            "databaseId": 139436560342,
+            "name": "capture",
+            "startedAt": "2026-11-25T18:53:20Z",
+            "status": "completed",
+            "steps": [
+              {
+                "completedAt": "2026-11-25T18:53:23Z",
+                "conclusion": "success",
+                "name": "Set up job",
+                "number": 1,
+                "startedAt": "2026-11-25T18:53:21Z",
+                "status": "completed"
+              },
+              {
+                "completedAt": "2026-11-25T18:53:36Z",
+                "conclusion": "success",
+                "name": "Run actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803",
+                "number": 2,
+                "startedAt": "2026-11-25T18:53:23Z",
+                "status": "completed"
+              },
+              {
+                "completedAt": "2026-11-25T18:53:43Z",
+                "conclusion": "success",
+                "name": "Run actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803",
+                "number": 3,
+                "startedAt": "2026-11-25T18:53:36Z",
+                "status": "completed"
+              },
+              {
+                "completedAt": "2026-11-25T18:53:44Z",
+                "conclusion": "success",
+                "name": "Run microsoft/setup-msbuild@30375c66a4eea26614e0d39710365f22f8b0af57",
+                "number": 4,
+                "startedAt": "2026-11-25T18:53:43Z",
+                "status": "completed"
+              },
+              {
+                "completedAt": "2026-11-25T18:53:48Z",
+                "conclusion": "success",
+                "name": "Run actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1",
+                "number": 5,
+                "startedAt": "2026-11-25T18:53:44Z",
+                "status": "completed"
+              },
+              {
+                "completedAt": "2026-11-25T18:53:54Z",
+                "conclusion": "success",
+                "name": "Verify operation evidence matching and fixture manifests",
+                "number": 6,
+                "startedAt": "2026-11-25T18:53:48Z",
+                "status": "completed"
+              },
+              {
+                "completedAt": "2026-11-25T19:04:00Z",
+                "conclusion": "success",
+                "name": "Build and sign the pinned source on the temporary runner",
+                "number": 7,
+                "startedAt": "2026-11-25T18:53:54Z",
+                "status": "completed"
+              },
+              {
+                "completedAt": "2026-11-25T19:06:47Z",
+                "conclusion": "success",
+                "name": "Install the upstream package and runtime",
+                "number": 8,
+                "startedAt": "2026-11-25T19:04:00Z",
+                "status": "completed"
+              },
+              {
+                "completedAt": "2026-11-25T19:07:42Z",
+                "conclusion": "success",
+                "name": "Capture Windows Home and folder layouts",
+                "number": 9,
+                "startedAt": "2026-11-25T19:06:47Z",
+                "status": "completed"
+              },
+              {
+                "completedAt": "2026-11-25T19:07:44Z",
+                "conclusion": "success",
+                "name": "Run actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9",
+                "number": 10,
+                "startedAt": "2026-11-25T19:07:42Z",
+                "status": "completed"
+              },
+              {
+                "completedAt": "2026-11-25T19:07:44Z",
+                "conclusion": "success",
+                "name": "Post Run actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1",
+                "number": 18,
+                "startedAt": "2026-11-25T19:07:44Z",
+                "status": "completed"
+              },
+              {
+                "completedAt": "2026-11-25T19:07:46Z",
+                "conclusion": "success",
+                "name": "Post Run actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803",
+                "number": 19,
+                "startedAt": "2026-11-25T19:07:44Z",
+                "status": "completed"
+              },
+              {
+                "completedAt": "2026-11-25T19:07:49Z",
+                "conclusion": "success",
+                "name": "Post Run actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803",
+                "number": 20,
+                "startedAt": "2026-11-25T19:07:46Z",
+                "status": "completed"
+              },
+              {
+                "completedAt": "2026-11-25T19:07:49Z",
+                "conclusion": "success",
+                "name": "Complete job",
+                "number": 21,
+                "startedAt": "2026-11-25T19:07:49Z",
+                "status": "completed"
+              }
+            ],
+            "url": "https://github.com/taro6222/files-for-mac/actions/runs/45679673351/job/139436560342"
+          }
+        ],
+        "status": "completed",
+        "url": "https://github.com/taro6222/files-for-mac/actions/runs/45679673351"
+      },
+      "capture": {
+        "upstreamSHA": "99951c66928c4da714da8b1dd46039421182cbab",
+        "packageSHA256": "e401a5baa03306c8bebb04e8bd214dbf62512138260ddf370eaee933cf81ef70",
+        "appID": "FilesDev_ykqwq8d6ps0ag!App",
+        "windows": "10.0.26100",
+        "architecture": "AMD64",
+        "scope": "rename",
+        "screen": "UI-01 Home, initial runner defaults",
+        "screenshotSHA256": "92fd2adfae0976180b960f027be332a824d38e7a21a96d04b95a61b5b6a167f0",
+        "folder": {
+          "screens": [
+            "UI-02",
+            "UI-03"
+          ],
+          "entries": [
+            "Alpha",
+            "Workshop",
+            "notes.txt",
+            "preview.txt",
+            "readme.md"
+          ],
+          "visibleEntryNames": [
+            "Alpha",
+            "Workshop",
+            "notes.txt",
+            "preview.txt",
+            "readme.md"
+          ],
+          "detailColumnNames": [
+            "Date modified",
+            "Name",
+            "Size",
+            "Type"
+          ],
+          "screenshotSHA256": "c2a3764774d2abd2d1a75246c03cf5a1c2776ca01e4b54c3482a44e88563214a"
+        },
+        "bulkRename": {
+          "state": "cancelled-without-mutation",
+          "selectedNames": [
+            "Alpha",
+            "Workshop",
+            "notes.txt",
+            "preview.txt",
+            "readme.md"
+          ],
+          "sourceBefore": {
+            "files": 4,
+            "bytes": 96,
+            "sha256": "c14283fff2906ae0f2cd8f46547d451656aab3be613594c85fc6de5df83dbe8b"
+          },
+          "sourceAfter": {
+            "files": 4,
+            "bytes": 96,
+            "sha256": "c14283fff2906ae0f2cd8f46547d451656aab3be613594c85fc6de5df83dbe8b"
+          },
+          "emptyNameDisabled": true,
+          "invalidNameDisabled": true,
+          "invalidNameWarning": true,
+          "validNameEnabled": true,
+          "sourcePreserved": true
+        },
+        "layouts": {
+          "UI-12-empty": {
+            "mode": "bulk-rename",
+            "screenshotSHA256": "13821cca03a00c894c9c471b186ed001108703263150cc6f91068341da91d5c8"
+          },
+          "UI-12-invalid": {
+            "mode": "bulk-rename",
+            "screenshotSHA256": "ea9c60e83d58142f6084aa3c7aa8e16cbfb678544998467b3ed8de00de75cfa3"
+          },
+          "UI-12-valid": {
+            "mode": "bulk-rename",
+            "screenshotSHA256": "f6c35fd6b27a0e95228042704e11d6d47aa351331cb717e5474aca8e2c153b9f"
+          },
+          "UI-12-cancelled": {
+            "mode": "bulk-rename",
+            "screenshotSHA256": "5d4cb460ace20c417e91bb813a7d8ac84cbcc494a486afe63e94a3e3f4273e05"
+          }
+        }
+      },
+      "screenshots": [
+        {
+          "file": "windows-rename-empty.png",
+          "sha256": "13821cca03a00c894c9c471b186ed001108703263150cc6f91068341da91d5c8",
+          "xmlSHA256": "94d3564d4f98319114bd2896d15508145031613c2e5cde37b724b72e034587fd",
+          "pixels": [
+            1920,
+            1032
+          ]
+        },
+        {
+          "file": "windows-rename-invalid.png",
+          "sha256": "ea9c60e83d58142f6084aa3c7aa8e16cbfb678544998467b3ed8de00de75cfa3",
+          "xmlSHA256": "6de481b41ce988ad28b77418bb26b3a8417986c53ea0690bf19dddb077bc89fb",
+          "pixels": [
+            1920,
+            1032
+          ]
+        },
+        {
+          "file": "windows-rename-valid.png",
+          "sha256": "f6c35fd6b27a0e95228042704e11d6d47aa351331cb717e5474aca8e2c153b9f",
+          "xmlSHA256": "46603b5b313a446072045b200e06086b06afa9ad9a85ee05c84e088799329d04",
+          "pixels": [
+            1920,
+            1032
+          ]
+        },
+        {
+          "file": "windows-rename-cancelled.png",
+          "sha256": "5d4cb460ace20c417e91bb813a7d8ac84cbcc494a486afe63e94a3e3f4273e05",
+          "xmlSHA256": "3c7fa1507ad81bbc2b4e62c445cf159c829bc448bf39be0fb909b9f470a42897",
+          "pixels": [
+            1920,
+            1032
+          ]
+        }
+      ],
+      "logSHA256": "bca7bad5ad54019abfebe70698327e371a93e7e630c0d8b5987b6addbb23d4a6",
+      "unchangedVisibleNamesAfterCancel": [
+        "Alpha",
+        "Workshop",
+        "notes.txt",
+        "preview.txt",
+        "readme.md"
+      ]
+    }
+  ],
+  "limits": [
+    "Captured on separate Windows runners with the prior file-only digest format; current directory-entry protection has 12 local tests.",
+    "Cancellation observation includes WinAppDriver and polling; it is not input-feedback latency.",
+    "No timing or image equivalence between the two operating systems is inferred."
+  ]
+}
