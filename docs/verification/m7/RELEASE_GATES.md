@@ -121,3 +121,7 @@
 [파일 약속 송신 개발](INCREMENT_292.md)은 진행 중이다. 코어 15개와 AppKit 제공자 계약 18개를 통과했고 기존 URL 드래그와 지연 제공을 연결했다. 잠긴 콘솔로 실제 마우스 드래그 수용 검증이 남아 있으며, 파일 약속 수신 동선과 Finder·외부 앱 왕복도 검증한다.
 
 [실제 두 CPU의 제한 실행기 결과](git-scheduling-3a65d40-ci.json)는 각각 세 시험을 통과했다. 동일 실행의 Apple Silicon 전체 UI 검사는 Spotlight 준비 실패로 도달하지 못했으며 Intel 전체 UI 결과는 확인 중이다.
+
+[Intel의 네 언어·테마 전체 AppKit 재실행](INCREMENT_293.md)은 각각 283개와 설치·기동 단계를 통과했다. Apple Silicon의 Spotlight 준비 실패에 대해 동일 Swift 원본을 쓰는 전용 fixture와 실제 NSMetadataQuery 범위 검증을 추가했으며 로컬 네 조건을 통과했다. 새 준비 방식의 원격 결과는 확인한다.
+
+[파일 약속 제공자 계약의 두 CPU 결과](file-promise-contract-1eac741-ci.json)는 각각 18개를 통과했다. 실제 마우스 드래그와 수신 수용은 계속 진행 중이다.

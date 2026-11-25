@@ -1,6 +1,51 @@
 import Foundation
 import FilesCore
 
+#if DEBUG
+extension SpotlightFileSearch {
+    @MainActor static func runVerification(output: String) async {
+        let destination = URL(fileURLWithPath: output, isDirectory: true)
+        do {
+            guard let path = ProcessInfo.processInfo.environment["FILES_UI_SPOTLIGHT_ROOT"] else {
+                throw CocoaError(.fileReadNoSuchFile)
+            }
+            let root = URL(fileURLWithPath: path, isDirectory: true)
+            let expected = root.appendingPathComponent("Sources/FilesCore/LocalSearch.swift")
+            try FileManager.default.createDirectory(at: destination, withIntermediateDirectories: true)
+            let outside = destination.appendingPathComponent("empty-folder", isDirectory: true)
+            try FileManager.default.createDirectory(at: outside, withIntermediateDirectories: true)
+            func collect(_ text: String, at root: URL, scope: SearchScope) async throws -> [FileItem] {
+                var result: [FileItem] = []
+                for try await batch in SpotlightFileSearch().batches(in: root,
+                    query: FileSearchQuery(text: text, scope: scope, method: .spotlightContent)) {
+                    result.append(contentsOf: batch.items)
+                }
+                return result
+            }
+            let descendants = try await collect("SearchRouter", at: root, scope: .descendants)
+            let current = try await collect("SearchRouter", at: root, scope: .currentFolder)
+            let indexed = try await collect("SearchRouter", at: outside, scope: .indexedLocations)
+            let absent = try await collect("files-mac-missing-\(UUID())", at: root, scope: .descendants)
+            let checks = [
+                "descendantsFindExactSwiftSource": descendants.contains { $0.url == expected },
+                "currentFolderExcludesNestedSwiftSource": current.isEmpty,
+                "indexedLocationsFindSourceOutsideCurrentFolder": indexed.contains { $0.url == expected },
+                "unknownContentHasNoResults": absent.isEmpty,
+            ]
+            let report: [String: Any] = ["checks": checks, "sourceRoot": root.path,
+                "expectedFile": expected.path, "descendantResults": descendants.map { $0.url.path },
+                "os": ProcessInfo.processInfo.operatingSystemVersionString]
+            try JSONSerialization.data(withJSONObject: report, options: [.prettyPrinted, .sortedKeys])
+                .write(to: destination.appendingPathComponent("report.json"), options: .atomic)
+            DispatchQueue.main.async { exit(checks.values.allSatisfy { $0 } ? 0 : 1) }
+        } catch {
+            fputs("Spotlight verification failed: \(error)\n", stderr)
+            DispatchQueue.main.async { exit(1) }
+        }
+    }
+}
+#endif
+
 struct SpotlightFileSearch: FileSearching {
     func batches(in root: URL, query: FileSearchQuery) -> AsyncThrowingStream<FileSearchBatch, Error> {
         AsyncThrowingStream { continuation in

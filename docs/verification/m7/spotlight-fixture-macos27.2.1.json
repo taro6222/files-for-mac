@@ -1,0 +1,57 @@
+{
+  "baseCommit": "1eac741714056836e7b13eea5ed6f15e29f58128",
+  "fixture": {
+    "state": "indexed",
+    "id": "218673437b374d1c8b91355a67ac0244",
+    "fixtureRoot": "/Users/changhun/FilesMac-Spotlight-QA.w3tgbfkg",
+    "device": 16777231,
+    "inode": 62603193,
+    "sourceSHA256": "804efcedca423e04ccf23070736835b0a22fd6f1987059c334e5cf2a3c7ad788",
+    "expectedFile": "/Users/changhun/FilesMac-Spotlight-QA.w3tgbfkg/Sources/FilesCore/LocalSearch.swift",
+    "query": "kMDItemTextContent == \"*SearchRouter*\"cd",
+    "import": {
+      "arguments": [
+        "/usr/bin/mdimport",
+        "-i",
+        "/Users/changhun/FilesMac-Spotlight-QA.w3tgbfkg/Sources/FilesCore/LocalSearch.swift"
+      ],
+      "exitCode": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    "indexHits": [
+      "/Users/changhun/FilesMac-Spotlight-QA.w3tgbfkg/Sources/FilesCore/LocalSearch.swift"
+    ],
+    "indexWaitSeconds": 0.4823794160038233,
+    "indexedFile": "/Users/changhun/FilesMac-Spotlight-QA.w3tgbfkg/Sources/FilesCore/LocalSearch.swift",
+    "searchRoot": "/Users/changhun/FilesMac-Spotlight-QA.w3tgbfkg",
+    "cleaned": true
+  },
+  "nativeAdapter": {
+    "checks": {
+      "currentFolderExcludesNestedSwiftSource": true,
+      "descendantsFindExactSwiftSource": true,
+      "indexedLocationsFindSourceOutsideCurrentFolder": true,
+      "unknownContentHasNoResults": true
+    },
+    "descendantResults": [
+      "/Users/changhun/FilesMac-Spotlight-QA.w3tgbfkg/Sources/FilesCore/LocalSearch.swift"
+    ],
+    "expectedFile": "/Users/changhun/FilesMac-Spotlight-QA.w3tgbfkg/Sources/FilesCore/LocalSearch.swift",
+    "os": "Version 27.2.1 (Build 26B131)",
+    "sourceRoot": "/Users/changhun/FilesMac-Spotlight-QA.w3tgbfkg"
+  },
+  "cleanupSafety": {
+    "foreignFileProtected": true,
+    "ownedFixtureRemoved": true,
+    "refusal": "Spotlight fixture contents changed; cleanup refused."
+  },
+  "binarySHA256": "62809b56d0c1d5882f6d3c9b6326311df0870a02015c37c62ab072121f5b8baa",
+  "sourceSHA256": {
+    "Sources/FilesMac/BrowserWindow.swift": "c8be006942738d17a0989051f88e848625f0abe97ad957c35a604e393a69c9b4",
+    "Sources/FilesMac/SpotlightFileSearch.swift": "ba917f3239d68d6e1d81e7fcc637f3872efc107af3653b692e8628b8ae4e9094",
+    "Sources/FilesMac/main.swift": "87e0622e7e2c87ef0dd8e8ea54e4aba2bcf51d4481b6747e6ee0c61a8b9a8201",
+    "scripts/prepare-spotlight-fixture.py": "51574fe36b7a451d8882ecf6db6ab2db5d62ccfd2d40362f556215328cab99ef",
+    "scripts/verify-spotlight-fixture.py": "043ae4af84a8c983c3e7ebdfafc71ee9309bc38914f7a07bb46f24cbf0f5c71a"
+  }
+}

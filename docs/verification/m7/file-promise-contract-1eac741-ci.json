@@ -1,0 +1,63 @@
+{
+  "sourceCommit": "1eac741714056836e7b13eea5ed6f15e29f58128",
+  "run": "https://github.com/taro6222/files-for-mac/actions/runs/45632931359",
+  "reports": {
+    "arm64": {
+      "checks": {
+        "delegateCompletesWithoutError": true,
+        "delegateExportsDirectory": true,
+        "delegateNamesOriginalFile": true,
+        "delegatePreservesBothSourceVersions": true,
+        "delegatePreservesMode": true,
+        "delegatePreservesSymbolicLink": true,
+        "delegateProtectsExistingDestination": true,
+        "delegateRejectsChangedSource": true,
+        "delegateReportsCollision": true,
+        "delegateUsesReceiversName": true,
+        "offersDirectoryType": true,
+        "offersPromiseTypes": true,
+        "preservesFileURLRepresentation": true,
+        "promiseIsLazy": true,
+        "readsOnePromiseReceiver": true,
+        "unknownIdentityKeepsOnlyFileURL": true,
+        "usesBackgroundPromiseQueue": true,
+        "writesPasteboard": true
+      },
+      "diagnostics": {
+        "collisionError": "An item with this name already exists; skipped.",
+        "staleSourceError": "The operation couldn’t be completed. (FilesCore.EntryOperationError error 2.)"
+      },
+      "mode": "delegate-contract",
+      "os": "Version 15.8.2 (Build 24H232)"
+    },
+    "x86_64": {
+      "checks": {
+        "delegateCompletesWithoutError": true,
+        "delegateExportsDirectory": true,
+        "delegateNamesOriginalFile": true,
+        "delegatePreservesBothSourceVersions": true,
+        "delegatePreservesMode": true,
+        "delegatePreservesSymbolicLink": true,
+        "delegateProtectsExistingDestination": true,
+        "delegateRejectsChangedSource": true,
+        "delegateReportsCollision": true,
+        "delegateUsesReceiversName": true,
+        "offersDirectoryType": true,
+        "offersPromiseTypes": true,
+        "preservesFileURLRepresentation": true,
+        "promiseIsLazy": true,
+        "readsOnePromiseReceiver": true,
+        "unknownIdentityKeepsOnlyFileURL": true,
+        "usesBackgroundPromiseQueue": true,
+        "writesPasteboard": true
+      },
+      "diagnostics": {
+        "collisionError": "An item with this name already exists; skipped.",
+        "staleSourceError": "The operation couldn’t be completed. (FilesCore.EntryOperationError error 2.)"
+      },
+      "mode": "delegate-contract",
+      "os": "Version 15.7.9 (Build 24G830)"
+    }
+  },
+  "actualDragAcceptance": "pending: console session locked; no actual mouse drag is claimed"
+}

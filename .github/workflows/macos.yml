@@ -133,24 +133,11 @@ jobs:
       - name: Prepare Spotlight for AppKit content search
         if: github.event_name == 'workflow_dispatch' && inputs.verify_full_appkit
         timeout-minutes: 4
-        run: |
-          source_file="$PWD/Sources/FilesCore/LocalSearch.swift"
-          query='kMDItemTextContent == "*SearchRouter*"cd'
-          indexed() {
-            /usr/bin/mdfind -onlyin "$PWD" "$query" | /usr/bin/grep -Fx "$source_file" >/dev/null
-          }
-          if ! indexed; then
-            sudo /usr/bin/mdutil -i on /System/Volumes/Data
-            /usr/bin/mdimport -i "$source_file"
-            for attempt in {1..45}; do
-              if indexed; then break; fi
-              sleep 2
-            done
-          fi
-          if ! indexed; then
-            echo "Spotlight did not index $source_file on this runner." >&2
-            exit 1
-          fi
+        run: python3 scripts/prepare-spotlight-fixture.py prepare --enable-indexing
+      - name: Verify native Spotlight query scopes
+        if: github.event_name == 'workflow_dispatch' && inputs.verify_full_appkit
+        timeout-minutes: 2
+        run: python3 scripts/verify-spotlight-fixture.py --binary "$(swift build --show-bin-path)/FilesMac"
       - name: Verify the complete AppKit suite
         if: github.event_name == 'workflow_dispatch' && inputs.verify_full_appkit
         timeout-minutes: 14
@@ -167,6 +154,18 @@ jobs:
             ${{ runner.temp }}/files-ui-verification.*/*/run.log
             ${{ runner.temp }}/files-ui-verification.*/*/timeout-sample.txt
             ${{ runner.temp }}/files-ui-verification.*/*/*.png
+          if-no-files-found: ignore
+      - name: Remove the owned Spotlight source fixture
+        if: always() && github.event_name == 'workflow_dispatch' && inputs.verify_full_appkit
+        run: python3 scripts/prepare-spotlight-fixture.py cleanup
+      - name: Retain Spotlight preparation diagnostics
+        if: always() && github.event_name == 'workflow_dispatch' && inputs.verify_full_appkit
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: files-spotlight-${{ matrix.architecture }}
+          path: |
+            build/spotlight-fixture/state.json
+            build/spotlight-fixture/native-queries/
           if-no-files-found: ignore
       - name: Build and launch the installed developer preview
         if: github.event_name != 'pull_request'

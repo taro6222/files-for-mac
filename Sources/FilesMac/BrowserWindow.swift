@@ -5204,7 +5204,8 @@ extension BrowserWindow {
             while controller.searchWindow?.qaIsSearching == true && spotlightSearch.duration(to: .now) < .seconds(10) { try await Task.sleep(for: .milliseconds(10)) }
             checks["spotlightSearchCapability"] = controller.searchWindow?.qaShowsSpotlight == true && controller.searchWindow?.qaIsSearching == false
             try capture("search-spotlight", view: controller.searchWindow?.window?.contentView)
-            let projectRoot = URL(fileURLWithPath: FileManager.default.currentDirectoryPath, isDirectory: true)
+            let projectRoot = URL(fileURLWithPath: ProcessInfo.processInfo.environment["FILES_UI_SPOTLIGHT_ROOT"]
+                ?? FileManager.default.currentDirectoryPath, isDirectory: true)
             controller.searchWindow?.present(root: projectRoot, showHidden: false, onReveal: controller.searchResultRevealer())
             controller.searchWindow?.qaSearchSpotlight("SearchRouter", scope: .descendants)
             let spotlightHit = ContinuousClock.now
