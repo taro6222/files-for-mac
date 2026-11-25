@@ -61,6 +61,7 @@ public struct CopyUndoItem: Codable, Sendable {
     public let targetIdentity: String
     public let targetSnapshot: [String: String]
     var targetMetadata: CopyTransferMetadata? = nil
+    var descendantIdentities: [String: String]? = nil
 }
 
 struct CopyTransferMetadata: Codable, Equatable, Sendable {
@@ -69,11 +70,14 @@ struct CopyTransferMetadata: Codable, Equatable, Sendable {
     var modificationDates: [String: Date] = [:]
     // Earlier journals have no creation-time baseline.
     var creationDates: [String: Date]? = nil
+    struct Ownership: Codable, Equatable, Sendable { let user: UInt32; let group: UInt32 }
+    var owners: [String: Ownership]? = nil
 
     func matchesRecorded(_ recorded: Self) -> Bool {
         extendedAttributes == recorded.extendedAttributes && accessControlLists == recorded.accessControlLists
             && modificationDates == recorded.modificationDates
             && (recorded.creationDates?.allSatisfy { creationDates?[$0.key] == $0.value } ?? true)
+            && (recorded.owners?.allSatisfy { owners?[$0.key] == $0.value } ?? true)
     }
 }
 
@@ -475,13 +479,29 @@ public enum CopyEngine {
         }.value
     }
 
-    private static func matchesUndoTarget(_ item: CopyUndoItem) throws -> Bool {
-        guard try matchesRecordedIdentity(at: item.target, expected: item.targetIdentity, identity: entryIdentity) else { return false }
+    static let consolidatedUndoPrefix = "tree-v1|"
+    static func matchesUndoTarget(_ item: CopyUndoItem) throws -> Bool {
+        let consolidated = item.targetIdentity.hasPrefix(consolidatedUndoPrefix)
+        let identity = consolidated ? String(item.targetIdentity.dropFirst(consolidatedUndoPrefix.count)) : item.targetIdentity
+        if consolidated && (item.descendantIdentities?.isEmpty != false) { return false }
+        func boundariesMatch() throws -> Bool {
+            for (path,expected) in item.descendantIdentities ?? [:] {
+                let parts = path.split(separator: "/", omittingEmptySubsequences: true)
+                guard !parts.isEmpty, "/" + parts.joined(separator: "/") == path,
+                      !parts.contains("."), !parts.contains(".."), !path.utf8.contains(0),
+                      try matchesRecordedIdentity(at: item.target.appendingPathComponent(String(path.dropFirst())),
+                                                  expected: expected, identity: entryIdentity) else { return false }
+            }
+            return true
+        }
+        guard try matchesRecordedIdentity(at: item.target, expected: identity, identity: entryIdentity),
+              try boundariesMatch() else { return false }
         let snapshot = try makeSnapshot(item.target, cancellation: CopyCancellation(),
                                         includeTransferMetadata: item.targetMetadata != nil)
         guard snapshot.withPermissions == item.targetSnapshot,
-              item.targetMetadata.map(snapshot.metadata.matchesRecorded) != false else { return false }
-        return try matchesRecordedIdentity(at: item.target, expected: item.targetIdentity, identity: entryIdentity)
+              item.targetMetadata.map(snapshot.metadata.matchesRecorded) != false,
+              try boundariesMatch() else { return false }
+        return try matchesRecordedIdentity(at: item.target, expected: identity, identity: entryIdentity)
     }
 
     private static func copyName(_ source: URL, isDirectory: Bool, suffix: Int) -> String {
@@ -892,7 +912,7 @@ public enum CopyEngine {
                              includeTransferMetadata: Bool = true) throws -> VerificationSnapshot {
         let fm = FileManager()
         var snapshot = VerificationSnapshot()
-        if includeTransferMetadata { snapshot.metadata.creationDates = [:] }
+        if includeTransferMetadata { snapshot.metadata.creationDates = [:]; snapshot.metadata.owners = [:] }
         func visit(_ url: URL, relative: String) throws {
             try cancellation.check()
             let attrs = try fm.attributesOfItem(atPath: url.path)
@@ -957,6 +977,9 @@ public enum CopyEngine {
             default: throw CopyFailure(text: "Unsupported special file: " + url.path)
             }
             if includeTransferMetadata {
+                if let owner = attrs[.ownerAccountID] as? NSNumber, let group = attrs[.groupOwnerAccountID] as? NSNumber {
+                    snapshot.metadata.owners?[relative] = CopyTransferMetadata.Ownership(user: owner.uint32Value, group: group.uint32Value)
+                }
                 let attributes = try attributeDigests(url, cancellation: cancellation)
                 if !attributes.isEmpty { snapshot.metadata.extendedAttributes[relative] = attributes }
                 snapshot.metadata.accessControlLists[relative] = try accessControlList(url)

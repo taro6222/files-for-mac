@@ -118,10 +118,10 @@ import Testing
     #expect(report.selectionTransfer?.bytes == 8 && report.selectionTransfer?.totalBytes == 8)
     let undo = try #require(CopyEngine.latestUndoCopy(journalDirectory: f.journal))
     let result = await CopyEngine.undoCopy(undo, journalDirectory: f.journal)
-    // Known existing limitation: nested undo changes the ancestor's date; strict metadata checks preserve it.
-    #expect(result.state == "partiallyCompleted")
+    #expect(undo.items.count == 1)
+    #expect(result.state == "completed")
     #expect(!FileManager.default.fileExists(atPath: target.appendingPathComponent("sub/b").path))
-    #expect(try String(contentsOf: target.appendingPathComponent("sub/a"), encoding: .utf8) == "a")
+    #expect(!FileManager.default.fileExists(atPath: target.path))
 }
 
 @Test func mergeSelectionPreparedFutureSourceMutationRejectsPublication() async throws {

@@ -75,6 +75,8 @@ public enum CopyMergeBatch {
         var remainingNames = Dictionary(sources.map { (nameKey($0), 1) }, uniquingKeysWith: +)
         var anchors: [DirectoryAnchor] = []
         var undoItems: [CopyUndoItem] = []
+        let undoConsolidator = MergeUndoConsolidator()
+        var directoryMutations: [String: MergeDirectoryMutation] = [:]
         for index in sources.indices {
             let original = prepared[index]; prepared[index] = nil
             let key = nameKey(sources[index])
@@ -153,6 +155,11 @@ public enum CopyMergeBatch {
                         let snapshot = try await Task.detached { try CopyEngine.makeSnapshot(source, cancellation: cancellation) }.value
                         try PromisedFileIntake.validate(source, snapshot: snapshot, in: sourceIntakes)
                     }
+                    let priorUndo = undoItems
+                    let touched = plan.actions.filter { $0.kind == .copyMissing }.map(\.target)
+                    await Task.detached(priority: .userInitiated) {
+                        undoConsolidator.capture(items: priorUndo, touchedTargets: touched)
+                    }.value
                     let child = await CopyMergeExecutor.runPrepared(plan: plan, prepared: preparedPlan, journalDirectory: journalDirectory,
                                                             cancellation: cancellation, expectedDestination: destinationEntry) { update in
                         progress(CopyMergeBatchProgress(index: index, total: sources.count, source: source,
@@ -161,6 +168,7 @@ public enum CopyMergeBatch {
                             selectionTransfer: aggregate(update.selectionTransfer, index: index, in: selection)))
                     }
                     _ = aggregate(child.selectionTransfer, index: index, in: selection)
+                    directoryMutations.merge(child.directoryMutations ?? [:]) { _, latest in latest }
                     report.items[index].addedCount = child.items.filter { $0.state == "completed" }.count
                     report.items[index].conflictCount = child.items.filter { $0.state == "conflict" }.count
                     switch child.state {
@@ -194,6 +202,10 @@ public enum CopyMergeBatch {
         let failures = report.items.filter { $0.state == "failed" }.count
         report.state = cancellation.isCancelled ? "cancelled" : (failures == 0 ? "completed" : "partiallyCompleted")
         if !undoItems.isEmpty {
+            let currentUndo = undoItems, mutations = directoryMutations
+            undoItems = await Task.detached(priority: .userInitiated) {
+                undoConsolidator.finish(items: currentUndo, mutations: mutations)
+            }.value
             do {
                 let undo = CopyUndoRecord(operationId: id, items: undoItems, createdAt: Date())
                 try JSONEncoder().encode(undo).write(

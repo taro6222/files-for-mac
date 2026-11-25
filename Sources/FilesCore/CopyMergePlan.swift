@@ -120,6 +120,7 @@ public struct CopyMergeExecutionReport: Codable, Sendable {
     public var items: [CopyMergeExecutionItem]
     public var journalError: String?
     public var selectionTransfer: SelectionTransferProgress? = nil
+    var directoryMutations: [String: MergeDirectoryMutation]? = nil
 }
 
 /// Progress of the current missing entry; bytes describe staging before verification/publication.
@@ -229,6 +230,9 @@ public enum CopyMergeExecutor {
         for index in plan.actions.indices {
             let original = preparation.take(index)
             let action = plan.actions[index]
+            var mutationFD: Int32 = -1
+            var mutatedParent = false
+            defer { if mutationFD >= 0 { close(mutationFD) } }
             func emit(_ phase: String) {
                 progress(CopyMergeProgress(index: index, total: plan.actions.count,
                     relativePath: action.relativePath, phase: phase, selectionTransfer: selection.snapshot()))
@@ -259,10 +263,15 @@ public enum CopyMergeExecutor {
                     let before: CopyEngine.VerificationSnapshot
                     if let original { before = try original.get() }
                     else { before = try CopyEngine.makeSnapshot(action.source, cancellation: cancellation) }
+                    mutationFD = open(parent.path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
+                    guard mutationFD >= 0, CopyEngine.matchesPublicationHandle(parent, descriptor: mutationFD) else {
+                        throw MergeFailure(text: "Merge parent changed before staging.")
+                    }
                     let staging = parent.appendingPathComponent(".files-merge-\(report.id.uuidString)-\(index)")
                     guard mkdir(staging.path, 0o700) == 0 else {
                         throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
                     }
+                    mutatedParent = true
                     defer { try? fm.removeItem(at: staging) }
                     let stageFD = open(staging.path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
                     guard stageFD >= 0 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
@@ -285,6 +294,8 @@ public enum CopyMergeExecutor {
                     try copied.verifyTransferredContents(of: before)
                     try before.restoreAccessTimes(in: temporary, verifiedCopy: copied, cancellation: cancellation)
                     let targetIdentity = try identity(temporary)
+                    let publicationHandle = try CopyEngine.openPublicationHandle(temporary, on: stageFD)
+                    defer { if let publicationHandle { close(publicationHandle) } }
                     emit("committing"); try cancellation.check()
                     guard try identity(parent) == action.expectedParentIdentity else {
                         throw MergeFailure(text: "Destination parent changed before publication.")
@@ -303,11 +314,13 @@ public enum CopyMergeExecutor {
                             sourceDirectoryFD: stageFD, sourceName: temporary.lastPathComponent,
                             destinationDirectoryFD: parentFD, destinationName: action.target.lastPathComponent)
                     } catch CopyPublicationError.conflict { throw MergeConflict() }
+                    let publishedIdentity = try CopyEngine.identityAfterPublication(of: action.target,
+                        handle: publicationHandle, original: targetIdentity, identity: CopyEngine.entryIdentity)
                     report.items[index].state = "completed"
-                    report.items[index].targetIdentity = targetIdentity
+                    report.items[index].targetIdentity = publishedIdentity
                     report.items[index].targetSnapshot = copied.withPermissions
                     report.items[index].targetMetadata = copied.metadata
-                    undoItems.append(CopyUndoItem(target: action.target, targetIdentity: targetIdentity,
+                    undoItems.append(CopyUndoItem(target: action.target, targetIdentity: publishedIdentity,
                                                   targetSnapshot: copied.withPermissions, targetMetadata: copied.metadata))
                 }
             } catch is MergeConflict {
@@ -316,6 +329,10 @@ public enum CopyMergeExecutor {
             } catch {
                 report.items[index].state = cancellation.isCancelled ? "cancelled" : "failed"
                 report.items[index].message = error.localizedDescription
+            }
+            if mutatedParent, let (path,mutation) = MergeDirectoryMutation.capture(mutationFD) {
+                if report.directoryMutations == nil { report.directoryMutations = [:] }
+                report.directoryMutations?[path] = mutation
             }
             emit(report.items[index].state)
             do { try save() } catch { report.journalError = error.localizedDescription; break }

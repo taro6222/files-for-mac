@@ -1135,3 +1135,32 @@ private func verifyMountedVolumeReplacementCancellation(local: URL, destination:
     #expect(try Data(contentsOf: target) == existing)
     #expect(try Set(FileManager.default.contentsOfDirectory(atPath: destination.path)) == namesBefore)
 }
+
+@Test(.enabled(if: hasIntegrationFixture("FILES_TEST_APFS_VOLUME", "FILES_TEST_APFSX_VOLUME", "FILES_TEST_EXFAT_VOLUME", "FILES_TEST_FAT32_VOLUME", "FILES_TEST_HFS_VOLUME"), "Requires mounted integration fixtures"))
+func mountedVolumeOverlappingMergeUndoRemovesAllOwnedContents() async throws {
+    let fm = FileManager.default
+    let root = fm.temporaryDirectory.appendingPathComponent("overlap-volume-source-\(UUID())")
+    defer { try? fm.removeItem(at: root) }
+    let first = root.appendingPathComponent("first/shared"), second = root.appendingPathComponent("second/shared")
+    for url in [first,second] { try fm.createDirectory(at: url.appendingPathComponent("sub"), withIntermediateDirectories: true) }
+    try Data("a".utf8).write(to: first.appendingPathComponent("sub/a"))
+    try Data("b".utf8).write(to: second.appendingPathComponent("sub/b"))
+    let environment = ProcessInfo.processInfo.environment
+    for key in ["FILES_TEST_APFS_VOLUME", "FILES_TEST_APFSX_VOLUME", "FILES_TEST_EXFAT_VOLUME", "FILES_TEST_FAT32_VOLUME", "FILES_TEST_HFS_VOLUME"] {
+        guard let path = environment[key] else { continue }
+        let target = URL(fileURLWithPath: path).appendingPathComponent("overlap-undo-\(UUID())")
+        try fm.createDirectory(at: target, withIntermediateDirectories: true)
+        defer { try? fm.removeItem(at: target) }
+        let journals = root.appendingPathComponent("journal-"+key)
+        let report = await CopyMergeBatch.run(sources: [first,second], destination: target,
+            journalDirectory: journals, cancellation: CopyCancellation())
+        #expect(report.state == "completed", "\(key): \(report)")
+        let record = try #require(CopyEngine.latestUndoCopy(journalDirectory: journals))
+        #expect(record.items.count == 1, "\(key): \(record.items)")
+        let undo = await CopyEngine.undoCopy(record, journalDirectory: journals)
+        #expect(undo.state == "completed", "\(key): \(undo.items)")
+        #expect(!fm.fileExists(atPath: target.appendingPathComponent("shared").path), "\(key)")
+        #expect(try String(contentsOf: first.appendingPathComponent("sub/a"), encoding: .utf8) == "a")
+        #expect(try String(contentsOf: second.appendingPathComponent("sub/b"), encoding: .utf8) == "b")
+    }
+}

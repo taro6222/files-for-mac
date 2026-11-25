@@ -7134,6 +7134,7 @@ extension BrowserWindow {
             sendPaletteKey(36, characters: "\r")
             try await Task.sleep(for: .milliseconds(100))
             checks["paletteReturnExecutesInBrowser"] = palette.window?.isVisible == false && pathEditorIsFocused()
+            checks["overlappingFolderUndoThroughMenu"] = try await qaOverlappingUndo(in: destination)
             let result: [String: Any] = ["checks": checks, "diagnostics": diagnostics,
                 "language": Locale.preferredLanguages.first ?? "unknown", "theme": dark ? "dark" : "light",
                 "os": ProcessInfo.processInfo.operatingSystemVersionString]
@@ -7147,6 +7148,66 @@ extension BrowserWindow {
             DispatchQueue.main.async { exit(1) }
         }
     }
+    private static func qaOverlappingUndo(in directory: URL) async throws -> Bool {
+        let fm = FileManager.default
+        let root = directory.appendingPathComponent("overlapping-undo-ui")
+        let first = root.appendingPathComponent("first/shared"), second = root.appendingPathComponent("second/shared")
+        let target = root.appendingPathComponent("target"), journals = root.appendingPathComponent("journals")
+        for url in [first,second,target] { try fm.createDirectory(at: url.appendingPathComponent("sub"), withIntermediateDirectories: true) }
+        try Data("a".utf8).write(to: first.appendingPathComponent("sub/a"))
+        try Data("b".utf8).write(to: second.appendingPathComponent("sub/b"))
+        let report = await CopyMergeBatch.run(sources: [first,second], destination: target,
+            journalDirectory: journals, cancellation: CopyCancellation())
+        guard report.state == "completed", let record = CopyEngine.latestUndoCopy(journalDirectory: journals),
+              record.items.count == 1 else { return false }
+        let suite = "FilesMacQA.overlap-undo." + UUID().uuidString
+        guard let defaults = UserDefaults(suiteName: suite) else { return false }
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let preferences = BrowserPreferences(defaults: defaults, initialFavorites: [target])
+        let pasteboard = NSPasteboard.withUniqueName(); defer { pasteboard.releaseGlobally() }
+        let controller = BrowserWindow(preferences: preferences, restoresFrame: false, initialLocation: target,
+            loadMountedVolumes: { [] }, undoJournalDirectory: journals, filePasteboard: pasteboard)
+        controller.showWindow(nil); defer { controller.close() }
+        guard let window = controller.window else { return false }
+        func capture(_ sheet: NSWindow, name: String) throws {
+            guard let view = sheet.contentView else { throw CocoaError(.fileWriteUnknown) }
+            view.layoutSubtreeIfNeeded(); view.displayIfNeeded()
+            guard let bitmap = view.bitmapImageRepForCachingDisplay(in: view.bounds) else { throw CocoaError(.fileWriteUnknown) }
+            view.effectiveAppearance.performAsCurrentDrawingAppearance {
+                view.cacheDisplay(in: view.bounds, to: bitmap)
+                if let context = NSGraphicsContext(bitmapImageRep: bitmap)?.cgContext {
+                    context.setBlendMode(.destinationOver); context.setFillColor(NSColor.windowBackgroundColor.cgColor)
+                    context.fill(CGRect(x: 0,y: 0,width: bitmap.pixelsWide,height: bitmap.pixelsHigh))
+                }
+            }
+            guard let png = bitmap.representation(using: .png, properties: [:]) else { throw CocoaError(.fileWriteUnknown) }
+            try png.write(to: directory.appendingPathComponent(name + ".png"))
+        }
+        let menu = NSMenuItem(title: "", action: #selector(undoLastCopy(_:)), keyEquivalent: "z")
+        guard controller.validateMenuItem(menu) else { return false }
+        controller.undoLastCopy(menu)
+        guard let confirmation = window.attachedSheet else { return false }
+        try capture(confirmation, name: "overlapping-undo-confirmation")
+        window.endSheet(confirmation, returnCode: .alertFirstButtonReturn)
+        let deadline = ContinuousClock.now.advanced(by: .seconds(5))
+        while (Self.entryOperationRunning || window.attachedSheet == nil || window.attachedSheet === confirmation), ContinuousClock.now < deadline {
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        guard let result = window.attachedSheet, result !== confirmation, !Self.entryOperationRunning else { return false }
+        try capture(result, name: "overlapping-undo-result")
+        func strings(_ view: NSView) -> [String] {
+            (view as? NSTextField).map { [$0.stringValue] } ?? view.subviews.flatMap(strings)
+        }
+        let labels = result.contentView.map(strings) ?? []
+        let success = labels.contains(L("복사 실행 취소 완료", "Copy Undo Complete"))
+            && !fm.fileExists(atPath: target.appendingPathComponent("shared").path)
+            && CopyEngine.latestUndoCopy(journalDirectory: journals) == nil
+            && (try? String(contentsOf: first.appendingPathComponent("sub/a"), encoding: .utf8)) == "a"
+            && (try? String(contentsOf: second.appendingPathComponent("sub/b"), encoding: .utf8)) == "b"
+        window.endSheet(result)
+        return success
+    }
+
     private static func verifyCrossVolumeMoveRetry(sourceFolder: URL, volume: URL, journalDirectory: URL) async throws -> Bool {
         let fm = FileManager.default
         let sourceDevice = try fm.attributesOfItem(atPath: sourceFolder.path)[.systemNumber] as? NSNumber

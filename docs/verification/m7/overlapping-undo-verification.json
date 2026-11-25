@@ -1,0 +1,150 @@
+{
+  "sourceBaseSHA": "907a9f4a54dcaf7c52c9b1c8862eb326b66e32b7",
+  "sourceFilesSHA256": {
+    "Sources/FilesCore/CopyEngine.swift": "c0da5b62341ae5a10febce366c402e1f6a82f41f0647cb5a832755428af55117",
+    "Sources/FilesCore/CopyMergeBatch.swift": "e74ebf5441e7311790824f4977de9c4c27bad0408aee02c61066470bb4508b81",
+    "Sources/FilesCore/CopyMergePlan.swift": "944f42e7ebd536f5749c600a592ffbd6361ffeed0cb013dc202abb92c554193a",
+    "Sources/FilesCore/MergeUndoConsolidator.swift": "04af18b585512a6bf9f2f84c7008f7d1050c336b23a4b4ace91eb287d64b36a9",
+    "Sources/FilesMac/BrowserWindow.swift": "e8c55dd9483287a20856e2ca4b8cb88a437df6b7707ffe51793c340d3c7ef255",
+    "Tests/FilesCoreTests/MergeSelectionProgressTests.swift": "b3eab20dd834c21a130361c8e718f584feb4c2260f4b5eded784c2e2def93360",
+    "Tests/FilesCoreTests/OverlappingUndoTests.swift": "f937ef1a04b7d31f74d2fdf38e2dfa8c553e946aa304c5a5c2e2ce46777e02ae",
+    "Tests/FilesCoreTests/ExternalVolumeTests.swift": "72c29432be20f9575bff14465f293a6147b7a74758457d0f1e1776486d6b8192",
+    "scripts/verify-volume-matrix.sh": "13733155025e0c60721c9b9547a7e78fbe1ca1831f9900a7db6305b81db0f875"
+  },
+  "debugSHA256": "f47dc26002d8aba9a5214a74fad35d6d9bc6e0aef1a26a2976b9eea7536ef1ed",
+  "releaseSHA256": "0947127bfb44aa22d8af08a163b30c0aa69f4b5abe4a382400f8ed37a105de4e",
+  "swiftTests": {
+    "reported": 367,
+    "passed": 348,
+    "environmentSkipped": 19,
+    "externalChangeCases": 16
+  },
+  "mountedVolumeTests": 8,
+  "dedicatedOverlappingUndoVolumes": [
+    "APFS",
+    "Case-sensitive APFS",
+    "exFAT",
+    "FAT32",
+    "HFS+"
+  ],
+  "strictExecutor": {
+    "state": "passed",
+    "tests": {
+      "gitConcurrentSnapshotsCompleteWithoutBlockingSwiftTasks": true,
+      "gitWaitingForProcessAllowsOtherSwiftTasksToResume": true,
+      "gitCancellationTerminatesProcessAndCleansCloneStaging": true,
+      "directoryWaitingForFileSystemAllowsOtherSwiftTasksToResume": true,
+      "directoryCancellationWhileFileSystemIsBlockedStopsBeforeFirstBatch": true,
+      "directoryMetadataCancellationReturnsWhileBoundedReadersAreStillBlocked": true,
+      "folderSizingWaitingForFileSystemAllowsOtherSwiftTasksToResume": true,
+      "folderSizingCancellationWhileFileSystemIsBlockedReturnsBeforeIO": true,
+      "folderBulkSizingCancellationDiscardsLateResults": true,
+      "cloudDiscoveryCancellationWhileFileSystemIsBlockedReturnsBeforeIO": true
+    },
+    "exitCode": 0,
+    "timedOut": false,
+    "elapsedSeconds": 0.20209958299528807,
+    "testBinary": "/Users/changhun/Desktop/Workspace/Files/.build/out/Products/Debug/FilesCoreTests.xctest/Contents/MacOS/FilesCoreTests",
+    "constrainedProcess": "swiftpm-testing-helper",
+    "swiftVersion": "Apple Swift version 6.4.2 (swiftlang-6.4.2.1.9 clang-2100.4.1.1)\nTarget: arm64-apple-macosx27.2.0",
+    "sourceCommit": null,
+    "strictCooperativePool": true
+  },
+  "cases": {
+    "ko-light": {
+      "fileOperationChecks": 83,
+      "fullChecks": 283,
+      "overlappingFolderUndoThroughMenu": true,
+      "fileOperationReportSHA256": "d68d2b2746223574ac4bbf221a2e9bc538bcc609eff47aa3a12705707c873c48",
+      "fullReportSHA256": "2da8a871c89f2ccdefc846adc5541ab1adcb27541c0895dd350cc8e014046fdc",
+      "captures": {
+        "confirmation": {
+          "path": "overlap-undo-ko-light-confirmation.png",
+          "sha256": "703c8c767eefc62e2c13e1cfec9788515cbeeb323ffb52a4653ae83d866237e2"
+        },
+        "result": {
+          "path": "overlap-undo-ko-light-result.png",
+          "sha256": "4657b9e9c43597f197921afef64a49c1f7a95e6b7c5f9b76cbce6ac9bb1f1b63"
+        }
+      }
+    },
+    "ko-dark": {
+      "fileOperationChecks": 83,
+      "fullChecks": 283,
+      "overlappingFolderUndoThroughMenu": true,
+      "fileOperationReportSHA256": "3917fa5e4463d25c68b8b0ffa9b6ae75ba123487e95c8ec2299e18cb28497535",
+      "fullReportSHA256": "c3d32751fe28661891bc088f635ab6033f279c98799fd74e7a212a3bc4844bd3",
+      "captures": {
+        "confirmation": {
+          "path": "overlap-undo-ko-dark-confirmation.png",
+          "sha256": "01ef206f06c0bc9c8fa2abc6993a0abce6da3c7737f6e034860fdea5444711d5"
+        },
+        "result": {
+          "path": "overlap-undo-ko-dark-result.png",
+          "sha256": "9a21c90d61ead3deda312d809db7ffe150cb5756e3899117b295eca1ca659c31"
+        }
+      }
+    },
+    "en-light": {
+      "fileOperationChecks": 83,
+      "fullChecks": 283,
+      "overlappingFolderUndoThroughMenu": true,
+      "fileOperationReportSHA256": "415ee687d3d73389d1ff186f4ba692adeae281f30094e9e91576c03be80fdbf3",
+      "fullReportSHA256": "d68f3610112748f0004b0cc0ba47deecca5e40a6258189d77f0c1683b340aa16",
+      "captures": {
+        "confirmation": {
+          "path": "overlap-undo-en-light-confirmation.png",
+          "sha256": "af1f4cc3c835b5b46f3a2cc463ad03059cba5192a37c7974efd1bd1bb4a0a62b"
+        },
+        "result": {
+          "path": "overlap-undo-en-light-result.png",
+          "sha256": "28ae0e7794a02ccb4d92d93ba69adb5f9f26d0551a5e8488feae24eee41c4a51"
+        }
+      }
+    },
+    "en-dark": {
+      "fileOperationChecks": 83,
+      "fullChecks": 283,
+      "overlappingFolderUndoThroughMenu": true,
+      "fileOperationReportSHA256": "5381d5a68b8238aff4698c79bbc6d3557294abec6c56178e494d3006f15c4783",
+      "fullReportSHA256": "f76ee8686e452559b73804a822d09878b67bf8eef6f1c7a279093c60beac4556",
+      "captures": {
+        "confirmation": {
+          "path": "overlap-undo-en-dark-confirmation.png",
+          "sha256": "38ec8b25da271403483c4a8b5031c128e319dd9c4d42032252fc6b708ca7a1a4"
+        },
+        "result": {
+          "path": "overlap-undo-en-dark-result.png",
+          "sha256": "a29c5f79e6629239369dfcc8f09db3030d6b1dba989b657df8603b4a348de09d"
+        }
+      }
+    }
+  },
+  "logsSHA256": {
+    "final-build": "bc8fa1ebf783ab3b3bc542bc40fa36b254e591e8f82601eedb2c9358eb6ac850",
+    "final-tests": "d85e066f287962cef116d048fbd1f9fb10e5e32c1088431d965def43d63ab7b2",
+    "final-volume-ui": "8b609be4fa4f4547c2fefb4eb25d9b12993757975e4ec765ab053bbd916b398b",
+    "full-ui": "6ecaf738ee0fb9c6ca7cc9c76a80df35fd5b6813e020d2f7f425842fb892945c",
+    "final-release": "a496532dd06e4e218987ed097dee36d5f4f80f15b30f896c2e7a13fc2baebd3e",
+    "final-strict": "c914a401b107e2b1baf6a8917bed73ec3989e93726c75abd522d9510429ba7ab"
+  },
+  "regression": {
+    "test": "mergeSelectionSameNamedRootsStillMergeNestedContentsAndPreserveOverlappingUndoSafely",
+    "previousUndoState": "partiallyCompleted",
+    "currentUndoState": "completed",
+    "undoItemCount": 1,
+    "ownedDestinationRemoved": true
+  },
+  "guards": [
+    "Predicted own content and complete available metadata must match actual tree.",
+    "Only recorded own parent-directory mutations may update expected dates.",
+    "Original ancestor descriptor and descendant identity boundaries remain required.",
+    "Unknown/legacy metadata or missing mutation proof never authorizes consolidation.",
+    "Tree identity marker is not accepted by the previous generic matcher."
+  ],
+  "limitations": [
+    "Older installed-app execution and cross-process restart acceptance are separate from codec round-trip checks.",
+    "External changes preserve affected results; no universal complete Undo is claimed for modified targets.",
+    "Actual SMB acceptance, current-source remote acceptance, move selection totals, memory stability, physical input and signed release remain open."
+  ]
+}
