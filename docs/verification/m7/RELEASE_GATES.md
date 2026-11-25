@@ -5,7 +5,7 @@
 | 로컬 설치 이미지 | [최신 유니버설 프리뷰](PREVIEW_0.1.0.md)의 Apple Silicon 마운트, 체크섬, 두 슬라이스의 ad-hoc 서명, 격리 설치·교체·복원 | 깨끗한 Mac에서 다운로드·설치·재실행 |
 | Developer ID·공증 | 공증 응답 검사와 [다운로드 DMG의 빌드 SHA-256 대조](INCREMENT_143.md), [복사된 앱의 서명·배포 정책 확인](INCREMENT_144.md), 모의 실패에서 기존 산출물 보존 확인. [설치 경로의 실행 창과 아키텍처](INCREMENT_274.md)는 Sonoma 프리뷰에서 확인. 자격 증명 준비 중 | 인증서와 Keychain 프로필로 정식 DMG를 만들고 다운로드, Finder 설치, 최초 실행 및 설치본 대조 |
 | OS·CPU 환경 | Apple Silicon macOS 27.2에서 실행. [macOS 15 Apple Silicon·Intel 빌드와 자동 회귀](INCREMENT_172.md) 통과. DMG의 arm64·x86_64 최소 대상 macOS 14.0 및 서명 확인. [설치한 개발 프리뷰 arm64·x86_64 기동 각 20회](INCREMENT_178.md) 및 [Sonoma 14.8.7의 arm64 설치·기동·파일 작업](INCREMENT_270.md) 통과 | Intel에서 설치 앱 전체 UI 동선, Sonoma 초기 버전 및 Sonoma Intel의 실제 검증 |
-| 로컬·네트워크 볼륨 | APFS·대소문자 구분 APFS·exFAT 파일 작업, 일괄 이름 교환, 교체 중 취소 및 [게시 직후 대상 교체 감지](INCREMENT_43.md), 시스템 휴지통 및 [APFS 간 메타데이터 보존](INCREMENT_117.md) 검증. [리소스 포크 변경 시 원본 보존](INCREMENT_118.md), [이전 폴더 이동 기록의 실행 취소](INCREMENT_119.md), [확장 속성 변경 시 원본 보존](INCREMENT_120.md), [ACL·권한 불일치 시 원본 보존](INCREMENT_121.md), [수정 시간 확인](INCREMENT_122.md), [속성별 전송 실패 안내](INCREMENT_123.md), [복사 실행 취소의 메타데이터 보호](INCREMENT_124.md), [이동 실행 취소의 메타데이터 보호](INCREMENT_125.md), [이동 다시 실행](INCREMENT_126.md), [APFS 일반 파일 생성 시간](INCREMENT_129.md), [APFS 폴더 생성 시간](INCREMENT_130.md), [exFAT 생성 시간 왕복](INCREMENT_131.md), [FAT32·HFS+ 생성 시간 왕복](INCREMENT_133.md), [APFS 전송 결과 접근 시간](INCREMENT_134.md), [exFAT 결과 접근 시간과 FAT32·HFS+ 제약](INCREMENT_135.md) 검증. 루프백 SMB 마운트와 [무응답 검증 종료](INCREMENT_36.md)와 [목록 조회 사전 검사](INCREMENT_141.md) 확인. [앱의 SMB 목록 검증 경로](INCREMENT_142.md), [파일 작업 사전 검사](INCREMENT_167.md) 및 [중단 단계 기록](INCREMENT_168.md) 추가. [SMB 3.1.1 복사·이동·교체 및 실행 취소](INCREMENT_242.md), [파일 시각과 게시 후 세션 재연결](INCREMENT_275.md) 통과 | SMB 장기 단절·서버 권한 변경 및 FAT32·HFS+ 접근 시간 제약 확인 |
+| 로컬·네트워크 볼륨 | APFS·대소문자 구분 APFS·exFAT 파일 작업, 일괄 이름 교환, 교체 중 취소 및 [게시 직후 대상 교체 감지](INCREMENT_43.md), 시스템 휴지통 및 [APFS 간 메타데이터 보존](INCREMENT_117.md) 검증. [리소스 포크 변경 시 원본 보존](INCREMENT_118.md), [이전 폴더 이동 기록의 실행 취소](INCREMENT_119.md), [확장 속성 변경 시 원본 보존](INCREMENT_120.md), [ACL·권한 불일치 시 원본 보존](INCREMENT_121.md), [수정 시간 확인](INCREMENT_122.md), [속성별 전송 실패 안내](INCREMENT_123.md), [복사 실행 취소의 메타데이터 보호](INCREMENT_124.md), [이동 실행 취소의 메타데이터 보호](INCREMENT_125.md), [이동 다시 실행](INCREMENT_126.md), [APFS 일반 파일 생성 시간](INCREMENT_129.md), [APFS 폴더 생성 시간](INCREMENT_130.md), [exFAT 생성 시간 왕복](INCREMENT_131.md), [FAT32·HFS+ 생성 시간 왕복](INCREMENT_133.md), [APFS 전송 결과 접근 시간](INCREMENT_134.md), [exFAT 결과 접근 시간과 FAT32·HFS+ 제약](INCREMENT_135.md) 검증. 루프백 SMB 마운트와 [무응답 검증 종료](INCREMENT_36.md)와 [목록 조회 사전 검사](INCREMENT_141.md) 확인. [앱의 SMB 목록 검증 경로](INCREMENT_142.md), [파일 작업 사전 검사](INCREMENT_167.md) 및 [중단 단계 기록](INCREMENT_168.md) 추가. [SMB 3.1.1 복사·이동·교체 및 실행 취소](INCREMENT_242.md), [파일 시각과 게시 후 세션 재연결](INCREMENT_275.md), [서버 쓰기 권한 회수 후 교체 대상 복구](INCREMENT_290.md) 통과 | SMB 장기 단절 및 FAT32·HFS+ 접근 시간 제약 확인 |
 | 외부 서비스 | [FTP/FTPS/SFTP 루프백 재검증](INCREMENT_170.md) 및 Git 임시 원격 검증. [실제 병합 충돌의 읽기·UI 표시](INCREMENT_108.md)와 [OpenSSH 키·에이전트 인증 및 인증 실패 복구](INCREMENT_109.md), [HTTPS와 macOS Keychain 인증](INCREMENT_110.md), [Git 동기화의 대상 ref와 비강제 푸시 검증](INCREMENT_113.md), [로컬 Git 훅 비활성화](INCREMENT_114.md), [특수 파일명 탐색·Git 상태](INCREMENT_116.md) | 실제 클라우드 계정, 외부 서버 인증·오프라인, 외부 Git 서비스 로그인·토큰 갱신 |
 | 기능·화면 대응 | 인벤토리 378/378건 분류와 구조 감사 통과. [Swift 기본 실행 230개 통과·통합 11개 건너뜀](INCREMENT_171.md), [검색 회귀 6회 반복 통과](INCREMENT_132.md), [AppKit 검사 조합별 270개와 권한 시트의 중간 중단](INCREMENT_166.md), [30,000개 파일 권한 변경 중간 중단](INCREMENT_165.md), [보조 패널 접근성](INCREMENT_111.md), [복사·이동 접근성 알림](INCREMENT_140.md), [macOS 15 두 아키텍처의 AppKit 파일 작업 회귀](INCREMENT_179.md), [두 아키텍처의 전체 AppKit 검증과 캡처 절차](INCREMENT_276.md), [UI-01~20 원본 소스·macOS 구조 대조](../../reference/UI_BASELINE.md) | 적용 기능의 항목별 수용 검증, UI-01~20 실행 화면과 상태 대조, 전체 키보드 동선 및 VoiceOver |
 | 성능·장시간 | [10,000항목 전체 표시 p95 1.343초, 100,000항목 전체 최대 11.370초, 5분 유휴 후 1.277초](INCREMENT_163.md). 공유 OS 캐시에서 [프리뷰 93af5b7 Launch Services 시작→메뉴 응답 p95 583 ms](preview-launch-services-93af5b7.json) 및 [프리뷰 32110fa의 Sonoma Launch Services 창 표시 p95 310 ms](preview-launch-services-32110fa-sonoma.json). [시작 폴더 지연과 수정](INCREMENT_107.md) 확인. APFS 512 MiB 복사는 검증을 포함한 네이티브 기준 처리량의 102.95%. [같은 APFS 볼륨에서 512 MiB 이동 중앙값 218.9 ms, 실행 취소 218.7 ms](INCREMENT_128.md). [스크롤 AppKit 호출 p95 1.47–1.57 ms](INCREMENT_99.md). [5분 유휴 후 10,000항목 전체 표시 1.189–1.380초, 3회](INCREMENT_115.md) | 콜드 OS 캐시와 정식 배포 앱 시작부터 상호작용까지, 60Hz 화면 합성 프레임, 장시간 메모리·8시간 시험 |
@@ -42,9 +42,9 @@
 
 [SMB 3.1.1 후속 실마운트](INCREMENT_275.md)에서 생성·수정·접근 시각과 이동의 실행 취소를 확인했다. 교체 이동에서 목적 파일을 게시한 직후 세션을 끊었으며 같은 마운트에서 재연결, 이동 완료, 기존 대상 복원까지 통과했다.
 
-[SMB 파일 기록 도중 중단 시험](INCREMENT_277.md)이 실제 공유에서 통과했다. 기록 도중 세션을 끊은 뒤 재연결 횟수가 증가했고 이동은 실패 결과를 보고했다. 원본이 보존됐으며 공개 대상과 임시 출력이 남지 않았다. 장기 단절과 외부 서버 권한 변경은 추가 검증한다.
+[SMB 파일 기록 도중 중단 시험](INCREMENT_277.md)이 실제 공유에서 통과했다. 기록 도중 세션을 끊은 뒤 재연결 횟수가 증가했고 이동은 실패 결과를 보고했다. 원본이 보존됐으며 공개 대상과 임시 출력이 남지 않았다. 장기 단절은 추가 검증한다.
 
-[서버 쓰기 권한 회수 시험](INCREMENT_285.md)에서 교체 이동의 임시 복사 폴더를 만든 뒤 서버 권한을 변경한다. 실제 공유의 원본·기존 대상 보존과 실패 복구를 확인한다.
+[서버 쓰기 권한 회수 시험](INCREMENT_285.md)은 [실제 SMB 3.1.1 재실행](https://github.com/taro6222/files-for-mac/actions/runs/45618354431)에서 통과했다. 임시 복사 폴더의 서버 권한을 `0500`으로 바꾼 뒤 이동 실패, 원본·기존 대상 보존, 임시 출력 제거와 실행 취소 기록 부재를 확인했다. 다른 6개 SMB 검사도 통과했다.
 
 [후속 개발 프리뷰 후보](INCREMENT_266.md)의 유니버설 빌드와 Apple Silicon 설치·복원 및 기동 시험을 통과했다. [실제 Sonoma 14.8.7 arm64 게스트](INCREMENT_270.md)에서 최신 앱의 설치·교체·복원, 직접·Launch Services 기동 및 파일 작업 검사를 통과했다.
 
@@ -108,8 +108,10 @@
 
 [새 8시간 전체 부하 시험](INCREMENT_283.md)을 프로젝트의 보존 경로에서 시작했다. 현재 실행 파일의 해시와 실제 프로세스, 초기 사이클의 보고서를 확인했다. 최종 종료와 메모리 추세 판정은 진행 중이다.
 
-[Xcode 프로젝트 연결](INCREMENT_284.md)을 현재 앱 소스와 로컬 코어 패키지로 갱신했다. 전체 앱의 모듈 타입 검사는 통과했고 두 아키텍처의 네이티브 Xcode 빌드 결과를 확인한다.
+[Xcode 프로젝트 연결](INCREMENT_284.md)과 [명시적 Info.plist](INCREMENT_288.md)를 적용한 소스 `466f5bd`의 [네이티브 Xcode 재실행](https://github.com/taro6222/files-for-mac/actions/runs/45621040066)이 Apple Silicon·Intel에서 모두 통과했다. 프로젝트 재생성 일치, 실제 앱 실행 파일과 preview 채널을 확인했다.
 
 [macOS 27.2.1 전체 AppKit 대조](INCREMENT_286.md)는 네 언어·테마 조합에서 각각 283개를 통과했다. Intel의 시간 초과 원인은 macOS 15 재시험 결과와 스택을 통해 확인한다.
 
 [설치 프리뷰의 키보드 복사 동선](INCREMENT_289.md)을 한국어와 영어에서 통과했다. 실제 키 입력과 접근성 조회로 경로 이동·복사·붙여넣기·충돌 건너뛰기 완료 및 원본·기존 대상 보존을 확인했다. VoiceOver 출력과 나머지 업무 동선은 검증한다.
+
+[Git 프로세스 대기 분리](INCREMENT_290.md)와 폴더 크기 진단을 적용한 최종 앱이 macOS 27.2.1의 네 언어·테마 조합에서 각각 283개를 통과했다. 제한된 Swift 협력 풀의 Git 관련 13개 시험도 통과했다. macOS 15의 수정 전 전체 AppKit 실행은 두 아키텍처 모두 실패했으며 수정 후 전체 회귀로 원인 해결 여부를 판정한다.

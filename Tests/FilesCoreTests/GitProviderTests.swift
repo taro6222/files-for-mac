@@ -28,6 +28,62 @@ import Testing
     #expect(snapshot.entries.contains { $0.path == "한글 file.txt" && $0.kind == .untracked })
 }
 
+@Test(.timeLimit(.minutes(1))) func gitConcurrentSnapshotsCompleteWithoutBlockingSwiftTasks() async throws {
+    let fm = FileManager.default
+    let root = fm.temporaryDirectory.appendingPathComponent("files-git-concurrent-\(UUID())", isDirectory: true)
+    try fm.createDirectory(at: root, withIntermediateDirectories: true)
+    defer { try? fm.removeItem(at: root) }
+    try runGit(["init", "-b", "main"], at: root)
+    try Data("contents".utf8).write(to: root.appendingPathComponent("untracked.txt"))
+    let provider = GitProvider()
+    try await withThrowingTaskGroup(of: GitRepositorySnapshot.self) { group in
+        for _ in 0..<32 { group.addTask { try await provider.snapshot(at: root) } }
+        var completed = 0
+        for try await snapshot in group {
+            #expect(snapshot.root == root.standardizedFileURL)
+            #expect(snapshot.branch == "main")
+            #expect(snapshot.entries.contains { $0.path == "untracked.txt" && $0.kind == .untracked })
+            completed += 1
+        }
+        #expect(completed == 32)
+    }
+}
+
+@Test(.timeLimit(.minutes(1))) func gitWaitingForProcessAllowsOtherSwiftTasksToResume() async throws {
+    let fm = FileManager.default
+    let root = fm.temporaryDirectory.appendingPathComponent("files-git-scheduling-\(UUID())", isDirectory: true)
+    try fm.createDirectory(at: root, withIntermediateDirectories: true)
+    defer { try? fm.removeItem(at: root) }
+    let executable = root.appendingPathComponent("fake-git.sh")
+    // The child can finish only after the suspended Swift caller resumes.
+    // Bound the child wait so a scheduler regression reports failure rather than hanging the runner.
+    try Data("""
+    #!/bin/sh
+    cd "$(/usr/bin/dirname "$0")" || exit 8
+    : > started
+    for arg in "$@"; do destination="$arg"; done
+    i=0
+    while [ ! -f release ]; do
+      [ "$i" -lt 500 ] || exit 9
+      /bin/sleep 0.02
+      i=$((i + 1))
+    done
+    /bin/mkdir "$destination"
+    """.utf8).write(to: executable)
+    try fm.setAttributes([.posixPermissions: 0o700], ofItemAtPath: executable.path)
+    let destination = root.appendingPathComponent("destination")
+    let task = Task { try await GitProvider(executable: executable).clone(from: root.appendingPathComponent("source.git"), to: destination) }
+    defer { task.cancel() }
+    let deadline = ContinuousClock.now.advanced(by: .seconds(15))
+    while !fm.fileExists(atPath: root.appendingPathComponent("started").path), ContinuousClock.now < deadline {
+        try await Task.sleep(for: .milliseconds(10))
+    }
+    #expect(fm.fileExists(atPath: root.appendingPathComponent("started").path))
+    try Data().write(to: root.appendingPathComponent("release"))
+    #expect(try await task.value == destination)
+    #expect(fm.fileExists(atPath: destination.path))
+}
+
 @Test func gitStatusPreservesWhitespaceAndLeadingHyphensInFileNames() async throws {
     let fm = FileManager.default
     let parent = fm.temporaryDirectory.appendingPathComponent("files-git-names-\(UUID())", isDirectory: true)

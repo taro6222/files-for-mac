@@ -4106,6 +4106,7 @@ extension BrowserWindow {
         defer { defaults.removePersistentDomain(forName: suite) }
         var checks: [String: Bool] = [:]
         var metrics: [String: Double] = [:]
+        var diagnostics: [String: Any] = [:]
         do {
             try fm.createDirectory(at: requestedDestination, withIntermediateDirectories: true)
             let destination = requestedDestination.standardizedFileURL
@@ -4458,10 +4459,14 @@ extension BrowserWindow {
                 controller.navigate(fixture)
                 let paneSourceWait = ContinuousClock.now
                 while controller.model.isLoading && paneSourceWait.duration(to: .now) < .seconds(5) { try await Task.sleep(for: .milliseconds(20)) }
+                diagnostics["folderSizeListingReady"] = !controller.model.isLoading
+                diagnostics["folderSizeLoadedItemCount"] = controller.model.loadedItems.count
                 preferences.setCalculateFolderSizes(true)
                 let folderSizeWait = ContinuousClock.now
                 while controller.model.items.first(where: { $0.name == "000-grid-folder" })?.size != 21 && folderSizeWait.duration(to: .now) < .seconds(5) { try await Task.sleep(for: .milliseconds(20)) }
                 checks["folderSizeCalculation"] = controller.model.items.first(where: { $0.name == "000-grid-folder" })?.size == 21
+                diagnostics["folderSizeAutomaticBytes"] = controller.model.items.first(where: { $0.name == "000-grid-folder" })?.size ?? -1
+                diagnostics["folderSizeAutomaticTaskPending"] = controller.folderSizeTask != nil
                 preferences.setCalculateFolderSizes(false)
                 if let row = controller.detailRows.indices.first(where: {
                     detailItem(at: $0, in: controller.detailRows)?.url == gridFolder
@@ -4479,6 +4484,9 @@ extension BrowserWindow {
                     checks["folderSizeRequestFromDetails"] = wasAvailable && wasPending
                         && controller.model.requestedDirectorySize(of: item) == .available(21)
                         && !preferences.calculateFolderSizes
+                    diagnostics["folderSizeRequestButtonAvailable"] = wasAvailable
+                    diagnostics["folderSizeRequestWasPending"] = wasPending
+                    diagnostics["folderSizeRequestResult"] = String(describing: controller.model.requestedDirectorySize(of: item))
                 } else { checks["folderSizeRequestFromDetails"] = false }
                 preferences.setShowThumbnails(false)
                 checks["thumbnailPolicyPrimary"] = controller.qaThumbnailPolicyApplied
@@ -6137,7 +6145,7 @@ extension BrowserWindow {
                     checks["referenceFolderInfoDetails"] = false
                 }
             }
-            let report: [String: Any] = ["checks": checks, "metrics": metrics,
+            let report: [String: Any] = ["checks": checks, "metrics": metrics, "diagnostics": diagnostics,
                 "samples": ["multiwindowCycleSeconds": durations, "scrollStepSeconds": scrollDurations],
                 "cycles": cycleChecks,
                 "language": Locale.preferredLanguages.first ?? "unknown", "theme": dark ? "dark" : "light",

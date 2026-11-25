@@ -1,0 +1,56 @@
+{
+  "run": "https://github.com/taro6222/files-for-mac/actions/runs/45617289965",
+  "source": "86be2b0d92f189103dea5874cfe1a0795e52ca4b",
+  "observations": {
+    "arm64": {
+      "en-dark": {
+        "result": "timeout",
+        "timeoutSeconds": 180,
+        "gitDispatchGroupWaits": 3,
+        "directoryLoaderFrames": 0
+      },
+      "en-light": {
+        "result": "timeout",
+        "timeoutSeconds": 180,
+        "gitDispatchGroupWaits": 3,
+        "directoryLoaderFrames": 0
+      },
+      "ko-dark": {
+        "result": "timeout",
+        "timeoutSeconds": 180,
+        "gitDispatchGroupWaits": 3,
+        "directoryLoaderFrames": 0
+      },
+      "ko-light": {
+        "result": "timeout",
+        "timeoutSeconds": 180,
+        "gitDispatchGroupWaits": 3,
+        "directoryLoaderFrames": 0
+      }
+    },
+    "x86_64": {
+      "en-dark": {
+        "checks": 283,
+        "failed": []
+      },
+      "en-light": {
+        "checks": 283,
+        "failed": []
+      },
+      "ko-dark": {
+        "checks": 283,
+        "failed": [
+          "folderSizeCalculation",
+          "folderSizeRequestFromDetails"
+        ]
+      },
+      "ko-light": {
+        "result": "timeout",
+        "timeoutSeconds": 180,
+        "gitDispatchGroupWaits": 0,
+        "directoryLoaderFrames": 6
+      }
+    }
+  },
+  "interpretation": "Git process waits occupy Swift cooperative threads in all four arm64 timeout samples. This motivates moving blocking waits off the cooperative executor; causality remains subject to CI rerun."
+}

@@ -100,6 +100,12 @@ jobs:
         if: github.event_name != 'workflow_dispatch' || !inputs.verify_upgrade
         timeout-minutes: 5
         run: swift test --skip-build --disable-xctest --no-parallel
+      - name: Verify Git scheduling with a constrained Swift executor
+        if: github.event_name != 'workflow_dispatch' || !inputs.verify_upgrade
+        timeout-minutes: 2
+        env:
+          LIBDISPATCH_COOPERATIVE_POOL_STRICT: '1'
+        run: swift test --skip-build --disable-xctest --filter 'gitConcurrentSnapshotsCompleteWithoutBlockingSwiftTasks|gitWaitingForProcessAllowsOtherSwiftTasksToResume|gitCancellationTerminatesProcessAndCleansCloneStaging'
       - name: Verify mounted file systems and AppKit file operations
         if: github.event_name != 'workflow_dispatch' || !inputs.verify_upgrade
         timeout-minutes: 14

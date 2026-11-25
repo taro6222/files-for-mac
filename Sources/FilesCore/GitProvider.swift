@@ -287,9 +287,15 @@ public struct GitProvider: Sendable {
         let box = GitProcessBox()
         return try await withTaskCancellationHandler(operation: {
             try Task.checkCancellation()
-            return try await Task.detached(priority: .userInitiated) {
-                try Self.runSynchronously(executable: executable, arguments: arguments, directory: directory, outputLimit: outputLimit, box: box)
-            }.value
+            // Process and pipe waits must not occupy Swift's cooperative executor:
+            // the tasks that cancel or consume their results need those threads too.
+            return try await withCheckedThrowingContinuation { continuation in
+                DispatchQueue.global(qos: .userInitiated).async {
+                    continuation.resume(with: Result {
+                        try Self.runSynchronously(executable: executable, arguments: arguments, directory: directory, outputLimit: outputLimit, box: box)
+                    })
+                }
+            }
         }, onCancel: { box.cancel() })
     }
     private static func runSynchronously(executable: URL, arguments: [String], directory: URL, outputLimit: Int, box: GitProcessBox) throws -> Data {
