@@ -1,0 +1,189 @@
+{
+  "increment": 381,
+  "status": "378 ARM fixture/detail fixes accepted; remaining encrypted-browse failure undiagnosed; latest UI in progress",
+  "observedRun": 45877111686,
+  "observedSource": "d2f9efff1e9fca3c59d31de489eb9e9e6bf6af10",
+  "observedARMProfiles": [
+    {
+      "profile": "ko-light",
+      "checks": 361,
+      "failed": [],
+      "archiveEditingPassed": 29,
+      "restoredRowCounts": [
+        10001,
+        10001,
+        10001,
+        10001,
+        10001
+      ],
+      "report": "ko-light-report.json",
+      "sha256": "7197a76ce09332145fc25303aa78538a2b718329dc00a64c6a5605637d7cdcbc"
+    },
+    {
+      "profile": "ko-dark",
+      "checks": 361,
+      "failed": [],
+      "archiveEditingPassed": 29,
+      "restoredRowCounts": [
+        10001,
+        10001,
+        10001,
+        10001,
+        10001
+      ],
+      "report": "ko-dark-report.json",
+      "sha256": "0c5dc85ce875d8a08155428129cb149c8e2f857ad82191484ce0a2ec26e8bab1"
+    },
+    {
+      "profile": "en-light",
+      "checks": 361,
+      "failed": [
+        "sevenZipEncryptedBrowseAndRetry"
+      ],
+      "archiveEditingPassed": 29,
+      "restoredRowCounts": [
+        10001,
+        10001,
+        10001,
+        10001,
+        10001
+      ],
+      "report": "en-light-report.json",
+      "sha256": "c5dd92edd9247528ea1c9ed4a1e41b5657d9982a107049ee39d33e1c158a6cee"
+    },
+    {
+      "profile": "en-dark",
+      "checks": 361,
+      "failed": [],
+      "archiveEditingPassed": 29,
+      "restoredRowCounts": [
+        10001,
+        10001,
+        10001,
+        10001,
+        10001
+      ],
+      "report": "en-dark-report.json",
+      "sha256": "307d4b1606f4d6d060a78dad82e65c93d948e4fe2fba7b19610cc49619b08a33"
+    }
+  ],
+  "captures": [
+    {
+      "file": "ko-dark-archive-edit-history.png",
+      "sha256": "be6dcd1ea58e12677f3122b5f5c69d653463f4b5cada3dcd840c481dee48fd0d"
+    },
+    {
+      "file": "en-light-archive-edit-history.png",
+      "sha256": "f7237f8a1c60efdb0ab0d1e922920c2bc1bfe087420202320ea162fc264b78e5"
+    }
+  ],
+  "diagnosticSourceSHA256": "583565fe27fee3d42fd8499fb02d4712d61e209e90c89a4f70d76c60894efaba",
+  "checkAssignmentsUnchanged": true,
+  "debugBuildSeconds": 33.2,
+  "latestRun": 45879436288,
+  "latestSource": "62f8d409267013e8da1a2336e79ca259d4b20d94",
+  "latestARMDebug": {
+    "command": [
+      "swift",
+      "build",
+      "--build-tests",
+      "--disable-sandbox",
+      "-debug-info-format",
+      "none"
+    ],
+    "processPID": 7449,
+    "returnCode": 0,
+    "receivedSignal": null,
+    "elapsedSeconds": 194.22379129200002,
+    "observations": [
+      {
+        "processGroup": 7449,
+        "processTreeRoot": 7449,
+        "selection": "current-parent-chain",
+        "processes": [
+          {
+            "pid": 7449,
+            "parentPID": 7448,
+            "group": 7449,
+            "elapsed": "02:01",
+            "cpuPercent": 0.0,
+            "rssKiB": 23744,
+            "state": "S<s",
+            "executable": "/Applications/Xcode_26.3.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swift-build"
+          },
+          {
+            "pid": 7650,
+            "parentPID": 7449,
+            "group": 7650,
+            "elapsed": "01:39",
+            "cpuPercent": 0.0,
+            "rssKiB": 23984,
+            "state": "S<",
+            "executable": "/Applications/Xcode_26.3.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swift-driver"
+          },
+          {
+            "pid": 7654,
+            "parentPID": 7650,
+            "group": 7654,
+            "elapsed": "01:39",
+            "cpuPercent": 0.0,
+            "rssKiB": 0,
+            "state": "Z<",
+            "executable": "<defunct>"
+          },
+          {
+            "pid": 7655,
+            "parentPID": 7650,
+            "group": 7655,
+            "elapsed": "01:39",
+            "cpuPercent": 97.4,
+            "rssKiB": 1361312,
+            "state": "R<",
+            "executable": "/Applications/Xcode_26.3.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swift-frontend"
+          }
+        ],
+        "samples": [
+          {
+            "pid": 7655,
+            "executable": "/Applications/Xcode_26.3.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swift-frontend",
+            "file": "sample-7655.txt",
+            "observerPID": 9000,
+            "returnCode": 0
+          },
+          {
+            "pid": 7650,
+            "executable": "/Applications/Xcode_26.3.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swift-driver",
+            "file": "sample-7650.txt",
+            "observerPID": 9007,
+            "returnCode": 0
+          },
+          {
+            "pid": 7654,
+            "executable": "<defunct>",
+            "file": "sample-7654.txt",
+            "observerPID": 9066,
+            "returnCode": 255
+          },
+          {
+            "pid": 7449,
+            "executable": "/Applications/Xcode_26.3.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swift-build",
+            "file": "sample-7449.txt",
+            "observerPID": 9074,
+            "returnCode": 0
+          }
+        ]
+      }
+    ],
+    "restarted": false,
+    "sourceSHA256": "ff32ae34a3bbbf2665f789578673a74bb19f79d6168cfdff435bc7ca7ee4cb84"
+  },
+  "obsoleteRun": {
+    "id": 45878584565,
+    "conclusion": "cancelled",
+    "reason": "ARM proved compile failure; fixed source already running",
+    "intelLogSHA256": "4e57d757126f57710f1434474b83cf5844eeab30bd0f9f5cde7c108d6895df08"
+  },
+  "localGUIStarted": false,
+  "fullUIChecksDefined": 369,
+  "overallM7Complete": false
+}

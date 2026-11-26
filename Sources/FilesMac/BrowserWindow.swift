@@ -5789,7 +5789,9 @@ extension BrowserWindow {
                     while reference.isRunning && referenceStart.duration(to: .now) < .seconds(20) { try await Task.sleep(for: .milliseconds(10)) }
                     guard !reference.isRunning, reference.terminationStatus == 0 else { throw CocoaError(.fileReadCorruptFile) }
                     let browser = ArchiveWindow(); var readOK = true
+                    var readDiagnostics: [[String: Any]] = []
                     for entered in ["wrong", password] {
+                        let readStarted = ContinuousClock.now
                         browser.present(archiveURL: archive)
                         if let prompt = await ArchivePasswordPrompt.qaWait(for: browser.window!) {
                             if entered == password { try capture("sevenzip-password-open", view: prompt.input) }
@@ -5798,8 +5800,17 @@ extension BrowserWindow {
                             while browser.qaIsRunning && start.duration(to: .now) < .seconds(10) { try await Task.sleep(for: .milliseconds(10)) }
                             readOK = readOK && !browser.qaIsRunning && prompt.input.value.isEmpty
                             readOK = readOK && (entered == password ? browser.qaEntryCount == 3 : browser.qaEntryCount == 0 && browser.qaMessage.contains(L("암호", "password")))
-                        } else { readOK = false; browser.qaCancel() }
+                            readDiagnostics.append(["expectedSuccess": entered == password, "promptShown": true, "running": browser.qaIsRunning,
+                                                    "inputCleared": prompt.input.value.isEmpty, "entryCount": browser.qaEntryCount,
+                                                    "status": browser.qaMessage, "seconds": elapsed(readStarted)])
+                        } else {
+                            readOK = false
+                            readDiagnostics.append(["expectedSuccess": entered == password, "promptShown": false, "running": browser.qaIsRunning,
+                                                    "entryCount": browser.qaEntryCount, "status": browser.qaMessage, "seconds": elapsed(readStarted)])
+                            browser.qaCancel()
+                        }
                     }
+                    diagnostics["sevenZipEncryptedBrowseAndRetry"] = readDiagnostics
                     checks[sevenZipKeys[0]] = readOK
                     var extractOK = true
                     for entered in ["wrong", password, "cancel"] {
