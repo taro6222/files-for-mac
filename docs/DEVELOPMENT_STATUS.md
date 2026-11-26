@@ -16,13 +16,15 @@ M7 출시 검증이 진행 중이다. [유니버설 개발 프리뷰](verificati
 |---|---|---|
 | 설치·업데이트 | 새 a07c80c 유니버설 프리뷰의 macOS 27.2.1 arm64 격리 설치·교체·복원. 이전 프리뷰의 Sonoma 14.8.7·실제 업데이트 메뉴 조회는 별도 기록 | 서명·공증된 정식 배포본의 다운로드·최초 실행·버전 교체 |
 | SMB | 파일 시각, 이동·실행 취소, 게시 후 세션 재연결과 기록 중 단절 시 원본 보호·[서버 권한 회수 후 기존 대상 복구](verification/m7/INCREMENT_290.md) | 장기 단절 및 외부 서버 검증 |
-| 원격 전체 AppKit | `05dd05d` 두 CPU 작업 성공: 각각 네 조합 전체 303개/경계 18개. `b57d3e4` ARM 네 조합 312개/18개 성공, 작업은 이후 Spotlight 정리에서 실패 | 최신 소스 두 CPU 수용. Spotlight 미마운트 정리 수정의 원격 재수용 대기·774083b Intel 빌드 20분 제한·간헐 Git 초기 조회 지연 조사 |
+| 원격 전체 AppKit | `05dd05d` 두 CPU 작업 성공: 각각 네 조합 전체 303개/경계 18개. `cf63dcf` ARM 네 조합 318개/18개 성공. 3e5c88f Spotlight native 복구 단계 두 CPU 성공, 전체 작업은 확인 시점 진행 중 | 최신 소스 두 CPU 수용. Spotlight 미마운트 정리 수정의 원격 재수용 대기·774083b Intel 빌드 20분 제한·간헐 Git 초기 조회 지연 조사 |
 | Xcode 진입점 | `55c1bee`의 Apple Silicon·Intel Xcode 빌드 성공. 전체 AppKit·설치 수용은 별도 진행 | 정식 서명·배포된 산출물의 수용 검증 |
 | 장시간 | `5284cb3` 8시간·9,525사이클 종료. 물리 메모리 초기/마지막 60표본 중앙값 52→160MiB로 안정성 미수용. [새 탭 구현의 단기 진단](verification/m7/INCREMENT_330.md)은 컨텍스트 개수 유지 | 최신 소스 8시간 종료 및 물리 메모리 안정성 판정 |
 
 실행별 증거와 정확한 제한은 [설치 프리뷰](verification/m7/INCREMENT_280.md), [SMB 기록 중 단절](verification/m7/INCREMENT_277.md), [서버 권한 회수](verification/m7/INCREMENT_285.md), [Intel UI 진단](verification/m7/INCREMENT_282.md), [Xcode 연결](verification/m7/INCREMENT_284.md), [8시간 시험](verification/m7/INCREMENT_283.md)에 기록했다.
 
 ## 이번 구현 단위
+
+[독립 압축 구현 왕복](verification/m7/INCREMENT_344.md)은 공식 7-Zip 26.06을 해시로 고정하고 앱 AES ZIP의 ASCII 양방향·Unicode 복호화와 틀린 암호를 확인했다. 참조 활성화 Core 성공 377개·환경 건너뜀 19개, 호환성 조건 15개·7z 옵션 조건 9개·획득 보호 검사 5개가 통과했다. 7z 고급 제품 연결은 미완료이며 두 CPU 필수 CI와 SDK 연결 계약을 추가했다. 기존 ARM 암호 UI 318개/경계 18개와 Spotlight native 두 CPU 성공도 확인했다. 최신 원격/지원 환경·실제 입력·정식 출시는 계속 진행 중이다.
 
 [Spotlight 미마운트 정리](verification/m7/INCREMENT_343.md)는 소유 이미지 연결만 남은 실제 실패 상태를 재현하고 UUID·컨테이너·물리 저장소 연결을 확인해 처리한다. 읽기 전용 최종 검사와 외부 데이터 보존을 유지했다. 소유권 검사 23개·실제 미마운트 정리·합성 추가 데이터 보존·EBUSY 재시도가 통과했고 시험 이미지 4개가 정리됐다. 두 CPU CI 회귀를 추가했으며 원격 원인 확정/재수용은 미완료다. 앱 소스는 유지해 빌드·Core/UI를 반복하지 않았다. M7 정식 출시 게이트는 열린 상태다.
 

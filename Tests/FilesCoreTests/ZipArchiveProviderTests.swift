@@ -1,6 +1,29 @@
 import Foundation
 import Testing
+import Darwin
 @testable import FilesCore
+
+private func runSevenZipReference(_ binary: URL, arguments: [String], password: String?, root: URL) async throws -> (status: Int32, text: String) {
+    let output = root.appendingPathComponent("reference-\(UUID()).log")
+    FileManager.default.createFile(atPath: output.path, contents: nil)
+    let stream = try FileHandle(forWritingTo: output), input = Pipe(), process = Process()
+    defer {
+        if process.isRunning { Darwin.kill(process.processIdentifier, SIGKILL); process.waitUntilExit() }
+        try? stream.close(); try? input.fileHandleForWriting.close()
+    }
+    process.executableURL = binary; process.arguments = arguments; process.currentDirectoryURL = root
+    process.standardInput = input; process.standardOutput = stream; process.standardError = stream
+    process.environment = ProcessInfo.processInfo.environment.merging(["LANG": "en_US.UTF-8", "LC_ALL": "en_US.UTF-8"]) { _, new in new }
+    try process.run()
+    if let password { try input.fileHandleForWriting.write(contentsOf: Data((password + "\n" + password + "\n").utf8)) }
+    try input.fileHandleForWriting.close()
+    let start = ContinuousClock.now
+    while process.isRunning && start.duration(to: .now) < .seconds(30) { try await Task.sleep(for: .milliseconds(10)) }
+    guard !process.isRunning else { throw CocoaError(.executableRuntimeMismatch, userInfo: [NSLocalizedDescriptionKey: "Reference process exceeded 30 seconds"]) }
+    let text = String(decoding: try Data(contentsOf: output), as: UTF8.self)
+    if let password { #expect(!text.contains(password)); #expect(!arguments.contains { $0.contains(password) }) }
+    return (process.terminationStatus, text)
+}
 
 private final class ProgressRecorder: @unchecked Sendable {
     private let lock = NSLock()
@@ -339,4 +362,66 @@ func encryptedZIPRoundTripsAndRejectsWrongOrMissingPassword(level: ArchiveCompre
     #expect(!fm.fileExists(atPath: archive.path))
     #expect(try Data(contentsOf: source) == content)
     #expect(try fm.contentsOfDirectory(atPath: root.path).allSatisfy { !$0.hasPrefix(".files-create-") })
+}
+
+@Test(.enabled(if: hasIntegrationFixture("FILES_TEST_SEVENZIP_REFERENCE"), "Requires the pinned official 7-Zip reference"))
+func archiveIndependentSevenZipAESInteroperability() async throws {
+    let fm = FileManager.default, env = ProcessInfo.processInfo.environment
+    let binary = URL(fileURLWithPath: try #require(env["FILES_TEST_SEVENZIP_REFERENCE"]))
+#if arch(arm64)
+    let expectedHash = "56cf8eb2fdc6f9c0ac5d7a3cd238505814ac8ed6b88a7c64a7e3256036252c60"
+#elseif arch(x86_64)
+    let expectedHash = "d54aa0864244abeef158772fbde3dd9bac2b93a54c564a76c4334c5a8bcaf35a"
+#else
+    let expectedHash = "unsupported architecture"
+#endif
+    let binaryHash = try await FilePropertiesInspector().sha256(binary)
+    try #require(binaryHash == expectedHash)
+    let root = fm.temporaryDirectory.appendingPathComponent("archive-independent-\(UUID())", isDirectory: true)
+    try fm.createDirectory(at: root, withIntermediateDirectories: true)
+    defer { try? fm.removeItem(at: root) }
+    let source = root.appendingPathComponent("한글-é-📁.txt")
+    let payload = Data(String(repeating: "Independent AES payload 한글 0123456789\n", count: 4096).utf8)
+    try payload.write(to: source)
+    let provider = ZipArchiveProvider(), ascii = "QA-interop-" + UUID().uuidString
+    var checks: [String: Bool] = [:]
+    let version = try await runSevenZipReference(binary, arguments: ["i"], password: nil, root: root)
+    checks["referenceVersion"] = version.status == 0 && version.text.contains("26.06")
+    for (encoding, password) in [("ascii", ascii), ("unicode", "한글-é-🔑-" + ascii)] {
+        for level in [ArchiveCompressionLevel.store, .ultra] {
+            let key = "coreToReference-\(encoding)-\(level.rawValue)"
+            let archive = root.appendingPathComponent(key + ".zip"), output = root.appendingPathComponent(key, isDirectory: true)
+            _ = try await provider.create(from: [source], at: archive, compressionLevel: level, password: password)
+            let original = try Data(contentsOf: archive)
+            let result = try await runSevenZipReference(binary, arguments: ["x", "-y", "-sccUTF-8", "-o" + output.path, archive.path], password: password, root: root)
+            checks[key] = result.status == 0 && (try? Data(contentsOf: output.appendingPathComponent(source.lastPathComponent))) == payload
+            let wrong = try await runSevenZipReference(binary, arguments: ["t", "-sccUTF-8", archive.path], password: "wrong-password", root: root)
+            checks[key + "-wrongPassword"] = wrong.status != 0 && (try? Data(contentsOf: archive)) == original
+        }
+    }
+    for level in [ArchiveCompressionLevel.store, .ultra] {
+        let key = "referenceToCore-ascii-\(level.rawValue)"
+        let archive = root.appendingPathComponent(key + ".zip"), output = root.appendingPathComponent(key, isDirectory: true)
+        let result = try await runSevenZipReference(binary, arguments: ["a", "-tzip", "-mem=AES256", "-p", "-y", "-sccUTF-8", "-mx=\(level.rawValue)", archive.path, source.lastPathComponent], password: ascii, root: root)
+        try #require(result.status == 0)
+        let entries = try provider.entries(at: archive)
+        try fm.createDirectory(at: output, withIntermediateDirectories: false)
+        _ = try await provider.extract(archive, to: output, password: ascii)
+        checks[key] = entries.count == 1 && entries[0].isEncrypted && (try? Data(contentsOf: output.appendingPathComponent(source.lastPathComponent))) == payload
+        let wrongTarget = root.appendingPathComponent(key + "-wrong", isDirectory: true)
+        try fm.createDirectory(at: wrongTarget, withIntermediateDirectories: false)
+        var rejected = false
+        do { _ = try await provider.extract(archive, to: wrongTarget, password: "wrong-password") } catch { rejected = true }
+        checks[key + "-wrongPassword"] = rejected && ((try? fm.contentsOfDirectory(atPath: wrongTarget.path))?.isEmpty == true)
+    }
+    // The pinned official ZIP writer explicitly rejects non-ASCII passwords; keep that boundary visible.
+    let unsupported = root.appendingPathComponent("reference-unicode.zip")
+    let unicodeCreate = try await runSevenZipReference(binary, arguments: ["a", "-tzip", "-mem=AES256", "-p", "-y", "-sccUTF-8", unsupported.path, source.lastPathComponent], password: "한글-password", root: root)
+    checks["referenceNonASCIIZIPCreationRejected"] = unicodeCreate.status != 0 && !fm.fileExists(atPath: unsupported.path)
+    checks["originalSourcePreserved"] = (try? Data(contentsOf: source)) == payload
+    #expect(checks.values.allSatisfy { $0 })
+    if let report = env["FILES_TEST_SEVENZIP_REPORT"] {
+        let result: [String: Any] = ["referenceVersion": "26.06", "referenceBinarySHA256": binaryHash, "passwordTransport": "stdin", "checks": checks]
+        try JSONSerialization.data(withJSONObject: result, options: [.prettyPrinted, .sortedKeys]).write(to: URL(fileURLWithPath: report), options: .atomic)
+    }
 }

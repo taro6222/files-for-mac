@@ -102,6 +102,8 @@ jobs:
         run: python3 scripts/audit-parity.py
       - name: Verify Spotlight fixture ownership guards
         run: PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s Tests/FixtureTests -p 'test_spotlight_volume_fixture.py'
+      - name: Verify archive reference acquisition guards
+        run: PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s Tests/FixtureTests -p 'test_sevenzip_reference.py'
       - name: Verify unmounted Spotlight image cleanup
         if: github.event_name == 'workflow_dispatch' && inputs.verify_full_appkit
         timeout-minutes: 5
@@ -120,6 +122,21 @@ jobs:
         if: github.event_name != 'workflow_dispatch' || !inputs.verify_upgrade
         timeout-minutes: 2
         run: python3 scripts/verify-git-scheduling.py
+      - name: Verify archives with the pinned official 7-Zip reference
+        if: github.event_name == 'workflow_dispatch' && inputs.verify_full_appkit
+        timeout-minutes: 5
+        run: PYTHONDONTWRITEBYTECODE=1 python3 scripts/verify-sevenzip-reference.py --output build/sevenzip-verification
+      - name: Retain independent archive verification
+        if: always() && github.event_name == 'workflow_dispatch' && inputs.verify_full_appkit
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: files-archive-interop-${{ matrix.architecture }}
+          path: |
+            build/sevenzip-verification/result.json
+            build/sevenzip-verification/interoperability.json
+            build/sevenzip-verification/reference-provenance.json
+            build/sevenzip-verification/run.log
+          if-no-files-found: ignore
       - name: Retain Git scheduling diagnostics
         if: always() && (github.event_name != 'workflow_dispatch' || !inputs.verify_upgrade)
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7

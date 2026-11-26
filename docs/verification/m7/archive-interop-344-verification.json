@@ -1,0 +1,247 @@
+{
+  "sourceBase": "3e5c88f0e66480a92c8f401297428950364a3742",
+  "releaseComplete": false,
+  "appSourcesUnchanged": true,
+  "sevenZipProductBackendConnected": false,
+  "newReferenceTwoCPUAcceptancePending": true,
+  "sourceSHA256": {
+    "scripts/sevenzip_reference.py": "21aaed1dccf4a316b39d9e9e8395f21162d0896be9008cf39c8b834d77981597",
+    "scripts/verify-sevenzip-reference.py": "01389b0a7d4536535f96a8b1f731ae599e0f1d1fb2cf62f0284a01241a7216b0",
+    "Tests/FixtureTests/test_sevenzip_reference.py": "0a9b876c1cc7e6e24268c03346e3eee3559fcf8377a2883d6bf2f641e738aa4e",
+    "Tests/FilesCoreTests/ZipArchiveProviderTests.swift": "2ae2e79a53ffa041a9f3def5df356bd7afa6bfda97759dfd5a859df662df3935",
+    ".github/workflows/macos.yml": "9457b3ed5db6b63c7fa3ab945253e269e3a10171ccec5b029f043caf8b90acbd"
+  },
+  "officialRelease": {
+    "assets": [
+      {
+        "browser_download_url": "https://github.com/ip7z/7zip/releases/download/26.06/7z2606-mac-x64.tar.xz",
+        "digest": "sha256:3af68b124052da7fc2a246c96b0bea6a68bfee389baa788f4cead1a133445586",
+        "id": 720543968,
+        "name": "7z2606-mac-x64.tar.xz",
+        "size": 1025228
+      },
+      {
+        "browser_download_url": "https://github.com/ip7z/7zip/releases/download/26.06/7z2606-mac.tar.xz",
+        "digest": "sha256:b6f17920b4240940461dac8ef4009891881ac44d2a5ead625ede2ec8472185dd",
+        "id": 720543872,
+        "name": "7z2606-mac.tar.xz",
+        "size": 965712
+      },
+      {
+        "browser_download_url": "https://github.com/ip7z/7zip/releases/download/26.06/7z2606-src.tar.xz",
+        "digest": "sha256:a4e374c8f864f51df48c2cfd0e1413ec3b2ea030deae852d6a655402ebb61ac4",
+        "id": 720544146,
+        "name": "7z2606-src.tar.xz",
+        "size": 1567328
+      }
+    ],
+    "published_at": "2026-11-07T11:45:33Z",
+    "tag_name": "26.06"
+  },
+  "referenceManifests": {
+    "arm64": {
+      "version": "26.06",
+      "architecture": "arm64",
+      "archiveURL": "https://github.com/ip7z/7zip/releases/download/26.06/7z2606-mac.tar.xz",
+      "archiveSHA256": "b6f17920b4240940461dac8ef4009891881ac44d2a5ead625ede2ec8472185dd",
+      "sourceURL": "https://github.com/ip7z/7zip/releases/download/26.06/7z2606-src.tar.xz",
+      "sourceSHA256": "a4e374c8f864f51df48c2cfd0e1413ec3b2ea030deae852d6a655402ebb61ac4",
+      "filesSHA256": {
+        "7zz": "56cf8eb2fdc6f9c0ac5d7a3cd238505814ac8ed6b88a7c64a7e3256036252c60",
+        "License.txt": "1790374e5352329cedb46ee3808930a88e9ca2f08b82b10fcf5cf605d2c301b1",
+        "readme.txt": "79aa0fedbfb43f32d60858c8f13f42afc025adf19bf3e7ed66a7c55f451eae45"
+      }
+    },
+    "x86_64": {
+      "version": "26.06",
+      "architecture": "x86_64",
+      "archiveURL": "https://github.com/ip7z/7zip/releases/download/26.06/7z2606-mac-x64.tar.xz",
+      "archiveSHA256": "3af68b124052da7fc2a246c96b0bea6a68bfee389baa788f4cead1a133445586",
+      "sourceURL": "https://github.com/ip7z/7zip/releases/download/26.06/7z2606-src.tar.xz",
+      "sourceSHA256": "a4e374c8f864f51df48c2cfd0e1413ec3b2ea030deae852d6a655402ebb61ac4",
+      "filesSHA256": {
+        "7zz": "d54aa0864244abeef158772fbde3dd9bac2b93a54c564a76c4334c5a8bcaf35a",
+        "License.txt": "1790374e5352329cedb46ee3808930a88e9ca2f08b82b10fcf5cf605d2c301b1",
+        "readme.txt": "79aa0fedbfb43f32d60858c8f13f42afc025adf19bf3e7ed66a7c55f451eae45"
+      }
+    }
+  },
+  "binaryMetadataOnly": {
+    "arm64MinimumOS": "11.0",
+    "x86_64MinimumOS": "10.15",
+    "SDK": "26.5",
+    "minimumOSRuntimeAccepted": false,
+    "localNativeExecution": "arm64"
+  },
+  "core": {
+    "reportedTests": 396,
+    "passed": 377,
+    "environmentSkipped": 19,
+    "referenceEnabled": true
+  },
+  "interoperabilityAndAdvancedProbe": {
+    "passed": true,
+    "referenceVersion": "26.06",
+    "providerInteroperability": {
+      "checks": {
+        "coreToReference-ascii-0": true,
+        "coreToReference-ascii-0-wrongPassword": true,
+        "coreToReference-ascii-9": true,
+        "coreToReference-ascii-9-wrongPassword": true,
+        "coreToReference-unicode-0": true,
+        "coreToReference-unicode-0-wrongPassword": true,
+        "coreToReference-unicode-9": true,
+        "coreToReference-unicode-9-wrongPassword": true,
+        "originalSourcePreserved": true,
+        "referenceNonASCIIZIPCreationRejected": true,
+        "referenceToCore-ascii-0": true,
+        "referenceToCore-ascii-0-wrongPassword": true,
+        "referenceToCore-ascii-9": true,
+        "referenceToCore-ascii-9-wrongPassword": true,
+        "referenceVersion": true
+      },
+      "passwordTransport": "stdin",
+      "referenceBinarySHA256": "56cf8eb2fdc6f9c0ac5d7a3cd238505814ac8ed6b88a7c64a7e3256036252c60",
+      "referenceVersion": "26.06"
+    },
+    "advancedReferenceProbe": {
+      "checks": {
+        "encryptedSplitCreation": true,
+        "encryptedHeadersHideFileName": true,
+        "requestedDictionaryObserved": true,
+        "unicodePasswordRoundTrip": true,
+        "wrongPasswordRejected": true,
+        "missingVolumeRejected": true,
+        "restoredVolumesVerify": true,
+        "archivePartsPreserved": true,
+        "sourcePreserved": true
+      },
+      "splitVolumes": 5,
+      "methodLines": [
+        "Method = LZMA2:16 7zAES",
+        "Method = LZMA2:16 7zAES:19"
+      ],
+      "requestedOptions": {
+        "dictionaryBytes": 65536,
+        "wordSize": 32,
+        "threads": 2,
+        "level": 5,
+        "headerEncryption": true,
+        "splitBytes": 65536
+      },
+      "scope": "reference feasibility only; not product backend acceptance or a measurement of actual thread use"
+    }
+  },
+  "acquisitionUnitTests": 5,
+  "evidenceSHA256": {
+    "build/sevenzip-344-build.log": "6f23ac26ec2140ea6ea49b19608038ce22b90d0f99614223bbf9a0e1a9027660",
+    "build/sevenzip-344-final-build.log": "06405e68784d349243bd241c809206a74aebb441fb83b1c23b5441cf2b1c84bb",
+    "build/sevenzip-344-interoperability.log": "9b88ae7662fa63af26584b0387682c7102ca3bcabd5970f74ec3285ff05408cd",
+    "build/sevenzip-344/interoperability.json": "14dd0488108a0d14f0fcff31ee28a22594812237ff943d378cf6affbb9ad6ee9",
+    "build/sevenzip-344-gate.log": "4b230faeb2ce08b65b03c8b63ed461c9d679af86ca0ffa406a0483cbe236b993",
+    "build/sevenzip-344/verified/result.json": "4b230faeb2ce08b65b03c8b63ed461c9d679af86ca0ffa406a0483cbe236b993",
+    "build/sevenzip-344/verified/interoperability.json": "f473fa29a264826d5829eb82cdd6f89e83054852dc4560ec69ac684fa4c3ee86",
+    "build/sevenzip-344/verified/run.log": "9fc150e9973523779de365250cb8ac93bc1769ef17097c3aa793c7494d9d0d37",
+    "build/sevenzip-344-core.log": "a883ea75f93df796e589a90628cc3e62d87ef729194737924d84ebc9c963c550",
+    "build/sevenzip-344/full-core-interoperability.json": "f473fa29a264826d5829eb82cdd6f89e83054852dc4560ec69ac684fa4c3ee86",
+    "build/sevenzip-344-acquisition-tests.log": "1f11b6e880045ee35de832b81b45d06257342e13b5c79bbf0034379d4ca220b9",
+    "build/sevenzip-344-workflow.log": "50039a04586df289694a29f4560e1f161545a91cddd6bcf618d001316b3b8965",
+    "build/sevenzip-344-parity.log": "f2e8f311d376fa306990bf6651b074ea8c5cdac5bfc49dd049df9ac2a1b96f01",
+    "build/sevenzip-344-network-fetch.log": "fec5862df71dbdaba5ed9b747471e565ffd9e2c8637c67602f18844139094134"
+  },
+  "previousSourceRemoteUI": {
+    "source": "cf63dcf1bcb32b37635301b045dadadf862e3516",
+    "run": 45767143505,
+    "architecture": "arm64",
+    "reports": [
+      {
+        "combination": "en-dark",
+        "checks": 318,
+        "reportSHA256": "53aaf86145f5e1a598f1c2fe2be74f2b4c981ac5e7019088019c4a795020bd1d"
+      },
+      {
+        "combination": "en-light",
+        "checks": 318,
+        "reportSHA256": "de9a9b8be0db0b043b7c6a41405e033c3d89839c5280831ad4e2800ceb3b8390"
+      },
+      {
+        "combination": "ko-dark",
+        "checks": 318,
+        "reportSHA256": "dbe529d9070f8ed83463405ca22a261680c78d5c6ad9fc1e85df07c02c4b7956"
+      },
+      {
+        "combination": "ko-light",
+        "checks": 318,
+        "reportSHA256": "e806849c75ac9fcd0010d0aeff6bc3522425c3d09c60d00fc036fa2da8a5e8c6"
+      },
+      {
+        "combination": "tabs-en-dark",
+        "checks": 18,
+        "reportSHA256": "4cd5dc149461c75b593e647a0784a7a4efc95a8c5c56558ef4fd9754202c353c"
+      },
+      {
+        "combination": "tabs-en-light",
+        "checks": 18,
+        "reportSHA256": "8c7ea58db35d39197a12b053f583fba009acff534def6be24e64c77900d59e6f"
+      },
+      {
+        "combination": "tabs-ko-dark",
+        "checks": 18,
+        "reportSHA256": "d14f0ebb7836c334065287abcc60161673f48e525a3d647fc8d6ea82de87a617"
+      },
+      {
+        "combination": "tabs-ko-light",
+        "checks": 18,
+        "reportSHA256": "1b569fbfbb07dfa73d081a669fe6cb1161f69877bed214dfbe4ec0d80dfad9b9"
+      }
+    ]
+  },
+  "previousSpotlightNativeStepResults": {
+    "conclusion": "",
+    "headSha": "3e5c88f0e66480a92c8f401297428950364a3742",
+    "jobs": [
+      {
+        "conclusion": "",
+        "name": "macOS 15 (x86_64)",
+        "nativeGuard": [
+          {
+            "conclusion": "success",
+            "status": "completed"
+          }
+        ],
+        "status": "in_progress"
+      },
+      {
+        "conclusion": "",
+        "name": "macOS 15 (arm64)",
+        "nativeGuard": [
+          {
+            "conclusion": "success",
+            "status": "completed"
+          }
+        ],
+        "status": "in_progress"
+      },
+      {
+        "conclusion": "skipped",
+        "name": "Xcode (${{ matrix.architecture }})",
+        "nativeGuard": [],
+        "status": "completed"
+      },
+      {
+        "conclusion": "skipped",
+        "name": "Optimized performance (${{ matrix.architecture }})",
+        "nativeGuard": [],
+        "status": "completed"
+      }
+    ],
+    "status": "in_progress"
+  },
+  "limitations": [
+    "official ZIP writer rejects non-ASCII password creation; provider Unicode ZIP read by macOS reference verified",
+    "7z advanced product backend, recovery, packaging and UI acceptance pending",
+    "new reference Intel/macOS15 and minimum OS runtime acceptance pending",
+    "original Windows Files password/encoding acceptance pending",
+    "physical input, VoiceOver, long run and signed release remain open"
+  ]
+}
