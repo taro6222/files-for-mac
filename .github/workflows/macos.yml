@@ -237,6 +237,13 @@ jobs:
             ${{ runner.temp }}/files-cleanup-restart.*/received-restore-controls.png
             ${{ runner.temp }}/files-cleanup-restart.*/operations/promise-cleanup-*.json
           if-no-files-found: ignore
+      - name: Build the archive SDK bundle for AppKit
+        if: github.event_name == 'workflow_dispatch' && inputs.verify_full_appkit
+        timeout-minutes: ${{ matrix.debug_build_minutes }}
+        run: |
+          export FILES_APP_OUTPUT="$RUNNER_TEMP/files-appkit-sdk/Files macOS.app"
+          python3 scripts/build-with-diagnostics.py --output build/appkit-sdk-build-diagnostics -- bash scripts/build-app.sh
+          printf 'FILES_UI_QA_SEVENZIP_BUNDLE=%s\n' "$FILES_APP_OUTPUT" >> "$GITHUB_ENV"
       - name: Prepare Spotlight for AppKit content search
         if: github.event_name == 'workflow_dispatch' && inputs.verify_full_appkit
         timeout-minutes: 4
@@ -257,6 +264,8 @@ jobs:
         with:
           name: files-appkit-macos15-${{ matrix.architecture }}
           path: |
+            build/appkit-sdk-build-diagnostics/
+            ${{ runner.temp }}/files-ui-verification.*/sdk-build.log
             ${{ runner.temp }}/files-ui-verification.*/*/report.json
             ${{ runner.temp }}/files-ui-verification.*/*/progress.json
             ${{ runner.temp }}/files-ui-verification.*/*/desktop-session-comparison.json
