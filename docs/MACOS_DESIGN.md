@@ -1,6 +1,6 @@
 # Files macOS 제품·UI·기술 설계
 
-[372 구현 기록](verification/m7/INCREMENT_372.md): Swift 편집본을 새 읽기 전용 격리 세션에서 전체 디코딩해 내용·보존 속성·항목 목록·암호화와 원본/출력 변경을 검사한다. 최종 Swift 62개·격리 helper 113개·진단 205개·native 83개·권한 15개 및 Debug/Release가 통과했다. 원본 교체·백업/복구/Undo·Unicode AES ZIP 새 암호 payload·편집 UI는 남아 있어 F23/M7은 진행 중이고 update는 false다. 로컬 GUI/장시간 앱은 실행하지 않았다.
+[373 구현 기록](verification/m7/INCREMENT_373.md): 검증된 편집본의 RENAME_SWAP 저장·백업·Undo와 불변 이벤트/체크섬 기반 재시작 복구 API를 연결했다. 실제 외부 metadata 보존·파일/기록 변경 거부·교환 전 취소 및 저장/Undo 전후 네 프로세스 중단을 확인했다. 최종 Swift 68개·helper 113개·진단 205개·native 83개·권한 15개와 Debug/Release가 통과했다. 로컬 APFS 기준이며 다른 게시 방식·압축 저장 metadata·Redo·기록/편집 UI·Unicode 암호 ZIP 추가·최신 원격 수용은 남아 있다. F23/M7 진행 중, update=false, 로컬 GUI/장시간 앱은 실행하지 않았다.
 
 [367단계](verification/m7/INCREMENT_367.md)는 큰 UI 검증 본문을 세 개의 MainActor 비동기 구간으로 나눴다. 함수 경계/들여쓰기를 되돌리면 기존 소스와 바이트 단위로 같으며 검사 삭제는 없다. Debug 34.13초·Release 16.87초 빌드가 통과했다. 원격 컴파일 시간 개선·전체 UI 수용은 아직 진행 중이며 로컬 GUI/장시간 시험은 실행하지 않았다.
 

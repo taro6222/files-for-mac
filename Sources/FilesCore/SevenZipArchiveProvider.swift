@@ -167,6 +167,30 @@ public struct SevenZipArchiveProvider: Sendable {
         }
     }
 
+    public func edit(_ archive: URL, operations: [ArchiveEditOperation], password: String? = nil, encryptNewData: Bool,
+                     journalDirectory: URL, progress: ArchiveProgressHandler? = nil) async throws -> ArchiveEditReport {
+        let cancellation = CopyCancellation()
+        return try await withTaskCancellationHandler(operation: {
+            try Task.checkCancellation()
+            let transaction = try await Task.detached(priority: .userInitiated) {
+                try ArchiveEditTransaction(archive: archive, journalDirectory: journalDirectory, check: cancellation.check)
+            }.value
+            let verified = try await writeVerifiedEditCandidate(transaction.archive, candidate: transaction.candidate, outputFD: transaction.outputFD,
+                operations: operations, password: password, encryptNewData: encryptNewData)
+            return try await Task.detached(priority: .userInitiated) { try transaction.publish(verified, check: cancellation.check, progress: progress) }.value
+        }, onCancel: { cancellation.cancel() })
+    }
+    public static func recoverArchiveEdit(journal: URL, journalDirectory: URL, undo: Bool = false,
+                                          progress: ArchiveProgressHandler? = nil) async throws -> ArchiveEditRecoveryOutcome {
+        let cancellation = CopyCancellation()
+        return try await withTaskCancellationHandler(operation: {
+            try Task.checkCancellation()
+            return try await Task.detached(priority: .userInitiated) {
+                try ArchiveEditTransaction.recover(journal: journal, directory: journalDirectory, undo: undo, check: cancellation.check, progress: progress)
+            }.value
+        }, onCancel: { cancellation.cancel() })
+    }
+
     /// Split 7z files are published in the destination's existing parent folder, never in
     /// a replacement container directory. A durable private journal records every move.
     public func createSplit(from sources: [URL], at destination: URL, volumeBytes: Int64, journalDirectory: URL,

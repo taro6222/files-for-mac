@@ -12,6 +12,11 @@ struct ArchiveEditFileProof: Codable, Sendable, Equatable {
         modifiedSeconds = Int64(value.st_mtimespec.tv_sec); modifiedNanos = Int64(value.st_mtimespec.tv_nsec)
         changedSeconds = Int64(value.st_ctimespec.tv_sec); changedNanos = Int64(value.st_ctimespec.tv_nsec); sha256 = digest
     }
+    func matchesStat(_ value: stat) -> Bool { self == Self(value, digest: sha256) }
+    func sameAfterRename(_ other: Self) -> Bool {
+        device == other.device && inode == other.inode && size == other.size && mode == other.mode && owner == other.owner && group == other.group && links == other.links &&
+        modifiedSeconds == other.modifiedSeconds && modifiedNanos == other.modifiedNanos && sha256 == other.sha256
+    }
     static func capture(_ fd: Int32, check: () throws -> Void) throws -> Self {
         var before = stat(); guard fstat(fd, &before) == 0, before.st_mode & S_IFMT == S_IFREG,
             before.st_size >= 0, before.st_size <= 8_000_000_000 else { throw SevenZipWorkerError.worker("source-changed") }

@@ -1,0 +1,91 @@
+{
+  "increment": 373,
+  "status": "F23 in progress; APFS publication, retained backup, Undo and restart recovery API verified; UI unavailable",
+  "sourcesSHA256": {
+    "Sources/FilesCore/ArchiveEditTransaction.swift": "5efbec2103c214f53d0726f821541184e1ebf4f8e79a767144a160f3cebda4f8",
+    "Sources/FilesCore/ArchiveEditCandidate.swift": "38949df5e3023aaa6320c922f15adbeb1d925f64d999ce751d52250bf37f6c62",
+    "Sources/FilesCore/SevenZipArchiveProvider.swift": "c78ba30618a2ab7f4549f85c39e3b66f738a1ff35e105a11b54757092b3cc62b",
+    "Tests/FilesCoreTests/SevenZipArchiveProviderTests.swift": "7d55002cfed140b36a044f5b14161558bf12d72b543bb35f8cea5fa79898d159",
+    "Tools/SplitCreationProbe/main.swift": "50c8d5b7745a2977e3813f9c1243737b04faa86e9f26d37b30f5b90c40e3590c",
+    "scripts/verify-sevenzip-client.py": "ad9483d2f9c01c66f808e258a9790f1e05bb6f1cca2408ceb77335a28d12597d"
+  },
+  "bundleManifestSHA256": "283ac55b5a817c9f0a326fcdd79953407dcc90e4cfedd70ea8247e218790c056",
+  "reports": {
+    "client": {
+      "path": "build/edit-373-final-report/client/result.json",
+      "sha256": "771f7de8b58f505e05b9f14aa9681caee47a4345e740d81cba72fc2bf835a5f6",
+      "passed": true,
+      "count": 68
+    },
+    "worker": {
+      "path": "build/edit-373-final-report/worker/result.json",
+      "sha256": "72ac0147c1cc2635ffe4eaecd8e71d43615e958540f63beb599ebd79cd46a5b6",
+      "passed": true,
+      "count": 113
+    },
+    "diagnostic-worker": {
+      "path": "build/edit-373-final-report/diagnostic-worker/result.json",
+      "sha256": "099b359e78eb904fdad86efd62fd43ba5a2f987a1ff3c525b5a5a46be0c2d673",
+      "passed": true,
+      "count": 205
+    },
+    "edit-sdk": {
+      "path": "build/edit-373-final-report/edit-sdk/result.json",
+      "sha256": "e8baea3b81889c76259346060e8f846510b76de5e2fe55aa9eb2a53085e69e07",
+      "passed": true,
+      "count": 83
+    },
+    "authority": {
+      "path": "build/edit-373-final-report/authority/result.json",
+      "sha256": "8f4e4ed52937e62807995e7575613d79a48efeb1059a51f13df713d2286251ff",
+      "passed": true,
+      "count": 15
+    }
+  },
+  "debugBuild": {
+    "log": "build/edit-373-debug-final.log",
+    "sha256": "3aff487427c20a4e2fdd9269604de60a6c2df4beaf92dd9024e9727c579bf672",
+    "seconds": 14.32
+  },
+  "releaseBuild": {
+    "log": "build/edit-373-release-final.log",
+    "sha256": "25baf822071277e5646b6b3dfa439cd7fd3f23bd31129b58f974f63f05e1c660",
+    "seconds": 33.98
+  },
+  "verifiedLocalFilesystem": "APFS",
+  "atomicExchangeAndRetainedBackup": true,
+  "undoAndRestartRecovery": true,
+  "interruptionBoundaries": [
+    "before publish exchange",
+    "after publish exchange",
+    "before Undo exchange",
+    "after Undo exchange"
+  ],
+  "externalMetadataVerified": [
+    "ACL rule",
+    "UF_NODUMP",
+    "xattrs",
+    "resource fork",
+    "mode and ownership",
+    "creation time"
+  ],
+  "redoImplemented": false,
+  "historyAndEditingUIImplemented": false,
+  "compressedStorageMetadataSupported": false,
+  "nonExchangePublicationImplemented": false,
+  "editingCapabilityEnabled": false,
+  "unicodeZIPEncryptedAdditionsSupported": false,
+  "localGUIStarted": false,
+  "priorRemoteRuns": [
+    {
+      "id": 45860713694,
+      "source": "4e1ed1d9742980972aafaaa742504547aa2ea738",
+      "observed": "in_progress"
+    },
+    {
+      "id": 45863201164,
+      "source": "39331d61194eb1b2da348cbe5eada2cfb8534152",
+      "observed": "pending"
+    }
+  ]
+}

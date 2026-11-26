@@ -1547,3 +1547,193 @@ func archiveEditVerificationKeepsUnicodeZIPMetadataAndRejectsUnsupportedAddition
         #expect(try Data(contentsOf: archive) == original)
     }
 }
+
+private func archiveEditXattr(_ url: URL, key: String, value: Data) throws {
+    let status = value.withUnsafeBytes { setxattr(url.path, key, $0.baseAddress, value.count, 0, XATTR_NOFOLLOW) }
+    guard status == 0 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
+}
+private func archiveEditReadXattr(_ url: URL, key: String) throws -> Data {
+    let length = getxattr(url.path, key, nil, 0, 0, XATTR_NOFOLLOW)
+    guard length >= 0 else { throw SevenZipWorkerError.ioFailure }
+    var data = Data(count: length)
+    let count = data.withUnsafeMutableBytes { getxattr(url.path, key, $0.baseAddress, length, 0, XATTR_NOFOLLOW) }
+    guard count == length else { throw SevenZipWorkerError.ioFailure }; return data
+}
+
+private func archiveEditACLText(_ url: URL) throws -> String {
+    guard let acl = acl_get_file(url.path, ACL_TYPE_EXTENDED) else { throw SevenZipWorkerError.ioFailure }
+    defer { acl_free(UnsafeMutableRawPointer(acl)) }
+    var length = 0; guard let text = acl_to_text(acl, &length) else { throw SevenZipWorkerError.ioFailure }
+    defer { acl_free(text) }; return String(decoding: UnsafeBufferPointer(start: UnsafeRawPointer(text).assumingMemoryBound(to: UInt8.self), count: length), as: UTF8.self)
+}
+
+@Test(.enabled(if: hasIntegrationFixture("FILES_TEST_SEVENZIP_REFERENCE") && hasIntegrationFixture("FILES_TEST_SEVENZIP_WORKER"), "Requires native SDK and reference"))
+func archiveEditTransactionPublishesBacksUpAndUndoesWithMetadata() async throws {
+    let root = try sdkRoot(); defer { try? FileManager.default.removeItem(at: root) }
+    let fixture = try await sdkFixture(root: root), provider = try sdkRealProvider()
+    let journals = root.appendingPathComponent("journals"), original = try Data(contentsOf: fixture.archive)
+    let key = "com.files.tests.archive-edit", attr = Data("archive tag".utf8), fork = Data("resource fork".utf8)
+    try archiveEditXattr(fixture.archive, key: key, value: attr)
+    try archiveEditXattr(fixture.archive, key: "com.apple.ResourceFork", value: fork)
+    try FileManager.default.setAttributes([.posixPermissions: 0o640], ofItemAtPath: fixture.archive.path)
+    let chmod = Process(); chmod.executableURL = URL(fileURLWithPath: "/bin/chmod")
+    chmod.arguments = ["+a", "everyone allow readattr", fixture.archive.path]
+    chmod.standardOutput = FileHandle.nullDevice; chmod.standardError = FileHandle.nullDevice
+    try chmod.run(); defer { if chmod.isRunning { kill(chmod.processIdentifier, SIGKILL); chmod.waitUntilExit() } }
+    let deadline = ContinuousClock.now + .seconds(5)
+    while chmod.isRunning, ContinuousClock.now < deadline { try await Task.sleep(for: .milliseconds(5)) }
+    guard !chmod.isRunning, chmod.terminationStatus == 0 else { throw SevenZipWorkerError.timedOut }
+    #expect(chflags(fixture.archive.path, UInt32(UF_NODUMP)) == 0)
+    let acl = try archiveEditACLText(fixture.archive); #expect(acl.contains("readattr"))
+    let result = try await provider.edit(fixture.archive, operations: [.rename(path: "folder", newName: "renamed"), .createDirectory(path: "empty")], encryptNewData: false, journalDirectory: journals)
+    let edited = try Data(contentsOf: fixture.archive)
+    #expect(edited != original)
+    #expect(try Data(contentsOf: result.backup) == original)
+    #expect(try archiveEditReadXattr(fixture.archive, key: key) == attr)
+    #expect(try archiveEditReadXattr(fixture.archive, key: "com.apple.ResourceFork") == fork)
+    #expect(try archiveEditACLText(fixture.archive) == acl)
+    var flags = stat(); #expect(lstat(fixture.archive.path, &flags) == 0 && flags.st_flags & UInt32(UF_NODUMP) != 0)
+    #expect(((try FileManager.default.attributesOfItem(atPath: fixture.archive.path)[.posixPermissions]) as? NSNumber)?.intValue == 0o640)
+    #expect(try await provider.entries(at: fixture.archive).contains { $0.path == "renamed/large.bin" })
+    if case .committed = try await SevenZipArchiveProvider.recoverArchiveEdit(journal: result.journal, journalDirectory: journals) {} else { Issue.record("Expected committed recovery") }
+    if case .undone = try await SevenZipArchiveProvider.recoverArchiveEdit(journal: result.journal, journalDirectory: journals, undo: true) {} else { Issue.record("Expected undo") }
+    #expect(try Data(contentsOf: fixture.archive) == original)
+    #expect(try archiveEditACLText(fixture.archive) == acl)
+    #expect(try Data(contentsOf: result.backup) == edited)
+    #expect(try archiveEditReadXattr(fixture.archive, key: key) == attr)
+    #expect(try archiveEditReadXattr(fixture.archive, key: "com.apple.ResourceFork") == fork)
+    if case .undone = try await SevenZipArchiveProvider.recoverArchiveEdit(journal: result.journal, journalDirectory: journals, undo: true) {} else { Issue.record("Expected idempotent undo") }
+}
+
+@Test(.enabled(if: hasIntegrationFixture("FILES_TEST_SEVENZIP_REFERENCE") && hasIntegrationFixture("FILES_TEST_SEVENZIP_WORKER"), "Requires native SDK and reference"))
+func archiveEditTransactionPreservesExternalChangesAndBrokenRecords() async throws {
+    for change in ["archive", "backup", "metadata", "journal", "checksum"] {
+        let root = try sdkRoot(); defer { try? FileManager.default.removeItem(at: root) }
+        let fixture = try await sdkFixture(root: root), provider = try sdkRealProvider(), journals = root.appendingPathComponent("journals")
+        let result = try await provider.edit(fixture.archive, operations: [.createDirectory(path: "empty")], encryptNewData: false, journalDirectory: journals)
+        if change == "archive" { try Data("external archive".utf8).write(to: fixture.archive) }
+        if change == "backup" { try Data("external backup".utf8).write(to: result.backup) }
+        if change == "metadata" { try archiveEditXattr(fixture.archive, key: "com.files.tests.changed", value: Data([1])) }
+        if change == "journal" { try Data("broken".utf8).write(to: result.journal.appendingPathComponent("00000000.json")) }
+        if change == "checksum" {
+            let last = try #require(FileManager.default.contentsOfDirectory(at: result.journal, includingPropertiesForKeys: nil).filter { $0.pathExtension == "json" }.sorted { $0.lastPathComponent < $1.lastPathComponent }.last)
+            var envelope = try #require(JSONSerialization.jsonObject(with: Data(contentsOf: last)) as? [String: Any])
+            envelope["checksum"] = String(repeating: "0", count: 64)
+            try JSONSerialization.data(withJSONObject: envelope).write(to: last)
+        }
+        let archiveBefore = try Data(contentsOf: fixture.archive), backupBefore = try Data(contentsOf: result.backup)
+        await #expect(throws: (any Error).self) { try await SevenZipArchiveProvider.recoverArchiveEdit(journal: result.journal, journalDirectory: journals, undo: true) }
+        #expect(try Data(contentsOf: fixture.archive) == archiveBefore)
+        #expect(try Data(contentsOf: result.backup) == backupBefore)
+        if change == "metadata" { #expect(try archiveEditReadXattr(fixture.archive, key: "com.files.tests.changed") == Data([1])) }
+    }
+}
+
+@Test func archiveEditTransactionSerializesAndPreservesUnpublishedCandidate() throws {
+    let root = try sdkRoot(); defer { try? FileManager.default.removeItem(at: root) }
+    let archive = root.appendingPathComponent("archive.7z"), journals = root.appendingPathComponent("journals")
+    try Data("source".utf8).write(to: archive)
+    var transaction: ArchiveEditTransaction? = try ArchiveEditTransaction(archive: archive, journalDirectory: journals, check: {})
+    #expect(throws: ArchiveEditError.busy) { try ArchiveEditTransaction(archive: archive, journalDirectory: journals, check: {}) }
+    let journal = try #require(transaction?.journal), candidate = try #require(transaction?.candidate)
+    try Data("owned partial".utf8).write(to: candidate)
+    transaction = nil
+    if case .unpublished = try ArchiveEditTransaction.recover(journal: journal, directory: journals, undo: false, check: {}) {} else { Issue.record("Expected unpublished") }
+    #expect(try Data(contentsOf: archive) == Data("source".utf8))
+    #expect(try Data(contentsOf: candidate) == Data("owned partial".utf8))
+}
+
+@Test(.enabled(if: hasIntegrationFixture("FILES_TEST_SEVENZIP_REFERENCE") && hasIntegrationFixture("FILES_TEST_SEVENZIP_WORKER") && hasIntegrationFixture("FILES_TEST_SPLIT_PROBE"), "Requires native SDK and process-restart probe"))
+func archiveEditTransactionRecoversPublishAndUndoProcessInterruptions() async throws {
+    let root = try sdkRoot(); defer { try? FileManager.default.removeItem(at: root) }
+    let fixture = try await sdkFixture(root: root), provider = try sdkRealProvider(), original = try Data(contentsOf: fixture.archive)
+    for mode in ["edit-crash-prepared", "edit-crash-published", "edit-undo-crash-prepared", "edit-undo-crash-published"] {
+        let folder = root.appendingPathComponent(mode); try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: false)
+        let archive = folder.appendingPathComponent("archive.7z"), journals = folder.appendingPathComponent("journals")
+        try FileManager.default.copyItem(at: fixture.archive, to: archive)
+        var configuration: [String: Any] = ["mode": mode, "source": archive.path, "journalDirectory": journals.path, "worker": provider.executable.path, "library": provider.library.path]
+        if mode.hasPrefix("edit-undo") {
+            let saved = try await provider.edit(archive, operations: [.createDirectory(path: "added-by-process")], encryptNewData: false, journalDirectory: journals)
+            configuration["journal"] = saved.journal.path
+        }
+        let crashed = try await sdkRunSplitProbe(configuration, root: folder, name: "interrupt")
+        #expect(crashed.0 == 75, "Requested interrupt not reached: \(crashed.1)")
+        let registry = journals.appendingPathComponent("archive-edits")
+        let journal = try #require(FileManager.default.contentsOfDirectory(at: registry, includingPropertiesForKeys: nil).first { UUID(uuidString: $0.lastPathComponent) != nil })
+        let before = try Data(contentsOf: archive)
+        let recovered = try await sdkRunSplitProbe(["mode": "edit-recover", "journal": journal.path, "journalDirectory": journals.path], root: folder, name: "recover")
+        #expect(recovered.0 == 0, "Recovery failed: \(recovered.1)")
+        #expect(try Data(contentsOf: archive) == before)
+        if mode == "edit-crash-prepared" {
+            #expect(recovered.1.contains("unpublished")); #expect(before == original)
+        } else {
+            let wasUndone = mode == "edit-undo-crash-published"
+            #expect(recovered.1.contains(wasUndone ? "undone" : "committed"))
+            #expect((before == original) == wasUndone)
+            let undone = try await sdkRunSplitProbe(["mode": "edit-undo", "journal": journal.path, "journalDirectory": journals.path], root: folder, name: "undo")
+            #expect(undone.0 == 0 && undone.1.contains("undone"))
+            #expect(try Data(contentsOf: archive) == original)
+        }
+    }
+}
+
+@Test(.enabled(if: hasIntegrationFixture("FILES_TEST_SEVENZIP_REFERENCE") && hasIntegrationFixture("FILES_TEST_SEVENZIP_WORKER"), "Requires native SDK and reference"))
+func archiveEditTransactionZIPAndEncrypted7zRoundTrip() async throws {
+    let root = try sdkRoot(); defer { try? FileManager.default.removeItem(at: root) }
+    let old = root.appendingPathComponent("old.txt"), added = root.appendingPathComponent("추가.txt")
+    try Data("old payload".utf8).write(to: old); try Data("new payload".utf8).write(to: added)
+    let provider = try sdkRealProvider(), reference = URL(fileURLWithPath: try #require(ProcessInfo.processInfo.environment["FILES_TEST_SEVENZIP_REFERENCE"]))
+    for (index, format) in ["zip", "zip", "7z"].enumerated() {
+        let password: String? = index == 0 ? nil : index == 1 ? "Edit-373-ASCII" : "Edit-373-한글"
+        let archive = root.appendingPathComponent("archive-\(index).\(format)"), journals = root.appendingPathComponent("journals-\(index)")
+        if format == "zip" { _ = try await ZipArchiveProvider().create(from: [old], at: archive, password: password) }
+        else { _ = try await provider.create(from: [old], at: archive, password: password) }
+        let before = try Data(contentsOf: archive)
+        let result = try await provider.edit(archive, operations: [.rename(path: "old.txt", newName: "renamed.txt"), .add(sources: [added], directory: "nested")], password: password, encryptNewData: password != nil, journalDirectory: journals)
+        #expect(try Data(contentsOf: result.backup) == before)
+        let destination = root.appendingPathComponent("restore-\(index)")
+        let process = Process(), input = Pipe()
+        process.executableURL = reference; process.arguments = ["x", "-y", "-o" + destination.path, archive.path]
+        process.standardInput = input; process.standardOutput = FileHandle.nullDevice; process.standardError = FileHandle.nullDevice
+        try process.run(); defer { if process.isRunning { kill(process.processIdentifier, SIGKILL); process.waitUntilExit() } }
+        if let password { try input.fileHandleForWriting.write(contentsOf: Data((password + "\n" + password + "\n").utf8)) }
+        try input.fileHandleForWriting.close()
+        let deadline = ContinuousClock.now + .seconds(15)
+        while process.isRunning, ContinuousClock.now < deadline { try await Task.sleep(for: .milliseconds(5)) }
+        guard !process.isRunning else { throw SevenZipWorkerError.timedOut }
+        #expect(process.terminationStatus == 0)
+        #expect(try Data(contentsOf: destination.appendingPathComponent("renamed.txt")) == Data("old payload".utf8))
+        #expect(try Data(contentsOf: destination.appendingPathComponent("nested/추가.txt")) == Data("new payload".utf8))
+        _ = try await SevenZipArchiveProvider.recoverArchiveEdit(journal: result.journal, journalDirectory: journals, undo: true)
+        #expect(try Data(contentsOf: archive) == before)
+        let journalBytes = try FileManager.default.contentsOfDirectory(at: result.journal, includingPropertiesForKeys: nil).filter { $0.pathExtension == "json" }.map { try Data(contentsOf: $0) }.reduce(Data(), +)
+        if let password { #expect(!String(decoding: journalBytes, as: UTF8.self).contains(password)) }
+    }
+}
+
+private final class ArchiveEditPublicationGate: @unchecked Sendable {
+    private let lock = NSLock(); private var value = false
+    let release = DispatchSemaphore(value: 0)
+    var reached: Bool { lock.lock(); defer { lock.unlock() }; return value }
+    func apply(_ update: ArchiveProgress) {
+        guard update.phase == .publishing, update.currentPath == nil else { return }
+        lock.lock(); value = true; lock.unlock(); _ = release.wait(timeout: .now() + 5)
+    }
+}
+@Test(.enabled(if: hasIntegrationFixture("FILES_TEST_SEVENZIP_REFERENCE") && hasIntegrationFixture("FILES_TEST_SEVENZIP_WORKER"), "Requires native SDK and reference"))
+func archiveEditTransactionCancellationBeforeSwapPreservesBothFiles() async throws {
+    let root = try sdkRoot(); defer { try? FileManager.default.removeItem(at: root) }
+    let fixture = try await sdkFixture(root: root), provider = try sdkRealProvider(), original = try Data(contentsOf: fixture.archive)
+    let journals = root.appendingPathComponent("journals"), gate = ArchiveEditPublicationGate()
+    let task = Task { try await provider.edit(fixture.archive, operations: [.createDirectory(path: "empty")], encryptNewData: false, journalDirectory: journals, progress: gate.apply) }
+    defer { gate.release.signal(); task.cancel() }
+    let deadline = ContinuousClock.now + .seconds(5)
+    while !gate.reached, ContinuousClock.now < deadline { try await Task.sleep(for: .milliseconds(5)) }
+    #expect(gate.reached); task.cancel(); gate.release.signal()
+    await #expect(throws: CancellationError.self) { try await task.value }
+    #expect(try Data(contentsOf: fixture.archive) == original)
+    let journal = try #require(FileManager.default.contentsOfDirectory(at: journals.appendingPathComponent("archive-edits"), includingPropertiesForKeys: nil).first { UUID(uuidString: $0.lastPathComponent) != nil })
+    guard case .unpublished(let report) = try await SevenZipArchiveProvider.recoverArchiveEdit(journal: journal, journalDirectory: journals) else { Issue.record("Cancelled edit was published"); return }
+    #expect(try Data(contentsOf: report.backup) != original)
+    #expect(try await provider.entries(at: report.backup).contains { $0.path == "empty" })
+}
