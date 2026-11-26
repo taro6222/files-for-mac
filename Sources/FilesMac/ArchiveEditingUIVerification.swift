@@ -104,6 +104,41 @@ func verifyArchiveEditingUI(_ controller: ArchiveWindow, root: URL, capture: (St
     controller.qaCreateFolder(); controller.qaSubmitName("stale-selection"); try await idle()
     checks["archiveEditingStaleSelectionPreserved"] = (try Data(contentsOf: archive)) == foreign
     checks["archiveEditingStaleSelectionNeedsReload"] = !controller.qaEditReady
+    let policyArchive = root.appendingPathComponent("archive-empty-zip-policy.zip"), policyPassword = "UI-379-한글-🔑"
+    _ = try await ZipArchiveProvider().create(from: [added], at: policyArchive, password: password)
+    controller.present(archiveURL: policyArchive); try await idle()
+    let lockedOptions = controller.qaAdditionOptions()
+    checks["archiveAdditionLocksExistingEncryption"] = lockedOptions.encryptNewData && !lockedOptions.encryption.isEnabled
+    controller.qaSelectPaths([added.lastPathComponent]); controller.qaDelete()
+    checks["archiveDeletingLastEncryptedZIPNotice"] = controller.qaDeleteNotice?.contains(L("암호화된 파일이 모두 삭제", "All encrypted files will be removed")) == true
+    controller.qaConfirm(true)
+    guard let deletePassword = await ArchivePasswordPrompt.qaWait(for: window) else { throw SevenZipWorkerError.timedOut }
+    deletePassword.qaSubmit(password); try await idle()
+    let emptyZIP = try Data(contentsOf: policyArchive), emptyOptions = controller.qaAdditionOptions()
+    checks["archiveEmptyZIPEncryptsByDefault"] = controller.qaEntryCount == 0 && emptyOptions.encryptNewData && emptyOptions.encryption.isEnabled
+    emptyOptions.appearance = window.effectiveAppearance
+    try capture("archive-add-encryption", emptyOptions)
+    controller.qaAdd([added], directory: "", encryptNewData: emptyOptions.encryptNewData)
+    guard let cancelAddition = await ArchivePasswordPrompt.qaWait(for: window) else { throw SevenZipWorkerError.timedOut }
+    cancelAddition.qaSubmit(nil); try await idle()
+    checks["archiveEmptyZIPPasswordCancelPreservesArchive"] = controller.qaEntryCount == 0 && (try Data(contentsOf: policyArchive)) == emptyZIP
+    controller.qaAdd([added], directory: "", encryptNewData: emptyOptions.encryptNewData)
+    guard let newPassword = await ArchivePasswordPrompt.qaWait(for: window) else { throw SevenZipWorkerError.timedOut }
+    newPassword.qaSubmit(policyPassword); try await idle()
+    checks["archiveEmptyZIPEncryptedAddition"] = controller.qaEntryPaths == [added.lastPathComponent] && (try ZipArchiveProvider().entries(at: policyArchive)).first?.isEncrypted == true
+    controller.qaUndoEdit(); controller.qaConfirm(true); try await idle()
+    let plainOptions = controller.qaAdditionOptions(); plainOptions.encryption.performClick(nil)
+    checks["archiveEmptyZIPExplicitPlaintextOption"] = controller.qaEntryCount == 0 && !plainOptions.encryptNewData
+    controller.qaAdd([added], directory: "", encryptNewData: plainOptions.encryptNewData); try await idle()
+    checks["archiveEmptyZIPExplicitPlaintextAddition"] = controller.qaEntryPaths == [added.lastPathComponent] && (try ZipArchiveProvider().entries(at: policyArchive)).first?.isEncrypted == false
+    let emptySevenZip = root.appendingPathComponent("archive-empty-header-policy.7z"), sdk = try await ArchiveReadBackend.editingProvider()
+    _ = try await sdk.create(from: [added], at: emptySevenZip, password: policyPassword)
+    _ = try await sdk.edit(emptySevenZip, operations: [.delete(paths: [added.lastPathComponent])], password: policyPassword, encryptNewData: true, journalDirectory: root.appendingPathComponent("archive-edit-journals"))
+    controller.present(archiveURL: emptySevenZip)
+    guard let headerPassword = await ArchivePasswordPrompt.qaWait(for: window) else { throw SevenZipWorkerError.timedOut }
+    headerPassword.qaSubmit(policyPassword); try await idle()
+    let headerOptions = controller.qaAdditionOptions()
+    checks["archiveEmpty7zLocksHeaderEncryption"] = controller.qaEntryCount == 0 && headerOptions.encryptNewData && !headerOptions.encryption.isEnabled
     return checks
 }
 #endif

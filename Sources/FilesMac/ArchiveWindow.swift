@@ -177,6 +177,27 @@ private final class ArchiveEditingTable: NSTableView {
 }
 
 @MainActor
+final class ArchiveAdditionOptionsView: NSStackView {
+    let encryption = NSButton(checkboxWithTitle: L("추가 파일 암호화", "Encrypt added files"), target: nil, action: nil)
+    var encryptNewData: Bool { encryption.state == .on }
+    init(required: Bool, emptyZIP: Bool) {
+        super.init(frame: NSRect(x: 0, y: 0, width: 440, height: 76))
+        orientation = .vertical; alignment = .leading; spacing = 8
+        encryption.state = required || emptyZIP ? .on : .off; encryption.isEnabled = !required
+        encryption.setAccessibilityLabel(encryption.title)
+        let message = required
+            ? L("기존 암호화 파일이 있으므로 추가 파일도 같은 암호로 보호합니다.", "Added files use the same password as the existing encrypted files.")
+            : emptyZIP
+                ? L("파일이 없는 ZIP입니다. 추가 파일의 암호를 새로 지정하거나 암호화를 해제하세요.", "This ZIP has no files. Set a password for added files, or turn encryption off.")
+                : L("새 파일에 암호를 지정할 수 있습니다. 기존 항목의 암호화 상태는 유지합니다.", "You can set a password for added files. Existing items retain their encryption.")
+        let note = NSTextField(wrappingLabelWithString: message)
+        addArrangedSubview(encryption); addArrangedSubview(note)
+        note.widthAnchor.constraint(equalToConstant: 440).isActive = true
+    }
+    required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
+}
+
+@MainActor
 final class ArchiveWindow: NSWindowController, NSTableViewDataSource, NSTableViewDelegate, NSWindowDelegate, NSMenuItemValidation {
     private var backend: ArchiveReadBackend = .system
     private var operationID = UUID()
@@ -185,7 +206,7 @@ final class ArchiveWindow: NSWindowController, NSTableViewDataSource, NSTableVie
     private let extractButton = NSButton(), cancelButton = NSButton()
     private let addButton = NSButton(), folderButton = NSButton(), renameButton = NSButton(), deleteButton = NSButton(), undoButton = NSButton(), redoButton = NSButton(), recoveryButton = NSButton()
     private var editor: SevenZipArchiveProvider?, sourceVersion: ArchiveEditSourceVersion?
-    private var isRunning = false, hasLoaded = false, cancelRequested = false, editingOperation = false
+    private var isRunning = false, hasLoaded = false, cancelRequested = false, editingOperation = false, headerEncrypted = false
     private var undoReports: [ArchiveEditReport] = [], redoReports: [ArchiveEditReport] = [], recoveryLocations: [URL] = []
     private var nameAlert: NSAlert?, nameInput: ArchiveNameInput?
     private var storedConfirmation: NSAlert?
@@ -243,7 +264,7 @@ final class ArchiveWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         if let sheet = window?.attachedSheet { pendingPresentation = (archiveURL, onRead); window?.endSheet(sheet, returnCode: sheet is NSOpenPanel ? .cancel : .alertSecondButtonReturn); return }
         if self.archiveURL?.standardizedFileURL != archiveURL.standardizedFileURL { undoReports = []; redoReports = [] }
         task?.cancel(); pendingClose = false; operationID = UUID(); let currentID = operationID
-        sourceVersion = nil; hasLoaded = false; editor = nil; recoveryLocations = []; recoveryButton.isHidden = true
+        sourceVersion = nil; hasLoaded = false; headerEncrypted = false; editor = nil; recoveryLocations = []; recoveryButton.isHidden = true
         self.archiveURL = archiveURL; entries = []; table.reloadData()
         window?.title = L("압축 파일: ", "Archive: ") + archiveURL.lastPathComponent
         status.stringValue = L("목록을 읽는 중…", "Reading archive…"); setRunning(true)
@@ -253,12 +274,13 @@ final class ArchiveWindow: NSWindowController, NSTableViewDataSource, NSTableVie
                 let backend = try await ArchiveReadBackend.resolve(for: archiveURL)
                 guard let self, self.operationID == currentID, let window = self.window else { return }
                 let version = try? await Task.detached { try ArchiveEditSourceVersion(at: archiveURL) }.value
-                let loaded = try await backend.readWithPassword(archiveURL, window: window).entries
+                let read = try await backend.readWithPassword(archiveURL, window: window)
+                let loaded = read.entries
                 let editor = try? await ArchiveReadBackend.editingProvider()
                 if let version { guard try await Task.detached(operation: { try ArchiveEditSourceVersion(at: archiveURL) }).value == version else { throw SevenZipWorkerError.worker("source-changed") } }
                 guard self.operationID == currentID else { return }
                 try Task<Never, Never>.checkCancellation()
-                self.backend = backend; self.editor = editor; self.sourceVersion = version; self.hasLoaded = true; self.entries = loaded; self.status.stringValue = L("\(loaded.count)개 항목", "\(loaded.count) items"); self.setRunning(false); self.table.reloadData()
+                self.backend = backend; self.editor = editor; self.headerEncrypted = ArchiveFormat.detect(archiveURL) == .sevenZip && read.password != nil; self.sourceVersion = version; self.hasLoaded = true; self.entries = loaded; self.status.stringValue = L("\(loaded.count)개 항목", "\(loaded.count) items"); self.setRunning(false); self.table.reloadData()
                 onRead?()
             } catch is CancellationError { guard let self, self.operationID == currentID else { return }; self.status.stringValue = L("읽기를 중단했습니다.", "Reading stopped."); self.setRunning(false) }
             catch { guard let self, self.operationID == currentID else { return }; self.status.stringValue = archiveErrorMessage(error); self.setRunning(false) }
@@ -334,13 +356,18 @@ final class ArchiveWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         default: return false
         }
     }
+    private func additionOptions() -> ArchiveAdditionOptionsView {
+        ArchiveAdditionOptionsView(required: headerEncrypted || entries.contains(where: \.isEncrypted),
+                                   emptyZIP: archiveURL.map { ArchiveFormat.detect($0) == .zip } == true && !entries.contains(where: { $0.kind == .regularFile }))
+    }
     @objc private func addFiles(_ sender: Any?) {
         guard canEdit, let window else { return }; let directory = targetDirectory
         let panel = NSOpenPanel(); panel.canChooseFiles = true; panel.canChooseDirectories = true; panel.allowsMultipleSelection = true
         panel.prompt = L("추가", "Add"); panel.message = L("추가 위치: /", "Add to: /") + directory
+        let options = additionOptions(); panel.accessoryView = options
         panel.beginSheetModal(for: window) { [weak self] response in
             guard let self else { return }; self.renderEditActions()
-            if response == .OK { self.performEdit([.add(sources: panel.urls, directory: directory)], selecting: panel.urls.map { (directory.isEmpty ? "" : directory + "/") + $0.lastPathComponent }) }
+            if response == .OK { self.performEdit([.add(sources: panel.urls, directory: directory)], selecting: panel.urls.map { (directory.isEmpty ? "" : directory + "/") + $0.lastPathComponent }, encryptNewData: options.encryptNewData) }
             else { self.setRunning(false) }
         }; renderEditActions()
     }
@@ -392,7 +419,13 @@ final class ArchiveWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         guard canEdit, !selectedEntries.isEmpty else { return }; let selected = selectedEntries
         let paths = selected.map { cleanPath($0.path) }
         let count = entries.filter { entry in selected.contains { selection in let path = cleanPath(selection.path); return cleanPath(entry.path) == path || (selection.kind == .directory && entry.path.hasPrefix(path + "/")) } }.count
-        confirm(title: L("압축에서 삭제", "Delete from Archive"), message: L("하위 항목을 포함하여 \(count)개 항목을 삭제합니다. 이전 원본은 실행 취소를 위해 보관합니다.", "Delete \(count) items, including descendants. The previous archive is retained for Undo."), button: L("삭제", "Delete")) { [weak self] in self?.performEdit([.delete(paths: paths)], selecting: []) }
+        var message = L("하위 항목을 포함하여 \(count)개 항목을 삭제합니다. 이전 원본은 실행 취소를 위해 보관합니다.", "Delete \(count) items, including descendants. The previous archive is retained for Undo.")
+        let encrypted = entries.filter(\.isEncrypted)
+        let removesLastEncryptedZIP = archiveURL.map { ArchiveFormat.detect($0) == .zip } == true && !encrypted.isEmpty && encrypted.allSatisfy { entry in
+            selected.contains { selection in let path = cleanPath(selection.path); return cleanPath(entry.path) == path || (selection.kind == .directory && entry.path.hasPrefix(path + "/")) }
+        }
+        if removesLastEncryptedZIP { message += L("\n\n암호화된 파일이 모두 삭제됩니다. 이후 파일 추가 시 암호화를 다시 선택하세요. 파일이 없는 ZIP에는 기존 암호를 재사용할 정보가 남지 않습니다.", "\n\nAll encrypted files will be removed. Choose encryption again when adding files later. A ZIP with no files cannot supply the previous password.") }
+        confirm(title: L("압축에서 삭제", "Delete from Archive"), message: message, button: L("삭제", "Delete")) { [weak self] in self?.performEdit([.delete(paths: paths)], selecting: []) }
     }
     private func confirm(title: String, message: String, button: String, action: @escaping @MainActor () -> Void) {
         guard let window else { return }; let alert = NSAlert(); alert.messageText = title; alert.informativeText = message
@@ -402,7 +435,7 @@ final class ArchiveWindow: NSWindowController, NSTableViewDataSource, NSTableVie
             if response == .alertFirstButtonReturn { action() } else { self.setRunning(false) }
         }; renderEditActions()
     }
-    private func performEdit(_ operations: [ArchiveEditOperation], selecting paths: [String]) {
+    private func performEdit(_ operations: [ArchiveEditOperation], selecting paths: [String], encryptNewData: Bool? = nil) {
         guard canEdit, let editor, let archiveURL, let sourceVersion else { return }
         operationID = UUID(); let currentID = operationID; editingOperation = true
         status.stringValue = L("압축 파일을 편집하는 중…", "Editing archive…"); setRunning(true)
@@ -412,7 +445,7 @@ final class ArchiveWindow: NSWindowController, NSTableViewDataSource, NSTableVie
                 var report: ArchiveEditReport?
                 while report == nil {
                     do {
-                        report = try await editor.edit(archiveURL, operations: operations, password: password, encryptNewData: password != nil || self.entries.contains(where: \.isEncrypted), journalDirectory: self.editJournalDirectory, expectedSource: sourceVersion) { [weak self] update in
+                        report = try await editor.edit(archiveURL, operations: operations, password: password, encryptNewData: password != nil || (encryptNewData ?? self.entries.contains(where: \.isEncrypted)), journalDirectory: self.editJournalDirectory, expectedSource: sourceVersion) { [weak self] update in
                             Task { @MainActor [weak self] in guard let self, self.operationID == currentID else { return }; self.updateProgress(update) }
                         }
                     } catch SevenZipWorkerError.worker(let code) where code == "password-required" || code == "password-or-corrupt" {
@@ -512,7 +545,9 @@ final class ArchiveWindow: NSWindowController, NSTableViewDataSource, NSTableVie
     func qaSubmitName(_ name: String?) { guard let alert = nameAlert else { return }; if let name { nameInput?.field.stringValue = name; nameInput?.validate(); if alert.buttons[0].isEnabled { alert.buttons[0].performClick(nil) } } else { window?.endSheet(alert.window, returnCode: .alertSecondButtonReturn) } }
     var qaNameRejected: Bool { nameAlert?.buttons.first?.isEnabled == false }
     func qaConfirm(_ accepted: Bool) { storedConfirmation?.buttons[accepted ? 0 : 1].performClick(nil) }
-    func qaAdd(_ sources: [URL], directory: String) { performEdit([.add(sources: sources, directory: directory)], selecting: sources.map { (directory.isEmpty ? "" : directory + "/") + $0.lastPathComponent }) }
+    func qaAdditionOptions() -> ArchiveAdditionOptionsView { additionOptions() }
+    var qaDeleteNotice: String? { storedConfirmation?.informativeText }
+    func qaAdd(_ sources: [URL], directory: String, encryptNewData: Bool? = nil) { performEdit([.add(sources: sources, directory: directory)], selecting: sources.map { (directory.isEmpty ? "" : directory + "/") + $0.lastPathComponent }, encryptNewData: encryptNewData) }
     var qaLoaded: Bool { !isRunning && hasLoaded }
     var qaEntryCount: Int { entries.count }
     func qaExtract(to destination: URL) { extract(to: destination) }

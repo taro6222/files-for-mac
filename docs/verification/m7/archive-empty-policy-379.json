@@ -1,0 +1,115 @@
+{
+  "increment": 379,
+  "status": "explicit addition encryption implemented; new UI acceptance pending; F23/M7 incomplete",
+  "sourcesSHA256": {
+    "Sources/FilesMac/ArchiveWindow.swift": "a82fb168bf3ca4c6cb4bd292ad79a1ed665485114d83059e696d790be65f8488",
+    "Sources/FilesMac/ArchiveEditingUIVerification.swift": "26a108c68b6aebcb69cdba3df16d3b310b2159c7af2b05f57290c07b030d87f3",
+    "Tests/FilesCoreTests/SevenZipArchiveProviderTests.swift": "f0f6bb1ad46694ac3222088cd711db74855acbda803f09c420ed0c25590bc33b",
+    "scripts/verify-sevenzip-client.py": "9ce7b8683039f6939fb80cb917f59207b91a7fc228a24f5e6e6ab96d1c6929c3",
+    "scripts/verify-ui.sh": "ba9e42ccf6ccec3b4d7d8b3c52889892b3dfd4a5e6619c547c66c1ee157975da"
+  },
+  "builds": {
+    "debug": {
+      "passed": true,
+      "seconds": 7.68,
+      "sha256": "4c2cd5d508fae1bec5c1a7867474a4b4dc09ab7db792cc4401a62c64ebdb15ba"
+    },
+    "release": {
+      "passed": true,
+      "seconds": 16.26,
+      "sha256": "d12e72a9843ea26dc568addedfeb523c49c7655f70a8b7fa7ca96379c7e7eab6"
+    }
+  },
+  "client": {
+    "passed": true,
+    "tests": 74,
+    "reportSHA256": "f47b78637f2b1fc4c059a485a18e07a7a4c85bc987177caf414beb48a0016a01"
+  },
+  "definedUIChecks": 369,
+  "newUIAcceptance": null,
+  "localGUIStarted": false,
+  "priorRun": {
+    "id": 45873718296,
+    "source": "0c9c80563fa6ed20fa0dc6ef70d9ca44094f1d78",
+    "conclusion": "failure",
+    "intelReports": [
+      {
+        "profile": "en-dark",
+        "checks": 360,
+        "failed": [
+          "multiwindowCycles",
+          "remainingWindowUsable"
+        ],
+        "editingChecks": 28,
+        "editingPassed": true,
+        "sha256": "8b377e2033790539f26c23efcf9892e32501b0e59fd017c3deedf6366fa36f50"
+      },
+      {
+        "profile": "en-light",
+        "checks": 360,
+        "failed": [
+          "multiwindowCycles",
+          "remainingWindowUsable"
+        ],
+        "editingChecks": 28,
+        "editingPassed": true,
+        "sha256": "05b1ff21b2e1c122b985bc0a1807f734f805bc85458003ae0285bdaf046d9fdf"
+      },
+      {
+        "profile": "ko-dark",
+        "checks": 360,
+        "failed": [
+          "multiwindowCycles",
+          "remainingWindowUsable"
+        ],
+        "editingChecks": 28,
+        "editingPassed": true,
+        "sha256": "8051e95dfc5fe009bc770ee65ecf47395efb1704d1f3e62f60fa98495b6958f6"
+      },
+      {
+        "profile": "ko-light",
+        "checks": 360,
+        "failed": [
+          "multiwindowCycles",
+          "remainingWindowUsable"
+        ],
+        "editingChecks": 28,
+        "editingPassed": true,
+        "sha256": "8c977389fff0c75825ad1d6075bbeec8ec5c0384af6e39a74d487276850643d5"
+      },
+      {
+        "profile": "tabs-en-dark",
+        "checks": 18,
+        "failed": [],
+        "editingChecks": 0,
+        "editingPassed": null,
+        "sha256": "4cd5dc149461c75b593e647a0784a7a4efc95a8c5c56558ef4fd9754202c353c"
+      },
+      {
+        "profile": "tabs-en-light",
+        "checks": 18,
+        "failed": [],
+        "editingChecks": 0,
+        "editingPassed": null,
+        "sha256": "8c7ea58db35d39197a12b053f583fba009acff534def6be24e64c77900d59e6f"
+      },
+      {
+        "profile": "tabs-ko-dark",
+        "checks": 18,
+        "failed": [],
+        "editingChecks": 0,
+        "editingPassed": null,
+        "sha256": "d14f0ebb7836c334065287abcc60161673f48e525a3d647fc8d6ea82de87a617"
+      },
+      {
+        "profile": "tabs-ko-light",
+        "checks": 18,
+        "failed": [],
+        "editingChecks": 0,
+        "editingPassed": null,
+        "sha256": "1b569fbfbb07dfa73d081a669fe6cb1161f69877bed214dfbe4ec0d80dfad9b9"
+      }
+    ]
+  },
+  "existingValidationRun": 45877111686
+}

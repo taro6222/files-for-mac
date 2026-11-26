@@ -1863,3 +1863,36 @@ func archiveEditRedoRecoversBothProcessInterruptionBoundaries() async throws {
         #expect(try Data(contentsOf: archive) == edited)
     }
 }
+
+@Test(.enabled(if: hasIntegrationFixture("FILES_TEST_SEVENZIP_REFERENCE") && hasIntegrationFixture("FILES_TEST_SEVENZIP_WORKER"), "Requires native SDK and reference"))
+func archiveEditEmptyZIPRequiresExplicitEncryptionAndPreservesUndo() async throws {
+    let root = try sdkRoot(); defer { try? FileManager.default.removeItem(at: root) }
+    let source = root.appendingPathComponent("original.txt"), added = root.appendingPathComponent("한글-added.txt")
+    let archive = root.appendingPathComponent("empty-policy.zip"), journals = root.appendingPathComponent("journals")
+    let bytes = Data("new encrypted ZIP payload".utf8), password = "ZIP-379-한글-🔑"
+    try Data("original encrypted ZIP payload".utf8).write(to: source); try bytes.write(to: added)
+    _ = try await ZipArchiveProvider().create(from: [source], at: archive, password: "original-password")
+    let original = try Data(contentsOf: archive), provider = try sdkRealProvider()
+    let removed = try await provider.edit(archive, operations: [.delete(paths: ["original.txt"])], password: "original-password", encryptNewData: true, journalDirectory: journals)
+    let empty = try Data(contentsOf: archive)
+    #expect(try ZipArchiveProvider().entries(at: archive).isEmpty)
+    await #expect(throws: SevenZipWorkerError.worker("password-required")) {
+        try await provider.edit(archive, operations: [.add(sources: [added], directory: "")], encryptNewData: true, journalDirectory: journals)
+    }
+    #expect(try Data(contentsOf: archive) == empty)
+    let protected = try await provider.edit(archive, operations: [.add(sources: [added], directory: "")], password: password, encryptNewData: true, journalDirectory: journals)
+    let protectedEntries = try ZipArchiveProvider().entries(at: archive)
+    #expect(protectedEntries.count == 1 && protectedEntries.first?.isEncrypted == true)
+    let restored = root.appendingPathComponent("restored")
+    try FileManager.default.createDirectory(at: restored, withIntermediateDirectories: false)
+    _ = try await ZipArchiveProvider().extract(archive, to: restored, password: password)
+    #expect(try Data(contentsOf: restored.appendingPathComponent(added.lastPathComponent)) == bytes)
+    _ = try await SevenZipArchiveProvider.recoverArchiveEdit(journal: protected.journal, journalDirectory: journals, action: .undo)
+    #expect(try Data(contentsOf: archive) == empty)
+    let plain = try await provider.edit(archive, operations: [.add(sources: [added], directory: "")], encryptNewData: false, journalDirectory: journals)
+    #expect(try ZipArchiveProvider().entries(at: archive).first?.isEncrypted == false)
+    _ = try await SevenZipArchiveProvider.recoverArchiveEdit(journal: plain.journal, journalDirectory: journals, action: .undo)
+    #expect(try Data(contentsOf: archive) == empty)
+    _ = try await SevenZipArchiveProvider.recoverArchiveEdit(journal: removed.journal, journalDirectory: journals, action: .undo)
+    #expect(try Data(contentsOf: archive) == original)
+}

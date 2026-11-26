@@ -11,6 +11,7 @@ import subprocess
 from sevenzip_fixture import empty_files
 
 TESTS = [
+    'archiveEditEmptyZIPRequiresExplicitEncryptionAndPreservesUndo',
     'archiveEditHistoryAndRedoRequireVerifiedFilesAndKeepUnreadableRecords',
     'archiveEditRedoRecoversBothProcessInterruptionBoundaries',
     'archiveCapabilityMatrixAdvertisesOnlyVerifiedProviderFeatures',
