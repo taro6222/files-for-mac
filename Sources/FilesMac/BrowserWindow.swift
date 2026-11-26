@@ -5519,463 +5519,471 @@ extension BrowserWindow {
             controller.quickLook.close(); window.makeKeyAndOrderFront(nil)
             checks["quickLookClearsItemsOnClose"] = controller.quickLook.qaItemCount == 0
                 && !controller.quickLook.qaProvidesItems
-            if let archiveItem = controller.model.items.first(where: { $0.name == archiveFixture.lastPathComponent }) {
-                controller.model.savePosition(selection: [archiveItem.id], scrollOffset: 0); controller.render(); controller.openArchive(nil)
-            }
-            let archiveLoad = ContinuousClock.now
-            while controller.archiveWindow?.qaLoaded != true && archiveLoad.duration(to: .now) < .seconds(10) { try await Task.sleep(for: .milliseconds(10)) }
-            checks["archiveWindow"] = controller.archiveWindow?.window?.isVisible == true
-            checks["archiveListing"] = controller.archiveWindow?.qaEntryCount == 1
-            let archiveDestination = destination.appendingPathComponent("archive-extracted", isDirectory: true)
-            if fm.fileExists(atPath: archiveDestination.path) { try fm.removeItem(at: archiveDestination) }
-            try fm.createDirectory(at: archiveDestination, withIntermediateDirectories: true)
-            controller.archiveWindow?.qaExtract(to: archiveDestination)
-            let archiveExtract = ContinuousClock.now
-            while controller.archiveWindow?.qaIsRunning == true && archiveExtract.duration(to: .now) < .seconds(10) { try await Task.sleep(for: .milliseconds(10)) }
-            let extractedArchiveText = try String(contentsOf: archiveDestination.appendingPathComponent("00000-한글-é-📁-long-file-name.txt"), encoding: .utf8)
-            checks["archiveExtraction"] = controller.archiveWindow?.qaSucceeded == true && extractedArchiveText == "fixture"
-            try capture("archive", view: controller.archiveWindow?.window?.contentView)
-            controller.archiveWindow?.close(); window.makeKeyAndOrderFront(nil)
-            let placementSources = destination.appendingPathComponent("archive-placement-sources", isDirectory: true)
-            let singleRoot = placementSources.appendingPathComponent("single-root", isDirectory: true)
-            try fm.createDirectory(at: singleRoot, withIntermediateDirectories: true)
-            try Data("single".utf8).write(to: singleRoot.appendingPathComponent("single.txt"))
-            let secondSource = placementSources.appendingPathComponent("second.txt")
-            try Data("second".utf8).write(to: secondSource)
-            let singleArchive = destination.appendingPathComponent("single-tree.zip")
-            let multipleArchive = destination.appendingPathComponent("multiple-roots.zip")
-            try? fm.removeItem(at: singleArchive); try? fm.removeItem(at: multipleArchive)
-            _ = try await ZipArchiveProvider().create(from: [singleRoot], at: singleArchive)
-            _ = try await ZipArchiveProvider().create(from: [singleRoot, secondSource], at: multipleArchive)
-            func verifyPlacement(_ archive: URL, placement: ArchiveExtractionPlacement, parentName: String, expected: String, checkName: String) async throws {
-                let parent = destination.appendingPathComponent(parentName, isDirectory: true)
-                try? fm.removeItem(at: parent)
-                try fm.createDirectory(at: parent, withIntermediateDirectories: true)
-                ArchiveExtractionWindow.start(archives: [archive], parent: parent, placement: placement) {}
-                let start = ContinuousClock.now
-                while ArchiveExtractionWindow.qaLatest?.qaRunning == true && start.duration(to: .now) < .seconds(10) { try await Task.sleep(for: .milliseconds(10)) }
-                checks[checkName] = ArchiveExtractionWindow.qaLatest?.qaSucceeded == true && fm.fileExists(atPath: parent.appendingPathComponent(expected).path)
-                if checkName == "archivePlacementSmartMany" { try capture("archive-placement", view: ArchiveExtractionWindow.qaLatest?.window?.contentView) }
-                ArchiveExtractionWindow.qaLatest?.close(); window.makeKeyAndOrderFront(nil)
-            }
-            try await verifyPlacement(singleArchive, placement: .here, parentName: "placement-here", expected: "single-root/single.txt", checkName: "archivePlacementHere")
-            try await verifyPlacement(singleArchive, placement: .smart, parentName: "placement-smart-one", expected: "single-root/single.txt", checkName: "archivePlacementSmartOne")
-            try await verifyPlacement(multipleArchive, placement: .smart, parentName: "placement-smart-many", expected: "multiple-roots/second.txt", checkName: "archivePlacementSmartMany")
-            try await verifyPlacement(singleArchive, placement: .childFolder, parentName: "placement-child", expected: "single-tree/single-root/single.txt", checkName: "archivePlacementChild")
-            let formatFixtureRoot = URL(fileURLWithPath: FileManager.default.currentDirectoryPath, isDirectory: true).appendingPathComponent("Tests/FilesCoreTests/Fixtures", isDirectory: true)
-            var extraFormatsPassed = true
-            for (name, expectedName) in [("libarchive-empty.7z", "empty"), ("libarchive-noeof.rar", "test.txt")] {
-                controller.presentArchive(formatFixtureRoot.appendingPathComponent(name))
-                let formatLoad = ContinuousClock.now
-                while controller.archiveWindow?.qaLoaded != true && formatLoad.duration(to: .now) < .seconds(10) { try await Task.sleep(for: .milliseconds(10)) }
-                extraFormatsPassed = extraFormatsPassed && controller.archiveWindow?.qaEntryCount == 1
-                let destination = destination.appendingPathComponent("extract-\(name)", isDirectory: true); try? fm.removeItem(at: destination); try fm.createDirectory(at: destination, withIntermediateDirectories: true)
-                controller.archiveWindow?.qaExtract(to: destination)
-                let formatExtract = ContinuousClock.now
-                while controller.archiveWindow?.qaIsRunning == true && formatExtract.duration(to: .now) < .seconds(10) { try await Task.sleep(for: .milliseconds(10)) }
-                extraFormatsPassed = extraFormatsPassed && controller.archiveWindow?.qaSucceeded == true && fm.fileExists(atPath: destination.appendingPathComponent(expectedName).path)
+            @MainActor @inline(never)
+            func verifyArchiveUIPhase() async throws {
+                if let archiveItem = controller.model.items.first(where: { $0.name == archiveFixture.lastPathComponent }) {
+                    controller.model.savePosition(selection: [archiveItem.id], scrollOffset: 0); controller.render(); controller.openArchive(nil)
+                }
+                let archiveLoad = ContinuousClock.now
+                while controller.archiveWindow?.qaLoaded != true && archiveLoad.duration(to: .now) < .seconds(10) { try await Task.sleep(for: .milliseconds(10)) }
+                checks["archiveWindow"] = controller.archiveWindow?.window?.isVisible == true
+                checks["archiveListing"] = controller.archiveWindow?.qaEntryCount == 1
+                let archiveDestination = destination.appendingPathComponent("archive-extracted", isDirectory: true)
+                if fm.fileExists(atPath: archiveDestination.path) { try fm.removeItem(at: archiveDestination) }
+                try fm.createDirectory(at: archiveDestination, withIntermediateDirectories: true)
+                controller.archiveWindow?.qaExtract(to: archiveDestination)
+                let archiveExtract = ContinuousClock.now
+                while controller.archiveWindow?.qaIsRunning == true && archiveExtract.duration(to: .now) < .seconds(10) { try await Task.sleep(for: .milliseconds(10)) }
+                let extractedArchiveText = try String(contentsOf: archiveDestination.appendingPathComponent("00000-한글-é-📁-long-file-name.txt"), encoding: .utf8)
+                checks["archiveExtraction"] = controller.archiveWindow?.qaSucceeded == true && extractedArchiveText == "fixture"
+                try capture("archive", view: controller.archiveWindow?.window?.contentView)
                 controller.archiveWindow?.close(); window.makeKeyAndOrderFront(nil)
-            }
-            checks["sevenZipAndRarExtraction"] = extraFormatsPassed
-            let archiveParent = destination.appendingPathComponent("archive-default-parent.v1", isDirectory: true)
-            try fm.createDirectory(at: archiveParent, withIntermediateDirectories: true)
-            let names = [("preview.txt", "preview.txt.zip"), ("한글.메모.txt", "한글.메모.txt.zip"),
-                         ("Folder.v1", "Folder.v1.zip"), ("archive.zip", "archive.zip.zip"), ("bundle.tar.gz", "bundle.tar.gz.zip")]
-            checks["archiveDefaultNamePreservesSingleItem"] = names.allSatisfy { name, expected in
-                Self.archiveSavePanel(sources: [archiveParent.appendingPathComponent(name)], parent: archiveParent).nameFieldStringValue == expected
-            }
-            let archiveSources = [archiveParent.appendingPathComponent("a.txt"), archiveParent.appendingPathComponent("b.txt")]
-            checks["archiveDefaultNameUsesParentForMultipleItems"] = Self.archiveSavePanel(sources: archiveSources,
-                parent: archiveParent).nameFieldStringValue == "archive-default-parent.v1.zip"
-            checks["archiveDefaultNameRootFallback"] = Self.archiveSavePanel(sources: archiveSources,
-                parent: URL(fileURLWithPath: "/", isDirectory: true)).nameFieldStringValue == L("압축 파일.zip", "Archive.zip")
-            let archivePreferences = BrowserPreferences(defaults: defaults, initialFavorites: [])
-            let formatPanel = Self.archiveSavePanel(sources: [archiveParent.appendingPathComponent("preview.txt")], parent: archiveParent, preferences: archivePreferences)
-            if let options = formatPanel.accessoryView as? ArchiveSaveOptionsView {
-                let button = options.formatButton
-                checks["archiveFormatDefault"] = button.itemTitles == ["ZIP (.zip)", "7z (.7z)"] && button.indexOfSelectedItem == 0 &&
-                    formatPanel.allowedContentTypes == [.zip] && !formatPanel.allowsOtherFileTypes
-                button.selectItem(at: 1); NSApp.sendAction(button.action!, to: button.target, from: button)
-                checks["archiveFormatSevenZipSelection"] = formatPanel.nameFieldStringValue == "preview.txt.7z" &&
-                    formatPanel.allowedContentTypes == [UTType(filenameExtension: "7z")!] && formatPanel.directoryURL == archiveParent
-                formatPanel.nameFieldStringValue = "한글.이름.tar.gz"
-                button.selectItem(at: 0); NSApp.sendAction(button.action!, to: button.target, from: button)
-                NSApp.sendAction(button.action!, to: button.target, from: button)
-                let manualNamePreserved = formatPanel.nameFieldStringValue == "한글.이름.tar.gz.zip" && formatPanel.allowedContentTypes == [.zip]
-                formatPanel.nameFieldStringValue = "archive.ZIP.zip"
-                button.selectItem(at: 1); NSApp.sendAction(button.action!, to: button.target, from: button)
-                button.selectItem(at: 0); NSApp.sendAction(button.action!, to: button.target, from: button)
-                checks["archiveFormatPreservesEditedBaseAndRoundTrips"] = manualNamePreserved && formatPanel.nameFieldStringValue == "archive.ZIP.zip"
-                formatPanel.nameFieldStringValue = ""
-                button.selectItem(at: 1); NSApp.sendAction(button.action!, to: button.target, from: button)
-                let emptyNamePreserved = formatPanel.nameFieldStringValue.isEmpty
-                formatPanel.nameFieldStringValue = "already.7Z"
-                button.selectItem(at: 0); NSApp.sendAction(button.action!, to: button.target, from: button)
-                checks["archiveFormatEmptyAndExplicitExtension"] = emptyNamePreserved && formatPanel.nameFieldStringValue == "already.zip"
-                checks["archiveCompressionLevelDefault"] = options.levelButton.numberOfItems == 6 && options.compressionLevel == .normal
-                options.levelButton.selectItem(at: 0)
-                NSApp.sendAction(options.levelButton.action!, to: options.levelButton.target, from: options.levelButton)
-                let ultraSelected = options.compressionLevel == .ultra
-                options.levelButton.selectItem(at: 5)
-                NSApp.sendAction(options.levelButton.action!, to: options.levelButton.target, from: options.levelButton)
-                let reopenedPanel = Self.archiveSavePanel(sources: archiveSources, parent: archiveParent, preferences: archivePreferences)
-                checks["archiveCompressionLevelSelection"] = ultraSelected && options.compressionLevel == .store && archivePreferences.archiveCompressionLevel == .store &&
-                    (reopenedPanel.accessoryView as? ArchiveSaveOptionsView)?.compressionLevel == .store
-                options.appearance = window.effectiveAppearance
-                try capture("archive-format-options", view: options, backingColor: .windowBackgroundColor)
-            } else {
-                checks["archiveFormatDefault"] = false; checks["archiveFormatSevenZipSelection"] = false
-                checks["archiveFormatPreservesEditedBaseAndRoundTrips"] = false
-                checks["archiveFormatEmptyAndExplicitExtension"] = false
-                checks["archiveCompressionLevelDefault"] = false; checks["archiveCompressionLevelSelection"] = false
-            }
-            let createdArchive = destination.appendingPathComponent("created-by-ui.zip")
-            try? fm.removeItem(at: createdArchive)
-            ArchiveCreationWindow.start(sources: [fixture.appendingPathComponent("00000-한글-é-📁-long-file-name.txt")], destination: createdArchive,
-                                        compressionLevel: (formatPanel.accessoryView as? ArchiveSaveOptionsView)?.compressionLevel) {}
-            let archiveCreate = ContinuousClock.now
-            while ArchiveCreationWindow.qaLatest?.qaRunning == true && archiveCreate.duration(to: .now) < .seconds(10) { try await Task.sleep(for: .milliseconds(10)) }
-            let createdEntries = try ZipArchiveProvider().entries(at: createdArchive)
-            let storedZIP = try Data(contentsOf: createdArchive)
-            checks["archiveCreation"] = ArchiveCreationWindow.qaLatest?.qaSucceeded == true && createdEntries.count == 1 &&
-                storedZIP.count > 10 && storedZIP[8] == 0 && storedZIP[9] == 0
-            try capture("archive-creation", view: ArchiveCreationWindow.qaLatest?.window?.contentView)
-            ArchiveCreationWindow.qaLatest?.close(); window.makeKeyAndOrderFront(nil)
-            let createdSevenZip = destination.appendingPathComponent("created-by-ui.7z"); try? fm.removeItem(at: createdSevenZip)
-            (formatPanel.accessoryView as? ArchiveSaveOptionsView)?.levelButton.selectItem(at: 0)
-            ArchiveCreationWindow.start(sources: [fixture.appendingPathComponent("00000-한글-é-📁-long-file-name.txt")], destination: createdSevenZip,
-                                        compressionLevel: (formatPanel.accessoryView as? ArchiveSaveOptionsView)?.compressionLevel) {}
-            let sevenZipCreate = ContinuousClock.now
-            while ArchiveCreationWindow.qaLatest?.qaRunning == true && sevenZipCreate.duration(to: .now) < .seconds(10) { try await Task.sleep(for: .milliseconds(10)) }
-            let createdSevenZipEntries = try ZipArchiveProvider().entries(at: createdSevenZip)
-            checks["sevenZipCreation"] = ArchiveCreationWindow.qaLatest?.qaSucceeded == true && createdSevenZipEntries.count == 1
-            ArchiveCreationWindow.qaLatest?.close(); window.makeKeyAndOrderFront(nil)
-            let cancellationSource = destination.appendingPathComponent("archive-cancel-source.bin")
-            try Data(repeating: 0x5a, count: 16 * 1024 * 1024).write(to: cancellationSource)
-            let cancelledArchive = destination.appendingPathComponent("cancelled-by-ui.7z"); try? fm.removeItem(at: cancelledArchive)
-            ArchiveCreationWindow.start(sources: [cancellationSource], destination: cancelledArchive) {}
-            ArchiveCreationWindow.qaLatest?.qaCancel()
-            let cancellationWait = ContinuousClock.now
-            while ArchiveCreationWindow.qaLatest?.qaRunning == true && cancellationWait.duration(to: .now) < .seconds(2) { try await Task.sleep(for: .milliseconds(10)) }
-            let cancellationDirectoryNames = try fm.contentsOfDirectory(atPath: destination.path)
-            checks["archiveCreationCancellation"] = ArchiveCreationWindow.qaLatest?.qaRunning == false && !fm.fileExists(atPath: cancelledArchive.path) && cancellationDirectoryNames.allSatisfy { !$0.hasPrefix(".files-create-") }
-            ArchiveCreationWindow.qaLatest?.close(); try? fm.removeItem(at: cancellationSource); window.makeKeyAndOrderFront(nil)
-            let encryptedByUI = destination.appendingPathComponent("encrypted-by-ui.zip")
-            let encryptionPanel = Self.archiveSavePanel(sources: [fixture.appendingPathComponent("00000-한글-é-📁-long-file-name.txt")], parent: destination)
-            if let options = encryptionPanel.accessoryView as? ArchiveSaveOptionsView {
-                options.encryptionButton.performClick(nil)
-                var rejectsEmpty = false
-                do { try options.panel(encryptionPanel, validate: encryptedByUI) } catch { rejectsEmpty = true }
-                let allowsSevenZip = options.formatButton.item(at: 1)?.isEnabled == true
-                options.formatButton.selectItem(at: 1); NSApp.sendAction(options.formatButton.action!, to: options.formatButton.target, from: options.formatButton)
-                checks["archiveEncryptionValidationAndFormatGate"] = rejectsEmpty && allowsSevenZip && options.formatButton.indexOfSelectedItem == 1 && options.encryptHeader && !options.headerEncryptionButton.isHidden
-                options.formatButton.selectItem(at: 0); NSApp.sendAction(options.formatButton.action!, to: options.formatButton.target, from: options.formatButton)
-                let testPassword = "QA-342-한글-password"
-                options.passwordInput.value = testPassword
-                try options.panel(encryptionPanel, validate: encryptedByUI)
-                options.passwordInput.revealButton.performClick(nil)
-                let revealed = options.passwordInput.visibleField.stringValue == testPassword && options.passwordInput.secureField.stringValue.isEmpty
-                options.passwordInput.revealButton.performClick(nil)
-                let masked = options.passwordInput.visibleField.isHidden && options.passwordInput.visibleField.stringValue.isEmpty && options.passwordInput.value == testPassword
-                options.appearance = window.effectiveAppearance
-                try capture("archive-encryption-options", view: options, backingColor: .windowBackgroundColor)
-                let creationPassword = options.takePassword()
-                checks["archivePasswordRevealAndClear"] = revealed && masked && creationPassword == testPassword && options.passwordInput.value.isEmpty && options.encryptionButton.state == .off
-                ArchiveCreationWindow.start(sources: [fixture.appendingPathComponent("00000-한글-é-📁-long-file-name.txt")], destination: encryptedByUI, password: creationPassword) {}
-                let encryptedCreate = ContinuousClock.now
-                while ArchiveCreationWindow.qaLatest?.qaRunning == true && encryptedCreate.duration(to: .now) < .seconds(10) { try await Task.sleep(for: .milliseconds(10)) }
-                let encryptedEntries = try ZipArchiveProvider().entries(at: encryptedByUI)
-                checks["archiveEncryptedCreation"] = ArchiveCreationWindow.qaLatest?.qaSucceeded == true && encryptedEntries.count == 1 && encryptedEntries[0].isEncrypted
-                ArchiveCreationWindow.qaLatest?.close()
-                let encryptedBrowser = ArchiveWindow(); encryptedBrowser.present(archiveURL: encryptedByUI)
-                let encryptedRead = ContinuousClock.now
-                while !encryptedBrowser.qaLoaded && encryptedRead.duration(to: .now) < .seconds(10) { try await Task.sleep(for: .milliseconds(10)) }
-                let originalBytes = try Data(contentsOf: fixture.appendingPathComponent("00000-한글-é-📁-long-file-name.txt"))
-                var passwordRetry = encryptedBrowser.qaEntryCount == 1
-                for (name, password) in [("wrong", "wrong-password"), ("correct", testPassword)] {
-                    let target = destination.appendingPathComponent("encrypted-browser-" + name, isDirectory: true)
-                    try fm.createDirectory(at: target, withIntermediateDirectories: false)
-                    encryptedBrowser.qaExtract(to: target)
-                    if let prompt = await ArchivePasswordPrompt.qaWait(for: encryptedBrowser.window!) {
-                        passwordRetry = passwordRetry && prompt.qaRejectsEmpty
-                        prompt.qaSubmit(password)
-                        let wait = ContinuousClock.now
-                        while encryptedBrowser.qaIsRunning && wait.duration(to: .now) < .seconds(10) { try await Task.sleep(for: .milliseconds(10)) }
-                        passwordRetry = passwordRetry && prompt.input.value.isEmpty && !encryptedBrowser.qaIsRunning
-                    } else { passwordRetry = false; encryptedBrowser.qaCancel() }
-                    if name == "wrong" {
-                        passwordRetry = passwordRetry && !encryptedBrowser.qaSucceeded && ((try? fm.contentsOfDirectory(atPath: target.path))?.isEmpty == true)
-                    } else {
-                        passwordRetry = passwordRetry && encryptedBrowser.qaSucceeded && (try? Data(contentsOf: target.appendingPathComponent("00000-한글-é-📁-long-file-name.txt"))) == originalBytes
-                    }
-                }
-                checks["archiveEncryptedBrowserWrongPasswordAndRetry"] = passwordRetry
-                var cancelledPrompts = true
-                for stopOperation in [false, true] {
-                    let target = destination.appendingPathComponent("encrypted-browser-cancel-\(stopOperation)", isDirectory: true)
-                    try fm.createDirectory(at: target, withIntermediateDirectories: false)
-                    encryptedBrowser.qaExtract(to: target)
-                    if let prompt = await ArchivePasswordPrompt.qaWait(for: encryptedBrowser.window!) {
-                        if stopOperation { encryptedBrowser.qaCancel() } else { prompt.qaSubmit(nil) }
-                        let wait = ContinuousClock.now
-                        while encryptedBrowser.qaIsRunning && wait.duration(to: .now) < .seconds(5) { try await Task.sleep(for: .milliseconds(10)) }
-                        cancelledPrompts = cancelledPrompts && prompt.input.value.isEmpty && !encryptedBrowser.qaIsRunning && !encryptedBrowser.qaSucceeded && ((try? fm.contentsOfDirectory(atPath: target.path))?.isEmpty == true)
-                    } else { cancelledPrompts = false; encryptedBrowser.qaCancel() }
-                }
-                checks["archiveEncryptedBrowserCancellationAndStop"] = cancelledPrompts
-                encryptedBrowser.close()
-                var batchEncrypted = true
-                let damagedZIP = destination.appendingPathComponent("damaged-after-encrypted.zip")
-                try Data("not an archive".utf8).write(to: damagedZIP)
-                for mode in ["correct", "wrong", "cancel", "damaged"] {
-                    let target = destination.appendingPathComponent("encrypted-batch-" + mode, isDirectory: true)
-                    try fm.createDirectory(at: target, withIntermediateDirectories: false)
-                    ArchiveExtractionWindow.start(archives: [encryptedByUI, mode == "damaged" ? damagedZIP : createdArchive], parent: target, placement: .childFolder) {}
-                    if let operation = ArchiveExtractionWindow.qaLatest,
-                       let prompt = await ArchivePasswordPrompt.qaWait(for: operation.window!) {
-                        prompt.qaSubmit(mode == "cancel" ? nil : (["correct", "damaged"].contains(mode) ? testPassword : "wrong-password"))
-                        let wait = ContinuousClock.now
-                        while operation.qaRunning && wait.duration(to: .now) < .seconds(10) { try await Task.sleep(for: .milliseconds(10)) }
-                        batchEncrypted = batchEncrypted && !operation.qaRunning && prompt.input.value.isEmpty
-                        if mode == "correct" {
-                            for child in ["encrypted-by-ui", "created-by-ui"] {
-                                batchEncrypted = batchEncrypted && operation.qaSucceeded && (try? Data(contentsOf: target.appendingPathComponent(child).appendingPathComponent("00000-한글-é-📁-long-file-name.txt"))) == originalBytes
-                            }
-                        } else if mode == "damaged" {
-                            batchEncrypted = batchEncrypted && !operation.qaSucceeded && !operation.qaMessage.contains(L("암호", "password")) &&
-                                (try? Data(contentsOf: target.appendingPathComponent("encrypted-by-ui").appendingPathComponent("00000-한글-é-📁-long-file-name.txt"))) == originalBytes &&
-                                (try? fm.contentsOfDirectory(atPath: target.path))?.count == 1
-                        } else {
-                            batchEncrypted = batchEncrypted && !operation.qaSucceeded && ((try? fm.contentsOfDirectory(atPath: target.path))?.isEmpty == true)
-                        }
-                        operation.close()
-                    } else { batchEncrypted = false }
-                }
-                checks["archiveEncryptedBatchExtractionAndCancel"] = batchEncrypted
-                window.makeKeyAndOrderFront(nil)
-            } else {
-                for key in ["archiveEncryptionValidationAndFormatGate", "archivePasswordRevealAndClear", "archiveEncryptedCreation", "archiveEncryptedBrowserWrongPasswordAndRetry", "archiveEncryptedBrowserCancellationAndStop", "archiveEncryptedBatchExtractionAndCancel"] { checks[key] = false }
-            }
-            let sevenZipKeys = ["sevenZipEncryptedBrowseAndRetry", "sevenZipEncryptedExtractAndCancel", "sevenZipBatchPlacement", "sevenZipChildCollision", "sevenZipHeaderCancellation", "sevenZipPasswordCapability", "sevenZipEncryptedCreationOptionsAndRoundTrip", "sevenZipAdvancedOptionsAndRestore", "sevenZipAdvancedThreadValidationAndEstimate", "sevenZipSplitBrowseAndExtraction", "sevenZipSplitBatchAndMissingVolume", "sevenZipSplitCreationOptionsAndRestore", "sevenZipSplitCreationRoundTrip", "sevenZipSplitHistoryWindow"]
-            if let referencePath = ProcessInfo.processInfo.environment["FILES_UI_QA_SEVENZIP_REFERENCE"],
-               ProcessInfo.processInfo.environment["FILES_UI_QA_SEVENZIP_BUNDLE"] != nil {
-                let source = destination.appendingPathComponent("sdk-ui-source"), archive = destination.appendingPathComponent("sdk-encrypted.7z")
-                try fm.createDirectory(at: source.appendingPathComponent("nested"), withIntermediateDirectories: true)
-                let filename = "한글-🔑.txt", payload = Data("7z UI payload".utf8), password = "QA-350-한글-🔑"
-                try payload.write(to: source.appendingPathComponent(filename)); try Data(repeating: 0x51, count: 32768).write(to: source.appendingPathComponent("nested/data.bin"))
-                let reference = Process(), input = Pipe(), logURL = destination.appendingPathComponent("sdk-reference.log")
-                fm.createFile(atPath: logURL.path, contents: nil)
-                let log = try FileHandle(forWritingTo: logURL); defer { try? log.close() }
-                reference.executableURL = URL(fileURLWithPath: referencePath); reference.currentDirectoryURL = source
-                reference.arguments = ["a", "-t7z", "-mhe=on", "-p", "-y", archive.path, "."]
-                reference.standardInput = input; reference.standardOutput = log; reference.standardError = log
-                try reference.run()
-                defer { if reference.isRunning { reference.terminate() } }
-                try input.fileHandleForWriting.write(contentsOf: Data((password + "\n" + password + "\n").utf8)); try input.fileHandleForWriting.close()
-                let referenceStart = ContinuousClock.now
-                while reference.isRunning && referenceStart.duration(to: .now) < .seconds(20) { try await Task.sleep(for: .milliseconds(10)) }
-                guard !reference.isRunning, reference.terminationStatus == 0 else { throw CocoaError(.fileReadCorruptFile) }
-                let browser = ArchiveWindow(); var readOK = true
-                for entered in ["wrong", password] {
-                    browser.present(archiveURL: archive)
-                    if let prompt = await ArchivePasswordPrompt.qaWait(for: browser.window!) {
-                        if entered == password { try capture("sevenzip-password-open", view: prompt.input) }
-                        prompt.qaSubmit(entered)
-                        let start = ContinuousClock.now
-                        while browser.qaIsRunning && start.duration(to: .now) < .seconds(10) { try await Task.sleep(for: .milliseconds(10)) }
-                        readOK = readOK && !browser.qaIsRunning && prompt.input.value.isEmpty
-                        readOK = readOK && (entered == password ? browser.qaEntryCount == 3 : browser.qaEntryCount == 0 && browser.qaMessage.contains(L("암호", "password")))
-                    } else { readOK = false; browser.qaCancel() }
-                }
-                checks[sevenZipKeys[0]] = readOK
-                var extractOK = true
-                for entered in ["wrong", password, "cancel"] {
-                    let target = destination.appendingPathComponent("sdk-browser-" + (entered == password ? "correct" : entered))
-                    try fm.createDirectory(at: target, withIntermediateDirectories: false); browser.qaExtract(to: target)
-                    if let prompt = await ArchivePasswordPrompt.qaWait(for: browser.window!) {
-                        prompt.qaSubmit(entered == "cancel" ? nil : entered)
-                        let start = ContinuousClock.now
-                        while browser.qaIsRunning && start.duration(to: .now) < .seconds(10) { try await Task.sleep(for: .milliseconds(10)) }
-                        extractOK = extractOK && !browser.qaIsRunning && prompt.input.value.isEmpty
-                        if entered == password { extractOK = extractOK && browser.qaSucceeded && (try? Data(contentsOf: target.appendingPathComponent(filename))) == payload }
-                        else { extractOK = extractOK && !browser.qaSucceeded && ((try? fm.contentsOfDirectory(atPath: target.path))?.isEmpty == true) }
-                    } else { extractOK = false; browser.qaCancel() }
-                }
-                checks[sevenZipKeys[1]] = extractOK; browser.close()
-                var placementsOK = true, collisionOK = false
-                for placement in [ArchiveExtractionPlacement.here, .smart, .childFolder] {
-                    let name = placement == .here ? "here" : (placement == .smart ? "smart" : "child")
-                    let target = destination.appendingPathComponent("sdk-placement-" + name)
-                    try fm.createDirectory(at: target, withIntermediateDirectories: false)
-                    if placement == .childFolder { try fm.createDirectory(at: target.appendingPathComponent("sdk-encrypted"), withIntermediateDirectories: false) }
-                    ArchiveExtractionWindow.start(archives: [archive], parent: target, placement: placement) {}
-                    if let operation = ArchiveExtractionWindow.qaLatest, let prompt = await ArchivePasswordPrompt.qaWait(for: operation.window!) {
-                        prompt.qaSubmit(password)
-                        let start = ContinuousClock.now
-                        while operation.qaRunning && start.duration(to: .now) < .seconds(10) { try await Task.sleep(for: .milliseconds(10)) }
-                        let result = placement == .here ? target : target.appendingPathComponent(placement == .smart ? "sdk-encrypted" : "sdk-encrypted 2")
-                        placementsOK = placementsOK && operation.qaSucceeded && prompt.input.value.isEmpty && (try? Data(contentsOf: result.appendingPathComponent(filename))) == payload
-                        if placement == .childFolder { collisionOK = (try? fm.contentsOfDirectory(atPath: target.appendingPathComponent("sdk-encrypted").path))?.isEmpty == true }
-                        operation.close()
-                    } else { placementsOK = false }
-                }
-                checks[sevenZipKeys[2]] = placementsOK; checks[sevenZipKeys[3]] = collisionOK
-                let cancelled = ArchiveWindow(); cancelled.present(archiveURL: archive)
-                if let prompt = await ArchivePasswordPrompt.qaWait(for: cancelled.window!) {
-                    cancelled.qaCancel(); let start = ContinuousClock.now
-                    while cancelled.qaIsRunning && start.duration(to: .now) < .seconds(5) { try await Task.sleep(for: .milliseconds(10)) }
-                    checks[sevenZipKeys[4]] = !cancelled.qaIsRunning && cancelled.qaEntryCount == 0 && prompt.input.value.isEmpty
-                } else { checks[sevenZipKeys[4]] = false }
-                cancelled.close()
-                let capabilities = ArchiveCapabilitiesWindow(); capabilities.present()
-                let supportStart = ContinuousClock.now
-                while capabilities.qaSevenZipPassword == L("확인 중", "Checking") && supportStart.duration(to: .now) < .seconds(5) { try await Task.sleep(for: .milliseconds(10)) }
-                checks[sevenZipKeys[5]] = capabilities.qaSevenZipPassword == L("생성·추출", "Create/extract")
-                let splitCapability = capabilities.qaSevenZipSplit == L("생성·탐색·추출", "Create/browse/extract")
-                capabilities.close()
-                let createdArchive = destination.appendingPathComponent("sdk-created-by-ui.7z")
-                let advancedSuite = "FilesUI.ArchiveAdvanced.\(UUID())"
-                let advancedDefaults = UserDefaults(suiteName: advancedSuite)!
-                defer { advancedDefaults.removePersistentDomain(forName: advancedSuite) }
-                let advancedPreferences = BrowserPreferences(defaults: advancedDefaults, initialFavorites: [])
-                let savePanel = Self.archiveSavePanel(sources: [source], parent: destination, preferences: advancedPreferences)
-                if let options = savePanel.accessoryView as? ArchiveSaveOptionsView {
-                    options.formatButton.selectItem(at: 1); NSApp.sendAction(options.formatButton.action!, to: options.formatButton.target, from: options.formatButton)
-                    let advanced = options.advanced
-                    let initialEstimate = advanced.memoryLabel.stringValue
-                    advanced.dictionaryButton.selectItem(withTag: 65536)
-                    NSApp.sendAction(advanced.dictionaryButton.action!, to: advanced.dictionaryButton.target, from: advanced.dictionaryButton)
-                    advanced.wordButton.selectItem(withTag: 128)
-                    NSApp.sendAction(advanced.wordButton.action!, to: advanced.wordButton.target, from: advanced.wordButton)
-                    advanced.threadsField.stringValue = "1"
-                    NSApp.sendAction(advanced.threadsField.action!, to: advanced.threadsField.target, from: advanced.threadsField)
-                    let selectedAdvanced = options.sevenZipOptions
-                    let selectedEstimate = advanced.memoryLabel.stringValue
-                    options.levelButton.selectItem(at: 5); NSApp.sendAction(options.levelButton.action!, to: options.levelButton.target, from: options.levelButton)
-                    let storeDisables = !advanced.dictionaryButton.isEnabled && !advanced.wordButton.isEnabled
-                    options.levelButton.selectItem(at: 2); NSApp.sendAction(options.levelButton.action!, to: options.levelButton.target, from: options.levelButton)
-                    let reopened = Self.archiveSavePanel(sources: [source], parent: destination, preferences: BrowserPreferences(defaults: advancedDefaults))
-                    let reopenedOptions = reopened.accessoryView as? ArchiveSaveOptionsView
-                    checks[sevenZipKeys[7]] = advanced.dictionaryButton.numberOfItems == 14 && advanced.wordButton.numberOfItems == 8 && storeDisables &&
-                        advanced.dictionaryButton.isEnabled && selectedAdvanced == SevenZipCompressionOptions(dictionarySize: 65536, wordSize: 128, threadCount: 1) &&
-                        reopenedOptions?.sevenZipOptions == selectedAdvanced && reopenedOptions?.formatButton.indexOfSelectedItem == 1 && reopened.nameFieldStringValue.hasSuffix(".7z")
-                    var invalidThreads = true
-                    for value in ["0", String(SevenZipCompressionOptions.hostThreadCount + 1), "1.5", ""] {
-                        advanced.threadsField.stringValue = value
-                        do { try options.panel(savePanel, validate: createdArchive); invalidThreads = false } catch {}
-                    }
-                    advanced.threadsField.stringValue = "1"
-                    NSApp.sendAction(advanced.threadsField.action!, to: advanced.threadsField.target, from: advanced.threadsField)
-                    checks[sevenZipKeys[8]] = invalidThreads && !selectedEstimate.isEmpty && selectedEstimate != initialEstimate && !advanced.memoryLabel.isHidden
-                    options.encryptionButton.performClick(nil); options.passwordInput.value = password
-                    try options.panel(savePanel, validate: createdArchive)
-                    let encryptedHeader = options.encryptHeader
-                    options.headerEncryptionButton.performClick(nil)
-                    let headerCanBeDisabled = !options.encryptHeader
-                    options.headerEncryptionButton.performClick(nil)
-                    options.appearance = window.effectiveAppearance
-                    try capture("sevenzip-creation-options", view: options, backingColor: .windowBackgroundColor)
-                    let creationPassword = options.takePassword()
-                    ArchiveCreationWindow.start(sources: [source], destination: createdArchive, compressionLevel: options.compressionLevel,
-                                                password: creationPassword, encryptHeader: encryptedHeader, sevenZipOptions: selectedAdvanced) {}
+                let placementSources = destination.appendingPathComponent("archive-placement-sources", isDirectory: true)
+                let singleRoot = placementSources.appendingPathComponent("single-root", isDirectory: true)
+                try fm.createDirectory(at: singleRoot, withIntermediateDirectories: true)
+                try Data("single".utf8).write(to: singleRoot.appendingPathComponent("single.txt"))
+                let secondSource = placementSources.appendingPathComponent("second.txt")
+                try Data("second".utf8).write(to: secondSource)
+                let singleArchive = destination.appendingPathComponent("single-tree.zip")
+                let multipleArchive = destination.appendingPathComponent("multiple-roots.zip")
+                try? fm.removeItem(at: singleArchive); try? fm.removeItem(at: multipleArchive)
+                _ = try await ZipArchiveProvider().create(from: [singleRoot], at: singleArchive)
+                _ = try await ZipArchiveProvider().create(from: [singleRoot, secondSource], at: multipleArchive)
+                func verifyPlacement(_ archive: URL, placement: ArchiveExtractionPlacement, parentName: String, expected: String, checkName: String) async throws {
+                    let parent = destination.appendingPathComponent(parentName, isDirectory: true)
+                    try? fm.removeItem(at: parent)
+                    try fm.createDirectory(at: parent, withIntermediateDirectories: true)
+                    ArchiveExtractionWindow.start(archives: [archive], parent: parent, placement: placement) {}
                     let start = ContinuousClock.now
-                    while ArchiveCreationWindow.qaLatest?.qaRunning == true && start.duration(to: .now) < .seconds(15) { try await Task.sleep(for: .milliseconds(10)) }
-                    let creationSucceeded = ArchiveCreationWindow.qaLatest?.qaSucceeded == true
-                    if ArchiveCreationWindow.qaLatest?.qaRunning == false { ArchiveCreationWindow.qaLatest?.close() }
-                    if creationSucceeded, case .sevenZip(let sdk) = try await ArchiveReadBackend.resolve(for: createdArchive) {
-                        let restored = destination.appendingPathComponent("sdk-created-restored")
-                        _ = try await sdk.extractToNewDirectory(createdArchive, at: restored, password: password)
-                        var needsPassword = false
-                        do { _ = try await sdk.entries(at: createdArchive) }
-                        catch SevenZipWorkerError.worker("password-required") { needsPassword = true }
-                        let restoredPayload = try Data(contentsOf: restored.appendingPathComponent(source.lastPathComponent).appendingPathComponent(filename))
-                        checks[sevenZipKeys[6]] = encryptedHeader && headerCanBeDisabled && needsPassword && options.passwordInput.value.isEmpty && restoredPayload == payload
-                    } else { checks[sevenZipKeys[6]] = false }
-                } else { for index in 6...8 { checks[sevenZipKeys[index]] = false } }
-                let splitBase = destination.appendingPathComponent("sdk-split.7z"), splitReference = Process(), splitInput = Pipe()
-                splitReference.executableURL = URL(fileURLWithPath: referencePath); splitReference.currentDirectoryURL = source
-                splitReference.arguments = ["a", "-t7z", "-mx=0", "-v4k", "-mhe=on", "-p", "-y", splitBase.path, "."]
-                splitReference.standardInput = splitInput; splitReference.standardOutput = log; splitReference.standardError = log
-                try splitReference.run(); defer { if splitReference.isRunning { splitReference.terminate() } }
-                try splitInput.fileHandleForWriting.write(contentsOf: Data((password + "\n" + password + "\n").utf8)); try splitInput.fileHandleForWriting.close()
-                let splitStart = ContinuousClock.now
-                while splitReference.isRunning && splitStart.duration(to: .now) < .seconds(20) { try await Task.sleep(for: .milliseconds(10)) }
-                guard !splitReference.isRunning, splitReference.terminationStatus == 0 else { throw CocoaError(.fileReadCorruptFile) }
-                let splitFirst = splitBase.appendingPathExtension("001"), splitSecond = splitBase.appendingPathExtension("002")
-                let splitBrowser = ArchiveWindow(); splitBrowser.present(archiveURL: splitSecond)
-                var splitRead = false
-                if let prompt = await ArchivePasswordPrompt.qaWait(for: splitBrowser.window!) {
-                    prompt.qaSubmit(password); let start = ContinuousClock.now
-                    while splitBrowser.qaIsRunning && start.duration(to: .now) < .seconds(10) { try await Task.sleep(for: .milliseconds(10)) }
-                    splitRead = !splitBrowser.qaIsRunning && splitBrowser.qaEntryCount == 3
+                    while ArchiveExtractionWindow.qaLatest?.qaRunning == true && start.duration(to: .now) < .seconds(10) { try await Task.sleep(for: .milliseconds(10)) }
+                    checks[checkName] = ArchiveExtractionWindow.qaLatest?.qaSucceeded == true && fm.fileExists(atPath: parent.appendingPathComponent(expected).path)
+                    if checkName == "archivePlacementSmartMany" { try capture("archive-placement", view: ArchiveExtractionWindow.qaLatest?.window?.contentView) }
+                    ArchiveExtractionWindow.qaLatest?.close(); window.makeKeyAndOrderFront(nil)
                 }
-                let splitOutput = destination.appendingPathComponent("sdk-split-single"); try fm.createDirectory(at: splitOutput, withIntermediateDirectories: false)
-                splitBrowser.qaExtract(to: splitOutput)
-                if let prompt = await ArchivePasswordPrompt.qaWait(for: splitBrowser.window!) {
-                    prompt.qaSubmit(password); let start = ContinuousClock.now
-                    while splitBrowser.qaIsRunning && start.duration(to: .now) < .seconds(10) { try await Task.sleep(for: .milliseconds(10)) }
-                    splitRead = splitRead && splitBrowser.qaSucceeded && (try? Data(contentsOf: splitOutput.appendingPathComponent(filename))) == payload
-                } else { splitRead = false; splitBrowser.qaCancel() }
-                checks[sevenZipKeys[9]] = splitRead && splitCapability
-                splitBrowser.close()
-                let splitBatchOutput = destination.appendingPathComponent("sdk-split-batch"); try fm.createDirectory(at: splitBatchOutput, withIntermediateDirectories: false)
-                ArchiveExtractionWindow.start(archives: [splitSecond, splitFirst], parent: splitBatchOutput, placement: .childFolder) {}
-                var splitBatch = false
-                if let operation = ArchiveExtractionWindow.qaLatest, let prompt = await ArchivePasswordPrompt.qaWait(for: operation.window!) {
-                    prompt.qaSubmit(password); let start = ContinuousClock.now
-                    while operation.qaRunning && start.duration(to: .now) < .seconds(10) { try await Task.sleep(for: .milliseconds(10)) }
-                    splitBatch = operation.qaSucceeded && (try? Data(contentsOf: splitBatchOutput.appendingPathComponent("sdk-split").appendingPathComponent(filename))) == payload &&
-                        (try? fm.contentsOfDirectory(atPath: splitBatchOutput.path)) == ["sdk-split"]
-                    operation.close()
+                try await verifyPlacement(singleArchive, placement: .here, parentName: "placement-here", expected: "single-root/single.txt", checkName: "archivePlacementHere")
+                try await verifyPlacement(singleArchive, placement: .smart, parentName: "placement-smart-one", expected: "single-root/single.txt", checkName: "archivePlacementSmartOne")
+                try await verifyPlacement(multipleArchive, placement: .smart, parentName: "placement-smart-many", expected: "multiple-roots/second.txt", checkName: "archivePlacementSmartMany")
+                try await verifyPlacement(singleArchive, placement: .childFolder, parentName: "placement-child", expected: "single-tree/single-root/single.txt", checkName: "archivePlacementChild")
+                let formatFixtureRoot = URL(fileURLWithPath: FileManager.default.currentDirectoryPath, isDirectory: true).appendingPathComponent("Tests/FilesCoreTests/Fixtures", isDirectory: true)
+                var extraFormatsPassed = true
+                for (name, expectedName) in [("libarchive-empty.7z", "empty"), ("libarchive-noeof.rar", "test.txt")] {
+                    controller.presentArchive(formatFixtureRoot.appendingPathComponent(name))
+                    let formatLoad = ContinuousClock.now
+                    while controller.archiveWindow?.qaLoaded != true && formatLoad.duration(to: .now) < .seconds(10) { try await Task.sleep(for: .milliseconds(10)) }
+                    extraFormatsPassed = extraFormatsPassed && controller.archiveWindow?.qaEntryCount == 1
+                    let destination = destination.appendingPathComponent("extract-\(name)", isDirectory: true); try? fm.removeItem(at: destination); try fm.createDirectory(at: destination, withIntermediateDirectories: true)
+                    controller.archiveWindow?.qaExtract(to: destination)
+                    let formatExtract = ContinuousClock.now
+                    while controller.archiveWindow?.qaIsRunning == true && formatExtract.duration(to: .now) < .seconds(10) { try await Task.sleep(for: .milliseconds(10)) }
+                    extraFormatsPassed = extraFormatsPassed && controller.archiveWindow?.qaSucceeded == true && fm.fileExists(atPath: destination.appendingPathComponent(expectedName).path)
+                    controller.archiveWindow?.close(); window.makeKeyAndOrderFront(nil)
                 }
-                let heldSecond = destination.appendingPathComponent("sdk-held-second")
-                try fm.moveItem(at: splitSecond, to: heldSecond)
-                let incomplete = ArchiveWindow(); incomplete.present(archiveURL: splitFirst)
-                let incompleteStart = ContinuousClock.now
-                while incomplete.qaIsRunning && incompleteStart.duration(to: .now) < .seconds(10) { try await Task.sleep(for: .milliseconds(10)) }
-                checks[sevenZipKeys[10]] = splitBatch && !incomplete.qaIsRunning && incomplete.qaEntryCount == 0 && incomplete.qaMessage.contains("002")
-                incomplete.close(); try fm.moveItem(at: heldSecond, to: splitSecond)
-                let splitPanel = Self.archiveSavePanel(sources: [source], parent: destination, preferences: advancedPreferences)
-                if let options = splitPanel.accessoryView as? ArchiveSaveOptionsView {
+                checks["sevenZipAndRarExtraction"] = extraFormatsPassed
+                let archiveParent = destination.appendingPathComponent("archive-default-parent.v1", isDirectory: true)
+                try fm.createDirectory(at: archiveParent, withIntermediateDirectories: true)
+                let names = [("preview.txt", "preview.txt.zip"), ("한글.메모.txt", "한글.메모.txt.zip"),
+                             ("Folder.v1", "Folder.v1.zip"), ("archive.zip", "archive.zip.zip"), ("bundle.tar.gz", "bundle.tar.gz.zip")]
+                checks["archiveDefaultNamePreservesSingleItem"] = names.allSatisfy { name, expected in
+                    Self.archiveSavePanel(sources: [archiveParent.appendingPathComponent(name)], parent: archiveParent).nameFieldStringValue == expected
+                }
+                let archiveSources = [archiveParent.appendingPathComponent("a.txt"), archiveParent.appendingPathComponent("b.txt")]
+                checks["archiveDefaultNameUsesParentForMultipleItems"] = Self.archiveSavePanel(sources: archiveSources,
+                    parent: archiveParent).nameFieldStringValue == "archive-default-parent.v1.zip"
+                checks["archiveDefaultNameRootFallback"] = Self.archiveSavePanel(sources: archiveSources,
+                    parent: URL(fileURLWithPath: "/", isDirectory: true)).nameFieldStringValue == L("압축 파일.zip", "Archive.zip")
+                let archivePreferences = BrowserPreferences(defaults: defaults, initialFavorites: [])
+                let formatPanel = Self.archiveSavePanel(sources: [archiveParent.appendingPathComponent("preview.txt")], parent: archiveParent, preferences: archivePreferences)
+                if let options = formatPanel.accessoryView as? ArchiveSaveOptionsView {
+                    let button = options.formatButton
+                    checks["archiveFormatDefault"] = button.itemTitles == ["ZIP (.zip)", "7z (.7z)"] && button.indexOfSelectedItem == 0 &&
+                        formatPanel.allowedContentTypes == [.zip] && !formatPanel.allowsOtherFileTypes
+                    button.selectItem(at: 1); NSApp.sendAction(button.action!, to: button.target, from: button)
+                    checks["archiveFormatSevenZipSelection"] = formatPanel.nameFieldStringValue == "preview.txt.7z" &&
+                        formatPanel.allowedContentTypes == [UTType(filenameExtension: "7z")!] && formatPanel.directoryURL == archiveParent
+                    formatPanel.nameFieldStringValue = "한글.이름.tar.gz"
+                    button.selectItem(at: 0); NSApp.sendAction(button.action!, to: button.target, from: button)
+                    NSApp.sendAction(button.action!, to: button.target, from: button)
+                    let manualNamePreserved = formatPanel.nameFieldStringValue == "한글.이름.tar.gz.zip" && formatPanel.allowedContentTypes == [.zip]
+                    formatPanel.nameFieldStringValue = "archive.ZIP.zip"
+                    button.selectItem(at: 1); NSApp.sendAction(button.action!, to: button.target, from: button)
+                    button.selectItem(at: 0); NSApp.sendAction(button.action!, to: button.target, from: button)
+                    checks["archiveFormatPreservesEditedBaseAndRoundTrips"] = manualNamePreserved && formatPanel.nameFieldStringValue == "archive.ZIP.zip"
+                    formatPanel.nameFieldStringValue = ""
+                    button.selectItem(at: 1); NSApp.sendAction(button.action!, to: button.target, from: button)
+                    let emptyNamePreserved = formatPanel.nameFieldStringValue.isEmpty
+                    formatPanel.nameFieldStringValue = "already.7Z"
+                    button.selectItem(at: 0); NSApp.sendAction(button.action!, to: button.target, from: button)
+                    checks["archiveFormatEmptyAndExplicitExtension"] = emptyNamePreserved && formatPanel.nameFieldStringValue == "already.zip"
+                    checks["archiveCompressionLevelDefault"] = options.levelButton.numberOfItems == 6 && options.compressionLevel == .normal
+                    options.levelButton.selectItem(at: 0)
+                    NSApp.sendAction(options.levelButton.action!, to: options.levelButton.target, from: options.levelButton)
+                    let ultraSelected = options.compressionLevel == .ultra
+                    options.levelButton.selectItem(at: 5)
+                    NSApp.sendAction(options.levelButton.action!, to: options.levelButton.target, from: options.levelButton)
+                    let reopenedPanel = Self.archiveSavePanel(sources: archiveSources, parent: archiveParent, preferences: archivePreferences)
+                    checks["archiveCompressionLevelSelection"] = ultraSelected && options.compressionLevel == .store && archivePreferences.archiveCompressionLevel == .store &&
+                        (reopenedPanel.accessoryView as? ArchiveSaveOptionsView)?.compressionLevel == .store
+                    options.appearance = window.effectiveAppearance
+                    try capture("archive-format-options", view: options, backingColor: .windowBackgroundColor)
+                } else {
+                    checks["archiveFormatDefault"] = false; checks["archiveFormatSevenZipSelection"] = false
+                    checks["archiveFormatPreservesEditedBaseAndRoundTrips"] = false
+                    checks["archiveFormatEmptyAndExplicitExtension"] = false
+                    checks["archiveCompressionLevelDefault"] = false; checks["archiveCompressionLevelSelection"] = false
+                }
+                let createdArchive = destination.appendingPathComponent("created-by-ui.zip")
+                try? fm.removeItem(at: createdArchive)
+                ArchiveCreationWindow.start(sources: [fixture.appendingPathComponent("00000-한글-é-📁-long-file-name.txt")], destination: createdArchive,
+                                            compressionLevel: (formatPanel.accessoryView as? ArchiveSaveOptionsView)?.compressionLevel) {}
+                let archiveCreate = ContinuousClock.now
+                while ArchiveCreationWindow.qaLatest?.qaRunning == true && archiveCreate.duration(to: .now) < .seconds(10) { try await Task.sleep(for: .milliseconds(10)) }
+                let createdEntries = try ZipArchiveProvider().entries(at: createdArchive)
+                let storedZIP = try Data(contentsOf: createdArchive)
+                checks["archiveCreation"] = ArchiveCreationWindow.qaLatest?.qaSucceeded == true && createdEntries.count == 1 &&
+                    storedZIP.count > 10 && storedZIP[8] == 0 && storedZIP[9] == 0
+                try capture("archive-creation", view: ArchiveCreationWindow.qaLatest?.window?.contentView)
+                ArchiveCreationWindow.qaLatest?.close(); window.makeKeyAndOrderFront(nil)
+                let createdSevenZip = destination.appendingPathComponent("created-by-ui.7z"); try? fm.removeItem(at: createdSevenZip)
+                (formatPanel.accessoryView as? ArchiveSaveOptionsView)?.levelButton.selectItem(at: 0)
+                ArchiveCreationWindow.start(sources: [fixture.appendingPathComponent("00000-한글-é-📁-long-file-name.txt")], destination: createdSevenZip,
+                                            compressionLevel: (formatPanel.accessoryView as? ArchiveSaveOptionsView)?.compressionLevel) {}
+                let sevenZipCreate = ContinuousClock.now
+                while ArchiveCreationWindow.qaLatest?.qaRunning == true && sevenZipCreate.duration(to: .now) < .seconds(10) { try await Task.sleep(for: .milliseconds(10)) }
+                let createdSevenZipEntries = try ZipArchiveProvider().entries(at: createdSevenZip)
+                checks["sevenZipCreation"] = ArchiveCreationWindow.qaLatest?.qaSucceeded == true && createdSevenZipEntries.count == 1
+                ArchiveCreationWindow.qaLatest?.close(); window.makeKeyAndOrderFront(nil)
+                let cancellationSource = destination.appendingPathComponent("archive-cancel-source.bin")
+                try Data(repeating: 0x5a, count: 16 * 1024 * 1024).write(to: cancellationSource)
+                let cancelledArchive = destination.appendingPathComponent("cancelled-by-ui.7z"); try? fm.removeItem(at: cancelledArchive)
+                ArchiveCreationWindow.start(sources: [cancellationSource], destination: cancelledArchive) {}
+                ArchiveCreationWindow.qaLatest?.qaCancel()
+                let cancellationWait = ContinuousClock.now
+                while ArchiveCreationWindow.qaLatest?.qaRunning == true && cancellationWait.duration(to: .now) < .seconds(2) { try await Task.sleep(for: .milliseconds(10)) }
+                let cancellationDirectoryNames = try fm.contentsOfDirectory(atPath: destination.path)
+                checks["archiveCreationCancellation"] = ArchiveCreationWindow.qaLatest?.qaRunning == false && !fm.fileExists(atPath: cancelledArchive.path) && cancellationDirectoryNames.allSatisfy { !$0.hasPrefix(".files-create-") }
+                ArchiveCreationWindow.qaLatest?.close(); try? fm.removeItem(at: cancellationSource); window.makeKeyAndOrderFront(nil)
+                let encryptedByUI = destination.appendingPathComponent("encrypted-by-ui.zip")
+                let encryptionPanel = Self.archiveSavePanel(sources: [fixture.appendingPathComponent("00000-한글-é-📁-long-file-name.txt")], parent: destination)
+                if let options = encryptionPanel.accessoryView as? ArchiveSaveOptionsView {
+                    options.encryptionButton.performClick(nil)
+                    var rejectsEmpty = false
+                    do { try options.panel(encryptionPanel, validate: encryptedByUI) } catch { rejectsEmpty = true }
+                    let allowsSevenZip = options.formatButton.item(at: 1)?.isEnabled == true
                     options.formatButton.selectItem(at: 1); NSApp.sendAction(options.formatButton.action!, to: options.formatButton.target, from: options.formatButton)
-                    options.split.button.selectItem(withTag: 10); NSApp.sendAction(options.split.button.action!, to: options.split.button.target, from: options.split.button)
-                    let savedSplit = BrowserPreferences(defaults: advancedDefaults).archiveSplitSize == .mib10
+                    checks["archiveEncryptionValidationAndFormatGate"] = rejectsEmpty && allowsSevenZip && options.formatButton.indexOfSelectedItem == 1 && options.encryptHeader && !options.headerEncryptionButton.isHidden
                     options.formatButton.selectItem(at: 0); NSApp.sendAction(options.formatButton.action!, to: options.formatButton.target, from: options.formatButton)
-                    let disabledForZIP = options.splitSize == .none && !options.split.button.isEnabled
-                    options.formatButton.selectItem(at: 1); NSApp.sendAction(options.formatButton.action!, to: options.formatButton.target, from: options.formatButton)
-                    checks[sevenZipKeys[11]] = options.split.button.numberOfItems == 12 && options.splitSize == .mib10 && savedSplit && disabledForZIP
-                    let splitSource = destination.appendingPathComponent("sdk-split-ui.bin"), splitTarget = destination.appendingPathComponent("sdk-split-created-ui.7z")
-                    let splitData = Data(repeating: 0x63, count: 10 * 1_048_576 + 65536), splitJournals = destination.appendingPathComponent("sdk-split-ui-journals")
-                    try splitData.write(to: splitSource)
-                    ArchiveCreationWindow.start(sources: [splitSource], destination: splitTarget, compressionLevel: .store, splitSize: options.splitSize, journalDirectory: splitJournals) {}
-                    if let operation = ArchiveCreationWindow.qaLatest {
-                        let started = ContinuousClock.now
-                        while operation.qaRunning && started.duration(to: .now) < .seconds(20) { try await Task.sleep(for: .milliseconds(10)) }
-                        let firstPart = URL(fileURLWithPath: splitTarget.path + ".001"), lastPart = URL(fileURLWithPath: splitTarget.path + ".002")
-                        var roundTrip = operation.qaSucceeded && !fm.fileExists(atPath: splitTarget.path) && (try? firstPart.resourceValues(forKeys: [.fileSizeKey]).fileSize) == 10 * 1_048_576
-                        if roundTrip, case .sevenZip(let provider) = try await ArchiveReadBackend.resolve(for: lastPart) {
-                            let restored = destination.appendingPathComponent("sdk-split-created-restored")
-                            _ = try await provider.extractToNewDirectory(lastPart, at: restored)
-                            roundTrip = (try? Data(contentsOf: restored.appendingPathComponent(splitSource.lastPathComponent))) == splitData
-                        } else { roundTrip = false }
-                        checks[sevenZipKeys[12]] = roundTrip; operation.close()
-                        ArchiveSplitRecoveryWindow.present(journalDirectory: splitJournals)
-                        if let history = ArchiveSplitRecoveryWindow.qaLatest {
+                    let testPassword = "QA-342-한글-password"
+                    options.passwordInput.value = testPassword
+                    try options.panel(encryptionPanel, validate: encryptedByUI)
+                    options.passwordInput.revealButton.performClick(nil)
+                    let revealed = options.passwordInput.visibleField.stringValue == testPassword && options.passwordInput.secureField.stringValue.isEmpty
+                    options.passwordInput.revealButton.performClick(nil)
+                    let masked = options.passwordInput.visibleField.isHidden && options.passwordInput.visibleField.stringValue.isEmpty && options.passwordInput.value == testPassword
+                    options.appearance = window.effectiveAppearance
+                    try capture("archive-encryption-options", view: options, backingColor: .windowBackgroundColor)
+                    let creationPassword = options.takePassword()
+                    checks["archivePasswordRevealAndClear"] = revealed && masked && creationPassword == testPassword && options.passwordInput.value.isEmpty && options.encryptionButton.state == .off
+                    ArchiveCreationWindow.start(sources: [fixture.appendingPathComponent("00000-한글-é-📁-long-file-name.txt")], destination: encryptedByUI, password: creationPassword) {}
+                    let encryptedCreate = ContinuousClock.now
+                    while ArchiveCreationWindow.qaLatest?.qaRunning == true && encryptedCreate.duration(to: .now) < .seconds(10) { try await Task.sleep(for: .milliseconds(10)) }
+                    let encryptedEntries = try ZipArchiveProvider().entries(at: encryptedByUI)
+                    checks["archiveEncryptedCreation"] = ArchiveCreationWindow.qaLatest?.qaSucceeded == true && encryptedEntries.count == 1 && encryptedEntries[0].isEncrypted
+                    ArchiveCreationWindow.qaLatest?.close()
+                    let encryptedBrowser = ArchiveWindow(); encryptedBrowser.present(archiveURL: encryptedByUI)
+                    let encryptedRead = ContinuousClock.now
+                    while !encryptedBrowser.qaLoaded && encryptedRead.duration(to: .now) < .seconds(10) { try await Task.sleep(for: .milliseconds(10)) }
+                    let originalBytes = try Data(contentsOf: fixture.appendingPathComponent("00000-한글-é-📁-long-file-name.txt"))
+                    var passwordRetry = encryptedBrowser.qaEntryCount == 1
+                    for (name, password) in [("wrong", "wrong-password"), ("correct", testPassword)] {
+                        let target = destination.appendingPathComponent("encrypted-browser-" + name, isDirectory: true)
+                        try fm.createDirectory(at: target, withIntermediateDirectories: false)
+                        encryptedBrowser.qaExtract(to: target)
+                        if let prompt = await ArchivePasswordPrompt.qaWait(for: encryptedBrowser.window!) {
+                            passwordRetry = passwordRetry && prompt.qaRejectsEmpty
+                            prompt.qaSubmit(password)
+                            let wait = ContinuousClock.now
+                            while encryptedBrowser.qaIsRunning && wait.duration(to: .now) < .seconds(10) { try await Task.sleep(for: .milliseconds(10)) }
+                            passwordRetry = passwordRetry && prompt.input.value.isEmpty && !encryptedBrowser.qaIsRunning
+                        } else { passwordRetry = false; encryptedBrowser.qaCancel() }
+                        if name == "wrong" {
+                            passwordRetry = passwordRetry && !encryptedBrowser.qaSucceeded && ((try? fm.contentsOfDirectory(atPath: target.path))?.isEmpty == true)
+                        } else {
+                            passwordRetry = passwordRetry && encryptedBrowser.qaSucceeded && (try? Data(contentsOf: target.appendingPathComponent("00000-한글-é-📁-long-file-name.txt"))) == originalBytes
+                        }
+                    }
+                    checks["archiveEncryptedBrowserWrongPasswordAndRetry"] = passwordRetry
+                    var cancelledPrompts = true
+                    for stopOperation in [false, true] {
+                        let target = destination.appendingPathComponent("encrypted-browser-cancel-\(stopOperation)", isDirectory: true)
+                        try fm.createDirectory(at: target, withIntermediateDirectories: false)
+                        encryptedBrowser.qaExtract(to: target)
+                        if let prompt = await ArchivePasswordPrompt.qaWait(for: encryptedBrowser.window!) {
+                            if stopOperation { encryptedBrowser.qaCancel() } else { prompt.qaSubmit(nil) }
+                            let wait = ContinuousClock.now
+                            while encryptedBrowser.qaIsRunning && wait.duration(to: .now) < .seconds(5) { try await Task.sleep(for: .milliseconds(10)) }
+                            cancelledPrompts = cancelledPrompts && prompt.input.value.isEmpty && !encryptedBrowser.qaIsRunning && !encryptedBrowser.qaSucceeded && ((try? fm.contentsOfDirectory(atPath: target.path))?.isEmpty == true)
+                        } else { cancelledPrompts = false; encryptedBrowser.qaCancel() }
+                    }
+                    checks["archiveEncryptedBrowserCancellationAndStop"] = cancelledPrompts
+                    encryptedBrowser.close()
+                    var batchEncrypted = true
+                    let damagedZIP = destination.appendingPathComponent("damaged-after-encrypted.zip")
+                    try Data("not an archive".utf8).write(to: damagedZIP)
+                    for mode in ["correct", "wrong", "cancel", "damaged"] {
+                        let target = destination.appendingPathComponent("encrypted-batch-" + mode, isDirectory: true)
+                        try fm.createDirectory(at: target, withIntermediateDirectories: false)
+                        ArchiveExtractionWindow.start(archives: [encryptedByUI, mode == "damaged" ? damagedZIP : createdArchive], parent: target, placement: .childFolder) {}
+                        if let operation = ArchiveExtractionWindow.qaLatest,
+                           let prompt = await ArchivePasswordPrompt.qaWait(for: operation.window!) {
+                            prompt.qaSubmit(mode == "cancel" ? nil : (["correct", "damaged"].contains(mode) ? testPassword : "wrong-password"))
+                            let wait = ContinuousClock.now
+                            while operation.qaRunning && wait.duration(to: .now) < .seconds(10) { try await Task.sleep(for: .milliseconds(10)) }
+                            batchEncrypted = batchEncrypted && !operation.qaRunning && prompt.input.value.isEmpty
+                            if mode == "correct" {
+                                for child in ["encrypted-by-ui", "created-by-ui"] {
+                                    batchEncrypted = batchEncrypted && operation.qaSucceeded && (try? Data(contentsOf: target.appendingPathComponent(child).appendingPathComponent("00000-한글-é-📁-long-file-name.txt"))) == originalBytes
+                                }
+                            } else if mode == "damaged" {
+                                batchEncrypted = batchEncrypted && !operation.qaSucceeded && !operation.qaMessage.contains(L("암호", "password")) &&
+                                    (try? Data(contentsOf: target.appendingPathComponent("encrypted-by-ui").appendingPathComponent("00000-한글-é-📁-long-file-name.txt"))) == originalBytes &&
+                                    (try? fm.contentsOfDirectory(atPath: target.path))?.count == 1
+                            } else {
+                                batchEncrypted = batchEncrypted && !operation.qaSucceeded && ((try? fm.contentsOfDirectory(atPath: target.path))?.isEmpty == true)
+                            }
+                            operation.close()
+                        } else { batchEncrypted = false }
+                    }
+                    checks["archiveEncryptedBatchExtractionAndCancel"] = batchEncrypted
+                    window.makeKeyAndOrderFront(nil)
+                } else {
+                    for key in ["archiveEncryptionValidationAndFormatGate", "archivePasswordRevealAndClear", "archiveEncryptedCreation", "archiveEncryptedBrowserWrongPasswordAndRetry", "archiveEncryptedBrowserCancellationAndStop", "archiveEncryptedBatchExtractionAndCancel"] { checks[key] = false }
+                }
+            }
+            try await verifyArchiveUIPhase()
+            @MainActor @inline(never)
+            func verifySevenZipUIPhase() async throws {
+                let sevenZipKeys = ["sevenZipEncryptedBrowseAndRetry", "sevenZipEncryptedExtractAndCancel", "sevenZipBatchPlacement", "sevenZipChildCollision", "sevenZipHeaderCancellation", "sevenZipPasswordCapability", "sevenZipEncryptedCreationOptionsAndRoundTrip", "sevenZipAdvancedOptionsAndRestore", "sevenZipAdvancedThreadValidationAndEstimate", "sevenZipSplitBrowseAndExtraction", "sevenZipSplitBatchAndMissingVolume", "sevenZipSplitCreationOptionsAndRestore", "sevenZipSplitCreationRoundTrip", "sevenZipSplitHistoryWindow"]
+                if let referencePath = ProcessInfo.processInfo.environment["FILES_UI_QA_SEVENZIP_REFERENCE"],
+                   ProcessInfo.processInfo.environment["FILES_UI_QA_SEVENZIP_BUNDLE"] != nil {
+                    let source = destination.appendingPathComponent("sdk-ui-source"), archive = destination.appendingPathComponent("sdk-encrypted.7z")
+                    try fm.createDirectory(at: source.appendingPathComponent("nested"), withIntermediateDirectories: true)
+                    let filename = "한글-🔑.txt", payload = Data("7z UI payload".utf8), password = "QA-350-한글-🔑"
+                    try payload.write(to: source.appendingPathComponent(filename)); try Data(repeating: 0x51, count: 32768).write(to: source.appendingPathComponent("nested/data.bin"))
+                    let reference = Process(), input = Pipe(), logURL = destination.appendingPathComponent("sdk-reference.log")
+                    fm.createFile(atPath: logURL.path, contents: nil)
+                    let log = try FileHandle(forWritingTo: logURL); defer { try? log.close() }
+                    reference.executableURL = URL(fileURLWithPath: referencePath); reference.currentDirectoryURL = source
+                    reference.arguments = ["a", "-t7z", "-mhe=on", "-p", "-y", archive.path, "."]
+                    reference.standardInput = input; reference.standardOutput = log; reference.standardError = log
+                    try reference.run()
+                    defer { if reference.isRunning { reference.terminate() } }
+                    try input.fileHandleForWriting.write(contentsOf: Data((password + "\n" + password + "\n").utf8)); try input.fileHandleForWriting.close()
+                    let referenceStart = ContinuousClock.now
+                    while reference.isRunning && referenceStart.duration(to: .now) < .seconds(20) { try await Task.sleep(for: .milliseconds(10)) }
+                    guard !reference.isRunning, reference.terminationStatus == 0 else { throw CocoaError(.fileReadCorruptFile) }
+                    let browser = ArchiveWindow(); var readOK = true
+                    for entered in ["wrong", password] {
+                        browser.present(archiveURL: archive)
+                        if let prompt = await ArchivePasswordPrompt.qaWait(for: browser.window!) {
+                            if entered == password { try capture("sevenzip-password-open", view: prompt.input) }
+                            prompt.qaSubmit(entered)
                             let start = ContinuousClock.now
-                            while history.qaBusy && start.duration(to: .now) < .seconds(5) { try await Task.sleep(for: .milliseconds(10)) }
-                            history.qaSelect(0)
-                            let shown = history.qaRecords.first?.destination
-                            let expectedParentID = try splitTarget.deletingLastPathComponent().resourceValues(forKeys: [.fileResourceIdentifierKey]).fileResourceIdentifier as? NSObject
-                            let shownParentID = try shown?.deletingLastPathComponent().resourceValues(forKeys: [.fileResourceIdentifierKey]).fileResourceIdentifier as? NSObject
-                            let correctDestination = shown?.lastPathComponent == splitTarget.lastPathComponent && expectedParentID != nil && shownParentID == expectedParentID
-                            checks[sevenZipKeys[13]] = !history.qaBusy && history.qaRecords.count == 1 && history.qaRecords.first?.phase == "committed" && correctDestination && !history.qaRecoveryEnabled
-                            history.close()
-                        } else { checks[sevenZipKeys[13]] = false }
-                    } else { checks[sevenZipKeys[12]] = false; checks[sevenZipKeys[13]] = false }
-                    options.clearPassword()
-                } else { for index in 11...13 { checks[sevenZipKeys[index]] = false } }
-                window.makeKeyAndOrderFront(nil)
-            } else { for key in sevenZipKeys { checks[key] = false } }
+                            while browser.qaIsRunning && start.duration(to: .now) < .seconds(10) { try await Task.sleep(for: .milliseconds(10)) }
+                            readOK = readOK && !browser.qaIsRunning && prompt.input.value.isEmpty
+                            readOK = readOK && (entered == password ? browser.qaEntryCount == 3 : browser.qaEntryCount == 0 && browser.qaMessage.contains(L("암호", "password")))
+                        } else { readOK = false; browser.qaCancel() }
+                    }
+                    checks[sevenZipKeys[0]] = readOK
+                    var extractOK = true
+                    for entered in ["wrong", password, "cancel"] {
+                        let target = destination.appendingPathComponent("sdk-browser-" + (entered == password ? "correct" : entered))
+                        try fm.createDirectory(at: target, withIntermediateDirectories: false); browser.qaExtract(to: target)
+                        if let prompt = await ArchivePasswordPrompt.qaWait(for: browser.window!) {
+                            prompt.qaSubmit(entered == "cancel" ? nil : entered)
+                            let start = ContinuousClock.now
+                            while browser.qaIsRunning && start.duration(to: .now) < .seconds(10) { try await Task.sleep(for: .milliseconds(10)) }
+                            extractOK = extractOK && !browser.qaIsRunning && prompt.input.value.isEmpty
+                            if entered == password { extractOK = extractOK && browser.qaSucceeded && (try? Data(contentsOf: target.appendingPathComponent(filename))) == payload }
+                            else { extractOK = extractOK && !browser.qaSucceeded && ((try? fm.contentsOfDirectory(atPath: target.path))?.isEmpty == true) }
+                        } else { extractOK = false; browser.qaCancel() }
+                    }
+                    checks[sevenZipKeys[1]] = extractOK; browser.close()
+                    var placementsOK = true, collisionOK = false
+                    for placement in [ArchiveExtractionPlacement.here, .smart, .childFolder] {
+                        let name = placement == .here ? "here" : (placement == .smart ? "smart" : "child")
+                        let target = destination.appendingPathComponent("sdk-placement-" + name)
+                        try fm.createDirectory(at: target, withIntermediateDirectories: false)
+                        if placement == .childFolder { try fm.createDirectory(at: target.appendingPathComponent("sdk-encrypted"), withIntermediateDirectories: false) }
+                        ArchiveExtractionWindow.start(archives: [archive], parent: target, placement: placement) {}
+                        if let operation = ArchiveExtractionWindow.qaLatest, let prompt = await ArchivePasswordPrompt.qaWait(for: operation.window!) {
+                            prompt.qaSubmit(password)
+                            let start = ContinuousClock.now
+                            while operation.qaRunning && start.duration(to: .now) < .seconds(10) { try await Task.sleep(for: .milliseconds(10)) }
+                            let result = placement == .here ? target : target.appendingPathComponent(placement == .smart ? "sdk-encrypted" : "sdk-encrypted 2")
+                            placementsOK = placementsOK && operation.qaSucceeded && prompt.input.value.isEmpty && (try? Data(contentsOf: result.appendingPathComponent(filename))) == payload
+                            if placement == .childFolder { collisionOK = (try? fm.contentsOfDirectory(atPath: target.appendingPathComponent("sdk-encrypted").path))?.isEmpty == true }
+                            operation.close()
+                        } else { placementsOK = false }
+                    }
+                    checks[sevenZipKeys[2]] = placementsOK; checks[sevenZipKeys[3]] = collisionOK
+                    let cancelled = ArchiveWindow(); cancelled.present(archiveURL: archive)
+                    if let prompt = await ArchivePasswordPrompt.qaWait(for: cancelled.window!) {
+                        cancelled.qaCancel(); let start = ContinuousClock.now
+                        while cancelled.qaIsRunning && start.duration(to: .now) < .seconds(5) { try await Task.sleep(for: .milliseconds(10)) }
+                        checks[sevenZipKeys[4]] = !cancelled.qaIsRunning && cancelled.qaEntryCount == 0 && prompt.input.value.isEmpty
+                    } else { checks[sevenZipKeys[4]] = false }
+                    cancelled.close()
+                    let capabilities = ArchiveCapabilitiesWindow(); capabilities.present()
+                    let supportStart = ContinuousClock.now
+                    while capabilities.qaSevenZipPassword == L("확인 중", "Checking") && supportStart.duration(to: .now) < .seconds(5) { try await Task.sleep(for: .milliseconds(10)) }
+                    checks[sevenZipKeys[5]] = capabilities.qaSevenZipPassword == L("생성·추출", "Create/extract")
+                    let splitCapability = capabilities.qaSevenZipSplit == L("생성·탐색·추출", "Create/browse/extract")
+                    capabilities.close()
+                    let createdArchive = destination.appendingPathComponent("sdk-created-by-ui.7z")
+                    let advancedSuite = "FilesUI.ArchiveAdvanced.\(UUID())"
+                    let advancedDefaults = UserDefaults(suiteName: advancedSuite)!
+                    defer { advancedDefaults.removePersistentDomain(forName: advancedSuite) }
+                    let advancedPreferences = BrowserPreferences(defaults: advancedDefaults, initialFavorites: [])
+                    let savePanel = Self.archiveSavePanel(sources: [source], parent: destination, preferences: advancedPreferences)
+                    if let options = savePanel.accessoryView as? ArchiveSaveOptionsView {
+                        options.formatButton.selectItem(at: 1); NSApp.sendAction(options.formatButton.action!, to: options.formatButton.target, from: options.formatButton)
+                        let advanced = options.advanced
+                        let initialEstimate = advanced.memoryLabel.stringValue
+                        advanced.dictionaryButton.selectItem(withTag: 65536)
+                        NSApp.sendAction(advanced.dictionaryButton.action!, to: advanced.dictionaryButton.target, from: advanced.dictionaryButton)
+                        advanced.wordButton.selectItem(withTag: 128)
+                        NSApp.sendAction(advanced.wordButton.action!, to: advanced.wordButton.target, from: advanced.wordButton)
+                        advanced.threadsField.stringValue = "1"
+                        NSApp.sendAction(advanced.threadsField.action!, to: advanced.threadsField.target, from: advanced.threadsField)
+                        let selectedAdvanced = options.sevenZipOptions
+                        let selectedEstimate = advanced.memoryLabel.stringValue
+                        options.levelButton.selectItem(at: 5); NSApp.sendAction(options.levelButton.action!, to: options.levelButton.target, from: options.levelButton)
+                        let storeDisables = !advanced.dictionaryButton.isEnabled && !advanced.wordButton.isEnabled
+                        options.levelButton.selectItem(at: 2); NSApp.sendAction(options.levelButton.action!, to: options.levelButton.target, from: options.levelButton)
+                        let reopened = Self.archiveSavePanel(sources: [source], parent: destination, preferences: BrowserPreferences(defaults: advancedDefaults))
+                        let reopenedOptions = reopened.accessoryView as? ArchiveSaveOptionsView
+                        checks[sevenZipKeys[7]] = advanced.dictionaryButton.numberOfItems == 14 && advanced.wordButton.numberOfItems == 8 && storeDisables &&
+                            advanced.dictionaryButton.isEnabled && selectedAdvanced == SevenZipCompressionOptions(dictionarySize: 65536, wordSize: 128, threadCount: 1) &&
+                            reopenedOptions?.sevenZipOptions == selectedAdvanced && reopenedOptions?.formatButton.indexOfSelectedItem == 1 && reopened.nameFieldStringValue.hasSuffix(".7z")
+                        var invalidThreads = true
+                        for value in ["0", String(SevenZipCompressionOptions.hostThreadCount + 1), "1.5", ""] {
+                            advanced.threadsField.stringValue = value
+                            do { try options.panel(savePanel, validate: createdArchive); invalidThreads = false } catch {}
+                        }
+                        advanced.threadsField.stringValue = "1"
+                        NSApp.sendAction(advanced.threadsField.action!, to: advanced.threadsField.target, from: advanced.threadsField)
+                        checks[sevenZipKeys[8]] = invalidThreads && !selectedEstimate.isEmpty && selectedEstimate != initialEstimate && !advanced.memoryLabel.isHidden
+                        options.encryptionButton.performClick(nil); options.passwordInput.value = password
+                        try options.panel(savePanel, validate: createdArchive)
+                        let encryptedHeader = options.encryptHeader
+                        options.headerEncryptionButton.performClick(nil)
+                        let headerCanBeDisabled = !options.encryptHeader
+                        options.headerEncryptionButton.performClick(nil)
+                        options.appearance = window.effectiveAppearance
+                        try capture("sevenzip-creation-options", view: options, backingColor: .windowBackgroundColor)
+                        let creationPassword = options.takePassword()
+                        ArchiveCreationWindow.start(sources: [source], destination: createdArchive, compressionLevel: options.compressionLevel,
+                                                    password: creationPassword, encryptHeader: encryptedHeader, sevenZipOptions: selectedAdvanced) {}
+                        let start = ContinuousClock.now
+                        while ArchiveCreationWindow.qaLatest?.qaRunning == true && start.duration(to: .now) < .seconds(15) { try await Task.sleep(for: .milliseconds(10)) }
+                        let creationSucceeded = ArchiveCreationWindow.qaLatest?.qaSucceeded == true
+                        if ArchiveCreationWindow.qaLatest?.qaRunning == false { ArchiveCreationWindow.qaLatest?.close() }
+                        if creationSucceeded, case .sevenZip(let sdk) = try await ArchiveReadBackend.resolve(for: createdArchive) {
+                            let restored = destination.appendingPathComponent("sdk-created-restored")
+                            _ = try await sdk.extractToNewDirectory(createdArchive, at: restored, password: password)
+                            var needsPassword = false
+                            do { _ = try await sdk.entries(at: createdArchive) }
+                            catch SevenZipWorkerError.worker("password-required") { needsPassword = true }
+                            let restoredPayload = try Data(contentsOf: restored.appendingPathComponent(source.lastPathComponent).appendingPathComponent(filename))
+                            checks[sevenZipKeys[6]] = encryptedHeader && headerCanBeDisabled && needsPassword && options.passwordInput.value.isEmpty && restoredPayload == payload
+                        } else { checks[sevenZipKeys[6]] = false }
+                    } else { for index in 6...8 { checks[sevenZipKeys[index]] = false } }
+                    let splitBase = destination.appendingPathComponent("sdk-split.7z"), splitReference = Process(), splitInput = Pipe()
+                    splitReference.executableURL = URL(fileURLWithPath: referencePath); splitReference.currentDirectoryURL = source
+                    splitReference.arguments = ["a", "-t7z", "-mx=0", "-v4k", "-mhe=on", "-p", "-y", splitBase.path, "."]
+                    splitReference.standardInput = splitInput; splitReference.standardOutput = log; splitReference.standardError = log
+                    try splitReference.run(); defer { if splitReference.isRunning { splitReference.terminate() } }
+                    try splitInput.fileHandleForWriting.write(contentsOf: Data((password + "\n" + password + "\n").utf8)); try splitInput.fileHandleForWriting.close()
+                    let splitStart = ContinuousClock.now
+                    while splitReference.isRunning && splitStart.duration(to: .now) < .seconds(20) { try await Task.sleep(for: .milliseconds(10)) }
+                    guard !splitReference.isRunning, splitReference.terminationStatus == 0 else { throw CocoaError(.fileReadCorruptFile) }
+                    let splitFirst = splitBase.appendingPathExtension("001"), splitSecond = splitBase.appendingPathExtension("002")
+                    let splitBrowser = ArchiveWindow(); splitBrowser.present(archiveURL: splitSecond)
+                    var splitRead = false
+                    if let prompt = await ArchivePasswordPrompt.qaWait(for: splitBrowser.window!) {
+                        prompt.qaSubmit(password); let start = ContinuousClock.now
+                        while splitBrowser.qaIsRunning && start.duration(to: .now) < .seconds(10) { try await Task.sleep(for: .milliseconds(10)) }
+                        splitRead = !splitBrowser.qaIsRunning && splitBrowser.qaEntryCount == 3
+                    }
+                    let splitOutput = destination.appendingPathComponent("sdk-split-single"); try fm.createDirectory(at: splitOutput, withIntermediateDirectories: false)
+                    splitBrowser.qaExtract(to: splitOutput)
+                    if let prompt = await ArchivePasswordPrompt.qaWait(for: splitBrowser.window!) {
+                        prompt.qaSubmit(password); let start = ContinuousClock.now
+                        while splitBrowser.qaIsRunning && start.duration(to: .now) < .seconds(10) { try await Task.sleep(for: .milliseconds(10)) }
+                        splitRead = splitRead && splitBrowser.qaSucceeded && (try? Data(contentsOf: splitOutput.appendingPathComponent(filename))) == payload
+                    } else { splitRead = false; splitBrowser.qaCancel() }
+                    checks[sevenZipKeys[9]] = splitRead && splitCapability
+                    splitBrowser.close()
+                    let splitBatchOutput = destination.appendingPathComponent("sdk-split-batch"); try fm.createDirectory(at: splitBatchOutput, withIntermediateDirectories: false)
+                    ArchiveExtractionWindow.start(archives: [splitSecond, splitFirst], parent: splitBatchOutput, placement: .childFolder) {}
+                    var splitBatch = false
+                    if let operation = ArchiveExtractionWindow.qaLatest, let prompt = await ArchivePasswordPrompt.qaWait(for: operation.window!) {
+                        prompt.qaSubmit(password); let start = ContinuousClock.now
+                        while operation.qaRunning && start.duration(to: .now) < .seconds(10) { try await Task.sleep(for: .milliseconds(10)) }
+                        splitBatch = operation.qaSucceeded && (try? Data(contentsOf: splitBatchOutput.appendingPathComponent("sdk-split").appendingPathComponent(filename))) == payload &&
+                            (try? fm.contentsOfDirectory(atPath: splitBatchOutput.path)) == ["sdk-split"]
+                        operation.close()
+                    }
+                    let heldSecond = destination.appendingPathComponent("sdk-held-second")
+                    try fm.moveItem(at: splitSecond, to: heldSecond)
+                    let incomplete = ArchiveWindow(); incomplete.present(archiveURL: splitFirst)
+                    let incompleteStart = ContinuousClock.now
+                    while incomplete.qaIsRunning && incompleteStart.duration(to: .now) < .seconds(10) { try await Task.sleep(for: .milliseconds(10)) }
+                    checks[sevenZipKeys[10]] = splitBatch && !incomplete.qaIsRunning && incomplete.qaEntryCount == 0 && incomplete.qaMessage.contains("002")
+                    incomplete.close(); try fm.moveItem(at: heldSecond, to: splitSecond)
+                    let splitPanel = Self.archiveSavePanel(sources: [source], parent: destination, preferences: advancedPreferences)
+                    if let options = splitPanel.accessoryView as? ArchiveSaveOptionsView {
+                        options.formatButton.selectItem(at: 1); NSApp.sendAction(options.formatButton.action!, to: options.formatButton.target, from: options.formatButton)
+                        options.split.button.selectItem(withTag: 10); NSApp.sendAction(options.split.button.action!, to: options.split.button.target, from: options.split.button)
+                        let savedSplit = BrowserPreferences(defaults: advancedDefaults).archiveSplitSize == .mib10
+                        options.formatButton.selectItem(at: 0); NSApp.sendAction(options.formatButton.action!, to: options.formatButton.target, from: options.formatButton)
+                        let disabledForZIP = options.splitSize == .none && !options.split.button.isEnabled
+                        options.formatButton.selectItem(at: 1); NSApp.sendAction(options.formatButton.action!, to: options.formatButton.target, from: options.formatButton)
+                        checks[sevenZipKeys[11]] = options.split.button.numberOfItems == 12 && options.splitSize == .mib10 && savedSplit && disabledForZIP
+                        let splitSource = destination.appendingPathComponent("sdk-split-ui.bin"), splitTarget = destination.appendingPathComponent("sdk-split-created-ui.7z")
+                        let splitData = Data(repeating: 0x63, count: 10 * 1_048_576 + 65536), splitJournals = destination.appendingPathComponent("sdk-split-ui-journals")
+                        try splitData.write(to: splitSource)
+                        ArchiveCreationWindow.start(sources: [splitSource], destination: splitTarget, compressionLevel: .store, splitSize: options.splitSize, journalDirectory: splitJournals) {}
+                        if let operation = ArchiveCreationWindow.qaLatest {
+                            let started = ContinuousClock.now
+                            while operation.qaRunning && started.duration(to: .now) < .seconds(20) { try await Task.sleep(for: .milliseconds(10)) }
+                            let firstPart = URL(fileURLWithPath: splitTarget.path + ".001"), lastPart = URL(fileURLWithPath: splitTarget.path + ".002")
+                            var roundTrip = operation.qaSucceeded && !fm.fileExists(atPath: splitTarget.path) && (try? firstPart.resourceValues(forKeys: [.fileSizeKey]).fileSize) == 10 * 1_048_576
+                            if roundTrip, case .sevenZip(let provider) = try await ArchiveReadBackend.resolve(for: lastPart) {
+                                let restored = destination.appendingPathComponent("sdk-split-created-restored")
+                                _ = try await provider.extractToNewDirectory(lastPart, at: restored)
+                                roundTrip = (try? Data(contentsOf: restored.appendingPathComponent(splitSource.lastPathComponent))) == splitData
+                            } else { roundTrip = false }
+                            checks[sevenZipKeys[12]] = roundTrip; operation.close()
+                            ArchiveSplitRecoveryWindow.present(journalDirectory: splitJournals)
+                            if let history = ArchiveSplitRecoveryWindow.qaLatest {
+                                let start = ContinuousClock.now
+                                while history.qaBusy && start.duration(to: .now) < .seconds(5) { try await Task.sleep(for: .milliseconds(10)) }
+                                history.qaSelect(0)
+                                let shown = history.qaRecords.first?.destination
+                                let expectedParentID = try splitTarget.deletingLastPathComponent().resourceValues(forKeys: [.fileResourceIdentifierKey]).fileResourceIdentifier as? NSObject
+                                let shownParentID = try shown?.deletingLastPathComponent().resourceValues(forKeys: [.fileResourceIdentifierKey]).fileResourceIdentifier as? NSObject
+                                let correctDestination = shown?.lastPathComponent == splitTarget.lastPathComponent && expectedParentID != nil && shownParentID == expectedParentID
+                                checks[sevenZipKeys[13]] = !history.qaBusy && history.qaRecords.count == 1 && history.qaRecords.first?.phase == "committed" && correctDestination && !history.qaRecoveryEnabled
+                                history.close()
+                            } else { checks[sevenZipKeys[13]] = false }
+                        } else { checks[sevenZipKeys[12]] = false; checks[sevenZipKeys[13]] = false }
+                        options.clearPassword()
+                    } else { for index in 11...13 { checks[sevenZipKeys[index]] = false } }
+                    window.makeKeyAndOrderFront(nil)
+                } else { for key in sevenZipKeys { checks[key] = false } }
+            }
+            try await verifySevenZipUIPhase()
             try await Task.sleep(for: .milliseconds(300))
             let metadataRefresh = ContinuousClock.now
             while controller.model.isLoading && metadataRefresh.duration(to: .now) < .seconds(10) { try await Task.sleep(for: .milliseconds(10)) }
@@ -6528,291 +6536,295 @@ extension BrowserWindow {
             preferences.setSection(.fileTags, visible: false)
             checks["homeFileTagsSettingsIndependent"] = controller.homeFileTagsView.superview == nil
                 && preferences.homeFileTagsExpanded && preferences.showHomeRecentFiles && preferences.showHomeNetwork
-            if let referencePath = ProcessInfo.processInfo.environment["FILES_UI_REFERENCE_FIXTURE"] {
-                let reference = URL(fileURLWithPath: referencePath, isDirectory: true).standardizedFileURL
-                let expected = Set(try fm.contentsOfDirectory(atPath: reference.path))
-                preferences.setShowExtensions(true)
-                controller.navigate(reference)
-                controller.model.setViewMode(.details)
-                try await settleWindows()
-                checks["referenceFolderDetails"] = controller.model.location == reference
-                    && !expected.isEmpty && Set(controller.model.items.map(\.name)) == expected
-                    && controller.qaVisibleDetailColumns.isSuperset(of: ["name", "tag", "modified", "kind", "size"])
-                if checks["referenceFolderDetails"] == true {
-                    controller.autoFitColumns(nil)
-                    try capture("ui-02-03-reference-folder")
-                }
-                controller.model.setViewMode(.grid)
-                controller.render()
-                checks["referenceFolderGrid"] = !controller.gridView.isHidden
-                    && Set(controller.model.items.map(\.name)) == expected
-                if checks["referenceFolderGrid"] == true { try capture("ui-04-reference-grid") }
+            @MainActor @inline(never)
+            func verifyReferenceUIPhase() async throws {
+                if let referencePath = ProcessInfo.processInfo.environment["FILES_UI_REFERENCE_FIXTURE"] {
+                    let reference = URL(fileURLWithPath: referencePath, isDirectory: true).standardizedFileURL
+                    let expected = Set(try fm.contentsOfDirectory(atPath: reference.path))
+                    preferences.setShowExtensions(true)
+                    controller.navigate(reference)
+                    controller.model.setViewMode(.details)
+                    try await settleWindows()
+                    checks["referenceFolderDetails"] = controller.model.location == reference
+                        && !expected.isEmpty && Set(controller.model.items.map(\.name)) == expected
+                        && controller.qaVisibleDetailColumns.isSuperset(of: ["name", "tag", "modified", "kind", "size"])
+                    if checks["referenceFolderDetails"] == true {
+                        controller.autoFitColumns(nil)
+                        try capture("ui-02-03-reference-folder")
+                    }
+                    controller.model.setViewMode(.grid)
+                    controller.render()
+                    checks["referenceFolderGrid"] = !controller.gridView.isHidden
+                        && Set(controller.model.items.map(\.name)) == expected
+                    if checks["referenceFolderGrid"] == true { try capture("ui-04-reference-grid") }
 
-                let alpha = reference.appendingPathComponent("Alpha", isDirectory: true)
-                let child = alpha.appendingPathComponent("column-note.txt")
-                controller.model.savePosition(selection: [], scrollOffset: 0)
-                controller.model.setViewMode(.columns)
-                controller.render()
-                controller.columnView.qaSelect(id: alpha.path)
-                let columnsStart = ContinuousClock.now
-                while (controller.columnView.qaPasteboardURL(column: 1)?.path != child.path ||
-                       controller.columnView.qaParentColumnURL == nil) && elapsed(columnsStart) < 5 {
-                    try await Task.sleep(for: .milliseconds(10))
-                }
-                checks["referenceFolderColumns"] = !controller.columnView.isHidden
-                    && controller.columnView.qaColumnCount == 2
-                    && controller.columnView.selectedItems.map(\.id) == [alpha.path]
-                    && controller.columnView.qaPasteboardURL(column: 1)?.path == child.path
-                checks["referenceFolderAncestorColumn"] = controller.columnView.qaParentColumnURL?.path == reference.deletingLastPathComponent().path
-                    && controller.columnView.qaParentSelection == [reference.path]
-                if checks["referenceFolderColumns"] == true { try capture("ui-05-reference-columns") }
-                controller.columnView.qaMoveRightFromBase()
-                checks["referenceFolderRightFocusesOpenColumn"] = controller.columnView.qaFocusedColumnURL?.path == alpha.path
-                    && controller.model.history.current.selection == [child.path]
-                    && controller.columnView.qaBaseSelection == [alpha.path]
-                controller.columnView.qaMoveLeft()
-                checks["referenceFolderLeftRestoresColumnSelection"] = controller.columnView.qaFocusedColumnURL?.path == reference.path
-                    && controller.model.history.current.selection == [alpha.path]
-                    && controller.columnView.qaColumnCount == 1
-                controller.columnView.qaMoveRightFromBase()
-                let rightStart = ContinuousClock.now
-                while controller.columnView.qaFocusedColumnURL?.path != alpha.path && elapsed(rightStart) < 5 {
-                    try await Task.sleep(for: .milliseconds(10))
-                }
-                checks["referenceFolderRightFocusesLoadedColumn"] = controller.columnView.qaFocusedColumnURL?.path == alpha.path
-                    && controller.model.history.current.selection == [child.path]
-                let columnWidths = controller.columnView.qaColumnWidths
-                controller.columnView.qaDragBaseWidth(by: 80)
-                let widened = controller.columnView.qaColumnWidths
-                checks["referenceFolderColumnWidthDrag"] = widened == [310, 230] && columnWidths == [230, 230]
-                    && controller.model.history.current.selection == [child.path]
-                let incremented = controller.columnView.qaIncreaseBaseWidth()
-                checks["referenceFolderColumnWidthAccessibility"] = incremented && controller.columnView.qaColumnWidths == [330, 230]
-                if checks["referenceFolderColumnWidthDrag"] == true { try capture("ui-05-resized-column") }
-                controller.columnView.qaDragBaseWidth(by: -1_000)
-                let minimum = controller.columnView.qaColumnWidths
-                controller.columnView.qaResetBaseWidth()
-                checks["referenceFolderColumnWidthLimitAndReset"] = minimum == [150, 230] && controller.columnView.qaColumnWidths == columnWidths
-                controller.navigate(alpha)
-                try await settleWindows()
-                let parentStart = ContinuousClock.now
-                while controller.columnView.qaParentColumnURL?.path != reference.path && elapsed(parentStart) < 5 {
-                    try await Task.sleep(for: .milliseconds(10))
-                }
-                controller.columnView.qaMoveLeftFromBase()
-                try await settleWindows()
-                checks["referenceFolderLeftSelectsFormerFolder"] = controller.model.location?.path == reference.path
-                    && controller.model.history.current.selection == [alpha.path]
-
-                controller.model.setViewMode(.details)
-                window.setContentSize(NSSize(width: 1250, height: 600))
-                controller.splitVertically(nil)
-                if let secondary = controller.secondaryPane {
-                    secondary.openLocation(alpha)
-                    secondary.model.setViewMode(.details)
-                    let splitStart = ContinuousClock.now
-                    while secondary.model.isLoading && elapsed(splitStart) < 5 {
+                    let alpha = reference.appendingPathComponent("Alpha", isDirectory: true)
+                    let child = alpha.appendingPathComponent("column-note.txt")
+                    controller.model.savePosition(selection: [], scrollOffset: 0)
+                    controller.model.setViewMode(.columns)
+                    controller.render()
+                    controller.columnView.qaSelect(id: alpha.path)
+                    let columnsStart = ContinuousClock.now
+                    while (controller.columnView.qaPasteboardURL(column: 1)?.path != child.path ||
+                           controller.columnView.qaParentColumnURL == nil) && elapsed(columnsStart) < 5 {
                         try await Task.sleep(for: .milliseconds(10))
                     }
-                    secondary.focusFiles()
-                    try await Task.sleep(for: .milliseconds(120))
-                    root.layoutSubtreeIfNeeded()
-                    checks["referenceFolderSplitPanes"] = controller.workspaceSplit.isVertical && controller.secondaryActive
-                        && controller.model.location?.path == reference.path && Set(controller.model.items.map(\.name)) == expected
-                        && secondary.model.location?.path == alpha.path && secondary.model.items.map(\.name) == [child.lastPathComponent]
-                    checks["referenceFolderSplitFirstRowBelowHeader"] = secondary.qaFirstDetailRowBelowHeader
-                    if checks["referenceFolderSplitPanes"] == true { try capture("ui-06-reference-dual-pane") }
-                    controller.arrangePanesHorizontally(nil)
-                    root.layoutSubtreeIfNeeded()
-                    let top = controller.primaryPaneHost.convert(controller.primaryPaneHost.bounds, to: nil)
-                    let bottom = controller.secondaryPaneHost.convert(controller.secondaryPaneHost.bounds, to: nil)
-                    checks["referenceFolderSplitStacked"] = !controller.workspaceSplit.isVertical && controller.secondaryActive
-                        && top.minY >= bottom.maxY - 1 && abs(top.minX - bottom.minX) <= 1 && !top.isEmpty && !bottom.isEmpty
-                        && controller.model.location?.path == reference.path && Set(controller.model.items.map(\.name)) == expected
-                        && secondary.model.location?.path == alpha.path && secondary.model.items.map(\.name) == [child.lastPathComponent]
-                        && secondary.qaFirstDetailRowBelowHeader
-                    if checks["referenceFolderSplitStacked"] == true { try capture("ui-06-stacked-reference-dual-pane") }
-                    controller.closeSecondaryPane(nil)
-                } else { checks["referenceFolderSplitPanes"] = false }
-
-                controller.searchWindow?.close()
-                controller.searchWindow = nil
-                controller.showSearch(nil)
-                if let panel = controller.searchWindow, let searchWindow = panel.window, let searchView = searchWindow.contentView {
-                    panel.qaSearch("column-note", scope: .descendants)
-                    let searchStart = ContinuousClock.now
-                    while panel.qaIsSearching && elapsed(searchStart) < 5 {
+                    checks["referenceFolderColumns"] = !controller.columnView.isHidden
+                        && controller.columnView.qaColumnCount == 2
+                        && controller.columnView.selectedItems.map(\.id) == [alpha.path]
+                        && controller.columnView.qaPasteboardURL(column: 1)?.path == child.path
+                    checks["referenceFolderAncestorColumn"] = controller.columnView.qaParentColumnURL?.path == reference.deletingLastPathComponent().path
+                        && controller.columnView.qaParentSelection == [reference.path]
+                    if checks["referenceFolderColumns"] == true { try capture("ui-05-reference-columns") }
+                    controller.columnView.qaMoveRightFromBase()
+                    checks["referenceFolderRightFocusesOpenColumn"] = controller.columnView.qaFocusedColumnURL?.path == alpha.path
+                        && controller.model.history.current.selection == [child.path]
+                        && controller.columnView.qaBaseSelection == [alpha.path]
+                    controller.columnView.qaMoveLeft()
+                    checks["referenceFolderLeftRestoresColumnSelection"] = controller.columnView.qaFocusedColumnURL?.path == reference.path
+                        && controller.model.history.current.selection == [alpha.path]
+                        && controller.columnView.qaColumnCount == 1
+                    controller.columnView.qaMoveRightFromBase()
+                    let rightStart = ContinuousClock.now
+                    while controller.columnView.qaFocusedColumnURL?.path != alpha.path && elapsed(rightStart) < 5 {
                         try await Task.sleep(for: .milliseconds(10))
                     }
-                    checks["referenceFolderSearch"] = !panel.qaIsSearching && panel.qaResultCount == 1 && panel.qaContainsResult(at: child)
-                    searchView.layoutSubtreeIfNeeded()
-                    let normalWidths = panel.qaMetadataFieldsHaveUsableWidth
-                    if checks["referenceFolderSearch"] == true {
-                        try capture("ui-07-reference-search", view: searchView, backingColor: searchWindow.backgroundColor)
+                    checks["referenceFolderRightFocusesLoadedColumn"] = controller.columnView.qaFocusedColumnURL?.path == alpha.path
+                        && controller.model.history.current.selection == [child.path]
+                    let columnWidths = controller.columnView.qaColumnWidths
+                    controller.columnView.qaDragBaseWidth(by: 80)
+                    let widened = controller.columnView.qaColumnWidths
+                    checks["referenceFolderColumnWidthDrag"] = widened == [310, 230] && columnWidths == [230, 230]
+                        && controller.model.history.current.selection == [child.path]
+                    let incremented = controller.columnView.qaIncreaseBaseWidth()
+                    checks["referenceFolderColumnWidthAccessibility"] = incremented && controller.columnView.qaColumnWidths == [330, 230]
+                    if checks["referenceFolderColumnWidthDrag"] == true { try capture("ui-05-resized-column") }
+                    controller.columnView.qaDragBaseWidth(by: -1_000)
+                    let minimum = controller.columnView.qaColumnWidths
+                    controller.columnView.qaResetBaseWidth()
+                    checks["referenceFolderColumnWidthLimitAndReset"] = minimum == [150, 230] && controller.columnView.qaColumnWidths == columnWidths
+                    controller.navigate(alpha)
+                    try await settleWindows()
+                    let parentStart = ContinuousClock.now
+                    while controller.columnView.qaParentColumnURL?.path != reference.path && elapsed(parentStart) < 5 {
+                        try await Task.sleep(for: .milliseconds(10))
                     }
-                    searchWindow.setContentSize(NSSize(width: 720, height: 450))
-                    searchView.layoutSubtreeIfNeeded()
-                    checks["referenceFolderSearchMetadataInputs"] = normalWidths && panel.qaMetadataFieldsHaveUsableWidth
-                    panel.close()
-                } else { checks["referenceFolderSearch"] = false }
+                    controller.columnView.qaMoveLeftFromBase()
+                    try await settleWindows()
+                    checks["referenceFolderLeftSelectsFormerFolder"] = controller.model.location?.path == reference.path
+                        && controller.model.history.current.selection == [alpha.path]
 
-                let previewFile = reference.appendingPathComponent("preview.txt")
-                if let previewRow = controller.detailRows.indices.first(where: {
-                    detailItem(at: $0, in: controller.detailRows)?.url == previewFile
-                }), let folderRow = controller.detailRows.indices.first(where: {
-                    detailItem(at: $0, in: controller.detailRows)?.url == alpha
-                }) {
-                    controller.table.selectRowIndexes([previewRow], byExtendingSelection: false)
-                    controller.showInfoPaneDetails(nil)
-                    preferences.setShowInfoPane(true)
-                    let inspector = controller.inspector
-                    let detailsStart = ContinuousClock.now
-                    while !inspector.qaDetails.contains(previewFile.path) && elapsed(detailsStart) < 5 {
-                        try await Task.sleep(for: .milliseconds(20))
-                    }
-                    checks["referenceFolderInfoDetails"] = !inspector.isHidden && inspector.qaTitle == previewFile.lastPathComponent
-                        && inspector.qaDetails.contains(previewFile.path) && inspector.qaPreviewURL == nil
-                    let fileAttributes = try fm.attributesOfItem(atPath: previewFile.path)
-                    let creationDate = (fileAttributes[.creationDate] as? Date)?.formatted(date: .abbreviated, time: .shortened)
-                    checks["referenceFolderInfoCreationDate"] = creationDate.map {
-                        inspector.qaDetails.contains(L("생성일: ", "Created: ") + $0)
-                    } == true
-                    if checks["referenceFolderInfoDetails"] == true { try capture("ui-08-reference-details") }
-                    let openedProperties = inspector.qaOpenProperties()
-                    checks["referenceFolderInfoOpensProperties"] = openedProperties && controller.infoWindow?.window?.isVisible == true
-                        && controller.infoWindow?.qaItemURLs == [previewFile]
-                    if let properties = controller.infoWindow, let panel = properties.window, let content = panel.contentView {
-                        try await controller.waitForFolderQA { properties.qaLoaded }
-                        checks["referenceFolderGeneralProperties"] = properties.qaLogicalSize == 24
-                        if checks["referenceFolderGeneralProperties"] == true {
-                            try capture("ui-09-reference-general", view: content, backingColor: panel.backgroundColor)
+                    controller.model.setViewMode(.details)
+                    window.setContentSize(NSSize(width: 1250, height: 600))
+                    controller.splitVertically(nil)
+                    if let secondary = controller.secondaryPane {
+                        secondary.openLocation(alpha)
+                        secondary.model.setViewMode(.details)
+                        let splitStart = ContinuousClock.now
+                        while secondary.model.isLoading && elapsed(splitStart) < 5 {
+                            try await Task.sleep(for: .milliseconds(10))
                         }
-                        properties.qaStartHash(.sha256)
-                        try await controller.waitForFolderQA { !properties.qaHashing }
-                        let expectedHash = "f288c2f02342069c184b6d162f982144eb504f03c2f30c23d1a420f9e5fb780a"
-                        checks["referenceFolderPropertiesSHA256"] = properties.qaDigest == expectedHash
-                        if checks["referenceFolderPropertiesSHA256"] == true {
-                            properties.qaRevealHashControls()
-                            try capture("ui-09-reference-hashes", view: content, backingColor: panel.backgroundColor)
+                        secondary.focusFiles()
+                        try await Task.sleep(for: .milliseconds(120))
+                        root.layoutSubtreeIfNeeded()
+                        checks["referenceFolderSplitPanes"] = controller.workspaceSplit.isVertical && controller.secondaryActive
+                            && controller.model.location?.path == reference.path && Set(controller.model.items.map(\.name)) == expected
+                            && secondary.model.location?.path == alpha.path && secondary.model.items.map(\.name) == [child.lastPathComponent]
+                        checks["referenceFolderSplitFirstRowBelowHeader"] = secondary.qaFirstDetailRowBelowHeader
+                        if checks["referenceFolderSplitPanes"] == true { try capture("ui-06-reference-dual-pane") }
+                        controller.arrangePanesHorizontally(nil)
+                        root.layoutSubtreeIfNeeded()
+                        let top = controller.primaryPaneHost.convert(controller.primaryPaneHost.bounds, to: nil)
+                        let bottom = controller.secondaryPaneHost.convert(controller.secondaryPaneHost.bounds, to: nil)
+                        checks["referenceFolderSplitStacked"] = !controller.workspaceSplit.isVertical && controller.secondaryActive
+                            && top.minY >= bottom.maxY - 1 && abs(top.minX - bottom.minX) <= 1 && !top.isEmpty && !bottom.isEmpty
+                            && controller.model.location?.path == reference.path && Set(controller.model.items.map(\.name)) == expected
+                            && secondary.model.location?.path == alpha.path && secondary.model.items.map(\.name) == [child.lastPathComponent]
+                            && secondary.qaFirstDetailRowBelowHeader
+                        if checks["referenceFolderSplitStacked"] == true { try capture("ui-06-stacked-reference-dual-pane") }
+                        controller.closeSecondaryPane(nil)
+                    } else { checks["referenceFolderSplitPanes"] = false }
+
+                    controller.searchWindow?.close()
+                    controller.searchWindow = nil
+                    controller.showSearch(nil)
+                    if let panel = controller.searchWindow, let searchWindow = panel.window, let searchView = searchWindow.contentView {
+                        panel.qaSearch("column-note", scope: .descendants)
+                        let searchStart = ContinuousClock.now
+                        while panel.qaIsSearching && elapsed(searchStart) < 5 {
+                            try await Task.sleep(for: .milliseconds(10))
                         }
-                        let securityDirectory = destination.appendingPathComponent("reference-security", isDirectory: true)
-                        try fm.createDirectory(at: securityDirectory, withIntermediateDirectories: false)
-                        let securityFile = securityDirectory.appendingPathComponent(previewFile.lastPathComponent)
-                        try fm.copyItem(at: previewFile, to: securityFile)
-                        try fm.setAttributes([.posixPermissions: 0o644], ofItemAtPath: securityFile.path)
-                        let permissionInspector = FilePropertiesInspector()
-                        let initial = try await permissionInspector.permissions(securityFile)
-                        _ = try await permissionInspector.setAccessControlList("group::everyone::allow:read",
-                                                                               at: securityFile, expected: initial)
-                        let security = FileInfoWindow()
-                        security.present(items: [FileItem(url: securityFile, name: securityFile.lastPathComponent, isDirectory: false)])
-                        checks["referenceFolderPropertiesPermissions"] = try await security.qaCapturePermissions(
-                            mode: 0o644, aclSuffix: ":allow:read"
-                        ) { view in
-                            try capture("ui-09-reference-security", view: view, backingColor: security.window?.backgroundColor)
+                        checks["referenceFolderSearch"] = !panel.qaIsSearching && panel.qaResultCount == 1 && panel.qaContainsResult(at: child)
+                        searchView.layoutSubtreeIfNeeded()
+                        let normalWidths = panel.qaMetadataFieldsHaveUsableWidth
+                        if checks["referenceFolderSearch"] == true {
+                            try capture("ui-07-reference-search", view: searchView, backingColor: searchWindow.backgroundColor)
                         }
-                        security.close()
-                        properties.qaInspectSignature()
-                        try await controller.waitForFolderQA { properties.qaSignatureLoaded }
-                        checks["referenceFolderPropertiesUnsigned"] = properties.qaSignatureText.hasPrefix(
-                            L("상태: 서명되지 않음", "State: Unsigned")
-                        )
+                        searchWindow.setContentSize(NSSize(width: 720, height: 450))
+                        searchView.layoutSubtreeIfNeeded()
+                        checks["referenceFolderSearchMetadataInputs"] = normalWidths && panel.qaMetadataFieldsHaveUsableWidth
+                        panel.close()
+                    } else { checks["referenceFolderSearch"] = false }
+
+                    let previewFile = reference.appendingPathComponent("preview.txt")
+                    if let previewRow = controller.detailRows.indices.first(where: {
+                        detailItem(at: $0, in: controller.detailRows)?.url == previewFile
+                    }), let folderRow = controller.detailRows.indices.first(where: {
+                        detailItem(at: $0, in: controller.detailRows)?.url == alpha
+                    }) {
+                        controller.table.selectRowIndexes([previewRow], byExtendingSelection: false)
+                        controller.showInfoPaneDetails(nil)
+                        preferences.setShowInfoPane(true)
+                        let inspector = controller.inspector
+                        let detailsStart = ContinuousClock.now
+                        while !inspector.qaDetails.contains(previewFile.path) && elapsed(detailsStart) < 5 {
+                            try await Task.sleep(for: .milliseconds(20))
+                        }
+                        checks["referenceFolderInfoDetails"] = !inspector.isHidden && inspector.qaTitle == previewFile.lastPathComponent
+                            && inspector.qaDetails.contains(previewFile.path) && inspector.qaPreviewURL == nil
+                        let fileAttributes = try fm.attributesOfItem(atPath: previewFile.path)
+                        let creationDate = (fileAttributes[.creationDate] as? Date)?.formatted(date: .abbreviated, time: .shortened)
+                        checks["referenceFolderInfoCreationDate"] = creationDate.map {
+                            inspector.qaDetails.contains(L("생성일: ", "Created: ") + $0)
+                        } == true
+                        if checks["referenceFolderInfoDetails"] == true { try capture("ui-08-reference-details") }
+                        let openedProperties = inspector.qaOpenProperties()
+                        checks["referenceFolderInfoOpensProperties"] = openedProperties && controller.infoWindow?.window?.isVisible == true
+                            && controller.infoWindow?.qaItemURLs == [previewFile]
+                        if let properties = controller.infoWindow, let panel = properties.window, let content = panel.contentView {
+                            try await controller.waitForFolderQA { properties.qaLoaded }
+                            checks["referenceFolderGeneralProperties"] = properties.qaLogicalSize == 24
+                            if checks["referenceFolderGeneralProperties"] == true {
+                                try capture("ui-09-reference-general", view: content, backingColor: panel.backgroundColor)
+                            }
+                            properties.qaStartHash(.sha256)
+                            try await controller.waitForFolderQA { !properties.qaHashing }
+                            let expectedHash = "f288c2f02342069c184b6d162f982144eb504f03c2f30c23d1a420f9e5fb780a"
+                            checks["referenceFolderPropertiesSHA256"] = properties.qaDigest == expectedHash
+                            if checks["referenceFolderPropertiesSHA256"] == true {
+                                properties.qaRevealHashControls()
+                                try capture("ui-09-reference-hashes", view: content, backingColor: panel.backgroundColor)
+                            }
+                            let securityDirectory = destination.appendingPathComponent("reference-security", isDirectory: true)
+                            try fm.createDirectory(at: securityDirectory, withIntermediateDirectories: false)
+                            let securityFile = securityDirectory.appendingPathComponent(previewFile.lastPathComponent)
+                            try fm.copyItem(at: previewFile, to: securityFile)
+                            try fm.setAttributes([.posixPermissions: 0o644], ofItemAtPath: securityFile.path)
+                            let permissionInspector = FilePropertiesInspector()
+                            let initial = try await permissionInspector.permissions(securityFile)
+                            _ = try await permissionInspector.setAccessControlList("group::everyone::allow:read",
+                                                                                   at: securityFile, expected: initial)
+                            let security = FileInfoWindow()
+                            security.present(items: [FileItem(url: securityFile, name: securityFile.lastPathComponent, isDirectory: false)])
+                            checks["referenceFolderPropertiesPermissions"] = try await security.qaCapturePermissions(
+                                mode: 0o644, aclSuffix: ":allow:read"
+                            ) { view in
+                                try capture("ui-09-reference-security", view: view, backingColor: security.window?.backgroundColor)
+                            }
+                            security.close()
+                            properties.qaInspectSignature()
+                            try await controller.waitForFolderQA { properties.qaSignatureLoaded }
+                            checks["referenceFolderPropertiesUnsigned"] = properties.qaSignatureText.hasPrefix(
+                                L("상태: 서명되지 않음", "State: Unsigned")
+                            )
+                        } else {
+                            checks["referenceFolderGeneralProperties"] = false
+                            checks["referenceFolderPropertiesSHA256"] = false
+                            checks["referenceFolderPropertiesPermissions"] = false
+                            checks["referenceFolderPropertiesUnsigned"] = false
+                        }
+                        controller.infoWindow?.close()
+                        let validSignature = L("상태: 유효", "State: Valid")
+                        let invalidSignature = L("상태: 유효하지 않음", "State: Invalid")
+                        let signatureFixtures: [(variable: String, bundle: Bool, state: String, identifier: String,
+                                                 check: String, screenshot: String)] = [
+                            ("FILES_UI_REFERENCE_SIGNED_FILE", false, validSignature, "org.taro6222.files.qa.signed-reference",
+                             "referencePropertiesValidSignature", "ui-09-reference-signatures"),
+                            ("FILES_UI_REFERENCE_SIGNED_BUNDLE", true, validSignature, "org.taro6222.files.qa.outer",
+                             "referencePropertiesValidNestedSignature", "ui-09-reference-nested-signed"),
+                            ("FILES_UI_REFERENCE_INVALID_BUNDLE", true, invalidSignature, "org.taro6222.files.qa.outer",
+                             "referencePropertiesInvalidNestedSignature", "ui-09-reference-nested-invalid")
+                        ]
+                        for fixture in signatureFixtures {
+                            guard let signedPath = ProcessInfo.processInfo.environment[fixture.variable] else { continue }
+                            let signedURL = URL(fileURLWithPath: signedPath)
+                            let signature = FileInfoWindow()
+                            defer { signature.close() }
+                            signature.present(items: [FileItem(url: signedURL, name: signedURL.lastPathComponent,
+                                                              isDirectory: fixture.bundle, isPackage: fixture.bundle)])
+                            signature.qaInspectSignature()
+                            try await controller.waitForFolderQA { signature.qaSignatureLoaded }
+                            let lines = signature.qaSignatureText.components(separatedBy: .newlines)
+                            let formatPrefix = fixture.bundle ? "Format: app bundle with Mach-O" : "Format: Mach-O"
+                            checks[fixture.check] = lines.first == fixture.state
+                                && lines.contains("Identifier: \(fixture.identifier)")
+                                && lines.contains { $0.hasPrefix(formatPrefix) }
+                                && (fixture.state != invalidSignature || lines.contains {
+                                    $0.hasPrefix("In subcomponent: ") && $0.hasSuffix("/Helper.app")
+                                })
+                            if checks[fixture.check] == true, let signedPanel = signature.window,
+                               let signedContent = signedPanel.contentView {
+                                signature.qaRevealSignature()
+                                try capture(fixture.screenshot, view: signedContent, backingColor: signedPanel.backgroundColor)
+                            }
+                        }
+                        window.makeKeyAndOrderFront(nil)
+                        await Task.yield()
+                        let openedTagEditor = inspector.qaEditTags()
+                        let tagEditorStart = ContinuousClock.now
+                        while controller.infoWindow?.qaTagFieldFocused != true && elapsed(tagEditorStart) < 5 {
+                            try await Task.sleep(for: .milliseconds(20))
+                        }
+                        checks["referenceFolderInfoFocusesTagEditor"] = openedTagEditor && controller.infoWindow?.qaTagFieldFocused == true
+                            && controller.infoWindow?.qaItemURLs == [previewFile]
+                        if checks["referenceFolderInfoFocusesTagEditor"] == true, let infoContent = controller.infoWindow?.window?.contentView {
+                            try capture("ui-08-reference-tag-editor", view: infoContent)
+                        }
+                        controller.infoWindow?.close()
+                        window.makeKeyAndOrderFront(nil)
+                        controller.showInfoPanePreview(nil)
+                        checks["referenceFolderInfoPreview"] = inspector.qaPreviewURL?.path == previewFile.path
+                        if ProcessInfo.processInfo.environment["FILES_UI_QA_PREVIEW_TEXT"] == "1" {
+                            let previewText = try String(contentsOf: previewFile, encoding: .utf8)
+                                .trimmingCharacters(in: .whitespacesAndNewlines)
+                            let captureName = "ui-08-reference-preview"
+                            let screenshot = destination.appendingPathComponent(captureName + ".png")
+                            let deadline = ContinuousClock.now + .seconds(5)
+                            repeat {
+                                try await Task.sleep(for: .milliseconds(250))
+                                try capture(captureName, view: inspector, backingColor: window.backgroundColor)
+                                checks["referenceFolderInfoPreviewDrawsText"] = try previewCapture(screenshot, contains: previewText)
+                            } while checks["referenceFolderInfoPreviewDrawsText"] == false && ContinuousClock.now < deadline
+                        }
+                        controller.table.selectRowIndexes([folderRow], byExtendingSelection: false)
+                        checks["referenceFolderInfoUnavailable"] = !inspector.isHidden && inspector.qaTitle == alpha.lastPathComponent
+                            && inspector.qaPreviewURL == nil && inspector.qaDetails == L("미리보기를 표시할 수 없습니다.", "Preview unavailable.")
+                        if checks["referenceFolderInfoUnavailable"] == true { try capture("ui-08-reference-preview-unavailable") }
+
+                        let longDirectory = (0..<4).reduce(fixture) { parent, _ in
+                            parent.appendingPathComponent(String(repeating: "W", count: 210), isDirectory: true)
+                        }
+                        try fm.createDirectory(at: longDirectory, withIntermediateDirectories: true)
+                        let longPathFile = longDirectory.appendingPathComponent("inspect.txt")
+                        try Data("information pane".utf8).write(to: longPathFile)
+                        let item = FileItem(url: longPathFile, name: longPathFile.lastPathComponent, isDirectory: false)
+                        inspector.update(items: [item], tab: .details, sizeUnit: preferences.sizeUnit)
+                        let scrollStart = ContinuousClock.now
+                        while !inspector.qaDetails.contains(longPathFile.path) && elapsed(scrollStart) < 5 {
+                            try await Task.sleep(for: .milliseconds(20))
+                        }
+                        checks["referenceFolderInfoScrollsLongPath"] = inspector.qaDetails.contains(longPathFile.path)
+                            && inspector.qaScrollStartsAtTop && inspector.qaCanScrollToDetailEnd()
+                        controller.showInfoPaneDetails(nil)
+                        checks["referenceFolderInfoResetsScroll"] = inspector.qaTitle == alpha.lastPathComponent
+                            && inspector.qaScrollStartsAtTop
+                        preferences.setShowInfoPane(false)
                     } else {
-                        checks["referenceFolderGeneralProperties"] = false
-                        checks["referenceFolderPropertiesSHA256"] = false
-                        checks["referenceFolderPropertiesPermissions"] = false
-                        checks["referenceFolderPropertiesUnsigned"] = false
+                        checks["referenceFolderInfoDetails"] = false
                     }
-                    controller.infoWindow?.close()
-                    let validSignature = L("상태: 유효", "State: Valid")
-                    let invalidSignature = L("상태: 유효하지 않음", "State: Invalid")
-                    let signatureFixtures: [(variable: String, bundle: Bool, state: String, identifier: String,
-                                             check: String, screenshot: String)] = [
-                        ("FILES_UI_REFERENCE_SIGNED_FILE", false, validSignature, "org.taro6222.files.qa.signed-reference",
-                         "referencePropertiesValidSignature", "ui-09-reference-signatures"),
-                        ("FILES_UI_REFERENCE_SIGNED_BUNDLE", true, validSignature, "org.taro6222.files.qa.outer",
-                         "referencePropertiesValidNestedSignature", "ui-09-reference-nested-signed"),
-                        ("FILES_UI_REFERENCE_INVALID_BUNDLE", true, invalidSignature, "org.taro6222.files.qa.outer",
-                         "referencePropertiesInvalidNestedSignature", "ui-09-reference-nested-invalid")
-                    ]
-                    for fixture in signatureFixtures {
-                        guard let signedPath = ProcessInfo.processInfo.environment[fixture.variable] else { continue }
-                        let signedURL = URL(fileURLWithPath: signedPath)
-                        let signature = FileInfoWindow()
-                        defer { signature.close() }
-                        signature.present(items: [FileItem(url: signedURL, name: signedURL.lastPathComponent,
-                                                          isDirectory: fixture.bundle, isPackage: fixture.bundle)])
-                        signature.qaInspectSignature()
-                        try await controller.waitForFolderQA { signature.qaSignatureLoaded }
-                        let lines = signature.qaSignatureText.components(separatedBy: .newlines)
-                        let formatPrefix = fixture.bundle ? "Format: app bundle with Mach-O" : "Format: Mach-O"
-                        checks[fixture.check] = lines.first == fixture.state
-                            && lines.contains("Identifier: \(fixture.identifier)")
-                            && lines.contains { $0.hasPrefix(formatPrefix) }
-                            && (fixture.state != invalidSignature || lines.contains {
-                                $0.hasPrefix("In subcomponent: ") && $0.hasSuffix("/Helper.app")
-                            })
-                        if checks[fixture.check] == true, let signedPanel = signature.window,
-                           let signedContent = signedPanel.contentView {
-                            signature.qaRevealSignature()
-                            try capture(fixture.screenshot, view: signedContent, backingColor: signedPanel.backgroundColor)
-                        }
-                    }
-                    window.makeKeyAndOrderFront(nil)
-                    await Task.yield()
-                    let openedTagEditor = inspector.qaEditTags()
-                    let tagEditorStart = ContinuousClock.now
-                    while controller.infoWindow?.qaTagFieldFocused != true && elapsed(tagEditorStart) < 5 {
-                        try await Task.sleep(for: .milliseconds(20))
-                    }
-                    checks["referenceFolderInfoFocusesTagEditor"] = openedTagEditor && controller.infoWindow?.qaTagFieldFocused == true
-                        && controller.infoWindow?.qaItemURLs == [previewFile]
-                    if checks["referenceFolderInfoFocusesTagEditor"] == true, let infoContent = controller.infoWindow?.window?.contentView {
-                        try capture("ui-08-reference-tag-editor", view: infoContent)
-                    }
-                    controller.infoWindow?.close()
-                    window.makeKeyAndOrderFront(nil)
-                    controller.showInfoPanePreview(nil)
-                    checks["referenceFolderInfoPreview"] = inspector.qaPreviewURL?.path == previewFile.path
-                    if ProcessInfo.processInfo.environment["FILES_UI_QA_PREVIEW_TEXT"] == "1" {
-                        let previewText = try String(contentsOf: previewFile, encoding: .utf8)
-                            .trimmingCharacters(in: .whitespacesAndNewlines)
-                        let captureName = "ui-08-reference-preview"
-                        let screenshot = destination.appendingPathComponent(captureName + ".png")
-                        let deadline = ContinuousClock.now + .seconds(5)
-                        repeat {
-                            try await Task.sleep(for: .milliseconds(250))
-                            try capture(captureName, view: inspector, backingColor: window.backgroundColor)
-                            checks["referenceFolderInfoPreviewDrawsText"] = try previewCapture(screenshot, contains: previewText)
-                        } while checks["referenceFolderInfoPreviewDrawsText"] == false && ContinuousClock.now < deadline
-                    }
-                    controller.table.selectRowIndexes([folderRow], byExtendingSelection: false)
-                    checks["referenceFolderInfoUnavailable"] = !inspector.isHidden && inspector.qaTitle == alpha.lastPathComponent
-                        && inspector.qaPreviewURL == nil && inspector.qaDetails == L("미리보기를 표시할 수 없습니다.", "Preview unavailable.")
-                    if checks["referenceFolderInfoUnavailable"] == true { try capture("ui-08-reference-preview-unavailable") }
-
-                    let longDirectory = (0..<4).reduce(fixture) { parent, _ in
-                        parent.appendingPathComponent(String(repeating: "W", count: 210), isDirectory: true)
-                    }
-                    try fm.createDirectory(at: longDirectory, withIntermediateDirectories: true)
-                    let longPathFile = longDirectory.appendingPathComponent("inspect.txt")
-                    try Data("information pane".utf8).write(to: longPathFile)
-                    let item = FileItem(url: longPathFile, name: longPathFile.lastPathComponent, isDirectory: false)
-                    inspector.update(items: [item], tab: .details, sizeUnit: preferences.sizeUnit)
-                    let scrollStart = ContinuousClock.now
-                    while !inspector.qaDetails.contains(longPathFile.path) && elapsed(scrollStart) < 5 {
-                        try await Task.sleep(for: .milliseconds(20))
-                    }
-                    checks["referenceFolderInfoScrollsLongPath"] = inspector.qaDetails.contains(longPathFile.path)
-                        && inspector.qaScrollStartsAtTop && inspector.qaCanScrollToDetailEnd()
-                    controller.showInfoPaneDetails(nil)
-                    checks["referenceFolderInfoResetsScroll"] = inspector.qaTitle == alpha.lastPathComponent
-                        && inspector.qaScrollStartsAtTop
-                    preferences.setShowInfoPane(false)
-                } else {
-                    checks["referenceFolderInfoDetails"] = false
                 }
             }
+            try await verifyReferenceUIPhase()
             let totalDuration = verificationStarted.duration(to: .now).components
             metrics["fullSuiteElapsedSeconds"] = Double(totalDuration.seconds) + Double(totalDuration.attoseconds) / 1e18
             checkpoint(checks, phase: "report-writing")

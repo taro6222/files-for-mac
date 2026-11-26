@@ -1,0 +1,98 @@
+{
+  "increment": 367,
+  "status": "UI verification phases separated; local builds passed; remote timing and full UI acceptance pending",
+  "sourceSHA256": "84e35b6a0f2bb32f8b306233a9e31a6659f52accaf6a7d56e243bb3734145368",
+  "bodyPreservation": {
+    "originalSHA256": "3c78dd5b73b3a828f38d68cfd4f21e16f3206ecab2fc4ef45a1520d891ec989e",
+    "updatedSHA256": "84e35b6a0f2bb32f8b306233a9e31a6659f52accaf6a7d56e243bb3734145368",
+    "originalRecoveredExactly": true,
+    "phases": [
+      {
+        "name": "verifyArchiveUIPhase",
+        "originalStart": 5522,
+        "originalEnd": 5758,
+        "originalBodySHA256": "008a80a3eb5e6a4b846cee04d1763ed88e87d96244949239927bd73d53cbf03d",
+        "awaitOccurrences": 22
+      },
+      {
+        "name": "verifySevenZipUIPhase",
+        "originalStart": 5759,
+        "originalEnd": 5978,
+        "originalBodySHA256": "9b120550beff9ea984401cfb808625bf9548d15554de946ce4ade3f25877e7ab",
+        "awaitOccurrences": 26
+      },
+      {
+        "name": "verifyReferenceUIPhase",
+        "originalStart": 6531,
+        "originalEnd": 6815,
+        "originalBodySHA256": "c5900d8e28311364dfb24a72b17aaf1cae3c1c7e5ad15e9ab106428f3053ffa0",
+        "awaitOccurrences": 21
+      }
+    ]
+  },
+  "builds": {
+    "debug": {
+      "passed": true,
+      "elapsedSeconds": 34.13
+    },
+    "release": {
+      "passed": true,
+      "elapsedSeconds": 16.87
+    },
+    "initialReleaseAttempt": {
+      "passed": false,
+      "cause": "sandbox denied default home clang ModuleCache; rerun used workspace CLANG_MODULE_CACHE_PATH"
+    }
+  },
+  "evidenceSHA256": {
+    "build/compiler-367/phase-body-proof.json": "f7787a7164eec8712bb7d296033f3f9f860048d849e9c2c12730d23454b6ca5c",
+    "build/compiler-367/debug.log": "2bc5bd477f8af4e0b8757ff099764986df31d03acced711a705006044d6b76c5",
+    "build/compiler-367/release.log": "b530c3a2bba9698af78ef1ae8fd7a2f9be16b0f29d2e6251f1182abaa0ef07f3",
+    "build/compiler-367/release-workspace-cache.log": "bc399da65f7a94f4979080279ee54f53b8b6e07110170ab721c1bdc426ab0a63",
+    "build/compiler-367/prior-run.json": "aaf5b79d28373fbf3007e83c161015cf7881068808abe0e0edc95c75cf88cc45"
+  },
+  "priorRunObservation": [
+    {
+      "build": [
+        {
+          "completedAt": "2026-11-26T15:05:22Z",
+          "conclusion": "success",
+          "status": "completed"
+        }
+      ],
+      "conclusion": "success",
+      "name": "macOS 15 (arm64)",
+      "status": "completed"
+    },
+    {
+      "build": [
+        {
+          "completedAt": "2026-11-26T15:12:41Z",
+          "conclusion": "success",
+          "status": "completed"
+        }
+      ],
+      "conclusion": "",
+      "name": "macOS 15 (x86_64)",
+      "status": "in_progress"
+    },
+    {
+      "build": [],
+      "conclusion": "skipped",
+      "name": "Optimized performance (${{ matrix.architecture }})",
+      "status": "completed"
+    },
+    {
+      "build": [],
+      "conclusion": "skipped",
+      "name": "Xcode (${{ matrix.architecture }})",
+      "status": "completed"
+    }
+  ],
+  "localGUIStarted": false,
+  "longRunningTestsRestarted": false,
+  "checksRemoved": 0,
+  "compilerFlagsOrTimeoutsChanged": false,
+  "remoteCompilerImprovementProven": false,
+  "fullAppKitAcceptanceProven": false
+}
