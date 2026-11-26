@@ -1,6 +1,6 @@
 # Files macOS 제품·UI·기술 설계
 
-[370단계](verification/m7/INCREMENT_370.md)는 FD 기반 압축 편집 네이티브 API를 부분 구현해 83개를 통과했고 기존 번들 Swift 57개·helper 50개·진단 SDK 142개·권한 15개·fixture 8개도 통과했다. 편집 IPC·안전한 교체/복구·UI와 Unicode AES ZIP 새 암호 데이터 브리지는 미완료이며 update는 false다. 이전 4a6c79d의 양 CPU 전체 실행은 여덟 프로필 각각 전체 332개·탭 경계 18개가 통과했다. 새 API 수용과 기존 UI 기준선을 구분한다. 로컬 GUI/장시간 시험은 실행하지 않았다.
+[371 구현 기록](verification/m7/INCREMENT_371.md): 압축 편집 계획과 Swift→실제 격리 helper 통신을 연결했다. 별도 ZIP/7z 편집본의 공식 도구 복원과 원본 보존을 확인했으며 Swift 60개·격리 helper 87개·진단 179개·native 83개·권한 15개가 통과했다. 전체 출력 검증·원본 교체/복구/Undo·Unicode AES ZIP 추가·UI는 진행 중이고 update는 false다. 이전 370 Intel의 Git 복제 정리 검사는 실패했으며 원격 전체 통과로 집계하지 않는다. 로컬 GUI/장시간 앱은 시작하지 않았다.
 
 [367단계](verification/m7/INCREMENT_367.md)는 큰 UI 검증 본문을 세 개의 MainActor 비동기 구간으로 나눴다. 함수 경계/들여쓰기를 되돌리면 기존 소스와 바이트 단위로 같으며 검사 삭제는 없다. Debug 34.13초·Release 16.87초 빌드가 통과했다. 원격 컴파일 시간 개선·전체 UI 수용은 아직 진행 중이며 로컬 GUI/장시간 시험은 실행하지 않았다.
 

@@ -1405,3 +1405,80 @@ func sevenZipSDKBundleRejectsResignedExpandedWorkerAuthority() async throws {
         await #expect(throws: SevenZipBundleError.invalidSignature) { try await SevenZipArchiveProvider.bundled(in: bundle) }
     }
 }
+
+@Test func archiveEditPlanExpandsDirectoriesAndRejectsConflicts() throws {
+    let entries: [ArchiveEntryDescriptor] = [
+        .init(path: "folder", kind: .directory), .init(path: "folder/a", kind: .regularFile, uncompressedSize: 3),
+        .init(path: "folder-more/a", kind: .regularFile, uncompressedSize: 5), .init(path: "opaque-link", kind: .symbolicLink, uncompressedSize: 6)]
+    let archive = URL(fileURLWithPath: "/tmp/plan-only.7z")
+    let plan = try ArchiveEditPlan(entries: entries, operations: [.rename(path: "folder", newName: "renamed"), .delete(paths: ["folder-more"]), .createDirectory(path: "새 폴더")], archive: archive, check: {})
+    #expect(plan.records.map(\.descriptor.path) == ["renamed", "renamed/a", "opaque-link", "새 폴더"])
+    #expect(plan.records.map(\.oldIndex) == [0, 1, 3, nil])
+    #expect(plan.records[2].descriptor.kind == .symbolicLink)
+    #expect(throws: (any Error).self) { try ArchiveEditPlan(entries: entries, operations: [.rename(path: "folder", newName: "../escape")], archive: archive, check: {}) }
+    #expect(throws: (any Error).self) { try ArchiveEditPlan(entries: entries, operations: [.createDirectory(path: "folder/a/child")], archive: archive, check: {}) }
+    #expect(throws: (any Error).self) { try ArchiveEditPlan(entries: entries, operations: [.createDirectory(path: "opaque-link/child")], archive: archive, check: {}) }
+    #expect(throws: (any Error).self) { try ArchiveEditPlan(entries: entries, operations: [.createDirectory(path: "folder")], archive: archive, check: {}) }
+    #expect(throws: (any Error).self) { try ArchiveEditPlan(entries: entries, operations: [.delete(paths: ["absent"])], archive: archive, check: {}) }
+}
+
+@Test(.enabled(if: hasIntegrationFixture("FILES_TEST_SEVENZIP_REFERENCE") && hasIntegrationFixture("FILES_TEST_SEVENZIP_WORKER"), "Requires native SDK and reference"))
+func archiveEditCandidateUsesSandboxedClientAndPreservesOriginal() async throws {
+    let root = try sdkRoot(); defer { try? FileManager.default.removeItem(at: root) }
+    let provider = try sdkRealProvider(), reference = URL(fileURLWithPath: try #require(ProcessInfo.processInfo.environment["FILES_TEST_SEVENZIP_REFERENCE"]))
+    let folder = root.appendingPathComponent("folder"), added = root.appendingPathComponent("added.txt")
+    try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+    try Data("keep".utf8).write(to: folder.appendingPathComponent("keep.txt"))
+    try Data("remove".utf8).write(to: folder.appendingPathComponent("remove.txt"))
+    try Data("new".utf8).write(to: added)
+    for (index, format) in ["zip", "7z"].enumerated() {
+        for encrypted in [false, true] {
+            let password: String? = encrypted ? (index == 0 ? "Archive-Edit-371" : "Archive-Edit-371-한글") : nil
+            let archive = root.appendingPathComponent("original-\(format)-\(encrypted).\(format)")
+            if format == "zip" { _ = try await ZipArchiveProvider().create(from: [folder], at: archive, password: password) }
+            else { _ = try await provider.create(from: [folder], at: archive, password: password) }
+            let original = try Data(contentsOf: archive), output = root.appendingPathComponent("candidate-\(format)-\(encrypted).\(format)")
+            let fd = Darwin.open(output.path, O_WRONLY | O_CREAT | O_EXCL | O_CLOEXEC, 0o600)
+            guard fd >= 0 else { throw SevenZipWorkerError.ioFailure }
+            defer { Darwin.close(fd) }
+            let entries = try await provider.writeEditCandidate(archive, outputFD: fd, operations: [
+                .rename(path: "folder", newName: "renamed"), .delete(paths: ["renamed/remove.txt"]),
+                .add(sources: [added], directory: "renamed"), .createDirectory(path: "empty")], password: password, encryptNewData: encrypted)
+            #expect(Set(entries.map(\.path)) == ["renamed", "renamed/keep.txt", "renamed/added.txt", "empty"])
+            #expect(entries.filter { $0.kind == .regularFile }.allSatisfy { $0.isEncrypted == encrypted })
+            #expect(try Data(contentsOf: archive) == original)
+            let destination = root.appendingPathComponent("restore-\(format)-\(encrypted)")
+            let process = Process(), input = Pipe()
+            process.executableURL = reference; process.arguments = ["x", "-y", "-o" + destination.path, output.path]
+            process.standardInput = input; process.standardOutput = FileHandle.nullDevice; process.standardError = FileHandle.nullDevice
+            try process.run()
+            defer { if process.isRunning { kill(process.processIdentifier, SIGKILL); process.waitUntilExit() } }
+            if let password { try input.fileHandleForWriting.write(contentsOf: Data((password + "\n" + password + "\n").utf8)) }
+            try input.fileHandleForWriting.close()
+            let deadline = ContinuousClock.now + .seconds(15)
+            while process.isRunning, ContinuousClock.now < deadline { try await Task.sleep(for: .milliseconds(5)) }
+            guard !process.isRunning else { throw SevenZipWorkerError.timedOut }
+            #expect(process.terminationStatus == 0)
+            #expect(try Data(contentsOf: destination.appendingPathComponent("renamed/keep.txt")) == Data("keep".utf8))
+            #expect(try Data(contentsOf: destination.appendingPathComponent("renamed/added.txt")) == Data("new".utf8))
+            #expect(!FileManager.default.fileExists(atPath: destination.appendingPathComponent("renamed/remove.txt").path))
+        }
+    }
+}
+
+@Test(.enabled(if: hasIntegrationFixture("FILES_TEST_SEVENZIP_REFERENCE") && hasIntegrationFixture("FILES_TEST_SEVENZIP_WORKER"), "Requires native SDK and reference"))
+func archiveEditCandidateRejectsLinksAndUnsafePlansWithoutChangingSource() async throws {
+    let root = try sdkRoot(); defer { try? FileManager.default.removeItem(at: root) }
+    let fixture = try await sdkFixture(root: root), provider = try sdkRealProvider()
+    let original = try Data(contentsOf: fixture.archive)
+    let link = root.appendingPathComponent("linked.7z")
+    try FileManager.default.createSymbolicLink(at: link, withDestinationURL: fixture.archive)
+    for (index, archive) in [link, fixture.archive].enumerated() {
+        let output = root.appendingPathComponent("rejected-\(index).7z")
+        let fd = Darwin.open(output.path, O_WRONLY | O_CREAT | O_EXCL | O_CLOEXEC, 0o600)
+        guard fd >= 0 else { throw SevenZipWorkerError.ioFailure }; defer { Darwin.close(fd) }
+        await #expect(throws: (any Error).self) { try await provider.writeEditCandidate(archive, outputFD: fd, operations: [.createDirectory(path: "../escape")], password: nil, encryptNewData: false) }
+        var info = stat(); #expect(fstat(fd, &info) == 0 && info.st_size == 0)
+        #expect(try Data(contentsOf: fixture.archive) == original)
+    }
+}

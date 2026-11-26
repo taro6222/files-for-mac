@@ -88,6 +88,24 @@ public struct SevenZipArchiveProvider: Sendable {
         }
     }
 
+    /// Writes a separate candidate only. The caller owns partial-output cleanup and must
+    /// independently verify it before any source replacement or user-visible publication.
+    func writeEditCandidate(_ archive: URL, outputFD: Int32, operations: [ArchiveEditOperation], password: String?, encryptNewData: Bool) async throws -> [ArchiveEntryDescriptor] {
+        guard archive.isFileURL, ["zip", "7z"].contains(archive.pathExtension.lowercased()), password == nil || (password?.isEmpty == false && password?.utf8.contains(0) == false) else { throw SevenZipWorkerError.invalidConfiguration }
+        return try await perform(outputFD: outputFD, editing: true) { session in
+            var info = stat()
+            guard lstat(archive.path, &info) == 0, info.st_mode & S_IFMT == S_IFREG else { throw SevenZipWorkerError.worker("source-open") }
+            let items = try session.open(archive, password: password, editFormat: archive.pathExtension.lowercased() == "zip" ? 1 : 7)
+            let plan = try ArchiveEditPlan(entries: items.map(\.descriptor), operations: operations, archive: archive, check: session.check)
+            try session.edit(plan, encryptNewData: encryptNewData)
+            return plan.records.map { record in
+                let item = record.descriptor
+                return .init(path: item.path, kind: item.kind, uncompressedSize: item.uncompressedSize,
+                             isEncrypted: record.oldIndex == nil && item.kind == .regularFile ? encryptNewData : item.isEncrypted)
+            }
+        }
+    }
+
     /// Split 7z files are published in the destination's existing parent folder, never in
     /// a replacement container directory. A durable private journal records every move.
     public func createSplit(from sources: [URL], at destination: URL, volumeBytes: Int64, journalDirectory: URL,
@@ -222,7 +240,7 @@ public struct SevenZipArchiveProvider: Sendable {
         }
     }
 
-    private func perform<T: Sendable>(outputFD: Int32? = nil, creationStream: Bool = false, _ body: @escaping @Sendable (SevenZipSession) throws -> T) async throws -> T {
+    private func perform<T: Sendable>(outputFD: Int32? = nil, creationStream: Bool = false, editing: Bool = false, _ body: @escaping @Sendable (SevenZipSession) throws -> T) async throws -> T {
         let control = SevenZipProcessControl()
         return try await withTaskCancellationHandler(operation: {
             try Task.checkCancellation()
@@ -236,7 +254,7 @@ public struct SevenZipArchiveProvider: Sendable {
                             let locations = try SevenZipBundleVerifier.verify(verifiedBundle, check: control.check)
                             guard locations.worker == executable, locations.library == library, locations.identity == verifiedIdentity else { throw SevenZipBundleError.changedBundle }
                         }
-                        let session = try SevenZipSession(provider: self, control: control, outputFD: outputFD, creationStream: creationStream)
+                        let session = try SevenZipSession(provider: self, control: control, outputFD: outputFD, creationStream: creationStream, editing: editing)
                         defer { session.stop() }
                         return try body(session)
                     })
@@ -348,7 +366,7 @@ private final class SevenZipSession {
     private var diagnosticsEnded = false
     private var inputFD: Int32 = -1
     private var readSource: SevenZipReadSource?
-    init(provider: SevenZipArchiveProvider, control: SevenZipProcessControl, outputFD: Int32? = nil, creationStream: Bool = false) throws {
+    init(provider: SevenZipArchiveProvider, control: SevenZipProcessControl, outputFD: Int32? = nil, creationStream: Bool = false, editing: Bool = false) throws {
         self.control = control
         let now = DispatchTime.now().uptimeNanoseconds
         guard provider.timeout <= 86_400, provider.maximumPhysicalFootprintBytes > 0 else { throw SevenZipWorkerError.invalidConfiguration }
@@ -400,7 +418,7 @@ private final class SevenZipSession {
             guard posix_spawn_file_actions_addclose(&actions, fd) == 0 else { throw SevenZipWorkerError.ioFailure }
         }
         guard posix_spawnattr_setflags(&attributes, Int16(POSIX_SPAWN_CLOEXEC_DEFAULT)) == 0 else { throw SevenZipWorkerError.ioFailure }
-        var argumentStrings = [provider.executable.path, provider.library.path, creationStream ? "--create-stream-fd" : (outputFD == nil ? "--output-fd" : "--create-output-fd"), "3"]
+        var argumentStrings = [provider.executable.path, provider.library.path, editing ? "--edit-output-fd" : (creationStream ? "--create-stream-fd" : (outputFD == nil ? "--output-fd" : "--create-output-fd")), "3"]
         if !inputPair.isEmpty { argumentStrings += ["--input-fd", "4"] }
         var arguments: [UnsafeMutablePointer<CChar>?] = argumentStrings.map { $0.withCString { strdup($0) } } + [nil]
         var environment: [UnsafeMutablePointer<CChar>?] = ["LANG=en_US.UTF-8", "LC_ALL=en_US.UTF-8", "PATH=/usr/bin:/bin"].map { $0.withCString { strdup($0) } } + [nil]
@@ -454,18 +472,20 @@ private final class SevenZipSession {
             offset += count
         }
     }
-    private func receive(expectedBytes: UInt64? = nil, sink: ((Data) throws -> Void)? = nil, creation: SevenZipSplitStaging? = nil, brokerPlan: SevenZipCreationPlan? = nil) throws -> SevenZipReply {
+    private func receive(expectedBytes: UInt64? = nil, sink: ((Data) throws -> Void)? = nil, creation: SevenZipSplitStaging? = nil, brokerPlan: SevenZipCreationPlan? = nil, editPlan: ArchiveEditPlan? = nil) throws -> SevenZipReply {
+        let brokerCount = brokerPlan?.items.count ?? editPlan?.records.count
+
         var frame = Data(), frameSize: Int?, result: SevenZipReply?, received: UInt64 = 0
         var dataEnded = false, inputEnded = false
         var inputRequest = Data(), inputRequests = 0
         var buffer = [UInt8](repeating: 0, count: 65_536)
-        while result == nil || received < (expectedBytes ?? 0) || (creation != nil && creation?.ended == false) || (brokerPlan != nil && !inputEnded) {
+        while result == nil || received < (expectedBytes ?? 0) || (creation != nil && creation?.ended == false) || (brokerCount != nil && !inputEnded) {
             var descriptors = [pollfd(fd: responseFD, events: Int16(POLLIN), revents: 0),
                                pollfd(fd: dataEnded ? -1 : dataFD, events: Int16(POLLIN), revents: 0),
                                pollfd(fd: diagnosticsEnded ? -1 : errorFD, events: Int16(POLLIN), revents: 0),
-                               pollfd(fd: brokerPlan != nil && !inputEnded ? inputFD : -1, events: Int16(POLLIN), revents: 0)]
+                               pollfd(fd: brokerCount != nil && !inputEnded ? inputFD : -1, events: Int16(POLLIN), revents: 0)]
             try wait(&descriptors)
-            if descriptors[3].revents & Int16(POLLIN | POLLHUP) != 0, let brokerPlan {
+            if descriptors[3].revents & Int16(POLLIN | POLLHUP) != 0, let brokerCount {
                 var requestBytes = [UInt8](repeating: 0, count: 5 - inputRequest.count)
                 let count = Darwin.read(inputFD, &requestBytes, requestBytes.count)
                 if count == 0 {
@@ -476,9 +496,11 @@ private final class SevenZipSession {
                     if inputRequest.count == 5 {
                         let index = inputRequest.dropFirst().reduce(UInt32(0)) { ($0 << 8) | UInt32($1) }
                         inputRequests += 1
-                        guard inputRequest.first == 0x43, Int(index) < brokerPlan.items.count,
-                              inputRequests <= brokerPlan.items.count * 4 + 64 else { throw SevenZipWorkerError.invalidResponse }
-                        try brokerPlan.items[Int(index)].withDescriptor { try sendDescriptor($0) }
+                        guard inputRequest.first == 0x43, Int(index) < brokerCount,
+                              inputRequests <= brokerCount * 4 + 64 else { throw SevenZipWorkerError.invalidResponse }
+                        if let brokerPlan { try brokerPlan.items[Int(index)].withDescriptor { try sendDescriptor($0) } }
+                        else if let input = editPlan?.inputs[Int(index)] { try input.withDescriptor { try sendDescriptor($0) } }
+                        else { throw SevenZipWorkerError.invalidResponse }
                         inputRequest.removeAll(keepingCapacity: true)
                     }
                 } else if errno != EAGAIN && errno != EINTR { throw SevenZipWorkerError.ioFailure }
@@ -559,17 +581,32 @@ private final class SevenZipSession {
             try wait(&descriptors)
         }
     }
-    func open(_ archive: URL, password: String?, maximumEntries: Int = 100_000) throws -> [SevenZipItem] {
+    func open(_ archive: URL, password: String?, maximumEntries: Int = 100_000, editFormat: Int? = nil) throws -> [SevenZipItem] {
         guard archive.isFileURL, maximumEntries > 0, maximumEntries <= 100_000,
               password?.utf8.contains(0) != true else { throw SevenZipWorkerError.invalidConfiguration }
         var request: [String: Any] = ["version": 1, "operation": "list", "password": password as Any? ?? NSNull(), "maxEntries": maximumEntries,
                                       "offset": 0, "pageSize": 256]
-        let source = try SevenZipReadSource(archive: archive, check: check)
-        request["sourceFDs"] = source.records.map(\.request); request["splitVolumes"] = source.split
-        try source.verify(check: check)
-        try send(request)
-        for index in source.records.indices { try source.withDescriptor(index) { try sendDescriptor($0) } }
-        Darwin.close(inputFD); inputFD = -1
+        let source = try SevenZipReadSource(archive: archive, allowArchiveSymlink: editFormat == nil, check: check)
+        if let editFormat {
+            guard !source.split, source.records.count == 1, [1, 7].contains(editFormat) else { throw SevenZipWorkerError.invalidConfiguration }
+            try source.verify(check: check)
+            try send(["version": 1, "operation": "edit-open", "format": editFormat, "source": source.records[0].request, "password": password as Any? ?? NSNull()])
+            try source.withDescriptor(0) { try sendDescriptor($0) }
+            let opened = try receive()
+            guard let session = opened.session, UUID(uuidString: session) != nil, let identity = opened.source,
+                  identity.device == source.records[0].request["device"] as? String,
+                  identity.inode == source.records[0].request["inode"] as? String,
+                  identity.size == UInt64(source.records[0].proof.st_size) else { throw SevenZipWorkerError.invalidResponse }
+            self.token = session
+            request = ["version": 1, "operation": "list", "session": session, "maxEntries": maximumEntries, "offset": 0, "pageSize": 256]
+            try send(request)
+        } else {
+            request["sourceFDs"] = source.records.map(\.request); request["splitVolumes"] = source.split
+            try source.verify(check: check)
+            try send(request)
+            for index in source.records.indices { try source.withDescriptor(index) { try sendDescriptor($0) } }
+            Darwin.close(inputFD); inputFD = -1
+        }
         var response = try receive()
         try source.verify(check: check)
         readSource = source
@@ -650,6 +687,32 @@ private final class SevenZipSession {
         try flush()
         guard sent == plan.items.count else { throw SevenZipWorkerError.invalidResponse }
         try send(["version": 1, "operation": "create-commit", "upload": upload])
+    }
+    func edit(_ plan: ArchiveEditPlan, encryptNewData: Bool) throws {
+        guard let token else { throw SevenZipWorkerError.invalidConfiguration }
+        try plan.verify(check: check); try verifySource()
+        try send(["version": 1, "operation": "edit-begin", "session": token, "itemCount": plan.records.count, "encryptNewData": encryptNewData, "maximumUnpackedBytes": 20_000_000_000])
+        let ready = try receive()
+        guard let upload = ready.upload, UUID(uuidString: upload) != nil, ready.accepted == 0, ready.closed == nil else { throw SevenZipWorkerError.invalidResponse }
+        var batch: [[String: Any]] = [], bytes = 0, sent = 0
+        func flush() throws {
+            guard !batch.isEmpty else { return }
+            try send(["version": 1, "operation": "edit-items", "upload": upload, "offset": sent, "items": batch])
+            let ack = try receive(); sent += batch.count
+            guard ack.upload == upload, ack.accepted == sent, ack.closed == nil else { throw SevenZipWorkerError.invalidResponse }
+            batch.removeAll(keepingCapacity: true); bytes = 0
+        }
+        for record in plan.records {
+            try check()
+            let value = record.request, size = try JSONSerialization.data(withJSONObject: record.request).count + 1
+            guard size <= 524_288 else { throw SevenZipWorkerError.invalidConfiguration }
+            if batch.count == 256 || bytes + size > 524_288 { try flush() }
+            batch.append(value); bytes += size
+        }
+        try flush(); try plan.verify(check: check); try verifySource()
+        try send(["version": 1, "operation": "edit-commit", "upload": upload])
+        guard try receive(editPlan: plan).closed == true else { throw SevenZipWorkerError.invalidResponse }
+        try waitForExit(); try plan.verify(check: check); try verifySource(); self.token = nil
     }
     func create(_ plan: SevenZipCreationPlan, level: ArchiveCompressionLevel, password: String?, encryptHeader: Bool, options: SevenZipCompressionOptions) throws {
         try uploadCreationPlan(plan, level: level, password: password, encryptHeader: encryptHeader, options: options)

@@ -255,7 +255,7 @@ def main():
         check('link-target-and-comments-preserved',z.read('renamed-link')==b'../outside' and z.getinfo('renamed-link').comment==b'entry note' and z.comment==b'archive note')
     report = dict(passed=True, checks=checks, architecture=arch, librarySHA256=digest(args.library), probeSHA256=digest(executable),
                   sourcesSHA256={str(p.relative_to(repo)):digest(p) for p in [repo/'Tools/SevenZipWorker/ArchiveSDK.cpp',repo/'Tools/SevenZipWorker/ArchiveSDK.h',repo/'Tools/SevenZipEditProbe/main.mm',Path(__file__).resolve()]},
-                  productIPCImplemented=False, atomicPublicationImplemented=False, editingCapabilityEnabled=False, localGUIStarted=False,
+                  productIPCExercised=False, atomicPublicationImplemented=False, editingCapabilityEnabled=False, localGUIStarted=False,
                   unicodeZIPEncryptedAdditionsSupported=False)
     report['packagedSourcesBound'] = bool(args.app)
     (args.output / 'result.json').write_text(json.dumps(report,ensure_ascii=False,indent=2)+'\n')

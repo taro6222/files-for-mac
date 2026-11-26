@@ -26,14 +26,14 @@ def frame(value):
 
 
 class Worker:
-    def __init__(self, executable, output=False, output_fd=None, library=None, create_output=False, creation_stream=False, descriptor_input=False, input_fd=None, child_fd_limit=None):
+    def __init__(self, executable, output=False, output_fd=None, library=None, create_output=False, creation_stream=False, descriptor_input=False, input_fd=None, child_fd_limit=None, edit_output=False):
         arguments = [str(executable), str(library or executable.parent / '7z.so')]
         self.output = bytearray(); self.reader = None; inherited = ()
         if output:
             read_fd, write_fd = os.pipe(); inherited = (write_fd,)
             arguments += ['--create-stream-fd' if creation_stream else '--output-fd', str(write_fd)]
         elif output_fd is not None:
-            inherited = (output_fd,); arguments += ['--create-stream-fd' if creation_stream else ('--create-output-fd' if create_output else '--output-fd'), str(output_fd)]
+            inherited = (output_fd,); arguments += ['--create-stream-fd' if creation_stream else ('--edit-output-fd' if edit_output else ('--create-output-fd' if create_output else '--output-fd')), str(output_fd)]
         self.input_socket = None; child_socket = None
         if descriptor_input:
             self.input_socket, child_socket = socket.socketpair()
@@ -90,6 +90,12 @@ class Worker:
         except OSError as error:
             if error.errno not in [errno.EPIPE, errno.ECONNRESET, errno.ENOTCONN]: raise
         finally: self.input_socket.close(); self.input_socket = None
+        return self.read()
+
+    def edit_open(self, fd, spec, fmt, password=None):
+        self.process.stdin.write(frame(dict(version=1, operation='edit-open', format=fmt, source=spec, password=password)))
+        self.process.stdin.flush()
+        self.input_socket.sendmsg([b'F'], [(socket.SOL_SOCKET, socket.SCM_RIGHTS, array.array('i', [fd]))])
         return self.read()
 
     def broker_create(self, value, provider, marker=b'F', rights=True):
@@ -403,6 +409,7 @@ def verify_descriptors(executable, reference, root, library, plain, payloads, ch
         return dict(device=str(value.st_dev & ((1 << 64) - 1)), inode=str(value.st_ino), size=value.st_size, mode=value.st_mode,
                     modifiedSeconds=value.st_mtime_ns // 1_000_000_000, modifiedNanos=value.st_mtime_ns % 1_000_000_000,
                     changedSeconds=value.st_ctime_ns // 1_000_000_000, changedNanos=value.st_ctime_ns % 1_000_000_000)
+    verify_edits(executable, reference, root, library, check, input_spec)
     large = root / 'large-list.7z'
     empty_files(large, ('entry-' + str(index) + '-' + 'a' * 80 for index in range(35000)))
     validated = subprocess.run([str(reference), 't', str(large)], stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=10)
@@ -568,6 +575,76 @@ def verify_descriptors(executable, reference, root, library, plain, payloads, ch
                 response, calls = worker.broker_create(request_value, provider, marker=marker, rights=rights); worker.finish(1)
             check(name, response.get('error', {}).get('code') == code)
     finally: os.close(held)
+
+
+def verify_edits(executable, reference, root, library, check, spec):
+    fixture = root / 'edit-input'; fixture.mkdir()
+    (fixture / 'old.txt').write_bytes(b'preserved-content')
+    (fixture / 'remove.txt').write_bytes(b'delete-content')
+    addition = root / 'new-input'; addition.write_bytes(b'new-content')
+    for fmt, number, password in [('zip', 1, None), ('7z', 7, None), ('zip', 1, 'Edit-371-ASCII'), ('7z', 7, 'Edit-371-한글')]:
+        label = fmt + ('Encrypted' if password else 'Plain')
+        archive = root / ('edit-' + label + '.' + fmt)
+        arguments = [str(reference), 'a', '-t' + fmt, str(archive), '.']
+        if password: arguments += ['-p', '-mem=AES256'] if fmt == 'zip' else ['-p', '-mhe=on']
+        result = subprocess.run(arguments, cwd=fixture, input=((password + '\n') * 3).encode() if password else b'', stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=20)
+        check('edit' + label + 'Fixture', result.returncode == 0)
+        original = archive.read_bytes()
+        def opened(output):
+            worker = Worker(executable, output_fd=output.fileno(), edit_output=True, descriptor_input=True, library=library)
+            with archive.open('rb') as source:
+                response = worker.edit_open(source.fileno(), spec(source.fileno()), number, password)
+            check('edit' + label + 'Open', response.get('ok') is True)
+            return worker, response['session']
+        output_path = root / ('edited-' + label + '.' + fmt)
+        with output_path.open('wb') as output, addition.open('rb') as new_input:
+            worker, session = opened(output)
+            listing = worker.request(dict(version=1, operation='list', session=session, offset=0, pageSize=256))
+            check('edit' + label + 'List', listing.get('ok') and len(listing['items']) == 2)
+            keep = next(item['index'] for item in listing['items'] if item['path'] == 'old.txt')
+            metadata = spec(new_input.fileno()); metadata.update(path='추가.txt', directory=0)
+            directory = dict(metadata, path='empty-folder', device='0', inode='0', size=0, mode=0o40755, directory=1)
+            items = [dict(oldIndex=keep, path='renamed.txt'), dict(addition=metadata, syntheticDirectory=False), dict(addition=directory, syntheticDirectory=True)]
+            begin = worker.request(dict(version=1, operation='edit-begin', session=session, itemCount=len(items), encryptNewData=bool(password), maximumUnpackedBytes=8000000000))
+            upload = begin['upload']
+            ack = worker.request(dict(version=1, operation='edit-items', upload=upload, offset=0, items=items))
+            check('edit' + label + 'BufferedBeforeCommit', ack.get('accepted') == 3 and os.fstat(output.fileno()).st_size == 0)
+            response, calls = worker.broker_create(dict(version=1, operation='edit-commit', upload=upload), lambda index: os.dup(new_input.fileno()) if index == 1 else (_ for _ in ()).throw(RuntimeError('Unexpected addition index')))
+            worker.finish()
+            check('edit' + label + 'Commit', response.get('closed') is True and calls and set(calls) == {1})
+        destination = root / ('restored-' + label)
+        result = subprocess.run([str(reference), 'x', str(output_path), '-o' + str(destination), '-y'], input=((password + '\n') * 3).encode() if password else b'', stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=20)
+        check('edit' + label + 'OfficialRestore', result.returncode == 0 and (destination / 'renamed.txt').read_bytes() == b'preserved-content' and (destination / '추가.txt').read_bytes() == b'new-content' and (destination / 'empty-folder').is_dir() and not (destination / 'remove.txt').exists())
+        check('edit' + label + 'OriginalPreserved', archive.read_bytes() == original and addition.read_bytes() == b'new-content')
+        if fmt != '7z' or password: continue
+        for case in ['close', 'eof', 'earlyCommit', 'wrongUpload', 'wrongOffset', 'extraField', 'badPath', 'duplicateIndex', 'badBoolean']:
+            path = root / ('edit-failure-' + case)
+            with path.open('wb') as output:
+                worker, session = opened(output)
+                if case == 'close':
+                    response = worker.request(dict(version=1, operation='close', session=session)); worker.finish()
+                    valid = response.get('closed') is True
+                elif case == 'eof':
+                    worker.process.stdin.close(); response = worker.read()
+                    # finish owns stdin closure; retain an already-closed stream safely.
+                    worker.finish(1); valid = response.get('error', {}).get('code') == 'truncated-frame'
+                else:
+                    begin = dict(version=1, operation='edit-begin', session=session, itemCount=1, encryptNewData=False, maximumUnpackedBytes=8000000000)
+                    if case == 'badBoolean':
+                        begin['encryptNewData'] = 1; response = worker.request(begin)
+                    else:
+                        upload = worker.request(begin)['upload']
+                        if case == 'earlyCommit': response = worker.request(dict(version=1, operation='edit-commit', upload=upload))
+                        else:
+                            items = [dict(oldIndex=0, path='../escape' if case == 'badPath' else None)]
+                            if case == 'duplicateIndex': items = [dict(oldIndex=0, path=None), dict(oldIndex=0, path=None)]
+                            request = dict(version=1, operation='edit-items', upload='foreign' if case == 'wrongUpload' else upload, offset=1 if case == 'wrongOffset' else 0, items=items)
+                            if case == 'extraField': request['sourcePath'] = str(archive)
+                            response = worker.request(request)
+                            if response.get('ok'):
+                                response, calls = worker.broker_create(dict(version=1, operation='edit-commit', upload=upload), lambda index: os.open(addition, os.O_RDONLY))
+                    worker.finish(1); valid = response.get('ok') is False
+                check('editReject' + case, valid and os.fstat(output.fileno()).st_size == 0 and archive.read_bytes() == original)
 
 
 def verify_brokered(executable, reference, root, library):

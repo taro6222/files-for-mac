@@ -1,0 +1,73 @@
+{
+  "increment": 371,
+  "status": "archive editing in progress; isolated IPC, Swift plan and candidate writer verified; product archive editing unavailable",
+  "sourcesSHA256": {
+    "Sources/FilesCore/ArchiveEditPlan.swift": "b77e2f099081bed19f155487a570e8a64b0babab8ce18216d57ad8e46551c0ad",
+    "Sources/FilesCore/SevenZipArchiveProvider.swift": "dc3279849a778636c4d942deaef56ec7444a82cf866200f20f9e4a7a549d5305",
+    "Sources/FilesCore/SevenZipReadSource.swift": "1d6dc2c451611cbe5b3118e087fc9d4aa151ac3284513fe9cb4c6d2385f85ac5",
+    "Tools/SevenZipWorker/main.mm": "7da5e125ff563cc853903917a73220acf5843129747bac13aef09a3b89b4ac76",
+    "Tests/FilesCoreTests/SevenZipArchiveProviderTests.swift": "1307ed1a15b7b74f40757b0f0264fd5196fc26f33afb446afbf618cc854f2e43",
+    "scripts/verify-sevenzip-worker.py": "cc66c295d83a67a643b4bdbfc275fa69fc803b0553dd63c6001c5b74725917c2",
+    "scripts/verify-sevenzip-client.py": "07fec933be2c53448ac25189b439b5c219dcbe01406550f231dc8abc9dc6cc66",
+    "scripts/verify-archive-edit-sdk.py": "60b6a3abcd5d986b8ac4ccadc7c9afe2d9cb142d104f28989a722105423cac0f"
+  },
+  "bundleManifestSHA256": "f317569c5bfbbaaec9ed598e5f0ad2a2f15167eb37872744f2d3b35913bff045",
+  "reports": {
+    "diagnostic-worker": {
+      "path": "build/edit-371-current-report/diagnostic-worker/result.json",
+      "sha256": "c9191e59546040042cf86e89140431b296f5319ea0a94f898ab11ad4aa8be971",
+      "passed": true,
+      "count": 179
+    },
+    "worker": {
+      "path": "build/edit-371-current-report/worker/result.json",
+      "sha256": "a9cb169d86d2b751504b249cdf277f0bed88c5f34615fb0c7ea6057ca949f1b2",
+      "passed": true,
+      "count": 87
+    },
+    "client": {
+      "path": "build/edit-371-current-report/client/result.json",
+      "sha256": "b5f559a07a8666c1c8b25d0b214e0a0a13cf0204b228bb3ec8c974d5dc8f7edf",
+      "passed": true,
+      "count": 60
+    },
+    "authority": {
+      "path": "build/edit-371-current-report/authority/result.json",
+      "sha256": "9dedd5553002f75778137e73fd98d1b3815bf3b75f17960b777494a82bc629b6",
+      "passed": true,
+      "count": 15
+    },
+    "edit-sdk": {
+      "path": "build/edit-371-native-receipt/result.json",
+      "sha256": "9e1f840027f5a4ba0b1c81989b30b789c7a593003abaccd07078d643e5c2a25a",
+      "passed": true,
+      "count": 83
+    }
+  },
+  "debugBuild": {
+    "log": "build/edit-371-debug-current.log",
+    "sha256": "171c685f40fdc8e8c8f9f651faf6f2c5934b11d3413c89db9e54091f9de2e27f",
+    "seconds": 10.27
+  },
+  "releaseBuild": {
+    "log": "build/edit-371-release-current.log",
+    "sha256": "3238d53a840c15eac8322e5bd90c671fa7df67dd7735cdffcf96fb54c8f7c308",
+    "seconds": 16.98
+  },
+  "productIPCVerified": true,
+  "swiftCandidateWriterVerified": true,
+  "independentOutputValidationImplemented": false,
+  "sourceReplacementImplemented": false,
+  "recoveryUndoImplemented": false,
+  "editingUIImplemented": false,
+  "editingCapabilityEnabled": false,
+  "unicodeZIPEncryptedAdditionsSupported": false,
+  "localGUIStarted": false,
+  "priorRemoteRun": {
+    "id": 45858253029,
+    "source": "9340c1b2398f4845c225fac662131d25b958a769",
+    "intel": "failed gitCloneTimeoutCleanup ko/light before archive packaging",
+    "log": "build/edit-371-prior-intel.log",
+    "logSHA256": "2b1a9a437295af9dc805dcb099c5696934f00890637f1ff2aaf69eda3881cf0b"
+  }
+}

@@ -228,6 +228,54 @@ static int acquireCreateInput(void *context, uint32_t index) {
     if (receiveDescriptor(broker.socket, true, &fd) != 0) { broker.invalid = true; return -1; }
     return fd;
 }
+static bool sourceSpec(id item, SevenZipInputSource &source) {
+    NSSet *keys = [NSSet setWithArray:@[@"device", @"inode", @"size", @"mode", @"modifiedSeconds", @"modifiedNanos", @"changedSeconds", @"changedNanos"]];
+    if (![item isKindOfClass:[NSDictionary class]] || ![[NSSet setWithArray:[item allKeys]] isEqualToSet:keys] ||
+        !integer(item[@"size"], 0, INT64_MAX) || !integer(item[@"mode"], 0, UINT32_MAX) ||
+        !signedInteger(item[@"modifiedSeconds"]) || !signedInteger(item[@"changedSeconds"]) ||
+        !integer(item[@"modifiedNanos"], 0, 999999999) || !integer(item[@"changedNanos"], 0, 999999999) ||
+        !unsignedText(item[@"device"], &source.device) || !unsignedText(item[@"inode"], &source.inode)) return false;
+    source.size = [item[@"size"] unsignedLongLongValue]; source.mode = [item[@"mode"] unsignedIntValue];
+    source.modifiedSeconds = [item[@"modifiedSeconds"] longLongValue]; source.modifiedNanos = [item[@"modifiedNanos"] unsignedIntValue];
+    source.changedSeconds = [item[@"changedSeconds"] longLongValue]; source.changedNanos = [item[@"changedNanos"] unsignedIntValue];
+    return true;
+}
+static int editArchive(void *session, int output, NSArray *items, NSDictionary *options, int input) {
+    std::vector<SevenZipEditItem> plan(items.count);
+    std::vector<SevenZipCreateItem> additions(items.count);
+    NSSet *oldKeys = [NSSet setWithArray:@[@"oldIndex", @"path"]];
+    NSSet *addKeys = [NSSet setWithArray:@[@"addition", @"syntheticDirectory"]];
+    for (NSUInteger i = 0; i < items.count; ++i) {
+        id record = items[i]; if (![record isKindOfClass:[NSDictionary class]]) return 6;
+        NSSet *keys = [NSSet setWithArray:[record allKeys]];
+        if ([keys isEqualToSet:oldKeys]) {
+            id path = record[@"path"];
+            if (!integer(record[@"oldIndex"], 0, UINT32_MAX) || (path != [NSNull null] && !text(path, false))) return 6;
+            plan[i].oldIndex = [record[@"oldIndex"] unsignedIntValue];
+            plan[i].renamedPath = path == [NSNull null] ? nullptr : [path UTF8String];
+        } else if ([keys isEqualToSet:addKeys]) {
+            id item = record[@"addition"], synthetic = record[@"syntheticDirectory"];
+            if (![item isKindOfClass:[NSDictionary class]] || ![synthetic isKindOfClass:[NSNumber class]] ||
+                CFGetTypeID((__bridge CFTypeRef)synthetic) != CFBooleanGetTypeID()) return 6;
+            NSMutableDictionary *spec = [item mutableCopy];
+            [spec removeObjectForKey:@"path"]; [spec removeObjectForKey:@"directory"];
+            SevenZipInputSource metadata = {};
+            if (!sourceSpec(spec, metadata) || !text(item[@"path"], false) || !integer(item[@"directory"], 0, 1) ||
+                !integer(item[@"size"], 0, 8000000000LL) ||
+                !integer(item[@"modifiedSeconds"], -11644473600LL, 100000000000LL) ||
+                !integer(item[@"changedSeconds"], -11644473600LL, 100000000000LL)) return 6;
+            auto &a = additions[i]; a.path = [item[@"path"] UTF8String];
+            a.device = metadata.device; a.inode = metadata.inode; a.size = metadata.size; a.mode = metadata.mode;
+            a.modifiedSeconds = metadata.modifiedSeconds; a.modifiedNanos = metadata.modifiedNanos;
+            a.changedSeconds = metadata.changedSeconds; a.changedNanos = metadata.changedNanos; a.directory = [item[@"directory"] intValue];
+            plan[i].oldIndex = UINT32_MAX; plan[i].addition = &a; plan[i].syntheticDirectory = [synthetic boolValue];
+        } else return 6;
+    }
+    CreateBroker broker(input, (uint32_t)plan.size());
+    int error = SevenZipEdit(session, output, plan.data(), (uint32_t)plan.size(), [options[@"encryptNewData"] boolValue],
+                             [options[@"maximumUnpackedBytes"] unsignedLongLongValue], acquireCreateInput, &broker);
+    return broker.invalid ? 6 : error;
+}
 static int receiveSources(int socket, id specs, id split, ReceivedDescriptors &received, std::vector<SevenZipInputSource> &sources) {
     if (![specs isKindOfClass:[NSArray class]] || [specs count] == 0 || [specs count] > 1024 ||
         ![split isKindOfClass:[NSNumber class]] || CFGetTypeID((__bridge CFTypeRef)split) != CFBooleanGetTypeID() ||
@@ -262,7 +310,7 @@ int main(int argc, const char *argv[]) {
     @autoreleasepool {
         signal(SIGPIPE, SIG_IGN);
         int outputDescriptor = -1, inputDescriptor = -1;
-        bool creation = false, framedCreation = false;
+        bool creation = false, framedCreation = false, editing = false;
         if (argc != 2 && argc != 4 && argc != 6) { reply(failure(@"arguments")); return 1; }
         for (int i = 2; i < argc; i += 2) {
             char *end = nullptr; long value = strtol(argv[i + 1], &end, 10);
@@ -276,21 +324,24 @@ int main(int argc, const char *argv[]) {
             if (outputDescriptor >= 0) { reply(failure(@"arguments")); return 1; }
             creation = strcmp(argv[i], "--create-output-fd") == 0 || strcmp(argv[i], "--create-stream-fd") == 0;
             framedCreation = strcmp(argv[i], "--create-stream-fd") == 0;
-            if (!creation && strcmp(argv[i], "--output-fd") != 0) { reply(failure(@"arguments")); return 1; }
+            editing = strcmp(argv[i], "--edit-output-fd") == 0;
+            if (!creation && !editing && strcmp(argv[i], "--output-fd") != 0) { reply(failure(@"arguments")); return 1; }
             struct stat info;
             if (fstat((int)value, &info) != 0 ||
-                (creation && !framedCreation ? (!S_ISREG(info.st_mode) || info.st_size != 0 || info.st_nlink != 1 || (fcntl((int)value, F_GETFL) & O_APPEND) || lseek((int)value, 0, SEEK_CUR) != 0)
+                ((creation || editing) && !framedCreation ? (!S_ISREG(info.st_mode) || info.st_size != 0 || info.st_nlink != 1 || (fcntl((int)value, F_GETFL) & O_APPEND) || lseek((int)value, 0, SEEK_CUR) != 0)
                           : !S_ISFIFO(info.st_mode)) || (fcntl((int)value, F_GETFL) & O_ACCMODE) != O_WRONLY) {
                 reply(failure(@"output-descriptor")); return 1;
             }
             outputDescriptor = (int)value;
         }
-        if (inputDescriptor >= 0 && inputDescriptor == outputDescriptor) { reply(failure(@"input-descriptor")); return 1; }
+        if ((editing && inputDescriptor < 0) || (inputDescriptor >= 0 && inputDescriptor == outputDescriptor)) { reply(failure(@"input-descriptor")); return 1; }
         const bool descriptorInput = inputDescriptor >= 0;
         void *session = nullptr;
         NSString *token = nil;
         NSMutableDictionary *creationRequest = nil;
         NSMutableArray *creationItems = nil;
+        NSMutableDictionary *editRequest = nil;
+        NSMutableArray *editItems = nil;
         NSString *upload = nil;
         NSUInteger expectedItems = 0;
         uint64_t creationBytes = 0;
@@ -299,7 +350,7 @@ int main(int argc, const char *argv[]) {
             @autoreleasepool {
                 uint32_t header = 0;
                 ssize_t received = readExact(&header, sizeof(header));
-                if (received == 0 && session) break;
+                if (received == 0 && session && !editing) break;
                 if (received != sizeof(header)) { reply(failure(@"truncated-frame")); result = 1; break; }
                 size_t length = ntohl(header);
                 if (length == 0 || length > RequestLimit) { reply(failure(@"frame-limit")); result = 1; break; }
@@ -308,6 +359,75 @@ int main(int argc, const char *argv[]) {
                 id request = [NSJSONSerialization JSONObjectWithData:data options:0 error:nil];
                 if (![request isKindOfClass:[NSDictionary class]] || !integer(request[@"version"], 1, 1) || !text(request[@"operation"], false)) {
                     reply(failure(@"invalid-request")); result = 1; break;
+                }
+                if (editing) {
+                    NSString *operation = request[@"operation"];
+                    NSSet *keys = [NSSet setWithArray:[request allKeys]];
+                    if (!session) {
+                        NSSet *allowed = [NSSet setWithArray:@[@"version", @"operation", @"format", @"source", @"password"]];
+                        SevenZipInputSource source = {}; id password = request[@"password"];
+                        if (![operation isEqual:@"edit-open"] || ![keys isEqualToSet:allowed] ||
+                            !integer(request[@"format"], 1, 7) || ([request[@"format"] intValue] != 1 && [request[@"format"] intValue] != 7) ||
+                            !sourceSpec(request[@"source"], source) || (password != [NSNull null] && !text(password, false))) {
+                            reply(failure(@"invalid-request")); result = 1; break;
+                        }
+                        int fd = -1, error = receiveDescriptor(inputDescriptor, false, &fd);
+                        if (!error) session = SevenZipOpenEditDescriptor(argv[1], &fd, &source, [request[@"format"] unsignedIntValue],
+                            password == [NSNull null] ? nullptr : [password UTF8String], &error);
+                        if (fd >= 0) close(fd);
+                        if (!session) { reply(failure(sdkError(error))); result = 1; break; }
+                        token = [[NSUUID UUID] UUIDString];
+                        SevenZipSourceIdentity identity = SevenZipIdentity(session);
+                        if (!reply(@{ @"version": @1, @"ok": @YES, @"session": token,
+                            @"source": @{ @"device": [NSString stringWithFormat:@"%llu", (unsigned long long)identity.device],
+                                @"inode": [NSString stringWithFormat:@"%llu", (unsigned long long)identity.inode], @"size": @(identity.size) } })) { result = 1; break; }
+                        continue;
+                    }
+                    if ([operation isEqual:@"close"]) {
+                        if (![keys isEqualToSet:[NSSet setWithArray:@[@"version", @"operation", @"session"]]] || ![token isEqual:request[@"session"]]) {
+                            reply(failure(@"invalid-request")); result = 1; break;
+                        }
+                        SevenZipClose(session); session = nullptr; close(inputDescriptor); inputDescriptor = -1;
+                        reply(@{ @"version": @1, @"ok": @YES, @"closed": @YES }); break;
+                    }
+                    if ([operation isEqual:@"edit-begin"]) {
+                        id encrypt = request[@"encryptNewData"];
+                        if (editRequest || ![keys isEqualToSet:[NSSet setWithArray:@[@"version", @"operation", @"session", @"itemCount", @"encryptNewData", @"maximumUnpackedBytes"]]] ||
+                            ![token isEqual:request[@"session"]] || !integer(request[@"itemCount"], 0, 100000) ||
+                            ![encrypt isKindOfClass:[NSNumber class]] || CFGetTypeID((__bridge CFTypeRef)encrypt) != CFBooleanGetTypeID() ||
+                            !integer(request[@"maximumUnpackedBytes"], 1, 20000000000LL)) {
+                            reply(failure(@"invalid-request")); result = 1; break;
+                        }
+                        editRequest = [request mutableCopy]; editItems = [NSMutableArray array];
+                        expectedItems = [request[@"itemCount"] unsignedIntegerValue]; creationBytes = length; upload = [[NSUUID UUID] UUIDString];
+                        if (!reply(@{ @"version": @1, @"ok": @YES, @"upload": upload, @"accepted": @0 })) { result = 1; break; }
+                        continue;
+                    }
+                    if (editRequest) {
+                        if (![upload isEqual:request[@"upload"]]) { reply(failure(@"invalid-request")); result = 1; break; }
+                        if ([operation isEqual:@"edit-items"]) {
+                            id items = request[@"items"];
+                            if (![keys isEqualToSet:[NSSet setWithArray:@[@"version", @"operation", @"upload", @"offset", @"items"]]] ||
+                                !integer(request[@"offset"], 0, 100000) || [request[@"offset"] unsignedIntegerValue] != editItems.count ||
+                                ![items isKindOfClass:[NSArray class]] || [items count] == 0 || [items count] > 256 || editItems.count + [items count] > expectedItems) {
+                                reply(failure(@"invalid-request")); result = 1; break;
+                            }
+                            creationBytes += length;
+                            if (creationBytes > 256ULL * 1024 * 1024) { reply(failure(@"limit")); result = 1; break; }
+                            BOOL valid = YES; for (id record in items) if (![record isKindOfClass:[NSDictionary class]]) { valid = NO; break; }
+                            if (!valid) { reply(failure(@"invalid-request")); result = 1; break; }
+                            [editItems addObjectsFromArray:items];
+                            if (!reply(@{ @"version": @1, @"ok": @YES, @"upload": upload, @"accepted": @(editItems.count) })) { result = 1; break; }
+                            continue;
+                        }
+                        if (![operation isEqual:@"edit-commit"] || ![keys isEqualToSet:[NSSet setWithArray:@[@"version", @"operation", @"upload"]]] || editItems.count != expectedItems) {
+                            reply(failure(@"invalid-request")); result = 1; break;
+                        }
+                        int error = editArchive(session, outputDescriptor, editItems, editRequest, inputDescriptor);
+                        SevenZipClose(session); session = nullptr; close(inputDescriptor); inputDescriptor = -1;
+                        reply(error ? failure(sdkError(error)) : @{ @"version": @1, @"ok": @YES, @"closed": @YES }); result = error ? 1 : 0; break;
+                    }
+                    if (![operation isEqual:@"list"]) { reply(failure(@"unsupported-operation")); result = 1; break; }
                 }
                 if (creation) {
                     NSString *operation = request[@"operation"];

@@ -17,11 +17,14 @@ final class SevenZipReadSource {
     let split: Bool
     let records: [Record]
     private let parent: URL, directoryFD: Int32, parentProof: stat
-    init(archive: URL, check: () throws -> Void) throws {
+    init(archive: URL, allowArchiveSymlink: Bool = true, check: () throws -> Void) throws {
         guard archive.isFileURL, !archive.path(percentEncoded: false).utf8.contains(0) else { throw SevenZipWorkerError.invalidConfiguration }
         let paths: [URL]
         if let volumes = try SevenZipVolumes.paths(for: archive, check: check) { paths = volumes; split = true }
-        else {
+        else if !allowArchiveSymlink {
+            paths = [try sevenZipCanonicalDirectory(archive.deletingLastPathComponent()).appendingPathComponent(archive.lastPathComponent)]
+            split = false
+        } else {
             guard let actual = realpath(archive.path, nil) else { throw SevenZipWorkerError.worker("source-open") }
             defer { free(actual) }
             paths = [URL(fileURLWithPath: String(cString: actual))]; split = false
