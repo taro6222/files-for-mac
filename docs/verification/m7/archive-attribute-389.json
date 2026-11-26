@@ -1,0 +1,207 @@
+{
+  "increment": 389,
+  "createdUTC": "2026-11-26T20:44:47.656277+00:00",
+  "status": "compression attribute creation refuses collisions; final native client acceptance passed; full parity incomplete",
+  "sources": {
+    "Sources/FilesCore/ArchiveEditCompression.swift": "da8a85d40502b17676d813f068837085c6d8b5f5cd7fcee0105b05e13c7d9192",
+    "Tests/FilesCoreTests/SevenZipArchiveProviderTests.swift": "01e47a632383939c98fb7b725d59a75dda0b58c8032fb09338e69e24b3fb42f3",
+    "scripts/verify-sevenzip-client.py": "175e663f996b84e25e6f022dd9ca4125a48ca54ac99752516251e0429140a8fe"
+  },
+  "preFixControl": {
+    "expectedFailureObserved": true,
+    "returnCode": 1,
+    "issues": 12,
+    "controlSourceSHA256": "2e12da1aa175c91daa4fd72900eb329450fdc29322def28cb116943127589923",
+    "fixedSourceSHA256": "da8a85d40502b17676d813f068837085c6d8b5f5cd7fcee0105b05e13c7d9192",
+    "reportSHA256": "bb63c48f90a6c20418e47c6632a5f696f1376f362c1ee4d9dc90d0d8c3e317a9"
+  },
+  "fixedClient": {
+    "count": 81,
+    "passed": true,
+    "sha256": "ede314628d1767b4d3f6bb0c59e1ceba736f257bd83b67eeb59612b61fd1b942",
+    "tests": {
+      "archiveEditFilesystemCompressionPreservesAttributesCreatedAfterPreflight": true,
+      "archiveEditFilesystemCompressionUsesNativeLogicalBytesAndPinsStorage": true,
+      "archiveEditFilesystemCompressionCancellationKeepsReadableCandidateAndForeignFork": true,
+      "archiveEditFilesystemCompressedZIPAnd7zPreserveStorageMetadataAndUndoRedo": true,
+      "archiveEditDiscardMovesOnlyUnpublishedOutputAndKeepsRecoveryRecord": true,
+      "archiveEditDiscardPreservesForeignFilesSourceChangesAndHardLinks": true,
+      "archiveEditDiscardResumesDurableIntentBeforeAndAfterMoveWithoutOverwrite": true,
+      "archiveEditEmptyZIPRequiresExplicitEncryptionAndPreservesUndo": true,
+      "archiveEditHistoryAndRedoRequireVerifiedFilesAndKeepUnreadableRecords": true,
+      "archiveEditRedoRecoversBothProcessInterruptionBoundaries": true,
+      "archiveCapabilityMatrixAdvertisesOnlyVerifiedProviderFeatures": true,
+      "archiveEditPreservesEmptyEncrypted7zHeaderAndRejectsStaleSelection": true,
+      "archiveEditUnicodeZIPLongPasswordsAndNormalizationRemainExact": true,
+      "archiveEditTransactionCancellationBeforeSwapPreservesBothFiles": true,
+      "archiveEditTransactionPublishesBacksUpAndUndoesWithMetadata": true,
+      "archiveEditTransactionPreservesExternalChangesAndBrokenRecords": true,
+      "archiveEditTransactionSerializesAndPreservesUnpublishedCandidate": true,
+      "archiveEditTransactionRecoversPublishAndUndoProcessInterruptions": true,
+      "archiveEditTransactionZIPAndEncrypted7zRoundTrip": true,
+      "archiveEditVerificationKeepsUnicodeZIPMetadataAndAddsEncryptedData": true,
+      "archiveEditVerificationRejectsChangedCandidateAndSource": true,
+      "archiveEditPlanExpandsDirectoriesAndRejectsConflicts": true,
+      "archiveEditCandidateUsesSandboxedClientAndPreservesOriginal": true,
+      "archiveEditCandidateRejectsLinksAndUnsafePlansWithoutChangingSource": true,
+      "sevenZipSDKLargePagedListing": true,
+      "sevenZipSDKRejectsMalformedListingPages": true,
+      "sevenZipCreationUploadRejectsIncorrectAcknowledgments": true,
+      "sevenZipSDKBundleWorkerPolicyRejectsExpandedAuthority": true,
+      "sevenZipSDKRestoresFileAndDirectoryTimesAndPermissions": true,
+      "sevenZipSDKRestrictiveDirectoryMetadataFinishesAfterChildren": true,
+      "sevenZipSDKRejectsMalformedMetadataBeforeStaging": true,
+      "sevenZipSDKPublishedDirectoryTimeChangeIsPreserved": true,
+      "sevenZipSDKUnrepresentableTimeFailsAndPreservesRestrictedRecovery": true,
+      "sevenZipSDKMemoryBudgetKillsAndReapsWithoutPublishing": true,
+      "sevenZipSDKRejectsZeroMemoryBudgetBeforeLaunching": true,
+      "sevenZipCreationBrokerRejectsInvalidAndTruncatedRequests": true,
+      "sevenZipCreationBrokerKeepsPlannedIdentityAndReadOnlyAccess": true,
+      "sevenZipSDKCreationBrokerManyInputsAndPreflightPreserveSources": true,
+      "sevenZipReadBrokerPinsDirectoryAndRejectsChangedNames": true,
+      "sevenZipSDKReadBrokerHandlesSymlinkAndSearchOnlyDirectory": true,
+      "sevenZipSplitPreferencesPersistAndImportTransactionally": true,
+      "sevenZipSplitHistoryPreservesInvalidAndOfflineRecords": true,
+      "sevenZipSplitFrameValidationAndForeignStagingPreservation": true,
+      "sevenZipSDKSplitCreationAndCommittedJournal": true,
+      "sevenZipSDKSplitConflictsChangesAndCancellationPreserveData": true,
+      "sevenZipSDKSplitProcessRestartRecoveryAndAmbiguousIntent": true,
+      "archiveExtractionPlacementMatchesSmartTopLevelRules": true,
+      "sevenZipVolumeNamesDetectionAndSelectionNormalization": true,
+      "sevenZipSDKSplitVolumesRoundTripFromAnyPartAndAcrossTinyHeaders": true,
+      "sevenZipSDKSplitMissingTruncatedAndLinkedPartsNeverPublish": true,
+      "sevenZipSDKAdvancedOptionsChangeDictionaryAndRestorePayload": true,
+      "sevenZipOptionsAndCreationFormatPersistAndImportTransactionally": true,
+      "sevenZipMemoryEstimateHandlesStoreAndMaximumChoices": true,
+      "sevenZipSDKCreationLevelsPasswordAndIndependentExtraction": true,
+      "sevenZipSDKCreationPlanRejectsLinksAndDuplicatePaths": true,
+      "sevenZipSDKCreationSourceChangeAndDestinationRacePreserveData": true,
+      "sevenZipSDKCreationCancellationBeforePublicationDiscardsOutput": true,
+      "sevenZipSDKFramedClientRejectsMalformedReplies": true,
+      "sevenZipSDKFragmentedReplyAndClose": true,
+      "sevenZipSDKEOFOnDiagnosticPipeIsNotDiagnosticData": true,
+      "sevenZipSDKTimeoutAndCancellationReapOwnedChild": true,
+      "sevenZipSDKValidatesPathsBeforeStaging": true,
+      "sevenZipSDKEncryptedRoundTripAndFailureStaging": true,
+      "sevenZipSDKCorruptionAndLinksNeverPublish": true,
+      "sevenZipSDKPublicationConflictAndForeignStagingPreservation": true,
+      "sevenZipSDKCancellationBeforePublicationDiscardsStaging": true,
+      "sevenZipSDKBundleManifestRejectsUntrustedMetadata": true,
+      "sevenZipSDKBundleRejectsMissingLinksAndNonregularManifest": true,
+      "sevenZipSDKBundleCancellationAndInvalidTimeout": true,
+      "sevenZipSDKBundleDeveloperIDRequirementRejectsInvalidTeam": true,
+      "sevenZipSDKBundleBindsExecutingHostIdentity": true,
+      "sevenZipSDKExistingDirectoryExtractionPreservesUnrelatedItems": true,
+      "sevenZipSDKExistingDirectoryConflictRollsBackOwnedPublication": true,
+      "sevenZipSDKExistingDirectoryChangedPublicationIsPreserved": true,
+      "sevenZipSDKExistingDirectoryCancellationRollsBackPublication": true,
+      "sevenZipSDKBundleRejectsResignedExpandedWorkerAuthority": true,
+      "sevenZipSDKBundleResolutionAndUse": true,
+      "sevenZipSDKBundleRejectsResealedHashMismatch": true,
+      "sevenZipSDKBundleRejectsAdhocStableAndWrongIdentity": true,
+      "sevenZipSDKBundleRejectsResealedSourcePinAndExtraFile": true,
+      "sevenZipSDKBundlePinsSelectedRevisionAcrossResigning": true
+    }
+  },
+  "builds": {
+    "debugTests": {
+      "path": "build/edit-389-final-build.log",
+      "sha256": "491da0e5e4732c56ca6230eb58bfd22718c328041dd50af699c45aa5df7adc28"
+    },
+    "releaseBundle": {
+      "path": "build/edit-389-final-app.log",
+      "sha256": "e3f0e18ac441fee4a773ad1b56eb11dfbc6a98a4e9d62df743a784b28e3746ef"
+    }
+  },
+  "earlierARMUI": {
+    "run": 45888418153,
+    "source": "c4c4f6ec7131ea231910e39eb8015e44f2021190",
+    "architecture": "arm64",
+    "artifact": "files-appkit-macos15-arm64",
+    "evidenceType": "check dictionaries derived from preserved original report files",
+    "reports": [
+      {
+        "profile": "en-dark",
+        "originalPath": "build/edit-389-ui385-arm/_temp/files-ui-verification.34YcsY/en-dark/report.json",
+        "originalSHA256": "035b015677684b62ce51ec922d28e23cbace0048307170d53147ba7f528c5202",
+        "checkCount": 370,
+        "allChecksTrue": true,
+        "specificChecks": {
+          "archiveExtractionCloseCancels": true,
+          "archiveHistoryDetailsVisible": true
+        }
+      },
+      {
+        "profile": "en-light",
+        "originalPath": "build/edit-389-ui385-arm/_temp/files-ui-verification.34YcsY/en-light/report.json",
+        "originalSHA256": "59e273f217c278bfe552a52857bc3ae9d8fbf4e015030d2a7063a88817c04222",
+        "checkCount": 370,
+        "allChecksTrue": true,
+        "specificChecks": {
+          "archiveExtractionCloseCancels": true,
+          "archiveHistoryDetailsVisible": true
+        }
+      },
+      {
+        "profile": "ko-dark",
+        "originalPath": "build/edit-389-ui385-arm/_temp/files-ui-verification.34YcsY/ko-dark/report.json",
+        "originalSHA256": "b0f54dce0c360c10b8a062fd6f68aaff6d68fc179506ebb8a9dd7a194d81572f",
+        "checkCount": 370,
+        "allChecksTrue": true,
+        "specificChecks": {
+          "archiveExtractionCloseCancels": true,
+          "archiveHistoryDetailsVisible": true
+        }
+      },
+      {
+        "profile": "ko-light",
+        "originalPath": "build/edit-389-ui385-arm/_temp/files-ui-verification.34YcsY/ko-light/report.json",
+        "originalSHA256": "12e91110bc6262a6a3a7ac5f58368c3bf0dd61faddbd69061f2a1629689abb68",
+        "checkCount": 370,
+        "allChecksTrue": true,
+        "specificChecks": {
+          "archiveExtractionCloseCancels": true,
+          "archiveHistoryDetailsVisible": true
+        }
+      },
+      {
+        "profile": "tabs-en-dark",
+        "originalPath": "build/edit-389-ui385-arm/_temp/files-ui-verification.34YcsY/tabs-en-dark/report.json",
+        "originalSHA256": "4cd5dc149461c75b593e647a0784a7a4efc95a8c5c56558ef4fd9754202c353c",
+        "checkCount": 18,
+        "allChecksTrue": true,
+        "specificChecks": {}
+      },
+      {
+        "profile": "tabs-en-light",
+        "originalPath": "build/edit-389-ui385-arm/_temp/files-ui-verification.34YcsY/tabs-en-light/report.json",
+        "originalSHA256": "8c7ea58db35d39197a12b053f583fba009acff534def6be24e64c77900d59e6f",
+        "checkCount": 18,
+        "allChecksTrue": true,
+        "specificChecks": {}
+      },
+      {
+        "profile": "tabs-ko-dark",
+        "originalPath": "build/edit-389-ui385-arm/_temp/files-ui-verification.34YcsY/tabs-ko-dark/report.json",
+        "originalSHA256": "d14f0ebb7836c334065287abcc60161673f48e525a3d647fc8d6ea82de87a617",
+        "checkCount": 18,
+        "allChecksTrue": true,
+        "specificChecks": {}
+      },
+      {
+        "profile": "tabs-ko-light",
+        "originalPath": "build/edit-389-ui385-arm/_temp/files-ui-verification.34YcsY/tabs-ko-light/report.json",
+        "originalSHA256": "1b569fbfbb07dfa73d081a669fe6cb1161f69877bed214dfbe4ec0d80dfad9b9",
+        "checkCount": 18,
+        "allChecksTrue": true,
+        "specificChecks": {}
+      }
+    ],
+    "physicalInputAccepted": false,
+    "latestSourceAccepted": false
+  },
+  "localGUIStarted": false,
+  "preview388ContainsThisChange": false,
+  "allConcurrentMetadataBoundariesAccepted": false,
+  "latestDualCPUAndGUIAccepted": false
+}

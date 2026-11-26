@@ -52,10 +52,11 @@ enum ArchiveEditCompression {
         if length > bytes.count { return Data([0xff]) + Data(bytes) }
         return Data(result.prefix(Int(length)))
     }
-    private static func set(_ fd: Int32, name: String, data: Data, position: UInt32 = 0) throws {
-        guard data.withUnsafeBytes({ fsetxattr(fd, name, $0.baseAddress, data.count, position, XATTR_SHOWCOMPRESSION) }) == 0 else { throw failure() }
+    private static func set(_ fd: Int32, name: String, data: Data, position: UInt32 = 0, create: Bool = false) throws {
+        let options = XATTR_SHOWCOMPRESSION | (create ? XATTR_CREATE : 0)
+        guard data.withUnsafeBytes({ fsetxattr(fd, name, $0.baseAddress, data.count, position, options) }) == 0 else { throw failure() }
     }
-    static func encode(_ fd: Int32, check: () throws -> Void) throws {
+    static func encode(_ fd: Int32, check: () throws -> Void, beforeStorageCreation: (() throws -> Void)? = nil) throws {
         var info = stat()
         guard fstat(fd, &info) == 0, info.st_mode & S_IFMT == S_IFREG, info.st_size >= 0, info.st_size <= 8_000_000_000,
               info.st_flags & UInt32(UF_COMPRESSED | UF_IMMUTABLE | SF_IMMUTABLE | UF_APPEND | SF_APPEND) == 0 else { throw failure() }
@@ -63,6 +64,8 @@ enum ArchiveEditCompression {
             guard fgetxattr(fd, name, nil, 0, 0, XATTR_SHOWCOMPRESSION) < 0, errno == ENOATTR else { throw failure() }
         }
         let before = try ArchiveEditFileProof.capture(fd, check: check)
+        // Internal fault-injection boundary; production callers leave this nil.
+        try beforeStorageCreation?()
         let blocks = max(1, Int((info.st_size + Int64(blockSize) - 1) / Int64(blockSize)))
         var header = Data(count: 16), table = Data(count: 264 + blocks * 8), position = table.count
         put(0x636d7066, into: &header, at: 0, count: 4); put(UInt64(info.st_size), into: &header, at: 8, count: 8)
@@ -77,7 +80,7 @@ enum ArchiveEditCompression {
             }
             let data = try compressed(bytes)
             if blocks == 1, 16 + data.count <= 3802 { inline = data; break }
-            if index == 0 { try set(fd, name: forkName, data: table) }
+            if index == 0 { try set(fd, name: forkName, data: table, create: true) }
             guard position <= Int(UInt32.max) - data.count - 50 else { throw failure() }
             put(UInt64(position - 260), into: &table, at: 264 + index * 8, count: 4)
             put(UInt64(data.count), into: &table, at: 268 + index * 8, count: 4)
@@ -99,7 +102,10 @@ enum ArchiveEditCompression {
         // Until this point the original logical data fork remains readable, even on failure.
         let ready = try ArchiveEditFileProof.capture(fd, check: check)
         guard before.device == ready.device, before.inode == ready.inode, before.sha256 == ready.sha256, before.size == ready.size else { throw failure() }
-        try set(fd, name: compressionName, data: header); try check()
+        if inline != nil {
+            guard fgetxattr(fd, forkName, nil, 0, 0, XATTR_SHOWCOMPRESSION) < 0, errno == ENOATTR else { throw failure() }
+        }
+        try set(fd, name: compressionName, data: header, create: true); try check()
         guard fchflags(fd, info.st_flags | UInt32(UF_COMPRESSED)) == 0, fsync(fd) == 0 else { throw failure() }
         let after = try ArchiveEditFileProof.capture(fd, check: check)
         var flags = stat()

@@ -2087,3 +2087,23 @@ func archiveEditFilesystemCompressedZIPAnd7zPreserveStorageMetadataAndUndoRedo()
         #expect(try ArchiveEditCompression.capture(redoFD, size: Int64(edited.count), check: {}) == editedStorage)
     }
 }
+
+@Test func archiveEditFilesystemCompressionPreservesAttributesCreatedAfterPreflight() throws {
+    for mode in ["inline-header", "block-header", "inline-fork", "block-fork"] {
+        print("compression-389 collision=\(mode)")
+        let root = try sdkRoot(); defer { try? FileManager.default.removeItem(at: root) }
+        let url = root.appendingPathComponent("candidate"), bytes = Data(repeating: 0x44, count: mode.hasPrefix("inline") ? 4096 : 200_000)
+        let attribute = mode.hasSuffix("header") ? "com.apple.decmpfs" : "com.apple.ResourceFork", foreign = Data("external attribute".utf8)
+        try bytes.write(to: url); let fd = open(url.path, O_RDWR | O_NOFOLLOW); defer { if fd >= 0 { Darwin.close(fd) } }
+        var injected = false
+        #expect(throws: ArchiveEditError.metadataMismatch("filesystem-compression")) {
+            try ArchiveEditCompression.encode(fd, check: {}, beforeStorageCreation: {
+                injected = true; try archiveEditXattr(url, key: attribute, value: foreign)
+            })
+        }
+        #expect(injected); #expect(try Data(contentsOf: url) == bytes)
+        let preserved = try? archiveEditReadXattr(url, key: attribute)
+        #expect(preserved == foreign)
+        var info = stat(); #expect(fstat(fd, &info) == 0 && info.st_flags & UInt32(UF_COMPRESSED) == 0)
+    }
+}
