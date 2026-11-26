@@ -307,14 +307,18 @@ jobs:
             build/spotlight-unmounted-fixture/state.json
             build/spotlight-unmounted-fixture/verification.json
           if-no-files-found: ignore
-      - name: Build and launch the installed developer preview
+      - name: Build the developer preview image
+        if: github.event_name != 'pull_request'
+        timeout-minutes: ${{ matrix.debug_build_minutes }}
+        env:
+          FILES_VERIFY_SEVENZIP_PACKAGE: ${{ (github.event_name == 'push' || inputs.verify_full_appkit) && '1' || '0' }}
+        run: python3 scripts/build-with-diagnostics.py --output build/preview-build-diagnostics -- bash scripts/build-dmg.sh --preview
+      - name: Verify the installed developer preview
         if: github.event_name != 'pull_request'
         timeout-minutes: 15
         env:
           EXPECTED_ARCH: ${{ matrix.architecture }}
-          FILES_VERIFY_SEVENZIP_PACKAGE: ${{ (github.event_name == 'push' || inputs.verify_full_appkit) && '1' || '0' }}
         run: |
-          python3 scripts/build-with-diagnostics.py --output build/preview-build-diagnostics -- bash scripts/build-dmg.sh --preview
           python3 scripts/verify-preview-install.py build/Files-macOS-preview.dmg \
             --startup --launch-services --expect-architecture "$EXPECTED_ARCH"
       - name: Retain preview build diagnostics

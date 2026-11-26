@@ -1,0 +1,84 @@
+{
+  "increment": 391,
+  "createdUTC": "2026-11-26T21:34:41.109334+00:00",
+  "status": "fixture readiness race corrected and preview build/install separated; remote acceptance pending",
+  "sources": {
+    "scripts/verify-build-diagnostics.py": "68ae352e1b38c02f6554b49c76eec7d90b39f4faae5a41aede4eeb5a1b21ab69",
+    ".github/workflows/macos.yml": "bcc730c5a0fa6307c90f7bc25ec814b5a06dcabde0df0afc11d3d15d7b627dc6"
+  },
+  "productionMonitorUnchangedSHA256": "ff32ae34a3bbbf2665f789578673a74bb19f79d6168cfdff435bc7ca7ee4cb84",
+  "headless": {
+    "count": 30,
+    "passed": true,
+    "sha256": "597d9214497411c46362aaae0542e6b059149978a4aa2e71f40f6ac420700545",
+    "checks": {
+      "successExitPropagated": true,
+      "successNoRestart": true,
+      "CompilerOutputPreserved": true,
+      "failureExitPropagated": true,
+      "failureNoRestart": true,
+      "observationExitPropagated": true,
+      "observationNoRestart": true,
+      "ObservationDidNotStopBuild": true,
+      "SubjectReleasedAfterSampling": true,
+      "ActualOwnedProcessSample": true,
+      "SampleToolsReaped": true,
+      "detached-observationExitPropagated": true,
+      "detached-observationNoRestart": true,
+      "DetachedObservationDidNotStopBuild": true,
+      "DetachedSubjectReleasedAfterSampling": true,
+      "DetachedActualOwnedProcessSample": true,
+      "DetachedSampleToolsReaped": true,
+      "DifferentGroupChildCollected": true,
+      "DifferentGroupChildSampled": true,
+      "DetachedChildEnded": true,
+      "UnrelatedProcessExcluded": true,
+      "CancellationFixtureReady": true,
+      "CancellationPropagated": true,
+      "NoRedundantGroupKill": true,
+      "CancelledBuildReaped": true,
+      "CancelledBuildChildTerminated": true,
+      "CancelledObserversReaped": true,
+      "NormalCancellationReady": true,
+      "TerminalGroupPermissionPreservesReport": true,
+      "NormalCancelledBuildReaped": true
+    }
+  },
+  "control": {
+    "expectedFailure": "DifferentGroupChildCollected",
+    "logSHA256": "c2c9dbc3401c2c04b243b9831e1fe9dde81a4e34f5ff166e36140e6e8be854e8"
+  },
+  "originalFailure": {
+    "run": 45892370861,
+    "rootPID": 2050,
+    "childPID": 2052,
+    "childPresentInSnapshot": false,
+    "sha256": "64d32456b37e77134158483735539a12134e16451610f10f1013e19d81910e40"
+  },
+  "previewBudgets": {
+    "buildMinutes": "matrix.debug_build_minutes (arm64 12; x86_64 20)",
+    "installMinutes": 15,
+    "individualStartupLimitsChanged": false
+  },
+  "priorPreviewFailures": [
+    {
+      "source": "b6a999e7ee12ffede4a8f54c828b13e7e1fb8a70",
+      "stepStartedAt": "2026-11-26T20:57:03Z",
+      "stepConclusion": "failure",
+      "logSHA256": "b0b23c8ca94287208357ae0e4a82af1515791a688d20ecc63273d2506a63e553",
+      "imageBuiltBeforeTimeout": true,
+      "imageBuiltAfterSeconds": 883.078792,
+      "remainingOf900Seconds": 16.92120799999998
+    },
+    {
+      "source": "46b8848eb460639da652ccf90c3f5c9e8b49972b",
+      "stepStartedAt": "2026-11-26T21:10:00Z",
+      "stepConclusion": "failure",
+      "logSHA256": "b99b2012da5adff63971c82603cb7ee81b9aaa8556ba728f8ff400b8a5da9281",
+      "imageBuiltBeforeTimeout": false
+    }
+  ],
+  "localGUIStarted": false,
+  "productBuildVerified": false,
+  "remoteAcceptance": false
+}

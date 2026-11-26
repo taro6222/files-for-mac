@@ -40,7 +40,28 @@ def verify(output):
                 + '\nwhile (not release.exists() or time.monotonic()-start<2) and time.monotonic()-start<8: time.sleep(.01)'
                 + '\nassert release.exists(), "observer did not finish"')
     child_code = held_fixture(detached_release)
-    detached_code = 'import subprocess,sys; from pathlib import Path; child=subprocess.Popen([sys.executable,"-c",' + repr(child_code) + '],start_new_session=True); Path(' + repr(str(detached_marker)) + ').write_text(str(child.pid)); child.wait()'
+    detached_code = 'import subprocess,sys,time; from pathlib import Path; time.sleep(.2); child=subprocess.Popen([sys.executable,"-c",' + repr(child_code) + '],start_new_session=True); Path(' + repr(str(detached_marker)) + ').write_text(str(child.pid)); sys.exit(child.wait())'
+    # This adapter only gates the real collector on fixture readiness. It does not
+    # change collection, sampling, process ownership, results, or CLI deadlines.
+    # The deliberate child launch delay makes an ungated 50ms observation too early.
+    ready_observer = output.resolve() / 'ready-observer.py'
+    ready_observer.write_text("""import importlib.util, time
+from pathlib import Path
+spec = importlib.util.spec_from_file_location('build_monitor', """ + repr(str(monitor.resolve())) + """)
+module = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(module)
+original = module.collect
+marker = Path(""" + repr(str(detached_marker)) + """)
+def collect(*args, **kwargs):
+ deadline = time.monotonic() + 5
+ while not marker.is_file():
+  if time.monotonic() >= deadline: raise RuntimeError('fixture child never became ready')
+  time.sleep(.01)
+ return original(*args, **kwargs)
+module.collect = collect
+module.main()
+""")
+
     for name, code, expected, observe in [
         ('success', 'print("compiler output preserved", flush=True)', 0, False),
         ('failure', 'import sys; sys.exit(23)', 23, False),
@@ -48,7 +69,7 @@ def verify(output):
         ('detached-observation', detached_code, 0, True),
     ]:
         folder = output / name
-        command = [sys.executable, str(monitor), '--output', str(folder)]
+        command = [sys.executable, str(ready_observer if name == 'detached-observation' else monitor), '--output', str(folder)]
         if observe:
             command += ['--diagnostic-after', '.05', '--max-observations', '1']
         command += ['--', sys.executable, '-c', code]
