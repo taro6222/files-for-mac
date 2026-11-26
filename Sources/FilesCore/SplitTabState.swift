@@ -94,6 +94,26 @@ public struct SplitTabState: Codable, Equatable, Sendable {
     }
 }
 
+/// Ordered browser windows, each containing ordered tabs and its selected tab.
+public struct WorkspaceWindowSession: Equatable, Sendable {
+    public let tabs: [SplitTabState]
+    public let selectedIndex: Int
+    public init(tabs: [SplitTabState], selectedIndex: Int = 0) {
+        self.tabs = tabs
+        self.selectedIndex = tabs.indices.contains(selectedIndex) ? selectedIndex : 0
+    }
+}
+
+public struct WorkspaceDesktopSession: Equatable, Sendable {
+    public let windows: [WorkspaceWindowSession]
+    public let focusedWindowIndex: Int
+    public init(windows: [WorkspaceWindowSession], focusedWindowIndex: Int = 0) {
+        let retained = windows.enumerated().filter { !$0.element.tabs.isEmpty }
+        self.windows = retained.map(\.element)
+        self.focusedWindowIndex = retained.firstIndex { $0.offset == focusedWindowIndex } ?? 0
+    }
+}
+
 public final class WorkspaceSessionStore: @unchecked Sendable {
     private let defaults: UserDefaults
     private let key: String
@@ -101,6 +121,9 @@ public final class WorkspaceSessionStore: @unchecked Sendable {
     public init(defaults: UserDefaults = .standard, key: String = "workspaceSessionV2") {
         self.defaults = defaults; self.key = key
     }
+
+    /// An explicitly saved empty desktop must not revive an obsolete legacy session.
+    public var hasSavedSession: Bool { defaults.object(forKey: key) != nil }
 
     public func save(_ workspaces: [SplitTabState]) throws {
         defaults.set(try JSONEncoder().encode(workspaces), forKey: key)
@@ -118,11 +141,71 @@ public final class WorkspaceSessionStore: @unchecked Sendable {
         }
     }
 
+    /// Keep the v2 flat array readable by earlier builds; group metadata is additive.
+    public func saveDesktop(_ session: WorkspaceDesktopSession) throws {
+        let entries = session.windows.enumerated().flatMap { windowIndex, window in
+            let group = UUID()
+            return window.tabs.enumerated().map { tabIndex, workspace in
+                EncodedWorkspace(workspace: workspace, windowGroupID: group,
+                    selectedInWindow: tabIndex == window.selectedIndex,
+                    focusedTab: windowIndex == session.focusedWindowIndex && tabIndex == window.selectedIndex)
+            }
+        }
+        defaults.set(try JSONEncoder().encode(entries), forKey: key)
+    }
+
+    public func loadDesktop(selectedFlatIndex: Int = -1) -> WorkspaceDesktopSession {
+        guard let data = defaults.data(forKey: key),
+              let entries = try? JSONDecoder().decode([SavedWorkspace].self, from: data) else {
+            return WorkspaceDesktopSession(windows: [])
+        }
+        // Legacy entries share one group. Keep original indices while skipping damaged tabs.
+        let legacyGroup = UUID()
+        var groupIDs: [UUID] = []
+        var groups: [[(index: Int, entry: SavedWorkspace)]] = []
+        for (index, entry) in entries.enumerated() where entry.workspace != nil {
+            let id = entry.windowGroupID ?? legacyGroup
+            if let group = groupIDs.firstIndex(of: id) { groups[group].append((index, entry)) }
+            else { groupIDs.append(id); groups.append([(index, entry)]) }
+        }
+        let explicitFocus = groups.firstIndex { $0.contains { $0.entry.focusedTab } }
+        let legacyFocus = groups.firstIndex { $0.contains { $0.index == selectedFlatIndex } }
+        let windows = groups.map { group in
+            let selected = group.firstIndex { $0.entry.selectedInWindow }
+                ?? group.firstIndex { $0.entry.focusedTab }
+                ?? group.firstIndex { $0.index == selectedFlatIndex } ?? 0
+            return WorkspaceWindowSession(tabs: group.compactMap { $0.entry.workspace }, selectedIndex: selected)
+        }
+        return WorkspaceDesktopSession(windows: windows, focusedWindowIndex: explicitFocus ?? legacyFocus ?? 0)
+    }
+
+    private struct EncodedWorkspace: Encodable {
+        let workspace: SplitTabState
+        let windowGroupID: UUID
+        let selectedInWindow: Bool
+        let focusedTab: Bool
+        enum CodingKeys: String, CodingKey { case windowGroupID, selectedInWindow, focusedTab }
+        func encode(to encoder: any Encoder) throws {
+            try workspace.encode(to: encoder)
+            var values = encoder.container(keyedBy: CodingKeys.self)
+            try values.encode(windowGroupID, forKey: .windowGroupID)
+            try values.encode(selectedInWindow, forKey: .selectedInWindow)
+            try values.encode(focusedTab, forKey: .focusedTab)
+        }
+    }
+
     private struct SavedWorkspace: Decodable {
         let workspace: SplitTabState?
-
+        let windowGroupID: UUID?
+        let selectedInWindow: Bool
+        let focusedTab: Bool
+        enum CodingKeys: String, CodingKey { case windowGroupID, selectedInWindow, focusedTab }
         init(from decoder: any Decoder) {
             workspace = try? SplitTabState(from: decoder)
+            let values = try? decoder.container(keyedBy: CodingKeys.self)
+            windowGroupID = try? values?.decode(UUID.self, forKey: .windowGroupID)
+            selectedInWindow = (try? values?.decode(Bool.self, forKey: .selectedInWindow)) ?? false
+            focusedTab = (try? values?.decode(Bool.self, forKey: .focusedTab)) ?? false
         }
     }
 }

@@ -1,4 +1,5 @@
 import AppKit
+import FilesCore
 
 /// Browser tabs keep their existing controllers and panes, without creating AppKit's tab bar.
 @MainActor
@@ -71,6 +72,37 @@ final class BrowserTabs {
         }
         independent.select(browser)
     }
+    static func desktopSnapshot(browsers: [BrowserWindow], focused: BrowserWindow?) -> WorkspaceDesktopSession {
+        let live = browsers.filter { $0.window?.contentView != nil }
+        var visited = Set<ObjectIdentifier>()
+        var groups: [[BrowserWindow]] = []
+        for browser in live where visited.insert(ObjectIdentifier(browser.tabs)).inserted {
+            groups.append(browser.tabs.browsers.filter { candidate in live.contains { $0 === candidate } })
+        }
+        return WorkspaceDesktopSession(windows: groups.map { group in
+            WorkspaceWindowSession(tabs: group.map { $0.workspaceSnapshot() },
+                selectedIndex: group.firstIndex { $0 === group.first?.tabs.selected } ?? 0)
+        }, focusedWindowIndex: groups.firstIndex { group in group.contains { $0 === focused } } ?? 0)
+    }
+
+    @discardableResult
+    static func restoreDesktop(_ session: WorkspaceDesktopSession,
+                               makeBrowser: (SplitTabState) -> BrowserWindow) -> [BrowserWindow] {
+        var selections: [BrowserWindow] = []
+        var focused: BrowserWindow?
+        for (index, saved) in session.windows.enumerated() {
+            let browsers = saved.tabs.map(makeBrowser)
+            guard let first = browsers.first else { continue }
+            for browser in browsers.dropFirst() { first.attachTab(browser, select: false) }
+            let selected = browsers[saved.selectedIndex]
+            selections.append(selected)
+            if index == session.focusedWindowIndex { focused = selected }
+        }
+        for selected in selections { selected.tabs.select(selected) }
+        (focused ?? selections.first).map { $0.tabs.select($0) }
+        return selections
+    }
+
     func refresh() {
         for browser in browsers { browser.refreshTabBar() }
     }
@@ -258,3 +290,50 @@ private final class BrowserTabCell: WorkspaceTabDragHandle {
         browser.tabs.detach(browser)
     }
 }
+
+#if DEBUG
+extension BrowserTabs {
+    static func verifyDesktopSession(preferences: BrowserPreferences, split: SplitTabState,
+                                     other: SplitTabState) async throws -> [String: Bool] {
+        let suite = "browser-desktop-qa-\(UUID())"
+        guard let defaults = UserDefaults(suiteName: suite) else { throw CocoaError(.coderInvalidValue) }
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let store = WorkspaceSessionStore(defaults: defaults)
+        let a = BrowserWindow(preferences: preferences, restoresFrame: false, initialWorkspace: split)
+        let b = BrowserWindow(preferences: preferences, restoresFrame: false, initialWorkspace: other)
+        let c = BrowserWindow(preferences: preferences, restoresFrame: false,
+                              initialWorkspace: SplitTabState(primary: PaneSnapshot(tab: TabSnapshot(location: nil))))
+        let d = BrowserWindow(preferences: preferences, restoresFrame: false, initialWorkspace: split)
+        let original = [a, b, c, d]
+        var reopened: [BrowserWindow] = []
+        defer { for browser in original + reopened { browser.close() } }
+        a.attachTab(b); a.attachTab(c)
+        a.tabs.insert(c, at: 0); a.tabs.select(b)
+        d.showWindow(nil)
+        try await Task.sleep(for: .milliseconds(200))
+        let saved = desktopSnapshot(browsers: original, focused: d)
+        var checks = ["desktopSessionUsesVisualOrder": saved.windows.count == 2
+            && saved.windows[0].tabs == [c.workspaceSnapshot(), a.workspaceSnapshot(), b.workspaceSnapshot()]
+            && saved.windows[0].selectedIndex == 2 && saved.focusedWindowIndex == 1]
+        try store.saveDesktop(saved)
+        for browser in original { browser.close() }
+        let loaded = store.loadDesktop()
+        let selections = restoreDesktop(loaded) { state in
+            let browser = BrowserWindow(preferences: preferences, restoresFrame: false, initialWorkspace: state)
+            reopened.append(browser)
+            return browser
+        }
+        try await Task.sleep(for: .milliseconds(200))
+        checks["desktopSessionRestoresSeparateWindows"] = reopened.count == 4 && selections.count == 2
+            && reopened[0].tabs.browsers.count == 3 && reopened[3].tabs.browsers.count == 1
+            && reopened[0].tabs !== reopened[3].tabs
+        checks["desktopSessionRestoresSelectedTabs"] = selections.count == 2 && reopened.count == 4
+            && selections[0] === reopened[2] && selections[1] === reopened[3]
+            && reopened.filter { $0.window?.isVisible == true }.count == 2
+            && selections.allSatisfy { $0.tabs.selected === $0 && $0.window?.isVisible == true }
+        checks["desktopSessionRestoresPaneAndHistoryState"] =
+            desktopSnapshot(browsers: reopened, focused: reopened.last) == saved
+        return checks
+    }
+}
+#endif

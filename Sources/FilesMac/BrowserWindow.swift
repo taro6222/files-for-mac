@@ -4844,6 +4844,11 @@ extension BrowserWindow {
                         && source.window?.contentView == nil
                     target.close()
                 }
+                let desktopChecks = try await BrowserTabs.verifyDesktopSession(preferences: preferences,
+                    split: SplitTabState(primary: primary, secondary: secondary, axis: .horizontal,
+                                         ratio: 0.6, activePaneID: secondary.id),
+                    other: SplitTabState(primary: secondary))
+                checks.merge(desktopChecks) { _, value in value }
                 let sameTab = BrowserWindow(preferences: preferences, restoresFrame: false, initialSnapshot: primary.tab)
                 sameTab.showWindow(nil)
                 let splitSameTab = sameTab.splitByDroppingTab(from: sameTab, at: .right)

@@ -64,36 +64,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         preferencesToken = BrowserPreferences.shared.observe(includesRecentLocations: false) { [weak self] in self?.applyAppearance() }
         NotificationCenter.default.addObserver(self, selector: #selector(browserWindowBecameKey(_:)),
             name: NSWindow.didBecomeKeyNotification, object: nil)
-        var restored: [(index: Int, workspace: SplitTabState)] = []
-        if BrowserPreferences.shared.continueLastSession {
-            restored = workspaceStore.loadEntries()
-            if restored.isEmpty {
-                restored = sessionStore.load().enumerated().map { index, tab in
-                    (index, SplitTabState(primary: PaneSnapshot(tab: tab)))
-                }
+        let preferences = BrowserPreferences.shared
+        var restored = WorkspaceDesktopSession(windows: [])
+        if preferences.continueLastSession {
+            restored = workspaceStore.loadDesktop(selectedFlatIndex: preferences.lastSessionSelectedTabIndex)
+            if restored.windows.isEmpty && !workspaceStore.hasSavedSession {
+                let tabs = sessionStore.load().map { SplitTabState(primary: PaneSnapshot(tab: $0)) }
+                if !tabs.isEmpty { restored = WorkspaceDesktopSession(windows: [
+                    WorkspaceWindowSession(tabs: tabs, selectedIndex: preferences.lastSessionSelectedTabIndex)]) }
             }
         }
-        if restored.isEmpty {
-            let startup = BrowserPreferences.shared.startupLocationPath.map { URL(fileURLWithPath: $0, isDirectory: true) }
-            // Resolve the saved location through the asynchronous browser loader.
-            // Its recovery UI handles missing, inaccessible, and non-folder paths.
+        if restored.windows.isEmpty {
+            let startup = preferences.startupLocationPath.map { URL(fileURLWithPath: $0, isDirectory: true) }
             makeBrowser(location: startup)
-        }
-        else {
-            var first: BrowserWindow?
-            var selected: BrowserWindow?
-            let savedIndex = BrowserPreferences.shared.lastSessionSelectedTabIndex
-            for (index, workspace) in restored {
-                let controller = makeBrowser(workspace: workspace, tabbedTo: first)
-                if first == nil { first = controller }
-                if index == savedIndex { selected = controller }
+        } else {
+            let selections = BrowserTabs.restoreDesktop(restored) { workspace in
+                makeBrowser(workspace: workspace, showWindow: false)
             }
-            if BrowserPreferences.shared.openNewTabOnStartup {
-                let startup = BrowserPreferences.shared.startupLocationPath.map { URL(fileURLWithPath: $0, isDirectory: true) }
-                makeBrowser(location: startup, tabbedTo: first, selectNewTab: true)
-            } else {
-                lastFocusedBrowser = selected ?? first
-                lastFocusedBrowser?.window?.makeKeyAndOrderFront(nil)
+            let focused = selections.indices.contains(restored.focusedWindowIndex)
+                ? selections[restored.focusedWindowIndex] : selections.first
+            lastFocusedBrowser = focused
+            if preferences.openNewTabOnStartup {
+                let startup = preferences.startupLocationPath.map { URL(fileURLWithPath: $0, isDirectory: true) }
+                makeBrowser(location: startup, tabbedTo: focused, selectNewTab: true)
             }
         }
         NSApp.activate(ignoringOtherApps: true)
@@ -110,7 +103,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     @discardableResult private func makeBrowser(location: URL? = nil, snapshot: TabSnapshot? = nil,
                                                  workspace: SplitTabState? = nil,
                                                  tabbedTo source: BrowserWindow? = nil,
-                                                 selectNewTab: Bool? = nil) -> BrowserWindow {
+                                                 selectNewTab: Bool? = nil, showWindow: Bool = true) -> BrowserWindow {
         let controller = BrowserWindow(initialLocation: location, initialSnapshot: snapshot, initialWorkspace: workspace)
         windows.append(controller)
         controller.onClose = { [weak self, weak controller] in
@@ -123,7 +116,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         }
         if let source {
             source.attachTab(controller, select: selectNewTab ?? BrowserPreferences.shared.alwaysSwitchToNewlyOpenedTab)
-        } else { controller.showWindow(nil) }
+        } else if showWindow { controller.showWindow(nil) }
         return controller
     }
     @objc func newWindow(_ sender: Any?) { makeBrowser() }
@@ -318,11 +311,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
     func applicationWillTerminate(_ notification: Notification) {
         if let preferencesToken { BrowserPreferences.shared.removeObserver(preferencesToken) }
-        let selected = (currentBrowser ?? lastFocusedBrowser).flatMap { current in
-            windows.firstIndex(where: { $0 === current })
-        } ?? (windows.isEmpty ? -1 : 0)
+        let session = BrowserTabs.desktopSnapshot(browsers: windows, focused: currentBrowser ?? lastFocusedBrowser)
+        let precedingCount = session.windows.prefix(session.focusedWindowIndex).reduce(0) { $0 + $1.tabs.count }
+        let selected = session.windows.isEmpty ? -1 : precedingCount + session.windows[session.focusedWindowIndex].selectedIndex
         BrowserPreferences.shared.setLastSessionSelectedTabIndex(selected)
-        try? workspaceStore.save(windows.map { $0.workspaceSnapshot() })
+        try? workspaceStore.saveDesktop(session)
     }
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         guard CopyWindow.isRunning || FolderMergeWindow.isRunning || FilePromiseReceiveWindow.isRunning || DeletionWindow.isRunning || RestoreWindow.isRunning || MoveWindow.isRunning ||
