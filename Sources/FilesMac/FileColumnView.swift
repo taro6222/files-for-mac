@@ -474,6 +474,10 @@ final class FileColumnView: NSView {
     var qaParentColumnURL: URL? { ancestors.last?.url }
     var qaParentSelection: [String] { ancestors.last?.selectedItems.map(\.id) ?? [] }
     func qaMoveLeftFromBase() { moveLeft(from: columns.first) }
+    var qaColumnState: [[String: Any]] {
+        columns.map { ["url": $0.url.path, "rows": $0.items.count, "selection": $0.selectedItems.map(\.id),
+                       "firstNames": Array($0.items.prefix(8).map(\.name))] }
+    }
     func qaSelect(id: String, column index: Int = 0) {
         guard columns.indices.contains(index), let row = columns[index].items.firstIndex(where: { $0.id == id }) else { return }
         window?.makeFirstResponder(columns[index].table)

@@ -1,0 +1,113 @@
+{
+  "increment": 382,
+  "status": "source 62f8d40 ARM full job accepted; Intel cleanup condition failed; harness changes await remote acceptance",
+  "observedRun": 45879436288,
+  "observedSource": "62f8d409267013e8da1a2336e79ca259d4b20d94",
+  "armJob": {
+    "id": 140114727394,
+    "conclusion": "success"
+  },
+  "intelJob": {
+    "id": 140114727197,
+    "conclusion": "failure",
+    "failedStep": "Verify mounted file systems and AppKit file operations",
+    "failedCheck": "gitCloneTimeoutCleanup",
+    "logSHA256": "8e04852ea9f95c544bb498d3a04fe585a95182e323d9cfe8da1656d566b90c7d"
+  },
+  "armProfiles": [
+    {
+      "profile": "ko-light",
+      "checks": 369,
+      "passed": true,
+      "report": "ko-light-report.json",
+      "sha256": "60429f038b580802dadecd9c1c7314f2606bfdc4e7402709e038ca1bb82267c7"
+    },
+    {
+      "profile": "ko-dark",
+      "checks": 369,
+      "passed": true,
+      "report": "ko-dark-report.json",
+      "sha256": "12dfc103ed7662eca6375404731160c1238b2879156c17b88a1aa8a230e9e805"
+    },
+    {
+      "profile": "en-light",
+      "checks": 369,
+      "passed": true,
+      "report": "en-light-report.json",
+      "sha256": "c1f789d95292bbcff21efde33cbcd003b42ebc7825aa82db74b155c9deb4d4df"
+    },
+    {
+      "profile": "en-dark",
+      "checks": 369,
+      "passed": true,
+      "report": "en-dark-report.json",
+      "sha256": "f54724803846d0d8f43aa4509ca87cb8ff18a8e9f0158e46d2c0e7afb357a597"
+    },
+    {
+      "profile": "tabs-ko-light",
+      "checks": 18,
+      "passed": true,
+      "report": "tabs-ko-light-report.json",
+      "sha256": "1b569fbfbb07dfa73d081a669fe6cb1161f69877bed214dfbe4ec0d80dfad9b9"
+    },
+    {
+      "profile": "tabs-ko-dark",
+      "checks": 18,
+      "passed": true,
+      "report": "tabs-ko-dark-report.json",
+      "sha256": "d14f0ebb7836c334065287abcc60161673f48e525a3d647fc8d6ea82de87a617"
+    },
+    {
+      "profile": "tabs-en-light",
+      "checks": 18,
+      "passed": true,
+      "report": "tabs-en-light-report.json",
+      "sha256": "8c7ea58db35d39197a12b053f583fba009acff534def6be24e64c77900d59e6f"
+    },
+    {
+      "profile": "tabs-en-dark",
+      "checks": 18,
+      "passed": true,
+      "report": "tabs-en-dark-report.json",
+      "sha256": "4cd5dc149461c75b593e647a0784a7a4efc95a8c5c56558ef4fd9754202c353c"
+    }
+  ],
+  "armPackageChecks": {
+    "edit-sdk": 85,
+    "client": 74,
+    "authority": 15,
+    "worker": 113,
+    "diagnostic-worker": 205
+  },
+  "captures": [
+    {
+      "file": "ko-dark-archive-add-encryption.png",
+      "sha256": "ddd7029b4930decf9d745f2bf84884a124119c9f45935bc69b5a674ee3740810"
+    },
+    {
+      "file": "en-light-archive-add-encryption.png",
+      "sha256": "152fb811aa5572e4703eedebcb6c65a1e6d1d2e5815598083777d5558483e064"
+    }
+  ],
+  "harnessSourcesSHA256": {
+    "Sources/FilesMac/BrowserWindow.swift": "9adbd02bda66dc49d4fe31ebdf1c8c5cb2f70af0d7fd5dd6ecd48ef4c71adf6d",
+    "Sources/FilesMac/FileColumnView.swift": "3f76ff6d7b666defaa6bed4b9ba77d666f2f89e0343640ecee3982248d4f2ee3",
+    "Sources/FilesMac/GitCloneWindow.swift": "c4c1e73af1f315e26cc5fa86f284ccb551b8938d34453c77ce93dc57838dce27",
+    "scripts/create-ui-git-fixture.py": "513ed2dfbea17cd1aaff73117715a45682bf9b20573c877956e7cad8bf6bfe9f",
+    "scripts/verify-ui.sh": "2276ed09a279d09a30accf430cbca4f0c0e51c162a2151e836778f113df33b3f",
+    ".github/workflows/macos.yml": "c12836d5cb296b6c1ed47e592437b6204a752e7f321d3b71d82c347b24f1f3b9"
+  },
+  "productCodeChanged": false,
+  "debugBuildSeconds": 7.55,
+  "gitFixtureVerification": {
+    "passed": true,
+    "files": 35,
+    "sameCommit": true,
+    "cleanClone": true,
+    "manifestSHA256": "2c346ee1bdacc68f72e8aa820c8bf0927c269957484afd330c7bc6e796f1a695",
+    "existingOutputPreserved": true
+  },
+  "uiChecksUnchanged": 369,
+  "localGUIStarted": false,
+  "overallM7Complete": false
+}

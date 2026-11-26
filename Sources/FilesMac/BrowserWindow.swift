@@ -4990,7 +4990,11 @@ extension BrowserWindow {
                 var clonedLocation: URL?
                 let clonePanel = GitCloneWindow { clonedLocation = $0 }
                 clonePanel.present(); let cloneDestination = destination.appendingPathComponent("git-clone-ui", isDirectory: true); try? fm.removeItem(at: cloneDestination)
-                clonePanel.qaClone(source: URL(fileURLWithPath: fm.currentDirectoryPath, isDirectory: true), destination: cloneDestination)
+                guard let gitFixturePath = ProcessInfo.processInfo.environment["FILES_UI_QA_GIT_FIXTURE"],
+                      let gitFixture = try JSONSerialization.jsonObject(with: Data(contentsOf: URL(fileURLWithPath: gitFixturePath))) as? [String: Any],
+                      let gitRemote = gitFixture["remote"] as? String, let expectedCommit = gitFixture["commit"] as? String,
+                      let expectedFiles = gitFixture["files"] as? [String: String], expectedFiles["README.md"] != nil else { throw CocoaError(.fileReadCorruptFile) }
+                clonePanel.qaClone(source: URL(fileURLWithPath: gitRemote, isDirectory: true), destination: cloneDestination)
                 let cloneWait = ContinuousClock.now
                 let cloneFinished = try await clonePanel.qaWaitForCompletion(timeout: .seconds(20))
                 diagnostics["gitCloneFinishedBeforeDeadline"] = cloneFinished
@@ -4998,7 +5002,12 @@ extension BrowserWindow {
                 diagnostics["gitCloneStatusBeforeCleanup"] = clonePanel.qaStatus
                 let cloneElapsed = cloneWait.duration(to: .now).components
                 diagnostics["gitCloneWaitSeconds"] = Double(cloneElapsed.seconds) + Double(cloneElapsed.attoseconds) / 1e18
+                let cloneFilesMatch = expectedFiles.allSatisfy { name, value in (try? Data(contentsOf: cloneDestination.appendingPathComponent(name))) == Data(value.utf8) }
+                let cloneCommit = clonePanel.qaSucceeded ? try? await GitProvider().lastCommit(for: cloneDestination.appendingPathComponent("README.md"), in: cloneDestination) : nil
+                diagnostics["gitCloneFixture"] = ["expectedFileCount": expectedFiles.count, "filesMatch": cloneFilesMatch,
+                                                "expectedCommit": expectedCommit, "actualCommit": cloneCommit?.sha ?? ""]
                 checks["gitCloneWindow"] = clonePanel.qaSucceeded && clonedLocation?.standardizedFileURL.path == cloneDestination.standardizedFileURL.path && fm.fileExists(atPath: cloneDestination.appendingPathComponent(".git", isDirectory: true).path)
+                    && cloneFilesMatch && cloneCommit?.sha == expectedCommit
                 checks["gitCloneAccessibility"] = clonePanel.qaAccessibilityReady
                 checks["gitCloneMenuCommand"] = paletteEntries.contains { $0.item.action == #selector(AppDelegate.showGitClone(_:)) }
                 try capture("git-clone", view: clonePanel.window?.contentView)
@@ -6220,11 +6229,13 @@ extension BrowserWindow {
             controller.model.savePosition(selection: [], scrollOffset: 0)
             controller.model.setViewMode(.columns)
             controller.render(); root.layoutSubtreeIfNeeded(); root.displayIfNeeded()
+            diagnostics["columnsInitialState"] = controller.columnView.qaColumnState
             controller.columnView.qaSelect(id: gridFolder.path)
             let columnStart = ContinuousClock.now
             while controller.columnView.qaColumnCount < 2 && columnStart.duration(to: .now) < .seconds(5) {
                 try await Task.sleep(for: .milliseconds(10))
             }
+            diagnostics["columnsAfterBaseSelection"] = controller.columnView.qaColumnState
             controller.columnView.qaSelect(id: columnFolder.path, column: 1)
             let nestedColumnStart = ContinuousClock.now
             while controller.columnView.qaColumnCount < 3 && nestedColumnStart.duration(to: .now) < .seconds(5) {
@@ -6232,12 +6243,14 @@ extension BrowserWindow {
             }
             root.layoutSubtreeIfNeeded(); root.displayIfNeeded()
             checks["columnsVisible"] = !controller.columnView.isHidden && controller.scroll.isHidden
+            diagnostics["columnsAfterNestedSelection"] = controller.columnView.qaColumnState
             checks["columnsHierarchy"] = controller.columnView.qaColumnCount == 3
                 && controller.columnView.selectedItems.map(\.id) == [columnFolder.path]
             controller.focusFiles(nil)
             checks["columnsFocus"] = (window.firstResponder as? NSView)?.isDescendant(of: controller.columnView) == true
             try capture("files-columns")
             controller.columnView.qaMoveLeft()
+            diagnostics["columnsAfterLeftNavigation"] = controller.columnView.qaColumnState
             checks["columnsLeftNavigation"] = controller.columnView.qaColumnCount == 2
             if let selected = controller.columnView.selectedItems.first { controller.openRenderedItem(selected) }
             checks["columnsFolderOpen"] = controller.model.location == columnFolder.standardizedFileURL

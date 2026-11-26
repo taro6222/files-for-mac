@@ -46,6 +46,9 @@ if [[ -z "${FILES_UI_QA_SEVENZIP_REFERENCE:-}" ]]; then
   FILES_UI_QA_SEVENZIP_REFERENCE=$(python3 scripts/sevenzip_reference.py)
   export FILES_UI_QA_SEVENZIP_REFERENCE
 fi
+# Keep clone input fixed instead of cloning this ever-growing source checkout.
+export FILES_UI_QA_GIT_FIXTURE
+FILES_UI_QA_GIT_FIXTURE=$(python3 scripts/create-ui-git-fixture.py --output "$outputRoot/git-fixture")
 # Each process gets an isolated preferences suite and a fresh fixture directory.
 failed=0
 for language in "${languages[@]}"; do

@@ -195,7 +195,22 @@ jobs:
       - name: Verify mounted file systems and AppKit file operations
         if: github.event_name != 'workflow_dispatch' || !inputs.verify_upgrade
         timeout-minutes: 14
+        env:
+          TMPDIR: ${{ runner.temp }}
         run: bash scripts/verify-volume-matrix.sh --skip-build --appkit
+      - name: Retain volume and file operation UI reports
+        if: always() && (github.event_name != 'workflow_dispatch' || !inputs.verify_upgrade)
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: files-volume-ui-${{ matrix.architecture }}
+          path: |
+            ${{ runner.temp }}/files-m2-ui.*/*/report.json
+            ${{ runner.temp }}/files-m2-ui.*/*/run.log
+            ${{ runner.temp }}/files-m2-ui.*/*/*.png
+            ${{ runner.temp }}/files-m2-ui.*/*/m2-fixture/git-clone-timeout-fixture/report.json
+            ${{ runner.temp }}/files-m2-ui.*/*/m2-fixture/git-clone-timeout-fixture/*timeout*.txt
+            ${{ runner.temp }}/files-m2-ui.*/*/m2-fixture/git-clone-timeout-fixture/*timeout*.log
+          if-no-files-found: ignore
       - name: Verify AppKit file promise export contracts
         if: github.event_name != 'workflow_dispatch' || !inputs.verify_upgrade
         timeout-minutes: 2
@@ -266,6 +281,8 @@ jobs:
           path: |
             build/appkit-sdk-build-diagnostics/
             ${{ runner.temp }}/files-ui-verification.*/sdk-build.log
+            ${{ runner.temp }}/files-ui-verification.*/git-fixture/manifest.json
+            ${{ runner.temp }}/files-ui-verification.*/git-fixture/setup.log
             ${{ runner.temp }}/files-ui-verification.*/*/report.json
             ${{ runner.temp }}/files-ui-verification.*/*/progress.json
             ${{ runner.temp }}/files-ui-verification.*/*/desktop-session-comparison.json

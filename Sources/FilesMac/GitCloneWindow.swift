@@ -149,7 +149,9 @@ final class GitCloneWindow: NSWindowController, NSWindowDelegate, NSTextFieldDel
             try await Task.sleep(for: .milliseconds(10))
         }
         guard FileManager.default.fileExists(atPath: root.appendingPathComponent("started").path) else {
-            _ = try await panel.qaCancelAndWait(); return false
+            let settled = try await panel.qaCancelAndWait()
+            try JSONSerialization.data(withJSONObject: ["fixtureStarted": false, "cancellationSettled": settled, "passed": false], options: [.prettyPrinted, .sortedKeys]).write(to: root.appendingPathComponent("report.json"))
+            return false
         }
         let finished = try await panel.qaWaitForCompletion(timeout: .milliseconds(50))
         let wasRunning = panel.qaRunning && !panel.qaSucceeded && panel.qaStatus == L("저장소를 staging 폴더에 복제하는 중…", "Cloning into a staging folder…")
@@ -157,11 +159,15 @@ final class GitCloneWindow: NSWindowController, NSWindowDelegate, NSTextFieldDel
         let sampled = sampling["parentSample"] == 0 && FileManager.default.fileExists(atPath: root.appendingPathComponent("git-clone-timeout-parent.txt").path)
         let settled = try await panel.qaCancelAndWait()
         let names = try FileManager.default.contentsOfDirectory(atPath: root.path)
-        let result = !finished && wasRunning && sampled && settled && !didComplete && !panel.qaRunning
-            && Self.activeCount == originalActive && !FileManager.default.fileExists(atPath: destination.path)
-            && !names.contains(where: { $0.hasPrefix(".files-git-clone-") })
-            && panel.qaStatus == L("복제가 중단되었으며 staging 파일을 정리했습니다.", "Clone cancelled and staging files were removed.")
-        try JSONSerialization.data(withJSONObject: ["deadlineRemainedRunning": !finished && wasRunning, "parentSampleWritten": sampled, "cancellationSettled": settled, "destinationPublished": FileManager.default.fileExists(atPath: destination.path), "passed": result], options: [.prettyPrinted, .sortedKeys]).write(to: root.appendingPathComponent("report.json"))
+        let checks = ["deadlineRemainedRunning": !finished && wasRunning, "parentSampleWritten": sampled,
+                      "cancellationSettled": settled, "completionNotCalled": !didComplete, "taskStopped": !panel.qaRunning,
+                      "activeCountRestored": Self.activeCount == originalActive,
+                      "destinationNotPublished": !FileManager.default.fileExists(atPath: destination.path),
+                      "stagingRemoved": !names.contains(where: { $0.hasPrefix(".files-git-clone-") }),
+                      "cancellationMessage": panel.qaStatus == L("복제가 중단되었으며 staging 파일을 정리했습니다.", "Clone cancelled and staging files were removed.")]
+        let result = checks.values.allSatisfy { $0 }
+        try JSONSerialization.data(withJSONObject: ["fixtureStarted": true, "checks": checks, "sampling": sampling,
+            "originalActive": originalActive, "active": Self.activeCount, "status": panel.qaStatus, "passed": result], options: [.prettyPrinted, .sortedKeys]).write(to: root.appendingPathComponent("report.json"))
         return result
     }
     var qaRunning: Bool { task != nil }
