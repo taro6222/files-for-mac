@@ -388,6 +388,10 @@ extension BrowserTabBar {
             }
             guard let content = browsers[11].window?.contentView, let bar = findBar(content) else { throw CocoaError(.coderInvalidValue) }
             content.layoutSubtreeIfNeeded()
+            let sidebarWidth = content.subviews.compactMap { $0 as? NSSplitView }.first?.arrangedSubviews.first?.frame.width ?? 0
+            diagnostics["sidebarWidth"] = String(describing: sidebarWidth)
+            checks["minimumWindowPreservesSidebarWidth"] = sidebarWidth >= 180 && sidebarWidth <= 320
+            checks["defaultSidebarWidthUsesDesignValue"] = abs(sidebarWidth - 220) <= 0.5
             let visible = bar.scroll.contentView.bounds
             let selectedFrame = bar.cells[11].frame
             diagnostics["clipBounds"] = NSStringFromRect(visible)
@@ -405,17 +409,69 @@ extension BrowserTabBar {
             checks["longTitleKeepsFullAccessibleLabel"] = bar.cells[11].accessibilityLabel() == folder.lastPathComponent
                 && bar.cells[11].label.lineBreakMode == .byTruncatingMiddle && bar.cells[11].closeButton.alignmentRect(forFrame: bar.cells[11].closeButton.frame).width == 20
                 && bar.cells[11].label.frame.maxX < bar.cells[11].closeButton.frame.minX
-            guard let bitmap = bar.bitmapImageRepForCachingDisplay(in: bar.bounds) else { throw CocoaError(.fileWriteUnknown) }
-            bar.effectiveAppearance.performAsCurrentDrawingAppearance {
-                bar.cacheDisplay(in: bar.bounds, to: bitmap)
-                if let context = NSGraphicsContext(bitmapImageRep: bitmap)?.cgContext {
-                    context.setBlendMode(.destinationOver)
-                    context.setFillColor(NSColor.windowBackgroundColor.cgColor)
-                    context.fill(CGRect(x: 0, y: 0, width: bitmap.pixelsWide, height: bitmap.pixelsHigh))
+            func capture(_ view: NSView, name: String) throws {
+                guard let bitmap = view.bitmapImageRepForCachingDisplay(in: view.bounds) else { throw CocoaError(.fileWriteUnknown) }
+                view.effectiveAppearance.performAsCurrentDrawingAppearance {
+                    view.cacheDisplay(in: view.bounds, to: bitmap)
+                    if let context = NSGraphicsContext(bitmapImageRep: bitmap)?.cgContext {
+                        context.setBlendMode(.destinationOver)
+                        context.setFillColor(NSColor.windowBackgroundColor.cgColor)
+                        context.fill(CGRect(x: 0, y: 0, width: bitmap.pixelsWide, height: bitmap.pixelsHigh))
+                    }
                 }
+                guard let png = bitmap.representation(using: .png, properties: [:]) else { throw CocoaError(.fileWriteUnknown) }
+                try png.write(to: root.appendingPathComponent(name + ".png"))
             }
-            guard let png = bitmap.representation(using: .png, properties: [:]) else { throw CocoaError(.fileWriteUnknown) }
-            try png.write(to: root.appendingPathComponent("overflow.png"))
+            try capture(bar, name: "overflow")
+            try capture(content, name: "minimum-window")
+            guard let sidebarSplit = content.subviews.compactMap({ $0 as? BrowserRootSplitView }).first,
+                  let sidebar = sidebarSplit.arrangedSubviews.first else { throw CocoaError(.coderInvalidValue) }
+            sidebarSplit.setPosition(260, ofDividerAt: 0)
+            content.layoutSubtreeIfNeeded()
+            browsers[11].window?.setFrame(NSRect(x: 80, y: 80, width: 1200, height: 800), display: true)
+            try await Task.sleep(for: .milliseconds(100))
+            content.layoutSubtreeIfNeeded()
+            diagnostics["sidebarAfterResize"] = String(describing: sidebar.frame.width)
+            checks["sidebarUserWidthSurvivesWindowResize"] = abs(sidebar.frame.width - 260) <= 0.5
+            checks["sidebarDragUsesDesignBounds"] = sidebarSplit.delegate === sidebarSplit
+                && sidebarSplit.splitView(sidebarSplit, constrainMinCoordinate: 0, ofSubviewAt: 0) == 180
+                && sidebarSplit.splitView(sidebarSplit, constrainMaxCoordinate: 2000, ofSubviewAt: 0) == 320
+            preferences.setShowSidebar(false)
+            try await Task.sleep(for: .milliseconds(100))
+            content.layoutSubtreeIfNeeded()
+            let mainWidth = sidebarSplit.arrangedSubviews[1].frame.width
+            let dividerWidth = CGFloat(max(0, sidebarSplit.arrangedSubviews.count - 1)) * sidebarSplit.dividerThickness
+            let hiddenFreedSpace = sidebar.isHidden && mainWidth >= sidebarSplit.bounds.width - dividerWidth
+            diagnostics["hiddenSidebarMainWidth"] = String(describing: mainWidth)
+            preferences.setShowSidebar(true)
+            try await Task.sleep(for: .milliseconds(100))
+            content.layoutSubtreeIfNeeded()
+            diagnostics["sidebarAfterShow"] = String(describing: sidebar.frame.width)
+            checks["sidebarHideRestoresUserWidth"] = hiddenFreedSpace && !sidebar.isHidden && abs(sidebar.frame.width - 260) <= 0.5
+            sidebarSplit.setPosition(220, ofDividerAt: 0)
+            browsers[11].window?.setFrame(NSRect(x: 80, y: 80, width: 900, height: 600), display: true)
+            preferences.setShowInfoPane(true)
+            try await Task.sleep(for: .milliseconds(150))
+            content.layoutSubtreeIfNeeded()
+            let information = sidebarSplit.arrangedSubviews[2]
+            diagnostics["informationPaneDefaultWidth"] = String(describing: information.frame.width)
+            checks["informationPaneReadableWithSidebar"] = !information.isHidden
+                && abs(information.frame.width - 280) <= 0.5 && abs(sidebar.frame.width - 220) <= 0.5
+                && sidebarSplit.arrangedSubviews[1].frame.width >= 360
+            try capture(content, name: "information-pane")
+            browsers[11].window?.setFrame(NSRect(x: 80, y: 80, width: 1200, height: 800), display: true)
+            content.layoutSubtreeIfNeeded()
+            sidebarSplit.setPosition(sidebarSplit.bounds.maxX - 320 - sidebarSplit.dividerThickness, ofDividerAt: 1)
+            preferences.setShowInfoPane(false)
+            try await Task.sleep(for: .milliseconds(100))
+            preferences.setShowInfoPane(true)
+            try await Task.sleep(for: .milliseconds(100))
+            content.layoutSubtreeIfNeeded()
+            diagnostics["informationPaneAfterShow"] = String(describing: information.frame.width)
+            checks["informationPaneUserWidthRestores"] = !information.isHidden && abs(information.frame.width - 320) <= 0.5
+            checks["informationPaneDragUsesDesignBounds"] =
+                sidebarSplit.splitView(sidebarSplit, constrainMinCoordinate: 0, ofSubviewAt: 1) == sidebarSplit.bounds.maxX - 420 - sidebarSplit.dividerThickness
+                && sidebarSplit.splitView(sidebarSplit, constrainMaxCoordinate: 2000, ofSubviewAt: 1) == sidebarSplit.bounds.maxX - 240 - sidebarSplit.dividerThickness
             guard let menuItem = bar.list.item(at: 5), let action = menuItem.action else { throw CocoaError(.coderInvalidValue) }
             checks["duplicateTitlesKeepDistinctMenuItems"] = bar.list.numberOfItems == 13
                 && (1...11).allSatisfy { bar.list.item(at: $0)?.title == browsers[0].tabDisplayTitle }

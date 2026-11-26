@@ -1,0 +1,62 @@
+{
+  "sourceCommit": "bf263ae7f2ea3ac8c25a54b4a492a7dc6a9b8315",
+  "runURL": "https://github.com/taro6222/files-for-mac/actions/runs/45742962642",
+  "reports": {
+    "en-dark": {
+      "reportSHA256": "b2a8bc2eb7bb7ddf743d13ae6ed19a922420242ea4a415e7b75dc2d8015a86c3",
+      "failedChecks": [
+        "browserTabsRevealSynchronizesFrame"
+      ],
+      "frameDiagnostics": {
+        "tabFrameRequested": "{{80, 90}, {1100, 720}}",
+        "tabFrameSelectedTarget": true,
+        "tabFrameSourceBeforeReveal": "{{80, 59}, {1100, 684}}",
+        "tabFrameSourceScreen": "{{0, 59}, {1024, 684}}",
+        "tabFrameSourceVisibleAfterReveal": false,
+        "tabFrameTargetAfterReveal": "{{0, 59}, {1024, 684}}"
+      }
+    },
+    "ko-light": {
+      "reportSHA256": "6724c01e3d0edb91ab2568e63261100896f1733419a5b0d733aa709a903b7eac",
+      "failedChecks": [
+        "browserTabsRevealSynchronizesFrame"
+      ],
+      "frameDiagnostics": {
+        "tabFrameRequested": "{{80, 90}, {1100, 720}}",
+        "tabFrameSelectedTarget": true,
+        "tabFrameSourceBeforeReveal": "{{80, 59}, {1100, 684}}",
+        "tabFrameSourceScreen": "{{0, 59}, {1024, 684}}",
+        "tabFrameSourceVisibleAfterReveal": false,
+        "tabFrameTargetAfterReveal": "{{0, 59}, {1024, 684}}"
+      }
+    },
+    "en-light": {
+      "reportSHA256": "59cf898c61c02ac7f3857f696dd509c3c335ef7eec99c37a8afb8c6f3e312343",
+      "failedChecks": [
+        "browserTabsRevealSynchronizesFrame"
+      ],
+      "frameDiagnostics": {
+        "tabFrameRequested": "{{80, 90}, {1100, 720}}",
+        "tabFrameSelectedTarget": true,
+        "tabFrameSourceBeforeReveal": "{{80, 59}, {1100, 684}}",
+        "tabFrameSourceScreen": "{{0, 59}, {1024, 684}}",
+        "tabFrameSourceVisibleAfterReveal": false,
+        "tabFrameTargetAfterReveal": "{{0, 59}, {1024, 684}}"
+      }
+    },
+    "ko-dark": {
+      "reportSHA256": "0384f1d7a8551a21679beeeb16b30d4947931cc62ce4f85d78568f9efd01c130",
+      "failedChecks": [
+        "browserTabsRevealSynchronizesFrame"
+      ],
+      "frameDiagnostics": {
+        "tabFrameRequested": "{{80, 90}, {1100, 720}}",
+        "tabFrameSelectedTarget": true,
+        "tabFrameSourceBeforeReveal": "{{80, 59}, {1100, 684}}",
+        "tabFrameSourceScreen": "{{0, 59}, {1024, 684}}",
+        "tabFrameSourceVisibleAfterReveal": false,
+        "tabFrameTargetAfterReveal": "{{0, 59}, {1024, 684}}"
+      }
+    }
+  }
+}

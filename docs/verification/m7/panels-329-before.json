@@ -1,0 +1,182 @@
+{
+  "initialWidth": {
+    "tabs-en-light": {
+      "reportSHA256": "3665717a4da4314ccf6c895c74599ae03ad460625cd9fc5ba2f94c678faa41c3",
+      "checks": {
+        "accessibleTabPressSelectsTab": true,
+        "closeButtonClosesRepresentedBackgroundTab": true,
+        "closeManyTabsClearsHiddenControls": true,
+        "duplicateTitlesKeepDistinctMenuItems": true,
+        "longTitleKeepsFullAccessibleLabel": true,
+        "minimumWindowPreservesSidebarWidth": false,
+        "overflowControlsStayInsideBar": true,
+        "overflowKeepsSelectedTabVisible": true,
+        "tabArrowWrapsToFirst": true,
+        "tabListSelectsRequestedHiddenTab": true,
+        "trackedMenuItemFollowsTabAfterReorder": true
+      },
+      "diagnostics": {
+        "sidebarWidth": "98.0"
+      }
+    },
+    "tabs-ko-dark": {
+      "reportSHA256": "f4f9ea1fb0792784505a48e38f27058328049d572b60b0800550517731601c7b",
+      "checks": {
+        "accessibleTabPressSelectsTab": true,
+        "closeButtonClosesRepresentedBackgroundTab": true,
+        "closeManyTabsClearsHiddenControls": true,
+        "duplicateTitlesKeepDistinctMenuItems": true,
+        "longTitleKeepsFullAccessibleLabel": true,
+        "minimumWindowPreservesSidebarWidth": false,
+        "overflowControlsStayInsideBar": true,
+        "overflowKeepsSelectedTabVisible": true,
+        "tabArrowWrapsToFirst": true,
+        "tabListSelectsRequestedHiddenTab": true,
+        "trackedMenuItemFollowsTabAfterReorder": true
+      },
+      "diagnostics": {
+        "sidebarWidth": "67.0"
+      }
+    },
+    "tabs-ko-light": {
+      "reportSHA256": "5a391126af6b14aa35d2ee0612ee1ceac33223c38edb1f80bebcaac4e8a00420",
+      "checks": {
+        "accessibleTabPressSelectsTab": true,
+        "closeButtonClosesRepresentedBackgroundTab": true,
+        "closeManyTabsClearsHiddenControls": true,
+        "duplicateTitlesKeepDistinctMenuItems": true,
+        "longTitleKeepsFullAccessibleLabel": true,
+        "minimumWindowPreservesSidebarWidth": false,
+        "overflowControlsStayInsideBar": true,
+        "overflowKeepsSelectedTabVisible": true,
+        "tabArrowWrapsToFirst": true,
+        "tabListSelectsRequestedHiddenTab": true,
+        "trackedMenuItemFollowsTabAfterReorder": true
+      },
+      "diagnostics": {
+        "sidebarWidth": "67.0"
+      }
+    },
+    "tabs-en-dark": {
+      "reportSHA256": "78ee08a534edc51c91a9ac24f81d6015e8a300f4df97f680bf344c2abc2f990a",
+      "checks": {
+        "accessibleTabPressSelectsTab": true,
+        "closeButtonClosesRepresentedBackgroundTab": true,
+        "closeManyTabsClearsHiddenControls": true,
+        "duplicateTitlesKeepDistinctMenuItems": true,
+        "longTitleKeepsFullAccessibleLabel": true,
+        "minimumWindowPreservesSidebarWidth": false,
+        "overflowControlsStayInsideBar": true,
+        "overflowKeepsSelectedTabVisible": true,
+        "tabArrowWrapsToFirst": true,
+        "tabListSelectsRequestedHiddenTab": true,
+        "trackedMenuItemFollowsTabAfterReorder": true
+      },
+      "diagnostics": {
+        "sidebarWidth": "98.0"
+      }
+    }
+  },
+  "hiddenWidth": {
+    "tabs-en-light": {
+      "reportSHA256": "71bccfc789d86a5231470c77cfe0c90705577408879c4e16331b78f5509be6c4",
+      "checks": {
+        "accessibleTabPressSelectsTab": true,
+        "closeButtonClosesRepresentedBackgroundTab": true,
+        "closeManyTabsClearsHiddenControls": true,
+        "duplicateTitlesKeepDistinctMenuItems": true,
+        "longTitleKeepsFullAccessibleLabel": true,
+        "minimumWindowPreservesSidebarWidth": true,
+        "overflowControlsStayInsideBar": true,
+        "overflowKeepsSelectedTabVisible": true,
+        "sidebarDragUsesDesignBounds": true,
+        "sidebarHideRestoresUserWidth": false,
+        "sidebarUserWidthSurvivesWindowResize": true,
+        "tabArrowWrapsToFirst": true,
+        "tabListSelectsRequestedHiddenTab": true,
+        "trackedMenuItemFollowsTabAfterReorder": true
+      },
+      "diagnostics": {
+        "hiddenSidebarMainWidth": "1198.0",
+        "sidebarAfterResize": "260.0",
+        "sidebarAfterShow": "213.5",
+        "sidebarWidth": "220.0"
+      }
+    },
+    "tabs-ko-dark": {
+      "reportSHA256": "3846cefedbf4d93f738e676fc361b0218407d8d8032101663e6567910dacd9cc",
+      "checks": {
+        "accessibleTabPressSelectsTab": true,
+        "closeButtonClosesRepresentedBackgroundTab": true,
+        "closeManyTabsClearsHiddenControls": true,
+        "duplicateTitlesKeepDistinctMenuItems": true,
+        "longTitleKeepsFullAccessibleLabel": true,
+        "minimumWindowPreservesSidebarWidth": true,
+        "overflowControlsStayInsideBar": true,
+        "overflowKeepsSelectedTabVisible": true,
+        "sidebarDragUsesDesignBounds": true,
+        "sidebarHideRestoresUserWidth": false,
+        "sidebarUserWidthSurvivesWindowResize": true,
+        "tabArrowWrapsToFirst": true,
+        "tabListSelectsRequestedHiddenTab": true,
+        "trackedMenuItemFollowsTabAfterReorder": true
+      },
+      "diagnostics": {
+        "hiddenSidebarMainWidth": "1198.0",
+        "sidebarAfterResize": "260.0",
+        "sidebarAfterShow": "213.5",
+        "sidebarWidth": "220.0"
+      }
+    },
+    "tabs-ko-light": {
+      "reportSHA256": "bdb93e3a56bdc54abcaebf9a64c13e330c18ab9301c99b2aa79f83ed70fed798",
+      "checks": {
+        "accessibleTabPressSelectsTab": true,
+        "closeButtonClosesRepresentedBackgroundTab": true,
+        "closeManyTabsClearsHiddenControls": true,
+        "duplicateTitlesKeepDistinctMenuItems": true,
+        "longTitleKeepsFullAccessibleLabel": true,
+        "minimumWindowPreservesSidebarWidth": true,
+        "overflowControlsStayInsideBar": true,
+        "overflowKeepsSelectedTabVisible": true,
+        "sidebarDragUsesDesignBounds": true,
+        "sidebarHideRestoresUserWidth": false,
+        "sidebarUserWidthSurvivesWindowResize": true,
+        "tabArrowWrapsToFirst": true,
+        "tabListSelectsRequestedHiddenTab": true,
+        "trackedMenuItemFollowsTabAfterReorder": true
+      },
+      "diagnostics": {
+        "hiddenSidebarMainWidth": "1198.0",
+        "sidebarAfterResize": "260.0",
+        "sidebarAfterShow": "213.5",
+        "sidebarWidth": "220.0"
+      }
+    },
+    "tabs-en-dark": {
+      "reportSHA256": "19ebaf8920d51ea228d40c8e98694b4d67de76ef73a5509360c6624cc968b30e",
+      "checks": {
+        "accessibleTabPressSelectsTab": true,
+        "closeButtonClosesRepresentedBackgroundTab": true,
+        "closeManyTabsClearsHiddenControls": true,
+        "duplicateTitlesKeepDistinctMenuItems": true,
+        "longTitleKeepsFullAccessibleLabel": true,
+        "minimumWindowPreservesSidebarWidth": true,
+        "overflowControlsStayInsideBar": true,
+        "overflowKeepsSelectedTabVisible": true,
+        "sidebarDragUsesDesignBounds": true,
+        "sidebarHideRestoresUserWidth": false,
+        "sidebarUserWidthSurvivesWindowResize": true,
+        "tabArrowWrapsToFirst": true,
+        "tabListSelectsRequestedHiddenTab": true,
+        "trackedMenuItemFollowsTabAfterReorder": true
+      },
+      "diagnostics": {
+        "hiddenSidebarMainWidth": "1198.0",
+        "sidebarAfterResize": "260.0",
+        "sidebarAfterShow": "213.5",
+        "sidebarWidth": "220.0"
+      }
+    }
+  }
+}

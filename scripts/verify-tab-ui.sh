@@ -45,15 +45,15 @@ try:
             if app.returncode:
                 raise RuntimeError(f'Owned app exited {app.returncode}')
     report = json.loads((root/'report.json').read_text())
-    if (len(report['checks']) != 10 or not all(report['checks'].values())
+    if (len(report['checks']) != 18 or not all(report['checks'].values())
             or report['theme'] != theme or report['language'].split('-')[0] != language
-            or not (root/'overflow.png').is_file()):
+            or not (root/'overflow.png').is_file() or not (root/'minimum-window.png').is_file() or not (root/'information-pane.png').is_file()):
         raise ValueError('Tab boundary checks, requested appearance, or capture are missing')
 except (OSError, ValueError, KeyError, RuntimeError, subprocess.SubprocessError) as error:
     print(log.read_text(errors='replace'), file=sys.stderr)
     if (root/'report.json').exists(): print((root/'report.json').read_text(), file=sys.stderr)
     raise SystemExit(f'{language}/{theme}: {error}')
-print(f'{language}/{theme}: 10 AppKit tab boundary checks passed')
+print(f'{language}/{theme}: 18 AppKit tab boundary checks passed')
 PY
   done
 done

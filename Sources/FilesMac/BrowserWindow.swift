@@ -56,9 +56,8 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
     private let toolbar = NSStackView()
     private let bottom = NSStackView()
     private let toolbarOverflow = NSPopUpButton()
-    private let rootSplit = NSSplitView()
+    private let rootSplit = BrowserRootSplitView()
     private let inspector = BrowserInfoPane()
-    private var inspectorWidth: NSLayoutConstraint?
     private let sidebarContainer = NSVisualEffectView()
     private var toolbarViews: [BrowserToolbarItem: NSView] = [:]
     private var toolbarCompact: Bool?
@@ -348,7 +347,6 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         inspector.onOpenProperties = { [weak self] in self?.showInfo(nil) }
         inspector.onEditTags = { [weak self] in self?.presentInfo(editingTags: true) }
         split.addArrangedSubview(inspector)
-        inspectorWidth = inspector.widthAnchor.constraint(equalToConstant: 240)
         split.setHoldingPriority(.defaultHigh, forSubviewAt: 2)
         workspaceSplit.addArrangedSubview(primaryPaneHost)
         embedPane(main, in: primaryPaneHost)
@@ -368,6 +366,9 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         let brand = NSImageView(image: NSImage(systemSymbolName: "folder.fill", accessibilityDescription: nil)!)
         brand.contentTintColor = .systemBlue; brand.widthAnchor.constraint(equalToConstant: 22).isActive = true
         titleLabel.font = .systemFont(ofSize: 16, weight: .semibold)
+        titleLabel.lineBreakMode = .byTruncatingMiddle
+        titleLabel.maximumNumberOfLines = 1
+        titleLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         header.addArrangedSubview(brand); header.addArrangedSubview(titleLabel); header.addArrangedSubview(NSView())
         let choose = button("folder.badge.plus", L("폴더 열기", "Open Folder"), #selector(chooseFolder(_:)))
         header.addArrangedSubview(choose)
@@ -391,6 +392,7 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         pathField.target = self; pathField.action = #selector(submitPath(_:)); pathField.delegate = self
         pathField.setAccessibilityLabel(L("폴더 경로", "Folder path"))
         pathField.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        pathField.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         configure(hiddenButton, "eye.slash", L("숨김 항목 표시", "Show Hidden Files"), #selector(toggleHidden(_:)))
         configureViewModeButton(viewModeButton)
         configure(favoriteButton, "pin", L("즐겨찾기 전환", "Toggle Favorite"), #selector(toggleFavorite(_:)))
@@ -1156,6 +1158,8 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         // Window titles must remain usable while reading a slow or inaccessible location.
         titleLabel.stringValue = model.location.map { $0.path == "/" ? "/" : $0.lastPathComponent }
             ?? L("홈", "Home")
+        let titleHint = model.location?.path ?? titleLabel.stringValue
+        if titleLabel.toolTip != titleHint { titleLabel.toolTip = titleHint }
         let title = "\(titleLabel.stringValue) — Files macOS"
         if window?.title != title { window?.title = title; tabs.refresh() }
         if pathField.currentEditor() == nil { pathField.stringValue = model.location?.path ?? "" }
@@ -1714,9 +1718,7 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
     private func updateInfoPane() {
         let visible = preferences.showInfoPane && compactOverlayState == nil
         if inspector.isHidden == visible {
-            if !visible { inspectorWidth?.isActive = false }
             inspector.isHidden = !visible
-            if visible { inspectorWidth?.isActive = true }
             rootSplit.adjustSubviews()
         }
         if visible {
@@ -4780,7 +4782,14 @@ extension BrowserWindow {
                     let cycled = group.selected === a
                     group.insert(c, at: 0)
                     checks["browserTabsReorderAndCycle"] = cycled && group.browsers.elementsEqual([c, a, b], by: { $0 === $1 })
-                    let resized = NSRect(x: 80, y: 90, width: 1100, height: 720)
+                    // Hosted displays may be 1024x684; request a valid on-screen frame
+                    // so AppKit's first-show constraints do not change the expected geometry.
+                    let screenFrame = c.window?.screen?.visibleFrame ?? NSScreen.main?.visibleFrame
+                        ?? NSRect(x: 0, y: 0, width: 900, height: 600)
+                    let width = floor(min(1100, screenFrame.width))
+                    let height = floor(min(720, screenFrame.height))
+                    let resized = NSRect(x: floor(screenFrame.midX - width / 2),
+                        y: floor(screenFrame.midY - height / 2), width: width, height: height)
                     c.window?.setFrame(resized, display: true)
                     diagnostics["tabFrameRequested"] = NSStringFromRect(resized)
                     diagnostics["tabFrameSourceBeforeReveal"] = c.window.map { NSStringFromRect($0.frame) } ?? "missing"
@@ -4790,6 +4799,7 @@ extension BrowserWindow {
                     diagnostics["tabFrameSelectedTarget"] = group.selected === b
                     diagnostics["tabFrameSourceVisibleAfterReveal"] = c.window?.isVisible ?? false
                     checks["browserTabsRevealSynchronizesFrame"] = group.selected === b
+                        && screenFrame.contains(resized) && c.window?.frame == resized
                         && b.window?.frame == resized && c.window?.isVisible == false
                     // A fresh window needs a run-loop layout pass, including its stack's visibility changes.
                     try await Task.sleep(for: .milliseconds(250))
