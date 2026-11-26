@@ -10,6 +10,7 @@ final class ArchiveEditRecoveryWindow: NSWindowController, NSWindowDelegate, NST
     private let undoButton = NSButton(title: L("실행 취소…", "Undo…"), target: nil, action: nil)
     private let redoButton = NSButton(title: L("다시 실행…", "Redo…"), target: nil, action: nil)
     private let discardButton = NSButton(title: L("미완료 출력 휴지통으로…", "Trash Unpublished Output…"), target: nil, action: nil)
+    private let resumeButton = NSButton(title: L("중단된 저장/복원 계속…", "Resume Interrupted Save/Restore…"), target: nil, action: nil)
     private let revealButton = NSButton(title: L("보존 위치 보기", "Reveal Retained Files"), target: nil, action: nil)
     private let refreshButton = NSButton(title: L("새로 고침", "Refresh"), target: nil, action: nil)
     private let stopButton = NSButton(title: L("중단", "Stop"), target: nil, action: nil)
@@ -48,9 +49,10 @@ final class ArchiveEditRecoveryWindow: NSWindowController, NSWindowDelegate, NST
         detail.textContainer?.containerSize = NSSize(width: 844, height: CGFloat.greatestFiniteMagnitude)
         let details = NSScrollView(frame: NSRect(x: 0, y: 0, width: 844, height: 130)); details.documentView = detail; details.hasVerticalScroller = true; details.borderType = .bezelBorder
         let actions = NSStackView(views: [refreshButton, inspectButton, undoButton, redoButton, revealButton, stopButton]); actions.orientation = .horizontal; actions.spacing = 8
-        let cleanup = NSStackView(views: [discardButton]); cleanup.orientation = .horizontal
+        let cleanup = NSStackView(views: [discardButton, resumeButton]); cleanup.orientation = .horizontal; cleanup.spacing = 8
         for (button, action) in [(refreshButton, #selector(refresh(_:))), (inspectButton, #selector(inspect(_:))), (undoButton, #selector(undo(_:))), (redoButton, #selector(redo(_:))), (revealButton, #selector(reveal(_:))), (stopButton, #selector(stop(_:)))] { button.target = self; button.action = action; button.bezelStyle = .rounded; button.setAccessibilityLabel(button.title) }
         discardButton.target = self; discardButton.action = #selector(discard(_:)); discardButton.bezelStyle = .rounded; discardButton.setAccessibilityLabel(discardButton.title)
+        resumeButton.target = self; resumeButton.action = #selector(resume(_:)); resumeButton.bezelStyle = .rounded; resumeButton.setAccessibilityLabel(resumeButton.title)
         let stack = NSStackView(views: [note, status, scroll, details, actions, cleanup]); stack.orientation = .vertical; stack.alignment = .leading; stack.spacing = 10; stack.translatesAutoresizingMaskIntoConstraints = false
         panel.contentView!.addSubview(stack)
         NSLayoutConstraint.activate([stack.leadingAnchor.constraint(equalTo: panel.contentView!.leadingAnchor, constant: 18), stack.trailingAnchor.constraint(equalTo: panel.contentView!.trailingAnchor, constant: -18), stack.topAnchor.constraint(equalTo: panel.contentView!.topAnchor, constant: 18), stack.bottomAnchor.constraint(equalTo: panel.contentView!.bottomAnchor, constant: -18), scroll.heightAnchor.constraint(greaterThanOrEqualToConstant: 160), details.heightAnchor.constraint(equalToConstant: 130)])
@@ -89,9 +91,10 @@ final class ArchiveEditRecoveryWindow: NSWindowController, NSWindowDelegate, NST
         undoButton.isEnabled = available && verifiedJournal == selected?.journal && verifiedState == "committed"
         redoButton.isEnabled = available && verifiedJournal == selected?.journal && verifiedState == "undone"
         discardButton.isEnabled = available && verifiedJournal == selected?.journal && verifiedState == "unpublished" && verifiedDiscardable
+        resumeButton.isEnabled = available && verifiedJournal == selected?.journal && verifiedState == "interrupted"
         revealButton.isEnabled = available && selected != nil; stopButton.isEnabled = busy
         table.isEnabled = !busy
-        if let item = selected { detail.string = stateText(item.recordedState) + "\n" + L("검증 결과: ", "Verification: ") + (verifiedJournal == item.journal ? verifiedText : L("미확인", "Not verified")) + "\n" + (item.archive?.path ?? "") + "\n" + (item.retainedFile?.path ?? "") + "\n" + item.journal.path }
+        if let item = selected { detail.string = stateText(item.recordedState) + "\n" + L("검증 결과: ", "Verification: ") + (verifiedJournal == item.journal ? verifiedText : L("미확인", "Not verified")) + "\n" + (item.archive?.path ?? "") + "\n" + (item.retainedFile?.path ?? "") + "\n" + (item.pendingExchangeFile?.path ?? "") + "\n" + item.journal.path }
         else { detail.string = "" }
     }
     private var verifiedText: String {
@@ -100,6 +103,7 @@ final class ArchiveEditRecoveryWindow: NSWindowController, NSWindowDelegate, NST
         case "undone": return L("이전 원본 복원됨", "Previous original restored")
         case "unpublished": return L("원본 미교체", "Original not replaced")
         case "discarded": return L("미완료 출력 휴지통 이동 확인됨", "Unpublished output verified in Trash")
+        case "interrupted": return L("파일 보존됨 · 저장/복원 계속 가능", "Files retained · save/restore can resume")
         default: return L("미확인", "Not verified")
         }
     }
@@ -108,9 +112,18 @@ final class ArchiveEditRecoveryWindow: NSWindowController, NSWindowDelegate, NST
     @objc private func undo(_ sender: Any?) { confirmAction(.undo) }
     @objc private func redo(_ sender: Any?) { confirmAction(.redo) }
     @objc private func discard(_ sender: Any?) { confirmAction(.discard) }
+    @objc private func resume(_ sender: Any?) { confirmAction(.resume) }
     private func confirmAction(_ action: ArchiveEditRecoveryAction) {
+        let permitted: Bool
+        switch action {
+        case .undo: permitted = verifiedState == "committed"
+        case .redo: permitted = verifiedState == "undone"
+        case .discard: permitted = verifiedState == "unpublished" && verifiedDiscardable
+        case .resume: permitted = verifiedState == "interrupted"
+        case .inspect: permitted = false
+        }
         guard !busy, let item = selected, verifiedJournal == item.journal, let window,
-              (action == .undo ? verifiedState == "committed" : action == .discard ? verifiedState == "unpublished" && verifiedDiscardable : verifiedState == "undone") else { return }
+              permitted else { return }
         let alert = NSAlert(); alert.messageText = action == .undo ? L("압축 편집을 실행 취소할까요?", "Undo this archive edit?") : L("압축 편집을 다시 실행할까요?", "Redo this archive edit?")
         alert.informativeText = (item.archive?.path ?? "") + "\n\n" + L("두 파일의 내용을 다시 확인하고 교체합니다. 현재 버전도 별도로 보존합니다.", "Both files are verified again before exchange. The current version is retained too.")
         alert.addButton(withTitle: action == .undo ? L("실행 취소", "Undo") : L("다시 실행", "Redo")); alert.addButton(withTitle: L("취소", "Cancel")); confirmation = alert
@@ -118,6 +131,11 @@ final class ArchiveEditRecoveryWindow: NSWindowController, NSWindowDelegate, NST
             alert.messageText = L("미완료 출력을 휴지통으로 옮길까요?", "Move unpublished output to Trash?")
             alert.informativeText = (item.retainedFile?.path ?? "") + "\n\n" + L("원본과 출력의 상태를 다시 확인합니다. 원본과 복구 기록은 보존하며, 출력은 같은 볼륨의 휴지통으로 옮깁니다. 휴지통을 비우기 전까지 복사해 복구할 수 있습니다.", "The original and output are verified again. The original and recovery record are preserved; output moves to this volume’s Trash. You can copy it back before emptying Trash.")
             alert.buttons.first?.title = L("휴지통으로 이동", "Move to Trash")
+        }
+        if action == .resume {
+            alert.messageText = L("중단된 저장/복원을 계속할까요?", "Resume the interrupted save or restore?")
+            alert.informativeText = (item.archive?.path ?? "") + "\n\n" + L("보존된 파일과 현재 위치를 다시 확인하고 중단된 작업을 계속합니다. 원본 경로가 비어 있을 수 있으므로 먼저 보존 위치를 확인할 수 있습니다. 변경되거나 충돌하는 파일은 덮어쓰지 않습니다.", "The retained files and their locations are verified again before continuing. The archive path may be empty; you can review the retained locations first. Changed or conflicting files are not overwritten.")
+            alert.buttons.first?.title = L("계속 진행", "Resume")
         }
         alert.beginSheetModal(for: window) { [weak self] response in guard let self else { return }; alert.window.orderOut(nil); self.confirmation = nil; self.render(); if response == .alertFirstButtonReturn { self.run(action) } }; render()
     }
@@ -134,6 +152,7 @@ final class ArchiveEditRecoveryWindow: NSWindowController, NSWindowDelegate, NST
                 case .committed: self.verifiedState = "committed"; self.status.stringValue = action == .redo ? L("편집을 다시 적용했습니다.", "The edit was reapplied.") : L("저장본과 이전 원본을 확인했습니다.", "The saved archive and previous original were verified.")
                 case .undone: self.verifiedState = "undone"; self.status.stringValue = L("이전 원본으로 복원된 상태입니다.", "The previous original is restored.")
                 case .discarded: self.verifiedState = "discarded"; self.status.stringValue = L("미완료 출력을 휴지통으로 옮겼습니다. 원본과 복구 기록은 보존했습니다.", "Unpublished output moved to Trash. The original and recovery record were preserved.")
+                case .interrupted: self.verifiedState = "interrupted"; self.status.stringValue = L("저장/복원이 중단된 상태입니다. 파일을 보존했습니다. 계속 진행하거나 보존 위치를 확인하세요.", "The save or restore was interrupted. Files were retained. Resume or review the retained locations.")
                 }
                 do {
                     self.records = try await SevenZipArchiveProvider.archiveEditHistory(journalDirectory: self.directory); self.table.reloadData()
@@ -146,7 +165,7 @@ final class ArchiveEditRecoveryWindow: NSWindowController, NSWindowDelegate, NST
             self.finish()
         }
     }
-    @objc private func reveal(_ sender: Any?) { guard let item = selected else { return }; NSWorkspace.shared.activateFileViewerSelecting([item.journal] + [item.archive, item.retainedFile].compactMap { $0 }) }
+    @objc private func reveal(_ sender: Any?) { guard let item = selected else { return }; NSWorkspace.shared.activateFileViewerSelecting([item.journal] + [item.archive, item.retainedFile, item.pendingExchangeFile].compactMap { $0 }) }
     @objc private func stop(_ sender: Any?) { task?.cancel(); status.stringValue = L("중단 요청을 처리하는 중…", "Finishing the stop request…") }
     func windowShouldClose(_ sender: NSWindow) -> Bool { if busy { pendingClose = true; stop(nil); return false }; return true }
     func tableViewSelectionDidChange(_ notification: Notification) { render() }
@@ -172,6 +191,8 @@ final class ArchiveEditRecoveryWindow: NSWindowController, NSWindowDelegate, NST
     var qaCanUndo: Bool { undoButton.isEnabled }
     var qaCanRedo: Bool { redoButton.isEnabled }
     var qaCanDiscard: Bool { discardButton.isEnabled }
+    var qaCanResume: Bool { resumeButton.isEnabled }
+    func qaResume() { resume(nil) }
     func qaDiscard() { discard(nil) }
     func qaSelect(_ row: Int) { table.selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false) }
     func qaVerify() { inspect(nil) }

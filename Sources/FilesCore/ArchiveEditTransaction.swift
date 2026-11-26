@@ -7,18 +7,20 @@ public enum ArchiveEditError: Error, Sendable, Equatable {
     case metadataMismatch(String)
     case recoveryRequired(journal: URL, archive: URL, retainedFile: URL)
 }
-public enum ArchiveEditRecoveryAction: Sendable, Equatable { case inspect, undo, redo, discard }
+public enum ArchiveEditRecoveryAction: Sendable, Equatable { case inspect, undo, redo, discard, resume }
 public struct ArchiveEditHistoryItem: Sendable, Identifiable {
     public var id: URL { journal }
     public let journal: URL, archive: URL?, retainedFile: URL?, recordedState: String?, recordedAt: Date?
+    public let pendingExchangeFile: URL?
     public var readable: Bool { recordedState != nil }
 }
 public struct ArchiveEditReport: Sendable {
     public let archive: URL, backup: URL, journal: URL
     public let canDiscardUnpublishedOutput: Bool
+    public let pendingExchangeFile: URL?
 }
 public enum ArchiveEditRecoveryOutcome: Sendable {
-    case unpublished(ArchiveEditReport), committed(ArchiveEditReport), undone(ArchiveEditReport), discarded(ArchiveEditReport)
+    case unpublished(ArchiveEditReport), committed(ArchiveEditReport), undone(ArchiveEditReport), discarded(ArchiveEditReport), interrupted(ArchiveEditReport)
 }
 
 private struct ArchiveEditDirectoryProof: Codable, Equatable {
@@ -89,6 +91,7 @@ final class ArchiveEditTransaction: @unchecked Sendable {
         var initialOutput: ArchiveEditFileProof? = nil
         var discardDestination: URL? = nil
         var discardDirectoryProof: ArchiveEditDirectoryProof? = nil
+        var renameExchange: Bool? = nil
     }
     private struct Event: Codable { let sequence: Int, previous: String?, record: Record }
     private struct Envelope: Codable { let payload: Data, checksum: String }
@@ -101,11 +104,18 @@ final class ArchiveEditTransaction: @unchecked Sendable {
     private var sequence = 0, previous: String?
     private var closed = false
     private var candidateName: String { candidate.lastPathComponent }
+    private var exchangeName: String { "exchange." + archive.pathExtension.lowercased() }
+    private var exchangePending: Bool { record.renameExchange == true && ["swapIntent", "undoIntent", "redoIntent"].contains(record.state) }
+    private var pendingFile: URL? { exchangePending ? record.staging.appendingPathComponent(exchangeName) : nil }
     var report: ArchiveEditReport {
         .init(archive: archive, backup: record.state == "discarded" ? (record.discardDestination ?? candidate) : candidate, journal: journal,
-              canDiscardUnpublishedOutput: ["building", "prepared", "discardIntent"].contains(record.state) && (record.initialOutput != nil || record.state != "building"))
+              canDiscardUnpublishedOutput: ["building", "prepared", "discardIntent"].contains(record.state) && (record.initialOutput != nil || record.state != "building"), pendingExchangeFile: pendingFile)
     }
-    private var review: ArchiveEditError { .recoveryRequired(journal: journal, archive: archive, retainedFile: record.discardDestination ?? candidate) }
+    private var review: ArchiveEditError {
+        var value = stat()
+        let held = exchangePending && fstatat(rootFD, exchangeName, &value, AT_SYMLINK_NOFOLLOW) == 0 ? pendingFile : nil
+        return .recoveryRequired(journal: journal, archive: archive, retainedFile: record.discardDestination ?? held ?? candidate)
+    }
     private static func hash(_ data: Data) -> String { SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined() }
     private static func sync(_ fd: Int32) throws { guard fsync(fd) == 0 else { throw SevenZipWorkerError.ioFailure } }
     private static func registry(_ directory: URL) throws -> URL {
@@ -138,7 +148,7 @@ final class ArchiveEditTransaction: @unchecked Sendable {
         guard flock(fd, LOCK_EX | LOCK_NB) == 0 else { Darwin.close(fd); throw ArchiveEditError.busy }
         return fd
     }
-    init(archive: URL, journalDirectory: URL, expectedSource: ArchiveEditSourceVersion? = nil, check: () throws -> Void) throws {
+    init(archive: URL, journalDirectory: URL, expectedSource: ArchiveEditSourceVersion? = nil, forceRenameExchange: Bool = false, check: () throws -> Void) throws {
         guard archive.isFileURL, !archive.path.utf8.contains(0), ["zip", "7z"].contains(archive.pathExtension.lowercased()) else { throw SevenZipWorkerError.invalidConfiguration }
         try EntryOperations.validateName(archive.lastPathComponent)
         let parent = try sevenZipCanonicalDirectory(archive.deletingLastPathComponent()), registry = try Self.registry(journalDirectory), id = UUID()
@@ -168,6 +178,7 @@ final class ArchiveEditTransaction: @unchecked Sendable {
         guard outputFD >= 0 else { throw SevenZipWorkerError.ioFailure }
         self.parentFD = parentFD; self.rootFD = rootFD; self.journalFD = journalFD; self.lockFD = lockFD; self.outputFD = outputFD; adopted = true
         do {
+            if forceRenameExchange { record.renameExchange = true }
             record.initialOutput = try file(rootFD, candidateName, check: check).0
             try bound(); try save(); try Self.sync(rootFD); try Self.sync(parentFD)
             let registryFD = open(registry.path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
@@ -279,7 +290,59 @@ final class ArchiveEditTransaction: @unchecked Sendable {
     private func matches(_ actual: (ArchiveEditFileProof, ArchiveEditMetadata), _ proof: ArchiveEditFileProof, _ metadata: ArchiveEditMetadata) -> Bool {
         proof.sameAfterRename(actual.0) && metadata == actual.1
     }
-    func publish(_ verified: ArchiveEditCandidate, check: () throws -> Void, progress: ArchiveProgressHandler?) throws -> ArchiveEditReport {
+    private func optionalFile(_ directory: Int32, _ name: String, check: () throws -> Void) throws -> (ArchiveEditFileProof, ArchiveEditMetadata)? {
+        try bound(); var info = stat()
+        if fstatat(directory, name, &info, AT_SYMLINK_NOFOLLOW) == 0 { return try file(directory, name, check: check) }
+        guard errno == ENOENT else { throw review }; return nil
+    }
+    /// 0: both at their starting paths; 1: current version held; 2: next version
+    /// published; 3: both at final paths. Any foreign/mixed layout is preserved.
+    private func renameLayout(check: () throws -> Void) throws -> Int {
+        guard exchangePending, let proof = record.candidate, let metadata = record.candidateMetadata else { throw ArchiveEditError.invalidState }
+        let before = record.state == "undoIntent" ? (proof, metadata) : (record.source, record.sourceMetadata)
+        let after = record.state == "undoIntent" ? (record.source, record.sourceMetadata) : (proof, metadata)
+        let base = try optionalFile(parentFD, record.base, check: check), retained = try optionalFile(rootFD, candidateName, check: check), held = try optionalFile(rootFD, exchangeName, check: check)
+        func isFile(_ actual: (ArchiveEditFileProof, ArchiveEditMetadata)?, _ expected: (ArchiveEditFileProof, ArchiveEditMetadata)) -> Bool {
+            actual.map { matches($0, expected.0, expected.1) } ?? false
+        }
+        if isFile(base, before), isFile(retained, after), held == nil { return 0 }
+        if base == nil, isFile(retained, after), isFile(held, before) { return 1 }
+        if isFile(base, after), retained == nil, isFile(held, before) { return 2 }
+        if isFile(base, after), isFile(retained, before), held == nil { return 3 }
+        throw review
+    }
+    private func finishRenameExchange(check: () throws -> Void, checkpoint: ((Int) throws -> Void)? = nil) throws {
+        while true {
+            let phase = try renameLayout(check: check)
+            if phase == 3 { return }
+            try check(); try bound(); if phase == 0 { try checkpoint?(0) }
+            let fromFD = phase == 0 ? parentFD : rootFD, fromName = phase == 0 ? record.base : phase == 1 ? candidateName : exchangeName
+            let toFD = phase == 1 ? parentFD : rootFD, toName = phase == 0 ? exchangeName : phase == 1 ? record.base : candidateName
+            let fromURL = (phase == 0 ? record.parent : record.staging).appendingPathComponent(fromName)
+            let toURL = (phase == 1 ? record.parent : record.staging).appendingPathComponent(toName)
+            // Foundation's no-existing-target contract is used on removable volumes
+            // lacking RENAME_EXCL. This multi-step exchange is not atomic.
+            try CopyEngine.publishNoReplace(payload: fromURL, target: toURL, sourceDirectoryFD: fromFD, sourceName: fromName,
+                                            destinationDirectoryFD: toFD, destinationName: toName)
+            try Self.sync(fromFD); if fromFD != toFD { try Self.sync(toFD) }
+            try bound()
+            if phase == 2 { guard try renameLayout(check: {}) == 3 else { throw review } }
+            else { guard try renameLayout(check: check) == phase + 1 else { throw review } }
+            try checkpoint?(phase + 1)
+            if phase == 2 { return }
+        }
+    }
+    private func exchange(check: () throws -> Void, checkpoint: ((Int) throws -> Void)? = nil) throws {
+        if record.renameExchange != true {
+            if renameatx_np(rootFD, candidateName, parentFD, record.base, UInt32(RENAME_SWAP)) == 0 { return }
+            let error = errno
+            guard error == ENOTSUP || error == EINVAL || error == ENOSYS else { throw review }
+            record.renameExchange = true; try save()
+        }
+        do { try finishRenameExchange(check: check, checkpoint: checkpoint) }
+        catch { throw review }
+    }
+    func publish(_ verified: ArchiveEditCandidate, check: () throws -> Void, progress: ArchiveProgressHandler?, checkpoint: ((Int) throws -> Void)? = nil) throws -> ArchiveEditReport {
         guard record.state == "building", record.source == verified.source else { throw review }
         let before = try file(parentFD, record.base, check: check), output = try file(rootFD, candidateName, check: check)
         guard before.0 == record.source, before.1 == record.sourceMetadata, output.0 == verified.candidate else { throw review }
@@ -314,7 +377,7 @@ final class ArchiveEditTransaction: @unchecked Sendable {
         guard try file(parentFD, record.base, check: check).0 == record.source,
               try file(rootFD, candidateName, check: check).0 == ready.0 else { throw review }
         // Exchange retains both complete files even if a foreign entry races the syscall.
-        guard renameatx_np(rootFD, candidateName, parentFD, record.base, UInt32(RENAME_SWAP)) == 0 else { throw review }
+        try exchange(check: check, checkpoint: checkpoint)
         do {
             try Self.sync(parentFD); try Self.sync(rootFD)
             guard matches(try file(parentFD, record.base, check: {}), ready.0, ready.1),
@@ -324,6 +387,10 @@ final class ArchiveEditTransaction: @unchecked Sendable {
         } catch { throw review }
     }
     private func reconcile(check: () throws -> Void) throws -> ArchiveEditRecoveryOutcome {
+        if exchangePending {
+            guard try renameLayout(check: check) == 3 else { return .interrupted(report) }
+            record.state = record.state == "undoIntent" ? "undone" : "committed"; try save()
+        }
         let source = try file(parentFD, record.base, check: check)
         if ["discardIntent", "discarded"].contains(record.state) {
             guard matches(source, record.source, record.sourceMetadata), let destination = record.discardDestination,
@@ -389,9 +456,10 @@ final class ArchiveEditTransaction: @unchecked Sendable {
                       ["building", "prepared", "swapIntent", "committed", "undoIntent", "undone", "redoIntent", "discardIntent", "discarded"].contains(value.state) else { throw ArchiveEditError.invalidJournal }
                 try EntryOperations.validateName(value.base)
                 var info = stat(); guard fstat(child, &info) == 0 else { throw ArchiveEditError.invalidJournal }
-                items.append(.init(journal: journal, archive: value.parent.appendingPathComponent(value.base), retainedFile: value.state == "discarded" ? value.discardDestination : value.staging.appendingPathComponent("candidate." + URL(fileURLWithPath: value.base).pathExtension.lowercased()), recordedState: value.state, recordedAt: Date(timeIntervalSince1970: Double(info.st_mtimespec.tv_sec) + Double(info.st_mtimespec.tv_nsec) / 1e9)))
+                let pending = value.renameExchange == true && ["swapIntent", "undoIntent", "redoIntent"].contains(value.state) ? value.staging.appendingPathComponent("exchange." + URL(fileURLWithPath: value.base).pathExtension.lowercased()) : nil
+                items.append(.init(journal: journal, archive: value.parent.appendingPathComponent(value.base), retainedFile: value.state == "discarded" ? value.discardDestination : value.staging.appendingPathComponent("candidate." + URL(fileURLWithPath: value.base).pathExtension.lowercased()), recordedState: value.state, recordedAt: Date(timeIntervalSince1970: Double(info.st_mtimespec.tv_sec) + Double(info.st_mtimespec.tv_nsec) / 1e9), pendingExchangeFile: pending))
             } catch is CancellationError { throw CancellationError() }
-            catch { items.append(.init(journal: journal, archive: nil, retainedFile: nil, recordedState: nil, recordedAt: nil)) }
+            catch { items.append(.init(journal: journal, archive: nil, retainedFile: nil, recordedState: nil, recordedAt: nil, pendingExchangeFile: nil)) }
         }
         return items.sorted { if $0.recordedAt != $1.recordedAt { return ($0.recordedAt ?? .distantPast) > ($1.recordedAt ?? .distantPast) }; return $0.journal.path < $1.journal.path }
     }
@@ -437,7 +505,17 @@ final class ArchiveEditTransaction: @unchecked Sendable {
         guard case .discarded(let report) = try transaction.reconcile(check: {}) else { throw transaction.review }
         return report
     }
-    static func recover(journal: URL, directory: URL, undo: Bool, redo: Bool = false, check: () throws -> Void, progress: ArchiveProgressHandler? = nil) throws -> ArchiveEditRecoveryOutcome {
+    static func resume(journal: URL, directory: URL, check: () throws -> Void) throws -> ArchiveEditRecoveryOutcome {
+        let transaction = try Self(journal: journal, directory: directory)
+        let result = try transaction.reconcile(check: check)
+        guard transaction.record.renameExchange == true else { throw ArchiveEditError.invalidState }
+        if case .interrupted = result {
+            do { try transaction.finishRenameExchange(check: check); return try transaction.reconcile(check: {}) }
+            catch { throw transaction.review }
+        }
+        return result
+    }
+    static func recover(journal: URL, directory: URL, undo: Bool, redo: Bool = false, check: () throws -> Void, progress: ArchiveProgressHandler? = nil, checkpoint: ((Int) throws -> Void)? = nil) throws -> ArchiveEditRecoveryOutcome {
         guard !(undo && redo) else { throw ArchiveEditError.invalidState }
         let transaction = try Self(journal: journal, directory: directory)
         let result = try transaction.reconcile(check: check)
@@ -454,7 +532,7 @@ final class ArchiveEditTransaction: @unchecked Sendable {
         try check(); try transaction.bound()
         guard transaction.matches(try transaction.file(transaction.parentFD, transaction.record.base, check: check), before.0, before.1),
               transaction.matches(try transaction.file(transaction.rootFD, transaction.candidateName, check: check), after.0, after.1) else { throw transaction.review }
-        guard renameatx_np(transaction.rootFD, transaction.candidateName, transaction.parentFD, transaction.record.base, UInt32(RENAME_SWAP)) == 0 else { throw transaction.review }
+        try transaction.exchange(check: check, checkpoint: checkpoint)
         do {
             try sync(transaction.parentFD); try sync(transaction.rootFD)
             guard transaction.matches(try transaction.file(transaction.parentFD, transaction.record.base, check: {}), after.0, after.1),

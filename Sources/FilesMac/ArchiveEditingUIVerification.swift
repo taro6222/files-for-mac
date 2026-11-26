@@ -64,9 +64,9 @@ func verifyArchiveEditingUI(_ controller: ArchiveWindow, root: URL, progress: (S
     checks["archiveHistoryListsRecords"] = !history.qaRecords.isEmpty
     guard let row = history.qaRecords.firstIndex(where: { $0.journal == controller.qaRedoJournal }) else { throw ArchiveEditError.invalidJournal }
     history.qaSelect(row)
-    checks["archiveHistoryRequiresVerification"] = !history.qaCanUndo && !history.qaCanRedo && !history.qaCanDiscard
+    checks["archiveHistoryRequiresVerification"] = !history.qaCanUndo && !history.qaCanRedo && !history.qaCanDiscard && !history.qaCanResume
     history.qaVerify(); try await historyIdle()
-    checks["archiveHistoryVerifiesRedoCandidate"] = history.qaCanRedo && !history.qaCanUndo && !history.qaCanDiscard
+    checks["archiveHistoryVerifiesRedoCandidate"] = history.qaCanRedo && !history.qaCanUndo && !history.qaCanDiscard && !history.qaCanResume
     checks["archiveHistoryDetailsVisible"] = history.qaDetailsVisible
     guard let currentArchive = controller.qaArchiveURL else { throw ArchiveEditError.invalidState }
     let beforeRecoveryCancel = try Data(contentsOf: currentArchive)

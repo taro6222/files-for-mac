@@ -1,7 +1,7 @@
 #!/bin/bash
 set -euo pipefail
 cd "$(dirname "$0")/.."
-test_args=(--disable-sandbox --filter mountedVolume)
+test_args=(--disable-sandbox --filter '(mountedVolume|archiveEditMounted)')
 case "${1:-}" in
   "") ;;
   --skip-build) test_args+=(--skip-build) ;;
@@ -48,6 +48,7 @@ create_raw_volume() {
 create_volume apfs APFS FILES_TEST_APFS_VOLUME
 create_volume apfsx "Case-sensitive APFS" FILES_TEST_APFSX_VOLUME
 create_raw_volume EXFAT ExFAT FILES_TEST_EXFAT_VOLUME
+export FILES_TEST_ARCHIVE_EDIT_VOLUME="$FILES_TEST_EXFAT_VOLUME"
 create_raw_volume FAT32 'MS-DOS FAT32' FILES_TEST_FAT32_VOLUME
 create_raw_volume HFS JHFS+ FILES_TEST_HFS_VOLUME
 export CLANG_MODULE_CACHE_PATH="$PWD/.build/ModuleCache"

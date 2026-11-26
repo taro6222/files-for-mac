@@ -201,6 +201,9 @@ public struct SevenZipArchiveProvider: Sendable {
                 if action == .discard {
                     return .discarded(try ArchiveEditTransaction.discard(journal: journal, directory: journalDirectory, check: cancellation.check))
                 }
+                if action == .resume {
+                    return try ArchiveEditTransaction.resume(journal: journal, directory: journalDirectory, check: cancellation.check)
+                }
                 return try ArchiveEditTransaction.recover(journal: journal, directory: journalDirectory, undo: action == .undo, redo: action == .redo, check: cancellation.check, progress: progress)
             }.value
         }, onCancel: { cancellation.cancel() })

@@ -11,6 +11,10 @@ import subprocess
 from sevenzip_fixture import empty_files
 
 TESTS = [
+    'archiveEditRenameExchangeEncryptedZIPAnd7zUseVerifiedCandidates',
+    'archiveEditRenameExchangePreservesBothVersionsAndUndoRedo',
+    'archiveEditRenameExchangeResumesAllPublicationUndoRedoBoundaries',
+    'archiveEditRenameExchangePreservesConflictsAtEveryMove',
     'archiveEditFilesystemCompressionPreservesAttributesCreatedAfterPreflight',
     'archiveEditFilesystemCompressionUsesNativeLogicalBytesAndPinsStorage',
     'archiveEditFilesystemCompressionCancellationKeepsReadableCandidateAndForeignFork',

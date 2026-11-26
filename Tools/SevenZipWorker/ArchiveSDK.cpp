@@ -11,6 +11,7 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <sys/stat.h>
+#include <sys/mount.h>
 #include <limits.h>
 #include <memory>
 #include <errno.h>
@@ -968,7 +969,16 @@ extern "C" int SevenZipEdit(void *handle, int outputFD, const SevenZipEditItem *
         }
         struct stat finalOutput;
         if (!session->stream->unchanged() || fstat(outputFD, &finalOutput) != 0 || finalOutput.st_dev != outputInfo.st_dev ||
-            finalOutput.st_ino != outputInfo.st_ino || finalOutput.st_nlink != 1) return 9;
+            !S_ISREG(finalOutput.st_mode) || finalOutput.st_mode != outputInfo.st_mode || finalOutput.st_uid != outputInfo.st_uid ||
+            finalOutput.st_gid != outputInfo.st_gid || finalOutput.st_nlink != 1 ||
+            (fcntl(outputFD, F_GETFL) & O_ACCMODE) != O_WRONLY || session->stream->containsIdentity(finalOutput)) return 9;
+        if (finalOutput.st_ino != outputInfo.st_ino) {
+            // exFAT assigns a cluster-based ID on the first write to an empty file.
+            // The same passed descriptor remains the authority. The parent verifies
+            // its current identity against the named candidate before publication.
+            struct statfs volume;
+            if (outputInfo.st_size != 0 || fstatfs(outputFD, &volume) != 0 || strcmp(volume.f_fstypename, "exfat") != 0) return 9;
+        }
         return stream->finish() ? 0 : 10;
     } catch (...) { return 8; }
 }

@@ -1,0 +1,577 @@
+{
+  "increment": 390,
+  "createdUTC": "2026-11-26T21:27:33.666791+00:00",
+  "status": "retained rename publication and explicit resume implemented; partial filesystem acceptance; F23/M7 incomplete",
+  "sources": {
+    "Sources/FilesCore/ArchiveEditTransaction.swift": "b322dd89c4b42aa3ea6fceb280fa565ba7c451eefc1d15ea6600f92dc62f1d15",
+    "Sources/FilesCore/SevenZipArchiveProvider.swift": "698993f6f9fe21fd64feaf6cb2148be5f4ad3831e9ad6e24b8c8839423f3a04a",
+    "Sources/FilesMac/ArchiveEditRecoveryWindow.swift": "349fe0c36a313395a6e3277e2f48ba811082f03c7912d5797a930e9beb1b05cb",
+    "Sources/FilesMac/ArchiveEditingUIVerification.swift": "a9c2d1602645b5d24c7ec8963d6bec9a2be1f5379e74f1dd0ff571aca2093e95",
+    "Tests/FilesCoreTests/SevenZipArchiveProviderTests.swift": "294e8eb23668847cf4ef2f834814d655a14ef4e278e81187601b7a3372f2f305",
+    "Tools/SevenZipWorker/ArchiveSDK.cpp": "ab89e1954c7de63d34356222845a21344fba50a9a58069a1e1f4324176ce0975",
+    "Tools/SplitCreationProbe/main.swift": "5e24f196b163daf04bbc461a602e5f9ebc31c94716fccf41ccce6ee8f3c28493",
+    "scripts/verify-sevenzip-client.py": "005f5b60a75e915aa43cdab4de1ca9eb193476a2f5fb9ec681d2166a95a2592a",
+    "scripts/verify-volume-matrix.sh": "d49edd7b694558e5d1951b518b82b6bb6e63bce3742bb15074f2063dbad6b1b8"
+  },
+  "client": {
+    "count": 85,
+    "passed": true,
+    "sha256": "fb2f1aa6ad478648f7a77b7904ee04f7db199aeb1d8d334d6f7ce7b92f7a9604",
+    "tests": {
+      "archiveEditRenameExchangeEncryptedZIPAnd7zUseVerifiedCandidates": true,
+      "archiveEditRenameExchangePreservesBothVersionsAndUndoRedo": true,
+      "archiveEditRenameExchangeResumesAllPublicationUndoRedoBoundaries": true,
+      "archiveEditRenameExchangePreservesConflictsAtEveryMove": true,
+      "archiveEditFilesystemCompressionPreservesAttributesCreatedAfterPreflight": true,
+      "archiveEditFilesystemCompressionUsesNativeLogicalBytesAndPinsStorage": true,
+      "archiveEditFilesystemCompressionCancellationKeepsReadableCandidateAndForeignFork": true,
+      "archiveEditFilesystemCompressedZIPAnd7zPreserveStorageMetadataAndUndoRedo": true,
+      "archiveEditDiscardMovesOnlyUnpublishedOutputAndKeepsRecoveryRecord": true,
+      "archiveEditDiscardPreservesForeignFilesSourceChangesAndHardLinks": true,
+      "archiveEditDiscardResumesDurableIntentBeforeAndAfterMoveWithoutOverwrite": true,
+      "archiveEditEmptyZIPRequiresExplicitEncryptionAndPreservesUndo": true,
+      "archiveEditHistoryAndRedoRequireVerifiedFilesAndKeepUnreadableRecords": true,
+      "archiveEditRedoRecoversBothProcessInterruptionBoundaries": true,
+      "archiveCapabilityMatrixAdvertisesOnlyVerifiedProviderFeatures": true,
+      "archiveEditPreservesEmptyEncrypted7zHeaderAndRejectsStaleSelection": true,
+      "archiveEditUnicodeZIPLongPasswordsAndNormalizationRemainExact": true,
+      "archiveEditTransactionCancellationBeforeSwapPreservesBothFiles": true,
+      "archiveEditTransactionPublishesBacksUpAndUndoesWithMetadata": true,
+      "archiveEditTransactionPreservesExternalChangesAndBrokenRecords": true,
+      "archiveEditTransactionSerializesAndPreservesUnpublishedCandidate": true,
+      "archiveEditTransactionRecoversPublishAndUndoProcessInterruptions": true,
+      "archiveEditTransactionZIPAndEncrypted7zRoundTrip": true,
+      "archiveEditVerificationKeepsUnicodeZIPMetadataAndAddsEncryptedData": true,
+      "archiveEditVerificationRejectsChangedCandidateAndSource": true,
+      "archiveEditPlanExpandsDirectoriesAndRejectsConflicts": true,
+      "archiveEditCandidateUsesSandboxedClientAndPreservesOriginal": true,
+      "archiveEditCandidateRejectsLinksAndUnsafePlansWithoutChangingSource": true,
+      "sevenZipSDKLargePagedListing": true,
+      "sevenZipSDKRejectsMalformedListingPages": true,
+      "sevenZipCreationUploadRejectsIncorrectAcknowledgments": true,
+      "sevenZipSDKBundleWorkerPolicyRejectsExpandedAuthority": true,
+      "sevenZipSDKRestoresFileAndDirectoryTimesAndPermissions": true,
+      "sevenZipSDKRestrictiveDirectoryMetadataFinishesAfterChildren": true,
+      "sevenZipSDKRejectsMalformedMetadataBeforeStaging": true,
+      "sevenZipSDKPublishedDirectoryTimeChangeIsPreserved": true,
+      "sevenZipSDKUnrepresentableTimeFailsAndPreservesRestrictedRecovery": true,
+      "sevenZipSDKMemoryBudgetKillsAndReapsWithoutPublishing": true,
+      "sevenZipSDKRejectsZeroMemoryBudgetBeforeLaunching": true,
+      "sevenZipCreationBrokerRejectsInvalidAndTruncatedRequests": true,
+      "sevenZipCreationBrokerKeepsPlannedIdentityAndReadOnlyAccess": true,
+      "sevenZipSDKCreationBrokerManyInputsAndPreflightPreserveSources": true,
+      "sevenZipReadBrokerPinsDirectoryAndRejectsChangedNames": true,
+      "sevenZipSDKReadBrokerHandlesSymlinkAndSearchOnlyDirectory": true,
+      "sevenZipSplitPreferencesPersistAndImportTransactionally": true,
+      "sevenZipSplitHistoryPreservesInvalidAndOfflineRecords": true,
+      "sevenZipSplitFrameValidationAndForeignStagingPreservation": true,
+      "sevenZipSDKSplitCreationAndCommittedJournal": true,
+      "sevenZipSDKSplitConflictsChangesAndCancellationPreserveData": true,
+      "sevenZipSDKSplitProcessRestartRecoveryAndAmbiguousIntent": true,
+      "archiveExtractionPlacementMatchesSmartTopLevelRules": true,
+      "sevenZipVolumeNamesDetectionAndSelectionNormalization": true,
+      "sevenZipSDKSplitVolumesRoundTripFromAnyPartAndAcrossTinyHeaders": true,
+      "sevenZipSDKSplitMissingTruncatedAndLinkedPartsNeverPublish": true,
+      "sevenZipSDKAdvancedOptionsChangeDictionaryAndRestorePayload": true,
+      "sevenZipOptionsAndCreationFormatPersistAndImportTransactionally": true,
+      "sevenZipMemoryEstimateHandlesStoreAndMaximumChoices": true,
+      "sevenZipSDKCreationLevelsPasswordAndIndependentExtraction": true,
+      "sevenZipSDKCreationPlanRejectsLinksAndDuplicatePaths": true,
+      "sevenZipSDKCreationSourceChangeAndDestinationRacePreserveData": true,
+      "sevenZipSDKCreationCancellationBeforePublicationDiscardsOutput": true,
+      "sevenZipSDKFramedClientRejectsMalformedReplies": true,
+      "sevenZipSDKFragmentedReplyAndClose": true,
+      "sevenZipSDKEOFOnDiagnosticPipeIsNotDiagnosticData": true,
+      "sevenZipSDKTimeoutAndCancellationReapOwnedChild": true,
+      "sevenZipSDKValidatesPathsBeforeStaging": true,
+      "sevenZipSDKEncryptedRoundTripAndFailureStaging": true,
+      "sevenZipSDKCorruptionAndLinksNeverPublish": true,
+      "sevenZipSDKPublicationConflictAndForeignStagingPreservation": true,
+      "sevenZipSDKCancellationBeforePublicationDiscardsStaging": true,
+      "sevenZipSDKBundleManifestRejectsUntrustedMetadata": true,
+      "sevenZipSDKBundleRejectsMissingLinksAndNonregularManifest": true,
+      "sevenZipSDKBundleCancellationAndInvalidTimeout": true,
+      "sevenZipSDKBundleDeveloperIDRequirementRejectsInvalidTeam": true,
+      "sevenZipSDKBundleBindsExecutingHostIdentity": true,
+      "sevenZipSDKExistingDirectoryExtractionPreservesUnrelatedItems": true,
+      "sevenZipSDKExistingDirectoryConflictRollsBackOwnedPublication": true,
+      "sevenZipSDKExistingDirectoryChangedPublicationIsPreserved": true,
+      "sevenZipSDKExistingDirectoryCancellationRollsBackPublication": true,
+      "sevenZipSDKBundleRejectsResignedExpandedWorkerAuthority": true,
+      "sevenZipSDKBundleResolutionAndUse": true,
+      "sevenZipSDKBundleRejectsResealedHashMismatch": true,
+      "sevenZipSDKBundleRejectsAdhocStableAndWrongIdentity": true,
+      "sevenZipSDKBundleRejectsResealedSourcePinAndExtraFile": true,
+      "sevenZipSDKBundlePinsSelectedRevisionAcrossResigning": true
+    }
+  },
+  "package": {
+    "worker": {
+      "count": 113,
+      "sha256": "035a34e37608bc027395046c3915fa3f48f42599a370438a2ae14bc0ec8facf9"
+    },
+    "diagnostic-worker": {
+      "count": 205,
+      "sha256": "bee33bb3462089613261fe182fb8de3791c4a2d45ce80f1a78c468d62ca1441e"
+    },
+    "edit-sdk": {
+      "count": 85,
+      "sha256": "8bd3645dbcc64f0a5e9ceadadece03748c9c82bd7c045b923e268b168ffd64a1"
+    },
+    "authority": {
+      "count": 15,
+      "sha256": "3ee8ef8fecfb681146135d33035a5ecaefacda91d625700ef6b6211c06c1dc7c"
+    }
+  },
+  "volumeProbes": [
+    {
+      "path": "build/archive-390-volume-1d24bea3-fb27-4d03-a347-f5ffb623306d/result.json",
+      "sha256": "e5967e3252cf7164c0af9dc4ab92e07447b8b6de8e2c4b79c1ee0a2d0d1be72c",
+      "result": {
+        "image": "/Users/changhun/Desktop/Workspace/Files/build/archive-390-volume-1d24bea3-fb27-4d03-a347-f5ffb623306d/fixture.raw",
+        "localGUIStarted": false,
+        "device": "/dev/disk4",
+        "filesystem": "exfat",
+        "swapResult": -1,
+        "swapErrno": 45,
+        "initialOriginalInode": 10,
+        "initialCandidateInode": 12,
+        "exclusiveRenamePhases": [
+          {
+            "from": "source.zip",
+            "to": "exchange.zip",
+            "inodeBefore": 10,
+            "inodeAfter": 10,
+            "stableIdentity": true,
+            "nativeExclusiveStatus": -1,
+            "nativeExclusiveErrno": 45
+          },
+          {
+            "from": "candidate.zip",
+            "to": "source.zip",
+            "inodeBefore": 12,
+            "inodeAfter": 12,
+            "stableIdentity": true,
+            "nativeExclusiveStatus": -1,
+            "nativeExclusiveErrno": 45
+          },
+          {
+            "from": "exchange.zip",
+            "to": "candidate.zip",
+            "inodeBefore": 10,
+            "inodeAfter": 10,
+            "stableIdentity": true,
+            "nativeExclusiveStatus": -1,
+            "nativeExclusiveErrno": 45
+          }
+        ],
+        "bytesPreserved": true,
+        "foundationExistingDestinationPreserved": true,
+        "emptyOutputIdentity": {
+          "emptyInode": "18446744073709551599",
+          "writtenFDInode": 19,
+          "writtenPathInode": 19,
+          "bytes": 7
+        },
+        "detached": true
+      }
+    },
+    {
+      "path": "build/archive-390-volume-5732eeef-7f97-4dbc-ae3b-f03a0d9a93c6/result.json",
+      "sha256": "1086c3c2a1227156d20f13894993342cd2aecc346b3c7428dbe895eace6b1adc",
+      "result": {
+        "image": "/Users/changhun/Desktop/Workspace/Files/build/archive-390-volume-5732eeef-7f97-4dbc-ae3b-f03a0d9a93c6/fixture.raw",
+        "localGUIStarted": false,
+        "device": "/dev/disk4",
+        "filesystem": "exfat",
+        "swapResult": -1,
+        "swapErrno": 45,
+        "initialOriginalInode": 10,
+        "initialCandidateInode": 12,
+        "exclusiveRenamePhases": [
+          {
+            "from": "source.zip",
+            "to": "exchange.zip",
+            "inodeBefore": 10,
+            "inodeAfter": 10,
+            "stableIdentity": true,
+            "nativeExclusiveStatus": -1,
+            "nativeExclusiveErrno": 45
+          },
+          {
+            "from": "candidate.zip",
+            "to": "source.zip",
+            "inodeBefore": 12,
+            "inodeAfter": 12,
+            "stableIdentity": true,
+            "nativeExclusiveStatus": -1,
+            "nativeExclusiveErrno": 45
+          },
+          {
+            "from": "exchange.zip",
+            "to": "candidate.zip",
+            "inodeBefore": 10,
+            "inodeAfter": 10,
+            "stableIdentity": true,
+            "nativeExclusiveStatus": -1,
+            "nativeExclusiveErrno": 45
+          }
+        ],
+        "bytesPreserved": true,
+        "foundationExistingDestinationPreserved": true,
+        "mountedTestReturnCode": 0,
+        "detached": true
+      }
+    },
+    {
+      "path": "build/archive-390-volume-5c48f4b5-6132-48e9-9a2a-e75b41ea770c/result.json",
+      "sha256": "e62abcc2354e961e23c750f3afa71a272134ceedbc83b8a93e8b0e1b8cd27e92",
+      "result": {
+        "image": "/Users/changhun/Desktop/Workspace/Files/build/archive-390-volume-5c48f4b5-6132-48e9-9a2a-e75b41ea770c/fixture.raw",
+        "localGUIStarted": false,
+        "device": "/dev/disk4",
+        "filesystem": "exfat",
+        "swapResult": -1,
+        "swapErrno": 45,
+        "initialOriginalInode": 10,
+        "initialCandidateInode": 12,
+        "exclusiveRenamePhases": [
+          {
+            "from": "source.zip",
+            "to": "exchange.zip",
+            "inodeBefore": 10,
+            "inodeAfter": 10,
+            "stableIdentity": true,
+            "nativeExclusiveStatus": -1,
+            "nativeExclusiveErrno": 45
+          },
+          {
+            "from": "candidate.zip",
+            "to": "source.zip",
+            "inodeBefore": 12,
+            "inodeAfter": 12,
+            "stableIdentity": true,
+            "nativeExclusiveStatus": -1,
+            "nativeExclusiveErrno": 45
+          },
+          {
+            "from": "exchange.zip",
+            "to": "candidate.zip",
+            "inodeBefore": 10,
+            "inodeAfter": 10,
+            "stableIdentity": true,
+            "nativeExclusiveStatus": -1,
+            "nativeExclusiveErrno": 45
+          }
+        ],
+        "bytesPreserved": true,
+        "foundationExistingDestinationPreserved": true,
+        "creationTimeProbe": {
+          "filesystem": "exfat",
+          "result": 0,
+          "errno": 0,
+          "sourceSeconds": 1795726676,
+          "sourceNanos": 440000000,
+          "targetSeconds": 1795726676,
+          "targetNanos": 0,
+          "adjustedResult": 0,
+          "adjustedSeconds": 1795726676,
+          "adjustedNanos": 0
+        },
+        "detached": true
+      }
+    },
+    {
+      "path": "build/archive-390-volume-6e239cab-3f68-4de1-b032-b8057445f871/result.json",
+      "sha256": "51ef2df2e11a6a724f7b62e340bb18d50f885064a267767b30bae8f37c551172",
+      "result": {
+        "image": "/Users/changhun/Desktop/Workspace/Files/build/archive-390-volume-6e239cab-3f68-4de1-b032-b8057445f871/fixture.raw",
+        "localGUIStarted": false,
+        "device": "/dev/disk4",
+        "filesystem": "exfat",
+        "swapResult": -1,
+        "swapErrno": 45,
+        "initialOriginalInode": 10,
+        "initialCandidateInode": 12,
+        "detached": true
+      }
+    },
+    {
+      "path": "build/archive-390-volume-8d7e2bcd-42f7-480f-8290-da736071ee20/result.json",
+      "sha256": "48ae8a91b1f996a77e4a93d793cdca2382bd67f36666079050a95cc02ecbbf90",
+      "result": {
+        "image": "/Users/changhun/Desktop/Workspace/Files/build/archive-390-volume-8d7e2bcd-42f7-480f-8290-da736071ee20/fixture.raw",
+        "localGUIStarted": false,
+        "device": "/dev/disk4",
+        "filesystem": "exfat",
+        "swapResult": -1,
+        "swapErrno": 45,
+        "initialOriginalInode": 10,
+        "initialCandidateInode": 12,
+        "exclusiveRenamePhases": [
+          {
+            "from": "source.zip",
+            "to": "exchange.zip",
+            "inodeBefore": 10,
+            "inodeAfter": 10,
+            "stableIdentity": true,
+            "nativeExclusiveStatus": -1,
+            "nativeExclusiveErrno": 45
+          },
+          {
+            "from": "candidate.zip",
+            "to": "source.zip",
+            "inodeBefore": 12,
+            "inodeAfter": 12,
+            "stableIdentity": true,
+            "nativeExclusiveStatus": -1,
+            "nativeExclusiveErrno": 45
+          },
+          {
+            "from": "exchange.zip",
+            "to": "candidate.zip",
+            "inodeBefore": 10,
+            "inodeAfter": 10,
+            "stableIdentity": true,
+            "nativeExclusiveStatus": -1,
+            "nativeExclusiveErrno": 45
+          }
+        ],
+        "bytesPreserved": true,
+        "foundationExistingDestinationPreserved": true,
+        "mountedTestReturnCode": 1,
+        "detached": true
+      }
+    },
+    {
+      "path": "build/archive-390-volume-a73ad920-6b8e-4f6b-ba40-178f14a599e1/result.json",
+      "sha256": "8ec4b863fb47a664d29e0ef6912baafbe98c274d75edcb343cd5ee5e1e20147e",
+      "result": {
+        "image": "/Users/changhun/Desktop/Workspace/Files/build/archive-390-volume-a73ad920-6b8e-4f6b-ba40-178f14a599e1/fixture.raw",
+        "localGUIStarted": false,
+        "device": "/dev/disk4",
+        "filesystem": "exfat",
+        "swapResult": -1,
+        "swapErrno": 45,
+        "initialOriginalInode": 10,
+        "initialCandidateInode": 12,
+        "exclusiveRenamePhases": [
+          {
+            "from": "source.zip",
+            "to": "exchange.zip",
+            "inodeBefore": 10,
+            "inodeAfter": 10,
+            "stableIdentity": true,
+            "nativeExclusiveStatus": -1,
+            "nativeExclusiveErrno": 45
+          },
+          {
+            "from": "candidate.zip",
+            "to": "source.zip",
+            "inodeBefore": 12,
+            "inodeAfter": 12,
+            "stableIdentity": true,
+            "nativeExclusiveStatus": -1,
+            "nativeExclusiveErrno": 45
+          },
+          {
+            "from": "exchange.zip",
+            "to": "candidate.zip",
+            "inodeBefore": 10,
+            "inodeAfter": 10,
+            "stableIdentity": true,
+            "nativeExclusiveStatus": -1,
+            "nativeExclusiveErrno": 45
+          }
+        ],
+        "bytesPreserved": true,
+        "foundationExistingDestinationPreserved": true,
+        "detached": true
+      }
+    },
+    {
+      "path": "build/archive-390-volume-d3557521-7eac-435a-9db1-e414417f3a84/result.json",
+      "sha256": "a4fd88df526350b0cd4ed1c9523005ebf3bb57f0b7ee102d709365eebcee4936",
+      "result": {
+        "image": "/Users/changhun/Desktop/Workspace/Files/build/archive-390-volume-d3557521-7eac-435a-9db1-e414417f3a84/fixture.raw",
+        "localGUIStarted": false,
+        "device": "/dev/disk4",
+        "filesystem": "exfat",
+        "swapResult": -1,
+        "swapErrno": 45,
+        "initialOriginalInode": 10,
+        "initialCandidateInode": 12,
+        "exclusiveRenamePhases": [
+          {
+            "from": "source.zip",
+            "to": "exchange.zip",
+            "inodeBefore": 10,
+            "inodeAfter": 10,
+            "stableIdentity": true,
+            "nativeExclusiveStatus": -1,
+            "nativeExclusiveErrno": 45
+          },
+          {
+            "from": "candidate.zip",
+            "to": "source.zip",
+            "inodeBefore": 12,
+            "inodeAfter": 12,
+            "stableIdentity": true,
+            "nativeExclusiveStatus": -1,
+            "nativeExclusiveErrno": 45
+          },
+          {
+            "from": "exchange.zip",
+            "to": "candidate.zip",
+            "inodeBefore": 10,
+            "inodeAfter": 10,
+            "stableIdentity": true,
+            "nativeExclusiveStatus": -1,
+            "nativeExclusiveErrno": 45
+          }
+        ],
+        "bytesPreserved": true,
+        "foundationExistingDestinationPreserved": true,
+        "mountedTestReturnCode": 1,
+        "detached": true
+      }
+    },
+    {
+      "path": "build/archive-390-volume-e0fdcaed-6d4c-4423-b208-6a225e637a23/result.json",
+      "sha256": "b49bcb361e4515c7bbcbd754acce8c1f17b910fdaff86bc4e23b203af0ca0e04",
+      "result": {
+        "image": "/Users/changhun/Desktop/Workspace/Files/build/archive-390-volume-e0fdcaed-6d4c-4423-b208-6a225e637a23/fixture.raw",
+        "localGUIStarted": false,
+        "device": "/dev/disk4",
+        "filesystem": "exfat",
+        "swapResult": -1,
+        "swapErrno": 45,
+        "initialOriginalInode": 10,
+        "initialCandidateInode": 12,
+        "exclusiveRenamePhases": [
+          {
+            "from": "source.zip",
+            "to": "exchange.zip",
+            "inodeBefore": 10,
+            "inodeAfter": 10,
+            "stableIdentity": true,
+            "nativeExclusiveStatus": -1,
+            "nativeExclusiveErrno": 45
+          },
+          {
+            "from": "candidate.zip",
+            "to": "source.zip",
+            "inodeBefore": 12,
+            "inodeAfter": 12,
+            "stableIdentity": true,
+            "nativeExclusiveStatus": -1,
+            "nativeExclusiveErrno": 45
+          },
+          {
+            "from": "exchange.zip",
+            "to": "candidate.zip",
+            "inodeBefore": 10,
+            "inodeAfter": 10,
+            "stableIdentity": true,
+            "nativeExclusiveStatus": -1,
+            "nativeExclusiveErrno": 45
+          }
+        ],
+        "bytesPreserved": true,
+        "foundationExistingDestinationPreserved": true,
+        "mountedTestReturnCode": 0,
+        "detached": true
+      }
+    },
+    {
+      "path": "build/archive-390-volume-fa3818a2-7b8d-4d4c-91f9-9aace0879811/result.json",
+      "sha256": "25c6cb5a92130eea3a72aa378607ca77adfdf533ab3f953249078a2d910caccc",
+      "result": {
+        "image": "/Users/changhun/Desktop/Workspace/Files/build/archive-390-volume-fa3818a2-7b8d-4d4c-91f9-9aace0879811/fixture.raw",
+        "localGUIStarted": false,
+        "device": "/dev/disk4",
+        "filesystem": "exfat",
+        "swapResult": -1,
+        "swapErrno": 45,
+        "initialOriginalInode": 10,
+        "initialCandidateInode": 12,
+        "exclusiveRenamePhases": [
+          {
+            "from": "source.zip",
+            "to": "exchange.zip",
+            "inodeBefore": 10,
+            "inodeAfter": 10,
+            "stableIdentity": true,
+            "nativeExclusiveStatus": -1,
+            "nativeExclusiveErrno": 45
+          },
+          {
+            "from": "candidate.zip",
+            "to": "source.zip",
+            "inodeBefore": 12,
+            "inodeAfter": 12,
+            "stableIdentity": true,
+            "nativeExclusiveStatus": -1,
+            "nativeExclusiveErrno": 45
+          },
+          {
+            "from": "exchange.zip",
+            "to": "candidate.zip",
+            "inodeBefore": 10,
+            "inodeAfter": 10,
+            "stableIdentity": true,
+            "nativeExclusiveStatus": -1,
+            "nativeExclusiveErrno": 45
+          }
+        ],
+        "bytesPreserved": true,
+        "foundationExistingDestinationPreserved": true,
+        "mountedTestReturnCode": 0,
+        "detached": true
+      }
+    },
+    {
+      "path": "build/archive-390-volume-ff0bcd7d-d376-40a8-8d6d-046a2249496e/result.json",
+      "sha256": "cf82a6d9c5ea8c99fc6cf5e80e1ff598be8f5c6fb93775effb44cdbe3efbde0f",
+      "result": {
+        "image": "/Users/changhun/Desktop/Workspace/Files/build/archive-390-volume-ff0bcd7d-d376-40a8-8d6d-046a2249496e/fixture.raw",
+        "localGUIStarted": false,
+        "detached": true
+      }
+    }
+  ],
+  "finalMountedTests": {
+    "path": "build/archive-390-volume-5732eeef-7f97-4dbc-ae3b-f03a0d9a93c6/mounted-test.log",
+    "sha256": "2c786f3c26f2220bd8ab15ec3a443110a37902bca7a2a0ba47618ee7b91b83b2",
+    "tests": 2,
+    "encryptedFormats": [
+      "zip",
+      "7z"
+    ],
+    "creationTimeProfile": "whole-second timestamps accepted; fractional precision-loss rejection preserved on this host"
+  },
+  "builds": {
+    "debugTests": {
+      "path": "build/edit-390-final-matrix-build.log",
+      "sha256": "f2d108939e77029ee4b373696b5f694d72e0840f504685982c666e7090069afc"
+    },
+    "finalUIDebug": {
+      "path": "build/edit-390-final-ui-debug.log",
+      "sha256": "53ea7b9e3cc9a8a3f66683c8605802d444459843c82b360e77635b6fa84a60e0"
+    },
+    "finalUIRelease": {
+      "path": "build/edit-390-final-ui-release.log",
+      "sha256": "c8376e70b4fe9c461676878eb9ffd671faf8708690eb958761f7b1e45340edc5"
+    },
+    "sdkBundle": {
+      "path": "build/edit-390-fixed-app.log",
+      "sha256": "a74ee70ab27d49d1f09c67a0afce494bbfefeade638c733cdbc19d581fe44188"
+    }
+  },
+  "localGUIStarted": false,
+  "actualNewResumeGUIAccepted": false,
+  "realProcessCrashAccepted": false,
+  "allExFATCreationTimesAccepted": false,
+  "allConcurrentFoundationMoveBoundariesAccepted": false,
+  "preview388ContainsThisChange": false
+}
