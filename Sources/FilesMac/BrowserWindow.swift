@@ -1899,8 +1899,10 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         let panel = Self.archiveSavePanel(sources: sources, parent: parent, preferences: preferences)
         let options = panel.accessoryView as? ArchiveSaveOptionsView
         panel.beginSheetModal(for: window) { [weak self] response in
+            defer { options?.clearPassword() }
             guard response == .OK, let destination = panel.url, let self else { return }
-            ArchiveCreationWindow.start(sources: sources, destination: destination, compressionLevel: options?.compressionLevel) { self.refreshActivePane() }
+            let password = options?.takePassword()
+            ArchiveCreationWindow.start(sources: sources, destination: destination, compressionLevel: options?.compressionLevel, password: password) { self.refreshActivePane() }
         }
     }
     private static func archiveSavePanel(sources: [URL], parent: URL, preferences: BrowserPreferences? = nil) -> NSSavePanel {
@@ -5657,6 +5659,101 @@ extension BrowserWindow {
             let cancellationDirectoryNames = try fm.contentsOfDirectory(atPath: destination.path)
             checks["archiveCreationCancellation"] = ArchiveCreationWindow.qaLatest?.qaRunning == false && !fm.fileExists(atPath: cancelledArchive.path) && cancellationDirectoryNames.allSatisfy { !$0.hasPrefix(".files-create-") }
             ArchiveCreationWindow.qaLatest?.close(); try? fm.removeItem(at: cancellationSource); window.makeKeyAndOrderFront(nil)
+            let encryptedByUI = destination.appendingPathComponent("encrypted-by-ui.zip")
+            let encryptionPanel = Self.archiveSavePanel(sources: [fixture.appendingPathComponent("00000-한글-é-📁-long-file-name.txt")], parent: destination)
+            if let options = encryptionPanel.accessoryView as? ArchiveSaveOptionsView {
+                options.encryptionButton.performClick(nil)
+                var rejectsEmpty = false
+                do { try options.panel(encryptionPanel, validate: encryptedByUI) } catch { rejectsEmpty = true }
+                let excludesSevenZip = options.formatButton.item(at: 1)?.isEnabled == false
+                options.formatButton.selectItem(at: 1); NSApp.sendAction(options.formatButton.action!, to: options.formatButton.target, from: options.formatButton)
+                checks["archiveEncryptionValidationAndFormatGate"] = rejectsEmpty && excludesSevenZip && options.formatButton.indexOfSelectedItem == 0 && encryptionPanel.allowedContentTypes == [.zip]
+                let testPassword = "QA-342-한글-password"
+                options.passwordInput.value = testPassword
+                try options.panel(encryptionPanel, validate: encryptedByUI)
+                options.passwordInput.revealButton.performClick(nil)
+                let revealed = options.passwordInput.visibleField.stringValue == testPassword && options.passwordInput.secureField.stringValue.isEmpty
+                options.passwordInput.revealButton.performClick(nil)
+                let masked = options.passwordInput.visibleField.isHidden && options.passwordInput.visibleField.stringValue.isEmpty && options.passwordInput.value == testPassword
+                options.appearance = window.effectiveAppearance
+                try capture("archive-encryption-options", view: options, backingColor: .windowBackgroundColor)
+                let creationPassword = options.takePassword()
+                checks["archivePasswordRevealAndClear"] = revealed && masked && creationPassword == testPassword && options.passwordInput.value.isEmpty && options.encryptionButton.state == .off
+                ArchiveCreationWindow.start(sources: [fixture.appendingPathComponent("00000-한글-é-📁-long-file-name.txt")], destination: encryptedByUI, password: creationPassword) {}
+                let encryptedCreate = ContinuousClock.now
+                while ArchiveCreationWindow.qaLatest?.qaRunning == true && encryptedCreate.duration(to: .now) < .seconds(10) { try await Task.sleep(for: .milliseconds(10)) }
+                let encryptedEntries = try ZipArchiveProvider().entries(at: encryptedByUI)
+                checks["archiveEncryptedCreation"] = ArchiveCreationWindow.qaLatest?.qaSucceeded == true && encryptedEntries.count == 1 && encryptedEntries[0].isEncrypted
+                ArchiveCreationWindow.qaLatest?.close()
+                let encryptedBrowser = ArchiveWindow(); encryptedBrowser.present(archiveURL: encryptedByUI)
+                let encryptedRead = ContinuousClock.now
+                while !encryptedBrowser.qaLoaded && encryptedRead.duration(to: .now) < .seconds(10) { try await Task.sleep(for: .milliseconds(10)) }
+                let originalBytes = try Data(contentsOf: fixture.appendingPathComponent("00000-한글-é-📁-long-file-name.txt"))
+                var passwordRetry = encryptedBrowser.qaEntryCount == 1
+                for (name, password) in [("wrong", "wrong-password"), ("correct", testPassword)] {
+                    let target = destination.appendingPathComponent("encrypted-browser-" + name, isDirectory: true)
+                    try fm.createDirectory(at: target, withIntermediateDirectories: false)
+                    encryptedBrowser.qaExtract(to: target)
+                    if let prompt = await ArchivePasswordPrompt.qaWait(for: encryptedBrowser.window!) {
+                        passwordRetry = passwordRetry && prompt.qaRejectsEmpty
+                        prompt.qaSubmit(password)
+                        let wait = ContinuousClock.now
+                        while encryptedBrowser.qaIsRunning && wait.duration(to: .now) < .seconds(10) { try await Task.sleep(for: .milliseconds(10)) }
+                        passwordRetry = passwordRetry && prompt.input.value.isEmpty && !encryptedBrowser.qaIsRunning
+                    } else { passwordRetry = false; encryptedBrowser.qaCancel() }
+                    if name == "wrong" {
+                        passwordRetry = passwordRetry && !encryptedBrowser.qaSucceeded && ((try? fm.contentsOfDirectory(atPath: target.path))?.isEmpty == true)
+                    } else {
+                        passwordRetry = passwordRetry && encryptedBrowser.qaSucceeded && (try? Data(contentsOf: target.appendingPathComponent("00000-한글-é-📁-long-file-name.txt"))) == originalBytes
+                    }
+                }
+                checks["archiveEncryptedBrowserWrongPasswordAndRetry"] = passwordRetry
+                var cancelledPrompts = true
+                for stopOperation in [false, true] {
+                    let target = destination.appendingPathComponent("encrypted-browser-cancel-\(stopOperation)", isDirectory: true)
+                    try fm.createDirectory(at: target, withIntermediateDirectories: false)
+                    encryptedBrowser.qaExtract(to: target)
+                    if let prompt = await ArchivePasswordPrompt.qaWait(for: encryptedBrowser.window!) {
+                        if stopOperation { encryptedBrowser.qaCancel() } else { prompt.qaSubmit(nil) }
+                        let wait = ContinuousClock.now
+                        while encryptedBrowser.qaIsRunning && wait.duration(to: .now) < .seconds(5) { try await Task.sleep(for: .milliseconds(10)) }
+                        cancelledPrompts = cancelledPrompts && prompt.input.value.isEmpty && !encryptedBrowser.qaIsRunning && !encryptedBrowser.qaSucceeded && ((try? fm.contentsOfDirectory(atPath: target.path))?.isEmpty == true)
+                    } else { cancelledPrompts = false; encryptedBrowser.qaCancel() }
+                }
+                checks["archiveEncryptedBrowserCancellationAndStop"] = cancelledPrompts
+                encryptedBrowser.close()
+                var batchEncrypted = true
+                let damagedZIP = destination.appendingPathComponent("damaged-after-encrypted.zip")
+                try Data("not an archive".utf8).write(to: damagedZIP)
+                for mode in ["correct", "wrong", "cancel", "damaged"] {
+                    let target = destination.appendingPathComponent("encrypted-batch-" + mode, isDirectory: true)
+                    try fm.createDirectory(at: target, withIntermediateDirectories: false)
+                    ArchiveExtractionWindow.start(archives: [encryptedByUI, mode == "damaged" ? damagedZIP : createdArchive], parent: target, placement: .childFolder) {}
+                    if let operation = ArchiveExtractionWindow.qaLatest,
+                       let prompt = await ArchivePasswordPrompt.qaWait(for: operation.window!) {
+                        prompt.qaSubmit(mode == "cancel" ? nil : (["correct", "damaged"].contains(mode) ? testPassword : "wrong-password"))
+                        let wait = ContinuousClock.now
+                        while operation.qaRunning && wait.duration(to: .now) < .seconds(10) { try await Task.sleep(for: .milliseconds(10)) }
+                        batchEncrypted = batchEncrypted && !operation.qaRunning && prompt.input.value.isEmpty
+                        if mode == "correct" {
+                            for child in ["encrypted-by-ui", "created-by-ui"] {
+                                batchEncrypted = batchEncrypted && operation.qaSucceeded && (try? Data(contentsOf: target.appendingPathComponent(child).appendingPathComponent("00000-한글-é-📁-long-file-name.txt"))) == originalBytes
+                            }
+                        } else if mode == "damaged" {
+                            batchEncrypted = batchEncrypted && !operation.qaSucceeded && !operation.qaMessage.contains(L("암호", "password")) &&
+                                (try? Data(contentsOf: target.appendingPathComponent("encrypted-by-ui").appendingPathComponent("00000-한글-é-📁-long-file-name.txt"))) == originalBytes &&
+                                (try? fm.contentsOfDirectory(atPath: target.path))?.count == 1
+                        } else {
+                            batchEncrypted = batchEncrypted && !operation.qaSucceeded && ((try? fm.contentsOfDirectory(atPath: target.path))?.isEmpty == true)
+                        }
+                        operation.close()
+                    } else { batchEncrypted = false }
+                }
+                checks["archiveEncryptedBatchExtractionAndCancel"] = batchEncrypted
+                window.makeKeyAndOrderFront(nil)
+            } else {
+                for key in ["archiveEncryptionValidationAndFormatGate", "archivePasswordRevealAndClear", "archiveEncryptedCreation", "archiveEncryptedBrowserWrongPasswordAndRetry", "archiveEncryptedBrowserCancellationAndStop", "archiveEncryptedBatchExtractionAndCancel"] { checks[key] = false }
+            }
             try await Task.sleep(for: .milliseconds(300))
             let metadataRefresh = ContinuousClock.now
             while controller.model.isLoading && metadataRefresh.duration(to: .now) < .seconds(10) { try await Task.sleep(for: .milliseconds(10)) }

@@ -1,12 +1,23 @@
 import Foundation
 import FilesCore
 
+func archiveExtractionErrorMessage(_ error: Error, encrypted: Bool) -> String {
+    if encrypted {
+        switch error {
+        case ZipArchiveError.readFailed, ZipArchiveError.cannotOpen:
+            return L("추출하지 못했습니다. 암호와 압축 파일을 확인한 뒤 다시 시도하세요.", "Extraction failed. Check the password and archive, then try again.")
+        default: break
+        }
+    }
+    return archiveErrorMessage(error)
+}
+
 func archiveErrorMessage(_ error: Error) -> String {
     switch error {
     case ZipArchiveError.emptyPassword:
         return L("비어 있지 않고 NUL 문자를 포함하지 않는 암호를 입력하세요.", "Enter a nonempty password without NUL characters.")
     case ZipArchiveError.unsupportedEncryption:
-        return L("이 포맷의 암호 압축 생성을 지원하지 않습니다.", "Encrypted creation is not supported for this format.")
+        return L("이 포맷의 암호 작업을 지원하지 않습니다.", "Password-protected operations are not supported for this format.")
     case ZipArchiveError.destinationNotDirectory:
         return L("추출 대상으로 쓸 수 있는 폴더를 선택하세요.", "Choose a writable folder for extraction.")
     case let ZipArchiveError.destinationConflict(name):

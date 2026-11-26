@@ -2,6 +2,96 @@ import AppKit
 import FilesCore
 
 @MainActor
+final class ArchivePasswordView: NSStackView {
+    let secureField = NSSecureTextField(), visibleField = NSTextField()
+    let revealButton = NSButton(checkboxWithTitle: L("암호 표시", "Show password"), target: nil, action: nil)
+    var onChange: (() -> Void)?
+    var value: String {
+        get { revealButton.state == .on ? visibleField.stringValue : secureField.stringValue }
+        set { clear(); secureField.stringValue = newValue; onChange?() }
+    }
+    init() {
+        super.init(frame: NSRect(x: 0, y: 0, width: 360, height: 64))
+        orientation = .vertical; alignment = .leading; spacing = 8
+        for field in [secureField, visibleField] {
+            field.placeholderString = L("암호", "Password"); field.setAccessibilityLabel(L("암호", "Password"))
+            field.delegate = self; field.widthAnchor.constraint(equalToConstant: 360).isActive = true; addArrangedSubview(field)
+        }
+        visibleField.isHidden = true
+        revealButton.target = self; revealButton.action = #selector(toggleReveal(_:)); addArrangedSubview(revealButton)
+    }
+    required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
+    func clear() {
+        secureField.stringValue = ""; visibleField.stringValue = ""
+        revealButton.state = .off; visibleField.isHidden = true; secureField.isHidden = false
+    }
+    @objc private func toggleReveal(_ sender: NSButton) {
+        if sender.state == .on {
+            visibleField.stringValue = secureField.stringValue; secureField.stringValue = ""
+            secureField.isHidden = true; visibleField.isHidden = false; window?.makeFirstResponder(visibleField)
+        } else {
+            secureField.stringValue = visibleField.stringValue; visibleField.stringValue = ""
+            visibleField.isHidden = true; secureField.isHidden = false; window?.makeFirstResponder(secureField)
+        }
+    }
+}
+extension ArchivePasswordView: NSTextFieldDelegate {
+    func controlTextDidChange(_ obj: Notification) { onChange?() }
+}
+
+@MainActor
+final class ArchivePasswordPrompt {
+    let input = ArchivePasswordView()
+    private let alert = NSAlert()
+    private init(name: String) {
+        alert.messageText = L("압축 파일 암호", "Archive Password")
+        alert.informativeText = L("‘\(name)’의 내용을 추출할 암호를 입력하세요.", "Enter the password to extract ‘\(name)’.")
+        alert.addButton(withTitle: L("추출", "Extract")); alert.addButton(withTitle: L("취소", "Cancel"))
+        alert.accessoryView = input; alert.buttons[0].isEnabled = false
+        input.onChange = { [weak self] in
+            guard let self else { return }
+            self.alert.buttons[0].isEnabled = !self.input.value.isEmpty && !self.input.value.utf8.contains(0)
+        }
+    }
+    static func request(for window: NSWindow, archiveName: String) async -> String? {
+        let prompt = ArchivePasswordPrompt(name: archiveName)
+#if DEBUG
+        qaLatest = prompt
+#endif
+        return await withTaskCancellationHandler {
+            await withCheckedContinuation { continuation in
+                prompt.alert.beginSheetModal(for: window) { response in
+                    let password = response == .alertFirstButtonReturn ? prompt.input.value : nil
+                    prompt.alert.window.orderOut(nil); prompt.input.clear(); continuation.resume(returning: password)
+                }
+                prompt.alert.window.makeFirstResponder(prompt.input.secureField)
+                if Task.isCancelled { prompt.cancel() }
+            }
+        } onCancel: { Task { @MainActor in prompt.cancel() } }
+    }
+    private func cancel() {
+        if let parent = alert.window.sheetParent { parent.endSheet(alert.window, returnCode: .alertSecondButtonReturn) }
+    }
+#if DEBUG
+    private(set) static weak var qaLatest: ArchivePasswordPrompt?
+    var qaRejectsEmpty: Bool { !alert.buttons[0].isEnabled }
+    func qaSubmit(_ password: String?) {
+        guard let password else { cancel(); return }
+        input.value = password
+        if alert.buttons[0].isEnabled { alert.buttons[0].performClick(nil) }
+    }
+    static func qaWait(for window: NSWindow) async -> ArchivePasswordPrompt? {
+        let start = ContinuousClock.now
+        while start.duration(to: .now) < .seconds(5) {
+            if let prompt = qaLatest, prompt.alert.window.sheetParent === window { return prompt }
+            try? await Task.sleep(for: .milliseconds(10))
+        }
+        return nil
+    }
+#endif
+}
+
+@MainActor
 final class ArchiveWindow: NSWindowController, NSTableViewDataSource, NSTableViewDelegate {
     private let provider = ZipArchiveProvider()
     private let table = NSTableView(), status = NSTextField(labelWithString: ""), progress = NSProgressIndicator()
@@ -64,13 +154,20 @@ final class ArchiveWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         guard let archiveURL else { return }; task?.cancel(); status.stringValue = L("안전하게 추출하는 중…", "Extracting safely…"); setRunning(true)
         task = Task { [weak self, provider] in
             do {
-                let report = try await provider.extract(archiveURL, to: destination) { [weak self] update in
+                var password: String?
+                if let self, self.entries.contains(where: \.isEncrypted), let window = self.window {
+                    guard ArchiveFormat.detect(archiveURL) == .zip else { throw ZipArchiveError.unsupportedEncryption }
+                    guard let entered = await ArchivePasswordPrompt.request(for: window, archiveName: archiveURL.lastPathComponent) else { throw CancellationError() }
+                    password = entered
+                }
+                try Task<Never, Never>.checkCancellation()
+                let report = try await provider.extract(archiveURL, to: destination, password: password) { [weak self] update in
                     Task { @MainActor [weak self] in self?.updateProgress(update) }
                 }
                 guard let self, !Task.isCancelled else { return }
                 self.status.stringValue = L("\(report.entries)개 항목을 추출했습니다.", "Extracted \(report.entries) items."); self.setRunning(false)
             } catch is CancellationError { guard let self else { return }; self.status.stringValue = L("추출을 중단했습니다.", "Extraction stopped."); self.setRunning(false) }
-            catch { guard let self else { return }; self.status.stringValue = archiveErrorMessage(error); self.setRunning(false) }
+            catch { guard let self else { return }; self.status.stringValue = archiveExtractionErrorMessage(error, encrypted: self.entries.contains(where: \.isEncrypted)); self.setRunning(false) }
         }
     }
     @objc private func cancel(_ sender: Any?) { task?.cancel() }

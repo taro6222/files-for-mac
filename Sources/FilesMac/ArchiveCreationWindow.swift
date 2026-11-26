@@ -3,9 +3,12 @@ import FilesCore
 import UniformTypeIdentifiers
 
 @MainActor
-final class ArchiveSaveOptionsView: NSStackView {
+final class ArchiveSaveOptionsView: NSStackView, NSOpenSavePanelDelegate {
     let formatButton = NSPopUpButton()
     let levelButton = NSPopUpButton()
+    let encryptionButton = NSButton(checkboxWithTitle: L("암호화 (ZIP)", "Encrypt (ZIP)"), target: nil, action: nil)
+    let passwordInput = ArchivePasswordView()
+    private let passwordNote = NSTextField(wrappingLabelWithString: L("파일 이름은 암호화되지 않습니다.", "File names are not encrypted."))
     var compressionLevel: ArchiveCompressionLevel { ArchiveCompressionLevel.allCases[levelButton.indexOfSelectedItem] }
     private weak var panel: NSSavePanel?
     private let preferences: BrowserPreferences?
@@ -15,12 +18,13 @@ final class ArchiveSaveOptionsView: NSStackView {
     init(panel: NSSavePanel, preferences: BrowserPreferences? = nil) {
         self.panel = panel
         self.preferences = preferences
-        super.init(frame: NSRect(x: 0, y: 0, width: 400, height: 76))
+        super.init(frame: NSRect(x: 0, y: 0, width: 400, height: 210))
         orientation = .vertical; alignment = .leading; spacing = 12
         formatButton.addItems(withTitles: ["ZIP (.zip)", "7z (.7z)"])
         formatButton.setAccessibilityLabel(L("압축 형식", "Archive format"))
         formatButton.identifier = NSUserInterfaceItemIdentifier("archive-format")
         formatButton.target = self; formatButton.action = #selector(changeFormat(_:))
+        formatButton.autoenablesItems = false
         levelButton.addItems(withTitles: [L("최고", "Ultra"), L("높음", "High"), L("보통", "Normal"),
                                          L("낮음", "Low"), L("빠르게", "Fast"), L("압축 안 함", "No compression")])
         levelButton.selectItem(at: ArchiveCompressionLevel.allCases.firstIndex(of: preferences?.archiveCompressionLevel ?? .normal)!)
@@ -37,8 +41,38 @@ final class ArchiveSaveOptionsView: NSStackView {
         }
         panel.allowedContentTypes = [.zip]
         panel.allowsOtherFileTypes = false
+        encryptionButton.target = self; encryptionButton.action = #selector(changeEncryption(_:))
+        addArrangedSubview(encryptionButton); addArrangedSubview(passwordInput); addArrangedSubview(passwordNote)
+        passwordInput.isHidden = true; passwordNote.isHidden = true
+        passwordNote.textColor = .secondaryLabelColor; passwordNote.font = .systemFont(ofSize: 11)
+        panel.delegate = self
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
+
+    func panel(_ sender: Any, validate url: URL) throws {
+        if encryptionButton.state == .on {
+            guard selectedFormat == .zip else { throw ZipArchiveError.unsupportedEncryption }
+            guard !passwordInput.value.isEmpty && !passwordInput.value.utf8.contains(0) else {
+                throw NSError(domain: "FilesMac.Archive", code: 1, userInfo: [NSLocalizedDescriptionKey: L("암호를 입력하세요.", "Enter a password.")])
+            }
+        }
+    }
+    func takePassword() -> String? {
+        let value = encryptionButton.state == .on ? passwordInput.value : nil
+        clearPassword(); return value
+    }
+    func clearPassword() {
+        passwordInput.clear(); encryptionButton.state = .off
+        passwordInput.isHidden = true; passwordNote.isHidden = true
+        formatButton.item(at: 1)?.isEnabled = true
+    }
+    @objc private func changeEncryption(_ sender: NSButton) {
+        guard selectedFormat == .zip else { sender.state = .off; clearPassword(); return }
+        let encrypted = sender.state == .on
+        if !encrypted { passwordInput.clear() }
+        passwordInput.isHidden = !encrypted; passwordNote.isHidden = !encrypted
+        formatButton.item(at: 1)?.isEnabled = !encrypted
+    }
 
     @objc private func changeLevel(_ sender: NSPopUpButton) {
         guard ArchiveCompressionLevel.allCases.indices.contains(sender.indexOfSelectedItem) else { return }
@@ -48,6 +82,9 @@ final class ArchiveSaveOptionsView: NSStackView {
     @objc private func changeFormat(_ sender: NSPopUpButton) {
         guard formats.indices.contains(sender.indexOfSelectedItem), let panel else { return }
         let format = formats[sender.indexOfSelectedItem]
+        if encryptionButton.state == .on && format != .zip {
+            sender.selectItem(at: formats.firstIndex(of: selectedFormat)!); return
+        }
         guard format != selectedFormat, let type = UTType(filenameExtension: format.rawValue) else { return }
         var name = panel.nameFieldStringValue
         if let existing = formats.first(where: { name.lowercased().hasSuffix("." + $0.rawValue) }) {
@@ -56,6 +93,7 @@ final class ArchiveSaveOptionsView: NSStackView {
         panel.allowedContentTypes = [type]
         panel.nameFieldStringValue = name.isEmpty ? "" : name + "." + format.rawValue
         selectedFormat = format
+        encryptionButton.isEnabled = format == .zip
     }
 }
 
@@ -71,13 +109,13 @@ final class ArchiveCreationWindow: NSWindowController, NSWindowDelegate {
     private var running = true
     private var succeeded = false
 
-    static func start(sources: [URL], destination: URL, compressionLevel: ArchiveCompressionLevel? = nil, completion: @escaping @MainActor () -> Void) {
+    static func start(sources: [URL], destination: URL, compressionLevel: ArchiveCompressionLevel? = nil, password: String? = nil, completion: @escaping @MainActor () -> Void) {
         guard !sources.isEmpty, !isRunning else { return }
         let controller = ArchiveCreationWindow(sources: sources, destination: destination)
         operations.append(controller); controller.showWindow(nil); controller.window?.makeKeyAndOrderFront(nil)
         controller.task = Task { [weak controller] in
             do {
-                _ = try await ZipArchiveProvider().create(from: sources, at: destination, compressionLevel: compressionLevel) { [weak controller] update in
+                _ = try await ZipArchiveProvider().create(from: sources, at: destination, compressionLevel: compressionLevel, password: password) { [weak controller] update in
                     Task { @MainActor [weak controller] in controller?.update(update) }
                 }
                 guard let controller, !Task.isCancelled else { return }

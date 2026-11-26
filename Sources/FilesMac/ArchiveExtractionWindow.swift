@@ -8,6 +8,7 @@ final class ArchiveExtractionWindow: NSWindowController, NSWindowDelegate {
     private let label = NSTextField(wrappingLabelWithString: "")
     private let progress = NSProgressIndicator(), details = NSTextView(), cancelButton = NSButton()
     private var task: Task<Void, Never>?, running = true, succeeded = false
+    private var encryptedArchive = false
 
     static func start(archives: [URL], parent: URL, placement: ArchiveExtractionPlacement,
                       completion: @escaping @MainActor () -> Void) {
@@ -20,11 +21,20 @@ final class ArchiveExtractionWindow: NSWindowController, NSWindowDelegate {
             do {
                 for (index, archive) in archives.enumerated() {
                     try Task<Never, Never>.checkCancellation()
+                    controller.encryptedArchive = false
                     let entries = try await Task.detached(priority: .userInitiated) { try ZipArchiveProvider().entries(at: archive) }.value
+                    controller.encryptedArchive = entries.contains(where: \.isEncrypted)
+                    var password: String?
+                    if entries.contains(where: \.isEncrypted), let window = controller.window {
+                        guard ArchiveFormat.detect(archive) == .zip else { throw ZipArchiveError.unsupportedEncryption }
+                        guard let entered = await ArchivePasswordPrompt.request(for: window, archiveName: archive.lastPathComponent) else { throw CancellationError() }
+                        password = entered
+                    }
+                    try Task<Never, Never>.checkCancellation()
                     let needsChild = try archiveNeedsChildFolder(entries, placement: placement)
                     let destination = needsChild ? try controller.createUniqueChild(in: parent, base: archiveChildFolderBaseName(archive)) : parent
                     do {
-                        _ = try await ZipArchiveProvider().extract(archive, to: destination) { [weak controller] update in
+                        _ = try await ZipArchiveProvider().extract(archive, to: destination, password: password) { [weak controller] update in
                             Task { @MainActor [weak controller] in controller?.update(update, archive: archive, index: index, total: archives.count) }
                         }
                     } catch {
@@ -36,7 +46,7 @@ final class ArchiveExtractionWindow: NSWindowController, NSWindowDelegate {
                 guard !Task.isCancelled else { return }
                 controller.finish(success: true, message: L("\(completed)개 압축 파일을 추출했습니다.", "Extracted \(completed) archives.")); completion()
             } catch is CancellationError { controller.finish(success: false, message: L("추출을 중단했습니다.", "Extraction stopped.")) }
-            catch { controller.finish(success: false, message: archiveErrorMessage(error)) }
+            catch { controller.finish(success: false, message: archiveExtractionErrorMessage(error, encrypted: controller.encryptedArchive)) }
         }
     }
 
@@ -83,5 +93,6 @@ final class ArchiveExtractionWindow: NSWindowController, NSWindowDelegate {
     static var qaLatest: ArchiveExtractionWindow? { operations.last }
     var qaRunning: Bool { running }
     var qaSucceeded: Bool { succeeded }
+    var qaMessage: String { label.stringValue }
 #endif
 }

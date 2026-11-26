@@ -9,7 +9,7 @@ import Testing
     #expect(ArchiveFormat.detect(URL(fileURLWithPath: "/tmp/a.tar")) == nil)
     let zip = ArchiveCapabilityMatrix.capabilities(for: .zip)
     #expect(zip.browse && zip.extract && zip.create)
-    #expect(!zip.update && !zip.password && !zip.splitVolumes)
+    #expect(!zip.update && zip.password && !zip.splitVolumes)
     for format in [ArchiveFormat.sevenZip, .rar] {
         let capabilities = ArchiveCapabilityMatrix.capabilities(for: format)
         #expect(capabilities.browse && capabilities.extract && capabilities.create == (format == .sevenZip))

@@ -16,13 +16,15 @@ M7 출시 검증이 진행 중이다. [유니버설 개발 프리뷰](verificati
 |---|---|---|
 | 설치·업데이트 | 새 a07c80c 유니버설 프리뷰의 macOS 27.2.1 arm64 격리 설치·교체·복원. 이전 프리뷰의 Sonoma 14.8.7·실제 업데이트 메뉴 조회는 별도 기록 | 서명·공증된 정식 배포본의 다운로드·최초 실행·버전 교체 |
 | SMB | 파일 시각, 이동·실행 취소, 게시 후 세션 재연결과 기록 중 단절 시 원본 보호·[서버 권한 회수 후 기존 대상 복구](verification/m7/INCREMENT_290.md) | 장기 단절 및 외부 서버 검증 |
-| 원격 전체 AppKit | `05dd05d` 두 CPU 작업 성공: 각각 네 조합 전체 303개/경계 18개. 세션 비율 위치 오차 최대 ARM 0.4pt·Intel 0.2pt. `7da2fd7` ARM 네 조합 306개/18개 성공 | 최신 소스 두 CPU 수용과 간헐 Git 초기 조회 지연 원인 확인. 774083b ARM 성공·Intel 빌드 단계 20분 제한 초과. 최신 단위 원격 수용은 별도 진행 |
+| 원격 전체 AppKit | `05dd05d` 두 CPU 작업 성공: 각각 네 조합 전체 303개/경계 18개. `b57d3e4` ARM 네 조합 312개/18개 성공, 작업은 이후 Spotlight 정리에서 실패 | 최신 소스 두 CPU 수용. Spotlight 소유 마운트 불일치·774083b Intel 빌드 20분 제한·간헐 Git 초기 조회 지연 조사 |
 | Xcode 진입점 | `55c1bee`의 Apple Silicon·Intel Xcode 빌드 성공. 전체 AppKit·설치 수용은 별도 진행 | 정식 서명·배포된 산출물의 수용 검증 |
 | 장시간 | `5284cb3` 8시간·9,525사이클 종료. 물리 메모리 초기/마지막 60표본 중앙값 52→160MiB로 안정성 미수용. [새 탭 구현의 단기 진단](verification/m7/INCREMENT_330.md)은 컨텍스트 개수 유지 | 최신 소스 8시간 종료 및 물리 메모리 안정성 판정 |
 
 실행별 증거와 정확한 제한은 [설치 프리뷰](verification/m7/INCREMENT_280.md), [SMB 기록 중 단절](verification/m7/INCREMENT_277.md), [서버 권한 회수](verification/m7/INCREMENT_285.md), [Intel UI 진단](verification/m7/INCREMENT_282.md), [Xcode 연결](verification/m7/INCREMENT_284.md), [8시간 시험](verification/m7/INCREMENT_283.md)에 기록했다.
 
 ## 이번 구현 단위
+
+[ZIP 암호 생성·추출 UI](verification/m7/INCREMENT_342.md)는 생성 옵션·암호 표시·입력 정리와 개별/혼합 일괄 추출의 암호 시트를 연결했다. 틀린 암호 재시도·시트/작업 취소·후속 손상 파일 보호를 확인하고 ZIP password capability를 활성화했다. Swift 성공 376개·환경 건너뜀 19개, 최종 네 조합 전체 UI 각각 318개/경계 18개·Debug/Release가 통과했다. 7z/RAR 암호·전체 원본 옵션·물리 입력·최신 원격/장시간·정식 서명/공증은 미완료다.
 
 [ZIP 암호 서비스](verification/m7/INCREMENT_341.md)는 AES-256 생성·복호화와 암호화 항목 판별을 구현했다. 저장/최고 수준 왕복·틀린/누락 암호·암호문 변조·취소·기존 파일 보호를 확인했다. Swift 성공 376개·환경 건너뜀 19개, 네 조합 기존 UI 각각 312개/경계 18개·Debug/Release가 통과했다. 암호 입력 UI와 capability 광고는 미완료이며 7z/RAR 암호·독립 구현 호환성·최신 원격/장시간·정식 서명/공증도 남아 있다.
 
