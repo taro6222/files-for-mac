@@ -383,7 +383,7 @@ public:
         if (processed) *processed = 0;
         if (!matchesCreateItem(item, fd)) { *changed = true; return E_ABORT; }
         ssize_t count;
-        do { count = read(fd, data, size); } while (count < 0 && errno == EINTR);
+        do { count = pread(fd, data, size, (off_t)readBytes); } while (count < 0 && errno == EINTR);
         if (count < 0 || (uint64_t)count > item.size - readBytes) return E_FAIL;
         readBytes += count;
         if (count == 0 && size && readBytes != item.size) { *changed = true; return E_ABORT; }
@@ -454,6 +454,8 @@ public:
     uint32_t count;
     bool defined = false, changed = false, failed = false;
     UString password;
+    SevenZipCreateInputCallback inputCallback = nullptr;
+    void *inputContext = nullptr;
 };
 Z7_COM7F_IMF(CreateCallback::SetTotal(UInt64)) { return S_OK; }
 Z7_COM7F_IMF(CreateCallback::SetCompleted(const UInt64 *)) { return S_OK; }
@@ -494,7 +496,7 @@ Z7_COM7F_IMF(CreateCallback::GetStream(UInt32 index, ISequentialInStream **strea
     if (index >= count) return E_INVALIDARG;
     *stream = nullptr;
     const auto &item = items[index];
-    int fd = openSource(item.source);
+    int fd = inputCallback ? inputCallback(inputContext, index) : openSource(item.source);
     if (fd < 0) { changed = true; return E_ABORT; }
     if (!matchesCreateItem(item, fd)) { close(fd); changed = true; return E_ABORT; }
     if (item.directory) { close(fd); return S_OK; }
@@ -507,7 +509,7 @@ Z7_COM7F_IMF(CreateCallback::CryptoGetTextPassword2(Int32 *isDefined, BSTR *valu
     return StringToBstr(password, value);
 }
 extern "C" int SevenZipCreate(const char *library, int outputFD, const SevenZipCreateItem *items, uint32_t count,
-                              const char *password, int level, int encryptHeader, uint32_t dictionarySize, uint32_t wordSize, uint32_t threads, int framedOutput) {
+                              const char *password, int level, int encryptHeader, uint32_t dictionarySize, uint32_t wordSize, uint32_t threads, int framedOutput, SevenZipCreateInputCallback inputCallback, void *inputContext) {
     // The library stays loaded until all COM objects have been released, including exceptions.
     struct Library { void *handle; ~Library() { if (handle) dlclose(handle); } } loaded{dlopen(library, RTLD_NOW | RTLD_LOCAL)};
     if (!loaded.handle) return 1;
@@ -530,6 +532,7 @@ extern "C" int SevenZipCreate(const char *library, int outputFD, const SevenZipC
         CreateCallback *callback = new CreateCallback();
         CMyComPtr<IArchiveUpdateCallback> callbackHolder = callback;
         callback->items = items; callback->count = count; callback->defined = password != nullptr;
+        callback->inputCallback = inputCallback; callback->inputContext = inputContext;
         if (password && !ConvertUTF8ToUnicode(AString(password), callback->password)) return 6;
         auto stream = new CreateOutput(outputFD, framedOutput != 0);
         CMyComPtr<ISequentialOutStream> output = stream;
@@ -537,7 +540,7 @@ extern "C" int SevenZipCreate(const char *library, int outputFD, const SevenZipC
         if (callback->changed) return 9;
         if (status != S_OK || callback->failed) return 10;
         for (uint32_t i = 0; i < count; ++i) {
-            int fd = openSource(items[i].source);
+            int fd = inputCallback ? inputCallback(inputContext, i) : openSource(items[i].source);
             if (fd < 0) return 9;
             bool matches = matchesCreateItem(items[i], fd); close(fd);
             if (!matches) return 9;

@@ -10,6 +10,8 @@ import signal
 import subprocess
 
 TESTS = [
+    'sevenZipCreationBrokerRejectsInvalidAndTruncatedRequests',
+    'sevenZipCreationBrokerKeepsPlannedIdentityAndReadOnlyAccess', 'sevenZipSDKCreationBrokerManyInputsAndPreflightPreserveSources',
     'sevenZipReadBrokerPinsDirectoryAndRejectsChangedNames', 'sevenZipSDKReadBrokerHandlesSymlinkAndSearchOnlyDirectory',
     'sevenZipSplitPreferencesPersistAndImportTransactionally', 'sevenZipSplitHistoryPreservesInvalidAndOfflineRecords',
     'sevenZipSplitFrameValidationAndForeignStagingPreservation',

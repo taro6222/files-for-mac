@@ -89,6 +89,39 @@ class Worker:
         finally: self.input_socket.close(); self.input_socket = None
         return self.read()
 
+    def broker_create(self, value, provider, marker=b'F', rights=True):
+        calls = []; errors = []
+        channel = self.input_socket; channel.settimeout(10)
+        def serve():
+            try:
+                while True:
+                    request = b''
+                    while len(request) < 5:
+                        part = channel.recv(5 - len(request))
+                        if not part:
+                            if request: raise RuntimeError('Truncated create request')
+                            return
+                        request += part
+                    if request[0] != 0x43: raise RuntimeError('Invalid create request marker')
+                    index = struct.unpack('!I', request[1:])[0]; calls.append(index)
+                    fd = provider(index)
+                    try:
+                        if rights: channel.sendmsg([marker], [(socket.SOL_SOCKET, socket.SCM_RIGHTS, array.array('i', [fd]))])
+                        else: channel.sendall(marker)
+                    finally: os.close(fd)
+            except OSError as error:
+                if error.errno not in [errno.EPIPE, errno.ECONNRESET, errno.ENOTCONN]: errors.append(str(error))
+            except Exception as error: errors.append(str(error))
+        thread = threading.Thread(target=serve, daemon=True); thread.start()
+        try: response = self.request(value)
+        finally:
+            thread.join(timeout=10)
+            if thread.is_alive():
+                self.process.kill(); self.process.wait(); channel.close(); raise RuntimeError('Creation broker did not close')
+            channel.close(); self.input_socket = None
+        if errors: raise RuntimeError('Creation broker error: ' + '; '.join(errors))
+        return response, calls
+
     def finish(self, expected=0):
         if self.input_socket: self.input_socket.close(); self.input_socket = None
         self.process.stdin.close()
@@ -397,6 +430,38 @@ def verify(executable, reference, root, library=None):
         check('descriptorBudgetPayloadMatches', bytes(worker.output) == budget_bytes)
     finally:
         for fd in budget_fds: os.close(fd)
+    # Creation has no source paths: the broker may supply an unlinked regular file.
+    broker_source = root / 'unlinked-create-source'; broker_bytes = b'private descriptor creation payload'; broker_source.write_bytes(broker_bytes)
+    held = os.open(broker_source, os.O_RDONLY)
+    try:
+        broker_source.unlink(); spec = input_spec(held)
+        broker_entry = dict(spec, path='fd-only.bin', directory=0)
+        create_request = dict(version=1, operation='create', items=[broker_entry], level=0, encryptHeader=False)
+        def original(index):
+            if index != 0: raise RuntimeError('Unplanned creation index')
+            os.lseek(held, 1, os.SEEK_END)
+            return os.dup(held)
+        output = root / 'fd-created.7z'
+        with output.open('wb') as stream:
+            worker = Worker(executable, output_fd=stream.fileno(), library=library, create_output=True, descriptor_input=True)
+            response, calls = worker.broker_create(create_request, original); worker.finish()
+        check('createDescriptorUnlinkedSource', response.get('closed') and calls and all(index == 0 for index in calls))
+        restored = root / 'fd-created-restored'
+        subprocess.run([str(reference), 'x', '-y', '-o' + str(restored), str(output)], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        check('createDescriptorOfficialRoundTrip', (restored / 'fd-only.bin').read_bytes() == broker_bytes)
+        for name, request_value, provider, marker, rights, code in [
+            ('createDescriptorLegacyPathRejected', dict(create_request, items=[dict(broker_entry, source='/must-not-open')]), original, b'F', True, 'invalid-metadata'),
+            ('createDescriptorMarkerRejected', create_request, original, b'X', True, 'invalid-metadata'),
+            ('createDescriptorRightsRequired', create_request, original, b'F', False, 'invalid-metadata'),
+            ('createDescriptorForeignIdentityRejected', create_request, lambda index: os.open(plain, os.O_RDONLY), b'F', True, 'source-changed'),
+            ('createDescriptorWritableRejected', create_request, lambda index: os.open(plain, os.O_RDWR), b'F', True, 'invalid-metadata'),
+        ]:
+            output = root / (name + '.7z')
+            with output.open('wb') as stream:
+                worker = Worker(executable, output_fd=stream.fileno(), library=library, create_output=True, descriptor_input=True)
+                response, calls = worker.broker_create(request_value, provider, marker=marker, rights=rights); worker.finish(1)
+            check(name, response.get('error', {}).get('code') == code)
+    finally: os.close(held)
     return checks
 
 

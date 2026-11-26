@@ -9,10 +9,27 @@ struct SevenZipCreationPlan: Sendable {
         var directory: Bool { snapshot.st_mode & S_IFMT == S_IFDIR }
         var size: Int64 { directory ? 0 : snapshot.st_size }
         var request: [String: Any] {
-            ["source": url.path, "path": path, "device": String(snapshot.st_dev), "inode": String(snapshot.st_ino),
+            ["source": url.path, "path": path, "device": String(UInt64(bitPattern: Int64(snapshot.st_dev))), "inode": String(snapshot.st_ino),
              "size": size, "mode": UInt32(snapshot.st_mode), "directory": directory ? 1 : 0,
              "modifiedSeconds": snapshot.st_mtimespec.tv_sec, "modifiedNanos": snapshot.st_mtimespec.tv_nsec,
              "changedSeconds": snapshot.st_ctimespec.tv_sec, "changedNanos": snapshot.st_ctimespec.tv_nsec]
+        }
+        var brokerRequest: [String: Any] {
+            var value = request; value.removeValue(forKey: "source"); return value
+        }
+        func withDescriptor(_ body: (Int32) throws -> Void) throws {
+            try verify()
+            let fd = open(url.path, (directory ? O_SEARCH : O_RDONLY) | O_NOFOLLOW_ANY | O_NONBLOCK | O_CLOEXEC)
+            guard fd >= 0 else { throw ZipArchiveError.invalidSource(url.path) }
+            defer { Darwin.close(fd) }
+            var held = stat()
+            guard fstat(fd, &held) == 0, held.st_dev == snapshot.st_dev, held.st_ino == snapshot.st_ino,
+                  held.st_mode == snapshot.st_mode, directory || held.st_size == snapshot.st_size,
+                  held.st_mtimespec.tv_sec == snapshot.st_mtimespec.tv_sec, held.st_mtimespec.tv_nsec == snapshot.st_mtimespec.tv_nsec,
+                  held.st_ctimespec.tv_sec == snapshot.st_ctimespec.tv_sec, held.st_ctimespec.tv_nsec == snapshot.st_ctimespec.tv_nsec else {
+                throw ZipArchiveError.invalidSource(url.path)
+            }
+            try body(fd)
         }
         func verify() throws {
             var current = stat()
@@ -27,8 +44,8 @@ struct SevenZipCreationPlan: Sendable {
     let items: [Item]
     let totalBytes: Int64
     init(sources: [URL], destination: URL, check: () throws -> Void) throws {
-        guard !sources.isEmpty, destination.isFileURL, destination.pathExtension.lowercased() == "7z",
-              sources.allSatisfy(\.isFileURL), Set(sources.map(\.standardizedFileURL)).count == sources.count else {
+        guard !sources.isEmpty, destination.isFileURL, !destination.path(percentEncoded: false).utf8.contains(0), destination.pathExtension.lowercased() == "7z",
+              sources.allSatisfy({ $0.isFileURL && !$0.path(percentEncoded: false).utf8.contains(0) }), Set(sources.map(\.standardizedFileURL)).count == sources.count else {
             throw SevenZipWorkerError.invalidConfiguration
         }
         let destination = try sevenZipCanonicalDirectory(destination.deletingLastPathComponent()).appendingPathComponent(destination.lastPathComponent)

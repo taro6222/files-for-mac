@@ -1001,3 +1001,64 @@ func sevenZipSDKReadBrokerHandlesSymlinkAndSearchOnlyDirectory() async throws {
     defer { _ = chmod(directory.path, 0o700) }
     #expect(try await provider.entries(at: target, password: "QA-347-한글-🔑").count == 3)
 }
+
+@Test func sevenZipCreationBrokerKeepsPlannedIdentityAndReadOnlyAccess() throws {
+    let root = try sevenZipCanonicalDirectory(sdkRoot()); defer { try? FileManager.default.removeItem(at: root) }
+    let source = root.appendingPathComponent("source.bin"), foreign = root.appendingPathComponent("foreign.bin")
+    let bytes = Data("planned source".utf8); try bytes.write(to: source); try Data("foreign preserved".utf8).write(to: foreign)
+    let plan = try SevenZipCreationPlan(sources: [source], destination: root.appendingPathComponent("out.7z"), check: {})
+    try plan.items[0].withDescriptor { fd in
+        #expect(fcntl(fd, F_GETFL) & O_ACCMODE == O_RDONLY)
+        var actual = Data(count: bytes.count)
+        let count = actual.withUnsafeMutableBytes { pread(fd, $0.baseAddress, $0.count, 0) }
+        #expect(count == bytes.count && actual == bytes)
+    }
+    #expect(plan.items[0].brokerRequest["source"] == nil)
+    try FileManager.default.removeItem(at: source)
+    try FileManager.default.createSymbolicLink(at: source, withDestinationURL: foreign)
+    #expect(throws: ZipArchiveError.invalidSource(source.path)) { try plan.items[0].withDescriptor { _ in Issue.record("Changed source opened") } }
+    #expect(try Data(contentsOf: foreign) == Data("foreign preserved".utf8))
+}
+
+@Test(.enabled(if: hasIntegrationFixture("FILES_TEST_SEVENZIP_REFERENCE") && hasIntegrationFixture("FILES_TEST_SEVENZIP_WORKER"), "Requires native SDK and reference"))
+func sevenZipSDKCreationBrokerManyInputsAndPreflightPreserveSources() async throws {
+    let root = try sevenZipCanonicalDirectory(sdkRoot()); defer { try? FileManager.default.removeItem(at: root) }
+    let input = root.appendingPathComponent("inputs"), archive = root.appendingPathComponent("broker-created.7z")
+    try FileManager.default.createDirectory(at: input, withIntermediateDirectories: false)
+    for index in 0..<300 { try Data("value \(index)".utf8).write(to: input.appendingPathComponent("file-\(index).txt")) }
+    let provider = try sdkRealProvider()
+    let before = try FileManager.default.attributesOfItem(atPath: input.path)
+    await #expect(throws: ZipArchiveError.invalidSource(input.appendingPathComponent("inside.7z").path)) {
+        try await provider.create(from: [input], at: input.appendingPathComponent("inside.7z"), compressionLevel: .store)
+    }
+    let after = try FileManager.default.attributesOfItem(atPath: input.path)
+    #expect(before[.modificationDate] as? Date == after[.modificationDate] as? Date)
+    #expect(try FileManager.default.contentsOfDirectory(atPath: input.path).count == 300)
+    var limitBefore = rlimit(), limitAfter = rlimit()
+    #expect(getrlimit(RLIMIT_NOFILE, &limitBefore) == 0)
+    _ = try await provider.create(from: [input], at: archive, compressionLevel: .store)
+    #expect(getrlimit(RLIMIT_NOFILE, &limitAfter) == 0 && limitBefore.rlim_cur == limitAfter.rlim_cur && limitBefore.rlim_max == limitAfter.rlim_max)
+    let restored = root.appendingPathComponent("restored")
+    _ = try await provider.extractToNewDirectory(archive, at: restored)
+    for index in 0..<300 {
+        #expect(try Data(contentsOf: restored.appendingPathComponent("inputs/file-\(index).txt")) == Data("value \(index)".utf8))
+    }
+}
+
+@Test func sevenZipCreationBrokerRejectsInvalidAndTruncatedRequests() async throws {
+    let root = try sdkRoot(); defer { try? FileManager.default.removeItem(at: root) }
+    let source = root.appendingPathComponent("source.bin"), bytes = Data("source preserved".utf8)
+    try bytes.write(to: source)
+    for (index, request) in ["pack('CN',0x43,4294967295)", "pack('CN',0x58,0)", "pack('CC',0x43,0)"].enumerated() {
+        let provider = try sdkMock("""
+        request(); open(my $output,'>&=3') or die; print $output 'unfinished'; close($output);
+        open(my $socket,'+<&=4') or die; syswrite($socket,\(request)); close($socket);
+        reply('{"version":1,"ok":true,"closed":true}');
+        """, root: root)
+        let target = root.appendingPathComponent("rejected-\(index).7z")
+        await #expect(throws: SevenZipWorkerError.invalidResponse) { try await provider.create(from: [source], at: target) }
+        #expect(!FileManager.default.fileExists(atPath: target.path))
+        #expect(try Data(contentsOf: source) == bytes)
+        #expect(!(try FileManager.default.contentsOfDirectory(atPath: root.path)).contains { $0.hasPrefix(".files-create-") })
+    }
+}

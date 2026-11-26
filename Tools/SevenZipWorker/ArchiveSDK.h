@@ -32,10 +32,12 @@ typedef struct {
     uint32_t modifiedNanos, changedNanos, mode;
     int directory;
 } SevenZipCreateItem;
+// Returns a newly owned, read-only FD for a planned item index, or -1 on rejection.
+typedef int (*SevenZipCreateInputCallback)(void *, uint32_t);
 // Output is a caller-owned seekable file, or a positional-record pipe when framedOutput is set.
 // The SDK never opens an output path.
 int SevenZipCreate(const char *library, int output, const SevenZipCreateItem *items, uint32_t count,
-                   const char *password, int level, int encryptHeader, uint32_t dictionarySize, uint32_t wordSize, uint32_t threads, int framedOutput);
+                   const char *password, int level, int encryptHeader, uint32_t dictionarySize, uint32_t wordSize, uint32_t threads, int framedOutput, SevenZipCreateInputCallback inputCallback, void *inputContext);
 
 #ifdef __cplusplus
 }

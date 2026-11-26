@@ -9,6 +9,7 @@
 #include <sys/stat.h>
 #include <sys/socket.h>
 #include <sys/resource.h>
+#include <mutex>
 #include <vector>
 
 static const size_t RequestLimit = 1024 * 1024, ResponseLimit = 8 * 1024 * 1024;
@@ -98,7 +99,12 @@ static bool unsignedText(id value, uint64_t *number) {
     if (errno || *end) return false;
     *number = result; return true;
 }
-static int createArchive(const char *library, int output, NSDictionary *request, bool framedOutput) {
+struct CreateBroker {
+    int socket; uint32_t count; std::mutex lock; bool invalid = false;
+    CreateBroker(int value, uint32_t size): socket(value), count(size) {}
+};
+static int acquireCreateInput(void *context, uint32_t index);
+static int createArchive(const char *library, int output, NSDictionary *request, bool framedOutput, int inputDescriptor) {
     NSSet *allowed = [NSSet setWithArray:@[@"version", @"operation", @"items", @"password", @"level", @"encryptHeader", @"dictionarySize", @"wordSize", @"threads"]];
     id password = request[@"password"], level = request[@"level"], header = request[@"encryptHeader"], items = request[@"items"];
     if (![[NSSet setWithArray:request.allKeys] isSubsetOfSet:allowed] ||
@@ -126,10 +132,11 @@ static int createArchive(const char *library, int output, NSDictionary *request,
     std::vector<SevenZipCreateItem> entries;
     uint64_t total = 0;
     NSMutableSet *paths = [NSMutableSet set];
-    NSSet *itemKeys = [NSSet setWithArray:@[@"source", @"path", @"device", @"inode", @"size", @"modifiedSeconds", @"modifiedNanos", @"changedSeconds", @"changedNanos", @"mode", @"directory"]];
+    NSMutableSet *itemKeys = [NSMutableSet setWithArray:@[@"path", @"device", @"inode", @"size", @"modifiedSeconds", @"modifiedNanos", @"changedSeconds", @"changedNanos", @"mode", @"directory"]];
+    if (inputDescriptor < 0) [itemKeys addObject:@"source"];
     for (id item in items) {
         if (![item isKindOfClass:[NSDictionary class]] || ![[NSSet setWithArray:[item allKeys]] isEqualToSet:itemKeys] ||
-            !text(item[@"source"], false) || ![item[@"source"] hasPrefix:@"/"] || !text(item[@"path"], false) ||
+            (inputDescriptor < 0 && (!text(item[@"source"], false) || ![item[@"source"] hasPrefix:@"/"])) || !text(item[@"path"], false) ||
             [item[@"path"] hasPrefix:@"/"] || [paths containsObject:item[@"path"]] ||
             !integer(item[@"size"], 0, 8000000000LL) || !integer(item[@"mode"], 0, UINT32_MAX) ||
             !integer(item[@"modifiedSeconds"], -11644473600LL, 100000000000LL) ||
@@ -141,7 +148,7 @@ static int createArchive(const char *library, int output, NSDictionary *request,
         }
         SevenZipCreateItem entry = {};
         if (!unsignedText(item[@"device"], &entry.device) || !unsignedText(item[@"inode"], &entry.inode)) return 6;
-        entry.source = [item[@"source"] UTF8String]; entry.path = [item[@"path"] UTF8String];
+        entry.source = inputDescriptor < 0 ? [item[@"source"] UTF8String] : nullptr; entry.path = [item[@"path"] UTF8String];
         entry.size = [item[@"size"] unsignedLongLongValue]; entry.mode = [item[@"mode"] unsignedIntValue];
         entry.modifiedSeconds = [item[@"modifiedSeconds"] longLongValue]; entry.modifiedNanos = [item[@"modifiedNanos"] unsignedIntValue];
         entry.changedSeconds = [item[@"changedSeconds"] longLongValue]; entry.changedNanos = [item[@"changedNanos"] unsignedIntValue];
@@ -150,8 +157,11 @@ static int createArchive(const char *library, int output, NSDictionary *request,
         total += entry.size; if (total > 8000000000ULL) return 7;
         entries.push_back(entry); [paths addObject:item[@"path"]];
     }
-    return SevenZipCreate(library, output, entries.data(), (uint32_t)entries.size(),
-        [password isKindOfClass:[NSString class]] ? [password UTF8String] : nullptr, [level intValue], [header boolValue], dictionarySize, wordSize, [threads unsignedIntValue], framedOutput ? 1 : 0);
+    CreateBroker broker(inputDescriptor, (uint32_t)entries.size());
+    int error = SevenZipCreate(library, output, entries.data(), (uint32_t)entries.size(),
+        [password isKindOfClass:[NSString class]] ? [password UTF8String] : nullptr, [level intValue], [header boolValue], dictionarySize, wordSize, [threads unsignedIntValue], framedOutput ? 1 : 0,
+        inputDescriptor < 0 ? nullptr : acquireCreateInput, &broker);
+    return broker.invalid ? 6 : error;
 }
 
 struct ReceivedDescriptors {
@@ -162,6 +172,49 @@ static bool signedInteger(id value) {
     return [value isKindOfClass:[NSNumber class]] && CFGetTypeID((__bridge CFTypeRef)value) != CFBooleanGetTypeID() &&
         isfinite([value doubleValue]) && [value doubleValue] == floor([value doubleValue]) &&
         [value compare:@(INT64_MIN)] != NSOrderedAscending && [value compare:@(INT64_MAX)] != NSOrderedDescending;
+}
+static int receiveDescriptor(int socket, bool allowDirectory, int *result) {
+    ReceivedDescriptors received;
+    unsigned char marker = 0;
+    struct iovec vector = { &marker, 1 };
+    union { struct cmsghdr alignment; unsigned char bytes[CMSG_SPACE(sizeof(int))]; } control = {};
+    struct msghdr message = {}; message.msg_iov = &vector; message.msg_iovlen = 1;
+    message.msg_control = control.bytes; message.msg_controllen = sizeof(control.bytes);
+    ssize_t count;
+    do { count = recvmsg(socket, &message, 0); } while (count < 0 && errno == EINTR);
+    bool shape = count == 1 && marker == 0x46 && !(message.msg_flags & (MSG_CTRUNC | MSG_TRUNC));
+    if (message.msg_controllen > sizeof(control.bytes)) { message.msg_controllen = sizeof(control.bytes); shape = false; }
+    for (struct cmsghdr *header = CMSG_FIRSTHDR(&message); header; header = CMSG_NXTHDR(&message, header)) {
+        size_t remaining = control.bytes + message.msg_controllen - (unsigned char *)header;
+        if (header->cmsg_len < CMSG_LEN(0) || header->cmsg_len > remaining) { shape = false; break; }
+        if (header->cmsg_level != SOL_SOCKET || header->cmsg_type != SCM_RIGHTS) { shape = false; continue; }
+        size_t bytes = header->cmsg_len - CMSG_LEN(0);
+        if (bytes % sizeof(int)) shape = false;
+        for (size_t j = 0; j + sizeof(int) <= bytes; j += sizeof(int)) {
+            int fd; memcpy(&fd, CMSG_DATA(header) + j, sizeof(fd)); received.values.push_back(fd);
+        }
+    }
+    if (!shape || received.values.size() != 1) return 6;
+    int fd = received.values.back(); struct stat info;
+    if (fcntl(fd, F_SETFD, FD_CLOEXEC) != 0 || (fcntl(fd, F_GETFL) & O_ACCMODE) != O_RDONLY ||
+        fstat(fd, &info) != 0 || !(S_ISREG(info.st_mode) || (allowDirectory && S_ISDIR(info.st_mode)))) return 2;
+    *result = fd; received.values.clear(); return 0;
+}
+static int acquireCreateInput(void *context, uint32_t index) {
+    auto &broker = *(CreateBroker *)context;
+    std::lock_guard<std::mutex> guard(broker.lock);
+    if (index >= broker.count) { broker.invalid = true; return -1; }
+    unsigned char request[5] = { 0x43, (unsigned char)(index >> 24), (unsigned char)(index >> 16), (unsigned char)(index >> 8), (unsigned char)index };
+    size_t sent = 0;
+    while (sent < sizeof(request)) {
+        ssize_t count = send(broker.socket, request + sent, sizeof(request) - sent, MSG_NOSIGNAL);
+        if (count < 0 && errno == EINTR) continue;
+        if (count <= 0) { broker.invalid = true; return -1; }
+        sent += (size_t)count;
+    }
+    int fd = -1;
+    if (receiveDescriptor(broker.socket, true, &fd) != 0) { broker.invalid = true; return -1; }
+    return fd;
 }
 static int receiveSources(int socket, id specs, id split, ReceivedDescriptors &received, std::vector<SevenZipInputSource> &sources) {
     if (![specs isKindOfClass:[NSArray class]] || [specs count] == 0 || [specs count] > 1024 ||
@@ -184,27 +237,9 @@ static int receiveSources(int socket, id specs, id split, ReceivedDescriptors &r
     if (getrlimit(RLIMIT_NOFILE, &limit) != 0 || limit.rlim_max < needed) return 7;
     if (limit.rlim_cur < needed) { limit.rlim_cur = needed; if (setrlimit(RLIMIT_NOFILE, &limit) != 0) return 7; }
     for (size_t i = 0; i < sources.size(); ++i) {
-        unsigned char marker = 0;
-        struct iovec vector = { &marker, 1 };
-        union { struct cmsghdr alignment; unsigned char bytes[CMSG_SPACE(sizeof(int))]; } control = {};
-        struct msghdr message = {}; message.msg_iov = &vector; message.msg_iovlen = 1;
-        message.msg_control = control.bytes; message.msg_controllen = sizeof(control.bytes);
-        ssize_t count;
-        do { count = recvmsg(socket, &message, 0); } while (count < 0 && errno == EINTR);
-        bool shape = count == 1 && marker == 0x46 && !(message.msg_flags & (MSG_CTRUNC | MSG_TRUNC));
-        size_t before = received.values.size();
-        for (struct cmsghdr *header = CMSG_FIRSTHDR(&message); header; header = CMSG_NXTHDR(&message, header)) {
-            if (header->cmsg_level != SOL_SOCKET || header->cmsg_type != SCM_RIGHTS || header->cmsg_len < CMSG_LEN(0)) { shape = false; continue; }
-            size_t bytes = header->cmsg_len - CMSG_LEN(0);
-            if (bytes % sizeof(int)) shape = false;
-            for (size_t j = 0; j + sizeof(int) <= bytes; j += sizeof(int)) {
-                int fd; memcpy(&fd, CMSG_DATA(header) + j, sizeof(fd)); received.values.push_back(fd);
-            }
-        }
-        if (!shape || received.values.size() != before + 1) return 6;
-        int fd = received.values.back(); struct stat info;
-        if (fcntl(fd, F_SETFD, FD_CLOEXEC) != 0 || (fcntl(fd, F_GETFL) & O_ACCMODE) != O_RDONLY ||
-            fstat(fd, &info) != 0 || !S_ISREG(info.st_mode)) return 2;
+        int fd = -1; int error = receiveDescriptor(socket, false, &fd);
+        if (error) return error;
+        received.values.push_back(fd);
     }
     unsigned char extra = 0; ssize_t count;
     do { count = read(socket, &extra, 1); } while (count < 0 && errno == EINTR);
@@ -238,7 +273,7 @@ int main(int argc, const char *argv[]) {
             }
             outputDescriptor = (int)value;
         }
-        if (inputDescriptor >= 0 && (creation || inputDescriptor == outputDescriptor)) { reply(failure(@"input-descriptor")); return 1; }
+        if (inputDescriptor >= 0 && inputDescriptor == outputDescriptor) { reply(failure(@"input-descriptor")); return 1; }
         const bool descriptorInput = inputDescriptor >= 0;
         void *session = nullptr;
         NSString *token = nil;
@@ -259,7 +294,8 @@ int main(int argc, const char *argv[]) {
                 }
                 if (creation) {
                     if (![request[@"operation"] isEqual:@"create"]) { reply(failure(@"unsupported-operation")); result = 1; break; }
-                    int error = createArchive(argv[1], outputDescriptor, request, framedCreation);
+                    int error = createArchive(argv[1], outputDescriptor, request, framedCreation, inputDescriptor);
+                    if (inputDescriptor >= 0) { close(inputDescriptor); inputDescriptor = -1; }
                     reply(error ? failure(sdkError(error)) : @{ @"version": @1, @"ok": @YES, @"closed": @YES });
                     result = error ? 1 : 0; break;
                 }
