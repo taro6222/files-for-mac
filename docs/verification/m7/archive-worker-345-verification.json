@@ -1,0 +1,90 @@
+{
+  "passed": true,
+  "checks": {
+    "plain.7zCreated": true,
+    "encrypted.7zCreated": true,
+    "missingPassword": true,
+    "missingPasswordSecretAbsent": true,
+    "wrongPassword": true,
+    "wrongPasswordSecretAbsent": true,
+    "correctPassword": true,
+    "exactUnicodeNewlineNames": true,
+    "regularFileSizes": true,
+    "directoryKind": true,
+    "symbolicLinkKind": true,
+    "encryptedFileProperties": true,
+    "sourceIdentity": true,
+    "sameSessionList": true,
+    "close": true,
+    "entryLimit": true,
+    "limitRetrySameSession": true,
+    "wrongSession": true,
+    "sourceMutationRejected": true,
+    "pathReplacementNeverFollowed": true,
+    "fifoRejected": true,
+    "directoryRejected": true,
+    "booleanVersion": true,
+    "unknownKey": true,
+    "booleanLimit": true,
+    "unknownOperation": true,
+    "nulPassword": true,
+    "oversizedFrame": true,
+    "zeroFrame": true,
+    "truncatedFrame": true,
+    "truncatedFrameClosed": true,
+    "invalidUTF8": true,
+    "originalArchivesPreserved": true,
+    "inputFilesPreserved": true
+  },
+  "workerFingerprint": "554871ea6b5054e13f012fc7659f973d4dd0e9c4986eaf2ebdf1f923f99b8992",
+  "architecture": "arm64",
+  "productIntegration": false,
+  "arm64BuildManifest": {
+    "fingerprint": "554871ea6b5054e13f012fc7659f973d4dd0e9c4986eaf2ebdf1f923f99b8992",
+    "inputs": {
+      "SDKVersion": "26.06",
+      "SDKSourceSHA256": "a4e374c8f864f51df48c2cfd0e1413ec3b2ea030deae852d6a655402ebb61ac4",
+      "architecture": "arm64",
+      "minimumOS": "14.0",
+      "compiler": "Apple clang version 21.0.0 (clang-2100.4.1.1)\nTarget: arm64-apple-darwin27.2.0\nThread model: posix\nInstalledDir: /Library/Developer/CommandLineTools/usr/bin",
+      "AppleSDK": "27.2",
+      "buildRecipeSHA256": "afe0d0bc6dc0c10236fd21b2b35d5a98d50fa1a53e29aca6af21224dcdc6b7f8",
+      "helperSourcesSHA256": {
+        "ArchiveSDK.h": "e46a9c5e86e38f32c1e4c0496daed980292db72c9cd67a3c767a5f8a8817a4b7",
+        "ArchiveSDK.cpp": "7e6386e9b51493ba903f5cb055d677becdd87342342d9b7b96d80790293dcfed",
+        "main.mm": "3ba110dc8b177e9b095c649df776cebe43b5609896846ff127b7e0c689d13d5c"
+      }
+    },
+    "filesSHA256": {
+      "SevenZipWorker": "7931316ce5513e847e9403c54eac892d70715774ea788f26bc7c406d5ccfa5c6",
+      "7z.so": "4873073e0113f41efcac833b7389f171708583335211c6530a8015302968b2e7",
+      "License.txt": "9ac2b4a97ab5d523965534d8b2d5868e511b39096d51fff458ab72c38b80fccc",
+      "build.log": "95dc420ffb4a0e346b871b38b19701ee63d93e59b528235517c2d0d792f990af"
+    }
+  },
+  "intelCrossBuildManifest": {
+    "fingerprint": "778eebd7dec7c0ad5b2eee896a16846dee3abbb269b968d3efaea51d0e3d5e72",
+    "inputs": {
+      "SDKVersion": "26.06",
+      "SDKSourceSHA256": "a4e374c8f864f51df48c2cfd0e1413ec3b2ea030deae852d6a655402ebb61ac4",
+      "architecture": "x86_64",
+      "minimumOS": "14.0",
+      "compiler": "Apple clang version 21.0.0 (clang-2100.4.1.1)\nTarget: arm64-apple-darwin27.2.0\nThread model: posix\nInstalledDir: /Library/Developer/CommandLineTools/usr/bin",
+      "AppleSDK": "27.2",
+      "buildRecipeSHA256": "afe0d0bc6dc0c10236fd21b2b35d5a98d50fa1a53e29aca6af21224dcdc6b7f8",
+      "helperSourcesSHA256": {
+        "ArchiveSDK.h": "e46a9c5e86e38f32c1e4c0496daed980292db72c9cd67a3c767a5f8a8817a4b7",
+        "ArchiveSDK.cpp": "7e6386e9b51493ba903f5cb055d677becdd87342342d9b7b96d80790293dcfed",
+        "main.mm": "3ba110dc8b177e9b095c649df776cebe43b5609896846ff127b7e0c689d13d5c"
+      }
+    },
+    "filesSHA256": {
+      "SevenZipWorker": "6eba8b4dbe108acafe0129c47cd2984617b5c0c69aed8580f6b6fe054489e74d",
+      "7z.so": "0f6cbe402c174366562d948c98fd2149232172bba6997c63dc9b0cc8e322c0f0",
+      "License.txt": "9ac2b4a97ab5d523965534d8b2d5868e511b39096d51fff458ab72c38b80fccc",
+      "build.log": "0720ec30675e35a8e27e6883e18063912dba3f410261892191329add35e192a0"
+    }
+  },
+  "intelNativeExecution": "pending",
+  "minimumOSRuntime": "pending"
+}

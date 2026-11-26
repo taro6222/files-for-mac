@@ -104,6 +104,23 @@ jobs:
         run: PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s Tests/FixtureTests -p 'test_spotlight_volume_fixture.py'
       - name: Verify archive reference acquisition guards
         run: PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s Tests/FixtureTests -p 'test_sevenzip_reference.py'
+      - name: Build and verify the structured 7z SDK worker
+        if: github.event_name == 'workflow_dispatch' && inputs.verify_full_appkit
+        timeout-minutes: 8
+        run: |
+          export PYTHONDONTWRITEBYTECODE=1
+          worker=$(python3 scripts/build-sevenzip-worker.py)
+          reference=$(python3 scripts/sevenzip_reference.py)
+          python3 scripts/verify-sevenzip-worker.py --worker "$worker" --reference "$reference" --output build/sevenzip-worker-verification
+      - name: Retain structured archive worker verification
+        if: always() && github.event_name == 'workflow_dispatch' && inputs.verify_full_appkit
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: files-archive-worker-${{ matrix.architecture }}
+          path: |
+            build/sevenzip-worker-verification/
+            build/sevenzip-worker/*/*.build.log
+          if-no-files-found: ignore
       - name: Verify unmounted Spotlight image cleanup
         if: github.event_name == 'workflow_dispatch' && inputs.verify_full_appkit
         timeout-minutes: 5

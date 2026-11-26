@@ -1,6 +1,8 @@
 # 7z 고급 기능 백엔드 연결 계약
 
-상태: 공식 도구 획득과 독립 호환성/옵션 검증 완료. 아래 제품 연결은 구현 예정이며 현재 7z 암호·분할 capability는 미지원이다.
+상태: 공식 도구 획득·독립 호환성/옵션 검증 및 SDK helper의 구조화된 목록 경계 구현 완료. 앱 연결·추출·생성은 진행 예정이며 현재 제품의 7z 암호·분할 capability는 미지원이다.
+
+[345단계](verification/m7/INCREMENT_345.md)는 고정 SDK에서 두 CPU helper를 빌드하고 ARM에서 실제 암호화 아카이브와 프레임/동일 원본 검증 34개를 통과했다. `Tools/SevenZipWorker`는 UInt32 big-endian 길이 + JSON(version 1)의 list/close만 구현한다. 최초 요청은 archivePath/password, 후속 요청은 session UUID를 사용한다. 목록 반복은 열린 FD를 유지하며 원본 변경은 거부한다. 현재는 private stdin 경계이며 앱의 descriptor 전달·추출 출력 stream·취소·자원 격리 계약은 아직 구현하지 않았다. 제품 번들에 포함하지 않았다.
 
 근거는 [344단계](verification/m7/INCREMENT_344.md)의 실행 결과와 [원본 옵션 대응표](reference/ARCHIVE_OPTIONS_PARITY.md)다. 공식 7-Zip 26.06의 macOS ARM·Intel 자산, 대응 소스와 SHA-256을 고정한다. [공식 다운로드](https://www.7-zip.org/download.html)에서 연결되는 ip7z/7zip 릴리스를 사용한다. 획득 코드는 [sevenzip_reference.py](../scripts/sevenzip_reference.py)에 있으며 전역 설치 없이 build 아래에 저장한다. 현재 실행 파일은 검증 도구이며 앱 번들에는 연결하지 않았다.
 

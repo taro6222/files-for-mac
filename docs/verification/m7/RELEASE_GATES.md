@@ -277,3 +277,7 @@
 ### Increment 344: 독립 압축 구현 왕복
 
 [독립 압축 구현 왕복](INCREMENT_344.md)은 공식 7-Zip 26.06을 해시로 고정하고 앱 AES ZIP의 ASCII 양방향·Unicode 복호화와 틀린 암호를 확인했다. 참조 활성화 Core 성공 377개·환경 건너뜀 19개, 호환성 조건 15개·7z 옵션 조건 9개·획득 보호 검사 5개가 통과했다. 7z 고급 제품 연결은 미완료이며 두 CPU 필수 CI와 SDK 연결 계약을 추가했다. 기존 ARM 암호 UI 318개/경계 18개와 Spotlight native 두 CPU 성공도 확인했다. 최신 원격/지원 환경·실제 입력·정식 출시는 계속 진행 중이다.
+
+### Increment 345: SDK 목록 경계
+
+[7z SDK 목록 helper](INCREMENT_345.md)는 공식 고정 소스의 구조화된 속성 API와 길이 프레임을 구현했다. ARM 실제 암호·Unicode/줄바꿈·링크·원본 변경·잘못된 요청 등 34개 조건이 통과했고 Intel 교차 빌드와 두 CPU 최소 배포 메타데이터를 확인했다. 앱 연결·추출·생성·자원 격리·Intel native 수용은 미완료다. 직전 두 원격 실행은 ARM 성공·Intel 실패이며 344 Intel Spotlight EBUSY와 343 Intel Git scheduling 실패는 별도 추적한다. 인증서·공증은 준비 중이고 M7 정식 출시는 계속 진행 중이다.
