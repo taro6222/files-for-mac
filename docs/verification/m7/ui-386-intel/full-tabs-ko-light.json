@@ -1,0 +1,41 @@
+{
+  "checks" : {
+    "accessibleTabPressSelectsTab" : true,
+    "closeButtonClosesRepresentedBackgroundTab" : true,
+    "closeManyTabsClearsHiddenControls" : true,
+    "defaultSidebarWidthUsesDesignValue" : true,
+    "duplicateTitlesKeepDistinctMenuItems" : true,
+    "informationPaneDragUsesDesignBounds" : true,
+    "informationPaneReadableWithSidebar" : true,
+    "informationPaneUserWidthRestores" : true,
+    "longTitleKeepsFullAccessibleLabel" : true,
+    "minimumWindowPreservesSidebarWidth" : true,
+    "overflowControlsStayInsideBar" : true,
+    "overflowKeepsSelectedTabVisible" : true,
+    "sidebarDragUsesDesignBounds" : true,
+    "sidebarHideRestoresUserWidth" : true,
+    "sidebarUserWidthSurvivesWindowResize" : true,
+    "tabArrowWrapsToFirst" : true,
+    "tabListSelectsRequestedHiddenTab" : true,
+    "trackedMenuItemFollowsTabAfterReorder" : true
+  },
+  "diagnostics" : {
+    "accessibleLabel" : "긴이름긴이름긴이름긴이름긴이름긴이름긴이름긴이름긴이름긴이름긴이름긴이름긴이름긴이름긴이름긴이름-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "barBounds" : "{{0, 0}, {678, 40}}",
+    "clipBounds" : "{{1614, 0}, {590, 34}}",
+    "closeFrame" : "{{155, 3}, {20, 24}}",
+    "expectedTitle" : "긴이름긴이름긴이름긴이름긴이름긴이름긴이름긴이름긴이름긴이름긴이름긴이름긴이름긴이름긴이름긴이름-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "hiddenSidebarMainWidth" : "1198.0",
+    "informationPaneAfterShow" : "320.0",
+    "informationPaneDefaultWidth" : "280.0",
+    "labelFrame" : "{{8, 7}, {145, 16}}",
+    "lineBreakMode" : "NSLineBreakMode(rawValue: 5)",
+    "selectedFrame" : "{{2024, 2}, {180, 30}}",
+    "sidebarAfterResize" : "260.0",
+    "sidebarAfterShow" : "260.0",
+    "sidebarWidth" : "220.0"
+  },
+  "language" : "ko",
+  "physicalInputAccepted" : false,
+  "theme" : "light"
+}

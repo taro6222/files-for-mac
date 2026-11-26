@@ -1,6 +1,14 @@
 # Files for Mac 0.1.0 개발 프리뷰
 
-## 최신 유니버설 개발 프리뷰 — 383단계
+## 최신 유니버설 개발 프리뷰 — 386단계
+
+- 로컬 이미지 `build/preview-386/Files-macOS-preview.dmg`와 같은 폴더의 `.sha256`.
+- SHA-256 `f0156e26c1fbf5c36ced9fb7a99379f8f9453d247ed5ec2bb7051c7fe3402b27`.
+- 앱 코드 c4c4f6e, arm64/x86_64, macOS 14.0 최소 대상·ad-hoc 서명. 상세 경로 줄바꿈과 추출 창 종료 수정을 포함한다.
+- 실제 번들 Swift 74개/helper 113개/진단 205개/native 85개/권한 15개와 DMG 내부·외부 체크섬 통과.
+- 로컬 앱 설치·기동은 하지 않았다. 최신 UI·물리 입력·지원 환경·정식 서명/공증과 전체 동등성은 미완료다. [범위](INCREMENT_386.md), [산출물 기록](preview-386.json).
+
+## 이전 유니버설 개발 프리뷰 — 383단계
 
 - 로컬 이미지 `build/preview-383/Files-macOS-preview.dmg`와 같은 폴더의 `.sha256`.
 - SHA-256 `4a82e5646d3f5c4ef9e75ff61f938ba0081f2328854ec5b4d19872b2adf97ffb`.

@@ -1,0 +1,128 @@
+{
+  "increment": 386,
+  "createdUTC": "2026-11-26T20:13:30.674130+00:00",
+  "appSourceCommit": "c4c4f6ec7131ea231910e39eb8015e44f2021190",
+  "status": "universal ad-hoc preview built and package verified; latest UI and full M7 incomplete",
+  "image": {
+    "path": "build/preview-386/Files-macOS-preview.dmg",
+    "bytes": 11068727,
+    "sha256": "f0156e26c1fbf5c36ced9fb7a99379f8f9453d247ed5ec2bb7051c7fe3402b27",
+    "checksumFile": "build/preview-386/Files-macOS-preview.dmg.sha256",
+    "architectures": [
+      "arm64",
+      "x86_64"
+    ],
+    "minimumTarget": "14.0",
+    "signature": "ad-hoc; not Developer ID or notarized"
+  },
+  "build": {
+    "returnCode": 0,
+    "diagnosticsSHA256": "d49973eb537c18a17c043d116aaa9238b4ce30f0d40bffc8daede9e8e1a3d1aa",
+    "elapsedSeconds": 91.05091383401304
+  },
+  "sdkPackageReports": {
+    "client": {
+      "count": 74,
+      "sha256": "b8e20630c074d7c8d992707bec6b5d5a24e5a8ed8798ba37159f2c73e192f914",
+      "path": "build/preview-386-sdk-report/client/result.json"
+    },
+    "worker": {
+      "count": 113,
+      "sha256": "87e33719360e8c87839c569e42b6e4430424b1ebddf57a9d5bb93d007d61df75",
+      "path": "build/preview-386-sdk-report/worker/result.json"
+    },
+    "diagnostic-worker": {
+      "count": 205,
+      "sha256": "f639b4d206d7ade43ae8e4491bfaa34050c26715e29f45825eefabdccca45a0d",
+      "path": "build/preview-386-sdk-report/diagnostic-worker/result.json"
+    },
+    "edit-sdk": {
+      "count": 85,
+      "sha256": "1881018a89f21fd87a4de20f614c3f9a7165fdd12d12a5aa87d5d34bee381879",
+      "path": "build/preview-386-sdk-report/edit-sdk/result.json"
+    },
+    "authority": {
+      "count": 15,
+      "sha256": "c6eb6db815cc5c23eb9dc562831473dddcb455feb87e73fc6d0e6e0b26ee859b",
+      "path": "build/preview-386-sdk-report/authority/result.json"
+    }
+  },
+  "intelEarlierSourceEvidence": {
+    "run": 45882828053,
+    "source": "7e31fc6f246b5c677b46b80daf4b42b67c435f17",
+    "architecture": "x86_64",
+    "reports": [
+      {
+        "report": "docs/verification/m7/ui-386-intel/full-en-dark.json",
+        "checks": 369,
+        "sha256": "81e61b94df66db41a83220963854d9bee620415fec2c5e4ea09041651d39c17c"
+      },
+      {
+        "report": "docs/verification/m7/ui-386-intel/full-en-light.json",
+        "checks": 369,
+        "sha256": "16c748c6dcb50f605bf39cc74b31f71dff14ac9e85b7621932717756be4b47c4"
+      },
+      {
+        "report": "docs/verification/m7/ui-386-intel/full-ko-dark.json",
+        "checks": 369,
+        "sha256": "3cbb607739b0e5a0cbe66bff80fe94c3a17abd2faa6252b235a7a91dd6affbf0"
+      },
+      {
+        "report": "docs/verification/m7/ui-386-intel/full-ko-light.json",
+        "checks": 369,
+        "sha256": "a11a36a733f05457d15ef5bfb9f9ec528097ed4e3b3f9148b6337920b9052284"
+      },
+      {
+        "report": "docs/verification/m7/ui-386-intel/full-tabs-en-dark.json",
+        "checks": 18,
+        "sha256": "4cd5dc149461c75b593e647a0784a7a4efc95a8c5c56558ef4fd9754202c353c"
+      },
+      {
+        "report": "docs/verification/m7/ui-386-intel/full-tabs-en-light.json",
+        "checks": 18,
+        "sha256": "8c7ea58db35d39197a12b053f583fba009acff534def6be24e64c77900d59e6f"
+      },
+      {
+        "report": "docs/verification/m7/ui-386-intel/full-tabs-ko-dark.json",
+        "checks": 18,
+        "sha256": "d14f0ebb7836c334065287abcc60161673f48e525a3d647fc8d6ea82de87a617"
+      },
+      {
+        "report": "docs/verification/m7/ui-386-intel/full-tabs-ko-light.json",
+        "checks": 18,
+        "sha256": "1b569fbfbb07dfa73d081a669fe6cb1161f69877bed214dfbe4ec0d80dfad9b9"
+      },
+      {
+        "report": "docs/verification/m7/ui-386-intel/volume-en-dark.json",
+        "checks": 85,
+        "sha256": "97b4e8c67d2286696acf00a24d5599eb2809c73fb8ad25ca627e996e6182e290"
+      },
+      {
+        "report": "docs/verification/m7/ui-386-intel/volume-en-light.json",
+        "checks": 85,
+        "sha256": "7ce96f59ac8969f1d5026381dd90adfbf94da883933cfdbbf6829e0c92a28e23"
+      },
+      {
+        "report": "docs/verification/m7/ui-386-intel/volume-ko-dark.json",
+        "checks": 85,
+        "sha256": "ec376b3c94f9dd1f5479b02cb52a102efa6fffdded8469278820d50222fc97cc"
+      },
+      {
+        "report": "docs/verification/m7/ui-386-intel/volume-ko-light.json",
+        "checks": 85,
+        "sha256": "3003608d82d275d6c0dd55bbeb18de38cfe571fa51154f4010baa56133c6bed2"
+      }
+    ],
+    "physicalInputAcceptance": false,
+    "latestSourceAcceptance": false
+  },
+  "latestUIRun": {
+    "id": 45888418153,
+    "statusAtObservation": "in_progress",
+    "stateSHA256": "f9e42f256cd401369221cf8d340c9400c6ccf5b4422df59f040b181c41ba97fe"
+  },
+  "localGUIStarted": false,
+  "installedOrLaunchedLocally": false,
+  "latestUIAccepted": false,
+  "fullParityAccepted": false
+}
