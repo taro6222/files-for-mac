@@ -1917,7 +1917,7 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
     }
     private var selectedArchiveURLs: [URL] {
         let urls = activeSelectedItems.map(\.url)
-        return !urls.isEmpty && urls.allSatisfy { ArchiveFormat.detect($0).map { ArchiveCapabilityMatrix.capabilities(for: $0).extract } == true } ? urls : []
+        return !urls.isEmpty && urls.allSatisfy { ArchiveFormat.detect($0).map { ArchiveCapabilityMatrix.capabilities(for: $0).extract } == true } ? SevenZipVolumes.uniqueArchives(urls) : []
     }
     @objc func extractArchivesHere(_ sender: Any?) { startArchiveExtraction(.here) }
     @objc func extractArchivesSmart(_ sender: Any?) { startArchiveExtraction(.smart) }
@@ -5756,7 +5756,7 @@ extension BrowserWindow {
             } else {
                 for key in ["archiveEncryptionValidationAndFormatGate", "archivePasswordRevealAndClear", "archiveEncryptedCreation", "archiveEncryptedBrowserWrongPasswordAndRetry", "archiveEncryptedBrowserCancellationAndStop", "archiveEncryptedBatchExtractionAndCancel"] { checks[key] = false }
             }
-            let sevenZipKeys = ["sevenZipEncryptedBrowseAndRetry", "sevenZipEncryptedExtractAndCancel", "sevenZipBatchPlacement", "sevenZipChildCollision", "sevenZipHeaderCancellation", "sevenZipPasswordCapability", "sevenZipEncryptedCreationOptionsAndRoundTrip", "sevenZipAdvancedOptionsAndRestore", "sevenZipAdvancedThreadValidationAndEstimate"]
+            let sevenZipKeys = ["sevenZipEncryptedBrowseAndRetry", "sevenZipEncryptedExtractAndCancel", "sevenZipBatchPlacement", "sevenZipChildCollision", "sevenZipHeaderCancellation", "sevenZipPasswordCapability", "sevenZipEncryptedCreationOptionsAndRoundTrip", "sevenZipAdvancedOptionsAndRestore", "sevenZipAdvancedThreadValidationAndEstimate", "sevenZipSplitBrowseAndExtraction", "sevenZipSplitBatchAndMissingVolume"]
             if let referencePath = ProcessInfo.processInfo.environment["FILES_UI_QA_SEVENZIP_REFERENCE"],
                ProcessInfo.processInfo.environment["FILES_UI_QA_SEVENZIP_BUNDLE"] != nil {
                 let source = destination.appendingPathComponent("sdk-ui-source"), archive = destination.appendingPathComponent("sdk-encrypted.7z")
@@ -5831,6 +5831,7 @@ extension BrowserWindow {
                 let supportStart = ContinuousClock.now
                 while capabilities.qaSevenZipPassword == L("확인 중", "Checking") && supportStart.duration(to: .now) < .seconds(5) { try await Task.sleep(for: .milliseconds(10)) }
                 checks[sevenZipKeys[5]] = capabilities.qaSevenZipPassword == L("생성·추출", "Create/extract")
+                let splitCapability = capabilities.qaSevenZipSplit == L("탐색·추출", "Browse/extract")
                 capabilities.close()
                 let createdArchive = destination.appendingPathComponent("sdk-created-by-ui.7z")
                 let advancedSuite = "FilesUI.ArchiveAdvanced.\(UUID())"
@@ -5891,6 +5892,49 @@ extension BrowserWindow {
                         checks[sevenZipKeys[6]] = encryptedHeader && headerCanBeDisabled && needsPassword && options.passwordInput.value.isEmpty && restoredPayload == payload
                     } else { checks[sevenZipKeys[6]] = false }
                 } else { for index in 6...8 { checks[sevenZipKeys[index]] = false } }
+                let splitBase = destination.appendingPathComponent("sdk-split.7z"), splitReference = Process(), splitInput = Pipe()
+                splitReference.executableURL = URL(fileURLWithPath: referencePath); splitReference.currentDirectoryURL = source
+                splitReference.arguments = ["a", "-t7z", "-mx=0", "-v4k", "-mhe=on", "-p", "-y", splitBase.path, "."]
+                splitReference.standardInput = splitInput; splitReference.standardOutput = log; splitReference.standardError = log
+                try splitReference.run(); defer { if splitReference.isRunning { splitReference.terminate() } }
+                try splitInput.fileHandleForWriting.write(contentsOf: Data((password + "\n" + password + "\n").utf8)); try splitInput.fileHandleForWriting.close()
+                let splitStart = ContinuousClock.now
+                while splitReference.isRunning && splitStart.duration(to: .now) < .seconds(20) { try await Task.sleep(for: .milliseconds(10)) }
+                guard !splitReference.isRunning, splitReference.terminationStatus == 0 else { throw CocoaError(.fileReadCorruptFile) }
+                let splitFirst = splitBase.appendingPathExtension("001"), splitSecond = splitBase.appendingPathExtension("002")
+                let splitBrowser = ArchiveWindow(); splitBrowser.present(archiveURL: splitSecond)
+                var splitRead = false
+                if let prompt = await ArchivePasswordPrompt.qaWait(for: splitBrowser.window!) {
+                    prompt.qaSubmit(password); let start = ContinuousClock.now
+                    while splitBrowser.qaIsRunning && start.duration(to: .now) < .seconds(10) { try await Task.sleep(for: .milliseconds(10)) }
+                    splitRead = !splitBrowser.qaIsRunning && splitBrowser.qaEntryCount == 3
+                }
+                let splitOutput = destination.appendingPathComponent("sdk-split-single"); try fm.createDirectory(at: splitOutput, withIntermediateDirectories: false)
+                splitBrowser.qaExtract(to: splitOutput)
+                if let prompt = await ArchivePasswordPrompt.qaWait(for: splitBrowser.window!) {
+                    prompt.qaSubmit(password); let start = ContinuousClock.now
+                    while splitBrowser.qaIsRunning && start.duration(to: .now) < .seconds(10) { try await Task.sleep(for: .milliseconds(10)) }
+                    splitRead = splitRead && splitBrowser.qaSucceeded && (try? Data(contentsOf: splitOutput.appendingPathComponent(filename))) == payload
+                } else { splitRead = false; splitBrowser.qaCancel() }
+                checks[sevenZipKeys[9]] = splitRead && splitCapability
+                splitBrowser.close()
+                let splitBatchOutput = destination.appendingPathComponent("sdk-split-batch"); try fm.createDirectory(at: splitBatchOutput, withIntermediateDirectories: false)
+                ArchiveExtractionWindow.start(archives: [splitSecond, splitFirst], parent: splitBatchOutput, placement: .childFolder) {}
+                var splitBatch = false
+                if let operation = ArchiveExtractionWindow.qaLatest, let prompt = await ArchivePasswordPrompt.qaWait(for: operation.window!) {
+                    prompt.qaSubmit(password); let start = ContinuousClock.now
+                    while operation.qaRunning && start.duration(to: .now) < .seconds(10) { try await Task.sleep(for: .milliseconds(10)) }
+                    splitBatch = operation.qaSucceeded && (try? Data(contentsOf: splitBatchOutput.appendingPathComponent("sdk-split").appendingPathComponent(filename))) == payload &&
+                        (try? fm.contentsOfDirectory(atPath: splitBatchOutput.path)) == ["sdk-split"]
+                    operation.close()
+                }
+                let heldSecond = destination.appendingPathComponent("sdk-held-second")
+                try fm.moveItem(at: splitSecond, to: heldSecond)
+                let incomplete = ArchiveWindow(); incomplete.present(archiveURL: splitFirst)
+                let incompleteStart = ContinuousClock.now
+                while incomplete.qaIsRunning && incompleteStart.duration(to: .now) < .seconds(10) { try await Task.sleep(for: .milliseconds(10)) }
+                checks[sevenZipKeys[10]] = splitBatch && !incomplete.qaIsRunning && incomplete.qaEntryCount == 0 && incomplete.qaMessage.contains("002")
+                incomplete.close(); try fm.moveItem(at: heldSecond, to: splitSecond)
                 window.makeKeyAndOrderFront(nil)
             } else { for key in sevenZipKeys { checks[key] = false } }
             try await Task.sleep(for: .milliseconds(300))

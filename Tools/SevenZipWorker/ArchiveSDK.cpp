@@ -16,36 +16,95 @@
 #include <errno.h>
 #include <string>
 #include <string.h>
+#include <vector>
+#include <algorithm>
+#include <sys/resource.h>
 
 Z7_DEFINE_GUID(CLSID_SevenZip, 0x23170f69, 0x40c1, 0x278a, 0x10, 0, 0, 1, 0x10, 7, 0, 0);
 
 class SourceStream final: public IInStream, public CMyUnknownImp {
     Z7_COM_UNKNOWN_IMP_2(IInStream, ISequentialInStream)
-    int fd;
+    struct Part { int fd; struct stat info; uint64_t start; std::string path; bool checkPath; };
+    std::vector<Part> parts;
+    uint64_t position = 0;
+    size_t cursor = 0;
+    static bool same(const struct stat &a, const struct stat &b) {
+        return a.st_dev == b.st_dev && a.st_ino == b.st_ino && a.st_mode == b.st_mode && a.st_size == b.st_size &&
+            a.st_mtimespec.tv_sec == b.st_mtimespec.tv_sec && a.st_mtimespec.tv_nsec == b.st_mtimespec.tv_nsec &&
+            a.st_ctimespec.tv_sec == b.st_ctimespec.tv_sec && a.st_ctimespec.tv_nsec == b.st_ctimespec.tv_nsec;
+    }
 public:
-    struct stat initial;
-    SourceStream(int descriptor, const struct stat &snapshot): fd(descriptor), initial(snapshot) {}
-    ~SourceStream() { close(fd); }
+    struct stat initial = {};
+    uint64_t total = 0;
+    ~SourceStream() { for (const auto &part: parts) close(part.fd); }
+    int append(const char *path, bool split) {
+        int fd = open(path, O_RDONLY | O_CLOEXEC | O_NONBLOCK | (split ? O_NOFOLLOW : 0));
+        if (fd < 0) return errno == EMFILE ? 7 : 2;
+        struct stat info;
+        if (fstat(fd, &info) != 0 || !S_ISREG(info.st_mode) || info.st_size < 0) { close(fd); return 2; }
+        uint64_t maximum = split ? 8000000000ULL : INT64_MAX;
+        if ((uint64_t)info.st_size > maximum - total) { close(fd); return 7; }
+        if (split && (info.st_size == 0 || (!parts.empty() && info.st_size > initial.st_size))) { close(fd); return 6; }
+        if (split && parts.size() > 1 && parts.back().info.st_size != initial.st_size) { close(fd); return 6; }
+        try { parts.push_back({fd, info, total, path, split}); } catch (...) { close(fd); throw; }
+        if (parts.size() == 1) initial = info;
+        total += (uint64_t)info.st_size;
+        return 0;
+    }
     bool unchanged() const {
-        struct stat now;
-        return fstat(fd, &now) == 0 && now.st_size == initial.st_size &&
-            now.st_mtimespec.tv_sec == initial.st_mtimespec.tv_sec && now.st_mtimespec.tv_nsec == initial.st_mtimespec.tv_nsec &&
-            now.st_ctimespec.tv_sec == initial.st_ctimespec.tv_sec && now.st_ctimespec.tv_nsec == initial.st_ctimespec.tv_nsec;
+        for (const auto &part: parts) {
+            struct stat now, named;
+            if (fstat(part.fd, &now) != 0 || !same(part.info, now) ||
+                (part.checkPath && (lstat(part.path.c_str(), &named) != 0 || !same(part.info, named)))) return false;
+        }
+        return true;
     }
     Z7_COM7F_IMF(Read(void *data, UInt32 size, UInt32 *processed)) override {
         if (processed) *processed = 0;
+        if (!size || position >= total) return S_OK;
+        if (position < parts[cursor].start) cursor = 0;
+        while (cursor + 1 < parts.size() && position >= parts[cursor + 1].start) ++cursor;
+        const auto &part = parts[cursor];
+        uint64_t offset = position - part.start;
+        UInt32 request = (UInt32)std::min((uint64_t)size, (uint64_t)part.info.st_size - offset);
         ssize_t count;
-        do { count = read(fd, data, size); } while (count < 0 && errno == EINTR);
-        if (count < 0) return E_FAIL;
+        do { count = pread(part.fd, data, request, (off_t)offset); } while (count < 0 && errno == EINTR);
+        if (count <= 0) return E_FAIL;
+        position += (uint64_t)count;
         if (processed) *processed = (UInt32)count;
         return S_OK;
     }
-    Z7_COM7F_IMF(Seek(Int64 offset, UInt32 origin, UInt64 *position)) override {
+    Z7_COM7F_IMF(Seek(Int64 offset, UInt32 origin, UInt64 *result)) override {
         if (origin > 2) return E_INVALIDARG;
-        off_t value = lseek(fd, offset, origin == 0 ? SEEK_SET : (origin == 1 ? SEEK_CUR : SEEK_END));
-        if (value < 0) return E_FAIL;
-        if (position) *position = (UInt64)value;
+        int64_t base = origin == 0 ? 0 : (int64_t)(origin == 1 ? position : total);
+        if (offset == INT64_MIN || (offset < 0 && base < -offset) || (offset > 0 && base > INT64_MAX - offset)) return E_INVALIDARG;
+        position = (uint64_t)(base + offset);
+        if (result) *result = position;
         return S_OK;
+    }
+    uint64_t declaredSize() {
+        // 7zFormat.txt: 32-byte signature/start header. Only trust offsets with a valid CRC.
+        unsigned char header[32]; UInt32 have = 0;
+        uint64_t saved = position; size_t savedCursor = cursor;
+        position = 0; cursor = 0;
+        while (have < sizeof(header)) {
+            UInt32 received = 0;
+            if (Read(header + have, (UInt32)sizeof(header) - have, &received) != S_OK || !received) break;
+            have += received;
+        }
+        position = saved; cursor = savedCursor;
+        if (have != sizeof(header) || memcmp(header, "7z\xBC\xAF\x27\x1C", 6) || header[6] != 0) return 0;
+        uint32_t crc = 0xFFFFFFFFU;
+        for (unsigned i = 12; i < sizeof(header); ++i) {
+            crc ^= header[i];
+            for (unsigned bit = 0; bit < 8; ++bit) crc = (crc >> 1) ^ (0xEDB88320U & (0U - (crc & 1U)));
+        }
+        uint32_t expectedCRC = (uint32_t)header[8] | (uint32_t)header[9] << 8 | (uint32_t)header[10] << 16 | (uint32_t)header[11] << 24;
+        if (~crc != expectedCRC) return 0;
+        auto little = [](const unsigned char *bytes) { uint64_t result = 0; for (unsigned i = 0; i < 8; ++i) result |= (uint64_t)bytes[i] << (i * 8); return result; };
+        uint64_t offset = little(header + 12), size = little(header + 20);
+        if (offset > UINT64_MAX - 32 || size > UINT64_MAX - 32 - offset) return 0;
+        return 32 + offset + size;
     }
 };
 
@@ -77,7 +136,7 @@ struct Session {
     }
 };
 
-extern "C" void *SevenZipOpen(const char *library, const char *path, const char *password, int *error) {
+static void *openArchives(const char *library, const char *const *paths, uint32_t count, bool split, const char *password, int *error) {
     *error = 8;
     try {
         std::unique_ptr<Session> session(new Session());
@@ -86,24 +145,53 @@ extern "C" void *SevenZipOpen(const char *library, const char *path, const char 
         typedef HRESULT (*Create)(const GUID *, const GUID *, void **);
         auto create = (Create)dlsym(session->library, "CreateObject");
         if (!create || create(&CLSID_SevenZip, &IID_IInArchive, (void **)&session->archive) != S_OK) { *error = 1; return nullptr; }
-        int fd = open(path, O_RDONLY | O_CLOEXEC | O_NONBLOCK);
-        if (fd < 0) { *error = 2; return nullptr; }
-        struct stat info;
-        if (fstat(fd, &info) != 0 || !S_ISREG(info.st_mode) || info.st_size < 0) { close(fd); *error = 2; return nullptr; }
-        session->stream = new SourceStream(fd, info); session->source = session->stream;
+        if (!paths || !count || count > 1024) { *error = 7; return nullptr; }
+        if (split) {
+            // Only this short-lived helper's soft limit changes; the host/system limit is untouched.
+            struct rlimit limit;
+            if (getrlimit(RLIMIT_NOFILE, &limit) == 0 && limit.rlim_cur < count + 64U) {
+                limit.rlim_cur = std::min(limit.rlim_max, (rlim_t)count + 64U);
+                if (limit.rlim_cur < count + 64U || setrlimit(RLIMIT_NOFILE, &limit) != 0) { *error = 7; return nullptr; }
+            }
+        }
+        session->stream = new SourceStream(); session->source = session->stream;
+        for (uint32_t i = 0; i < count; ++i) {
+            if (!paths[i]) { *error = 6; return nullptr; }
+            int failure = session->stream->append(paths[i], split);
+            if (failure) { *error = failure; return nullptr; }
+        }
         session->openCallback = new OpenCallback(); session->callback = session->openCallback;
         if (password) {
             session->openCallback->defined = true;
             if (!ConvertUTF8ToUnicode(AString(password), session->openCallback->password)) { *error = 6; return nullptr; }
         }
+        if (split) {
+            uint64_t expected = session->stream->declaredSize();
+            if (!session->stream->unchanged()) { *error = 9; return nullptr; }
+            if (expected && expected != session->stream->total) { *error = expected > session->stream->total ? 13 : 12; return nullptr; }
+        }
         UInt64 scan = 8 * 1024 * 1024;
         if (session->archive->Open(session->source, &scan, session->callback) != S_OK) {
-            *error = session->openCallback->requested ? (password ? 4 : 3) : 5;
+            *error = !session->stream->unchanged() ? 9 : (session->openCallback->requested ? (password ? 4 : 3) : 5);
             return nullptr;
         }
         if (!session->stream->unchanged()) { *error = 9; return nullptr; }
+        if (split) {
+            NWindows::NCOM::CPropVariant physical, offset;
+            if (session->archive->GetArchiveProperty(kpidPhySize, &physical) != S_OK || physical.vt != VT_UI8 ||
+                session->archive->GetArchiveProperty(kpidOffset, &offset) != S_OK || (offset.vt != VT_EMPTY && offset.vt != VT_UI8)) { *error = 6; return nullptr; }
+            uint64_t start = offset.vt == VT_UI8 ? offset.uhVal.QuadPart : 0;
+            if (start > session->stream->total || physical.uhVal.QuadPart != session->stream->total - start) { *error = 12; return nullptr; }
+        }
         *error = 0; return session.release();
     } catch (...) { return nullptr; }
+}
+
+extern "C" void *SevenZipOpen(const char *library, const char *path, const char *password, int *error) {
+    return openArchives(library, &path, 1, false, password, error);
+}
+extern "C" void *SevenZipOpenVolumes(const char *library, const char *const *paths, uint32_t count, const char *password, int *error) {
+    return openArchives(library, paths, count, true, password, error);
 }
 
 static bool property(IInArchive *archive, UInt32 index, PROPID id, NWindows::NCOM::CPropVariant &value) {
@@ -146,7 +234,7 @@ extern "C" int SevenZipList(void *handle, uint32_t maximum, void *context, Seven
 }
 extern "C" SevenZipSourceIdentity SevenZipIdentity(void *handle) {
     auto &info = ((Session *)handle)->stream->initial;
-    return {(uint64_t)info.st_dev, (uint64_t)info.st_ino, (uint64_t)info.st_size};
+    return {(uint64_t)info.st_dev, (uint64_t)info.st_ino, ((Session *)handle)->stream->total};
 }
 extern "C" int SevenZipHeaderPasswordRequested(void *handle) { return ((Session *)handle)->openCallback->requested; }
 extern "C" void SevenZipClose(void *handle) { delete (Session *)handle; }

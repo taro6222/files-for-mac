@@ -615,3 +615,102 @@ func sevenZipSDKAdvancedOptionsChangeDictionaryAndRestorePayload() async throws 
     #expect(SevenZipCompressionOptions(threadCount: Int.max).estimatedMemoryBytes(for: .normal) == nil)
     if let available = SevenZipCompressionOptions.availableMemoryEstimate() { #expect(available <= ProcessInfo.processInfo.physicalMemory) }
 }
+
+private func sdkSplitFixture(root: URL, password: String? = nil, tiny: Bool = false) async throws -> (parts: [URL], name: String, bytes: Data) {
+    let binary = URL(fileURLWithPath: try #require(ProcessInfo.processInfo.environment["FILES_TEST_SEVENZIP_REFERENCE"]))
+    let input = root.appendingPathComponent("split-input"), archive = root.appendingPathComponent("분할-é.7z")
+    try FileManager.default.createDirectory(at: input, withIntermediateDirectories: true)
+    let name = "한글-🔑\nvolume.bin", bytes = Data((0..<(tiny ? 4096 : 524288)).map { UInt8($0 % 251) })
+    try bytes.write(to: input.appendingPathComponent(name))
+    let process = Process(), pipe = Pipe(), log = root.appendingPathComponent("split-reference.log")
+    FileManager.default.createFile(atPath: log.path, contents: nil)
+    let output = try FileHandle(forWritingTo: log); defer { try? output.close() }
+    process.executableURL = binary; process.currentDirectoryURL = input
+    process.arguments = ["a", "-t7z", "-mx=0", tiny ? "-v16b" : "-v64k", "-y", archive.path, "."] + (password == nil ? [] : ["-mhe=on", "-p"])
+    process.standardInput = pipe; process.standardOutput = output; process.standardError = output
+    try process.run(); defer { if process.isRunning { kill(process.processIdentifier, SIGKILL); process.waitUntilExit() } }
+    if let password { try pipe.fileHandleForWriting.write(contentsOf: Data((password + "\n" + password + "\n").utf8)) }
+    try pipe.fileHandleForWriting.close()
+    let deadline = ContinuousClock.now + .seconds(20)
+    while process.isRunning && ContinuousClock.now < deadline { try await Task.sleep(for: .milliseconds(5)) }
+    guard !process.isRunning else { throw SevenZipWorkerError.timedOut }
+    #expect(process.terminationStatus == 0)
+    let parts = try FileManager.default.contentsOfDirectory(at: root, includingPropertiesForKeys: nil).filter { SevenZipVolumes.index(of: $0) != nil }.sorted { SevenZipVolumes.index(of: $0)! < SevenZipVolumes.index(of: $1)! }
+    #expect(parts.count > 2)
+    return (parts, name, bytes)
+}
+
+@Test func sevenZipVolumeNamesDetectionAndSelectionNormalization() throws {
+    for (name, number) in [("한글.7z.001", 1), ("자료.7Z.002", 2), ("large.7z.1000", 1000)] {
+        let url = URL(fileURLWithPath: "/tmp/" + name)
+        #expect(SevenZipVolumes.index(of: url) == number && ArchiveFormat.detect(url) == .sevenZip)
+        #expect(SevenZipVolumes.index(of: SevenZipVolumes.firstVolumeURL(for: url)) == 1)
+    }
+    for name in ["file.001", "file.zip.001", "file.7z.000", "file.7z.01", "file.7z.0001", "file.7z.0a1"] {
+        #expect(SevenZipVolumes.index(of: URL(fileURLWithPath: "/tmp/" + name)) == nil)
+    }
+    let first = URL(fileURLWithPath: "/tmp/資料.7z.001"), second = URL(fileURLWithPath: "/tmp/資料.7z.002"), zip = URL(fileURLWithPath: "/tmp/other.zip")
+    #expect(SevenZipVolumes.uniqueArchives([second, first, zip, second]) == [first, zip])
+    #expect(archiveChildFolderBaseName(second) == "資料")
+    #expect(throws: SevenZipVolumeError.sdkRequired) { try ZipArchiveProvider().entries(at: first) }
+}
+
+@Test(.enabled(if: hasIntegrationFixture("FILES_TEST_SEVENZIP_REFERENCE") && hasIntegrationFixture("FILES_TEST_SEVENZIP_WORKER"), "Requires native SDK and reference"))
+func sevenZipSDKSplitVolumesRoundTripFromAnyPartAndAcrossTinyHeaders() async throws {
+    let root = try sdkRoot(); defer { try? FileManager.default.removeItem(at: root) }
+    let provider = try sdkRealProvider()
+    var before = rlimit(); #expect(getrlimit(RLIMIT_NOFILE, &before) == 0)
+    for index in 0..<3 {
+        let folder = root.appendingPathComponent("case-\(index)"); try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: false)
+        let password: String? = index == 1 ? "QA-353-한글-🔑" : nil
+        let fixture = try await sdkSplitFixture(root: folder, password: password, tiny: index == 2)
+        if index == 2 { #expect(fixture.parts.count > 256) }
+        let snapshots = try fixture.parts.map { try Data(contentsOf: $0) }
+        let entries = try await provider.entries(at: fixture.parts[1], password: password)
+        #expect(entries.count == 1 && entries[0].path == fixture.name)
+        #expect(entries[0].isEncrypted == (password != nil))
+        let report = try await provider.extractToNewDirectory(fixture.parts.last!, at: folder.appendingPathComponent("out"), password: password)
+        #expect(report.entries == 1 && report.extractedBytes == fixture.bytes.count)
+        #expect(try Data(contentsOf: folder.appendingPathComponent("out").appendingPathComponent(fixture.name)) == fixture.bytes)
+        for (part, snapshot) in zip(fixture.parts, snapshots) { #expect(try Data(contentsOf: part) == snapshot) }
+        if password != nil {
+            await #expect(throws: SevenZipWorkerError.worker("password-required")) { try await provider.entries(at: fixture.parts[0]) }
+            await #expect(throws: SevenZipWorkerError.worker("password-or-corrupt")) { try await provider.entries(at: fixture.parts[0], password: "wrong") }
+        }
+        #expect(!(try FileManager.default.contentsOfDirectory(atPath: folder.path)).contains { $0.hasPrefix(".files-") })
+    }
+    var after = rlimit(); #expect(getrlimit(RLIMIT_NOFILE, &after) == 0)
+    #expect(after.rlim_cur == before.rlim_cur && after.rlim_max == before.rlim_max)
+}
+
+@Test(.enabled(if: hasIntegrationFixture("FILES_TEST_SEVENZIP_REFERENCE") && hasIntegrationFixture("FILES_TEST_SEVENZIP_WORKER"), "Requires native SDK and reference"))
+func sevenZipSDKSplitMissingTruncatedAndLinkedPartsNeverPublish() async throws {
+    let root = try sdkRoot(); defer { try? FileManager.default.removeItem(at: root) }
+    let fixture = try await sdkSplitFixture(root: root), provider = try sdkRealProvider()
+    let missing = fixture.parts[1], held = root.appendingPathComponent("held-part")
+    try FileManager.default.moveItem(at: missing, to: held)
+    await #expect(throws: SevenZipVolumeError.missingPart(2)) { try await provider.extractToNewDirectory(fixture.parts[0], at: root.appendingPathComponent("missing")) }
+    try FileManager.default.createSymbolicLink(at: missing, withDestinationURL: held)
+    let linkedPart = try sevenZipCanonicalDirectory(root).appendingPathComponent(missing.lastPathComponent)
+    await #expect(throws: SevenZipVolumeError.invalidPart(linkedPart)) { try await provider.extractToNewDirectory(fixture.parts[0], at: root.appendingPathComponent("linked")) }
+    try FileManager.default.removeItem(at: missing); try FileManager.default.moveItem(at: held, to: missing)
+    let last = fixture.parts.last!, lastBytes = try Data(contentsOf: last)
+    try FileManager.default.removeItem(at: last)
+    await #expect(throws: SevenZipWorkerError.worker("missing-volume")) { try await provider.extractToNewDirectory(fixture.parts[0], at: root.appendingPathComponent("last-missing")) }
+    try lastBytes.dropLast().write(to: last)
+    await #expect(throws: SevenZipWorkerError.worker("missing-volume")) { try await provider.extractToNewDirectory(fixture.parts[0], at: root.appendingPathComponent("truncated")) }
+    try lastBytes.write(to: last)
+    let extraneous = root.appendingPathComponent("分割.7z.1025")
+    try Data("different archive".utf8).write(to: extraneous)
+    #expect(try await provider.entries(at: fixture.parts[0]).count == 1)
+    let ownExtra = fixture.parts[0].deletingPathExtension().appendingPathExtension("1025")
+    try Data("too many".utf8).write(to: ownExtra)
+    await #expect(throws: SevenZipVolumeError.tooManyParts) { try await provider.entries(at: fixture.parts[0]) }
+    #expect(!(try FileManager.default.contentsOfDirectory(atPath: root.path)).contains { $0.hasPrefix(".files-") || ["missing", "linked", "last-missing", "truncated"].contains($0) })
+    let source = root.appendingPathComponent("split-input").appendingPathComponent(fixture.name)
+    let invalidCreation = root.appendingPathComponent("unsplit-write.7z.001")
+    await #expect(throws: SevenZipWorkerError.invalidConfiguration) { try await provider.create(from: [source], at: invalidCreation) }
+    await #expect(throws: ZipArchiveError.invalidSource(invalidCreation.path)) { try await ZipArchiveProvider().create(from: [source], at: invalidCreation) }
+    #expect(!FileManager.default.fileExists(atPath: invalidCreation.path))
+    #expect(try Data(contentsOf: source) == fixture.bytes)
+}

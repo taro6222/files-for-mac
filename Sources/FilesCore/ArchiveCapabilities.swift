@@ -8,7 +8,8 @@ public enum ArchiveFormat: String, CaseIterable, Sendable, Equatable {
     case zip, sevenZip = "7z", rar
 
     public static func detect(_ url: URL) -> ArchiveFormat? {
-        ArchiveFormat(rawValue: url.pathExtension.lowercased())
+        if let format = ArchiveFormat(rawValue: url.pathExtension.lowercased()) { return format }
+        return SevenZipVolumes.index(of: url) == nil ? nil : .sevenZip
     }
 }
 
@@ -20,6 +21,7 @@ public struct ArchiveFormatCapabilities: Sendable, Equatable {
     public let update: Bool
     /// Complete creation/extraction support; partial support is resolved by the operation backend.
     public let password: Bool
+    /// Complete split creation/extraction support; partial support is resolved by the operation backend.
     public let splitVolumes: Bool
 
     public init(format: ArchiveFormat, browse: Bool, extract: Bool, create: Bool, update: Bool, password: Bool, splitVolumes: Bool) {

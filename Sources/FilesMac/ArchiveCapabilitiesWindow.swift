@@ -3,6 +3,7 @@ import FilesCore
 
 @MainActor
 final class ArchiveCapabilitiesWindow: NSWindowController {
+    private let sevenZipSplit = NSTextField(labelWithString: "")
     private let sevenZipPassword = NSTextField(labelWithString: "")
     private var task: Task<Void, Never>?
     init() {
@@ -17,7 +18,10 @@ final class ArchiveCapabilitiesWindow: NSWindowController {
             if item.format == .sevenZip { sevenZipPassword.stringValue = L("확인 중", "Checking"); sevenZipPassword.textColor = .secondaryLabelColor; password = sevenZipPassword }
             else if item.password { password = NSTextField(labelWithString: L("생성·추출", "Create/extract")); password.textColor = .systemGreen }
             else { password = mark(false) }
-            grid.addRow(with: [NSTextField(labelWithString: item.format.rawValue.uppercased()), mark(item.browse), mark(item.extract), mark(item.create), mark(item.update), password, mark(item.splitVolumes)])
+            let split: NSTextField
+            if item.format == .sevenZip { sevenZipSplit.stringValue = L("확인 중", "Checking"); sevenZipSplit.textColor = .secondaryLabelColor; split = sevenZipSplit }
+            else { split = mark(item.splitVolumes) }
+            grid.addRow(with: [NSTextField(labelWithString: item.format.rawValue.uppercased()), mark(item.browse), mark(item.extract), mark(item.create), mark(item.update), password, split])
         }
         let note = NSTextField(wrappingLabelWithString: L("암호 열에는 지원하는 작업을 표시합니다. 포맷과 설치된 앱에서 확인한 기능만 사용할 수 있습니다.", "The password column lists supported operations. Availability depends on the format and verified app components."))
         let stack = NSStackView(views: [grid, note]); stack.orientation = .vertical; stack.alignment = .leading; stack.spacing = 22; stack.translatesAutoresizingMaskIntoConstraints = false; panel.contentView!.addSubview(stack)
@@ -34,10 +38,13 @@ final class ArchiveCapabilitiesWindow: NSWindowController {
                 let supported = backend.supportsPassword(for: URL(fileURLWithPath: "/format.7z"))
                 self.sevenZipPassword.stringValue = supported ? L("생성·추출", "Create/extract") : L("미지원", "No")
                 self.sevenZipPassword.textColor = supported ? .systemGreen : .secondaryLabelColor
-            } catch { guard let self, !Task.isCancelled else { return }; self.sevenZipPassword.stringValue = L("확인 실패", "Unavailable"); self.sevenZipPassword.textColor = .secondaryLabelColor }
+                self.sevenZipSplit.stringValue = supported ? L("탐색·추출", "Browse/extract") : L("미지원", "No")
+                self.sevenZipSplit.textColor = supported ? .systemGreen : .secondaryLabelColor
+            } catch { guard let self, !Task.isCancelled else { return }; self.sevenZipPassword.stringValue = L("확인 실패", "Unavailable"); self.sevenZipPassword.textColor = .secondaryLabelColor; self.sevenZipSplit.stringValue = L("확인 실패", "Unavailable"); self.sevenZipSplit.textColor = .secondaryLabelColor }
         }
     }
 #if DEBUG
+    var qaSevenZipSplit: String { sevenZipSplit.stringValue }
     var qaSevenZipPassword: String { sevenZipPassword.stringValue }
 #endif
 }

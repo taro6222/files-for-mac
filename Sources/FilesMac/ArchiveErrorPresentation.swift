@@ -14,8 +14,18 @@ func archiveExtractionErrorMessage(_ error: Error, encrypted: Bool) -> String {
 
 func archiveErrorMessage(_ error: Error) -> String {
     switch error {
+    case let SevenZipVolumeError.missingPart(number):
+        return L("분할 압축 파일의 \(String(format: "%03d", number))번 볼륨이 없습니다. 모든 볼륨을 같은 폴더에 모은 뒤 다시 여세요.", "Archive volume \(String(format: "%03d", number)) is missing. Put all volumes in the same folder and reopen the archive.")
+    case let SevenZipVolumeError.invalidPart(url):
+        return L("분할 볼륨이 변경되었거나 크기가 올바르지 않습니다: ", "A split volume changed or has an invalid size: ") + url.lastPathComponent
+    case SevenZipVolumeError.tooManyParts, SevenZipVolumeError.sizeLimit:
+        return L("분할 볼륨 수 또는 전체 크기가 처리 한도를 넘었습니다.", "The split archive exceeds the volume count or total size limit.")
+    case SevenZipVolumeError.sdkRequired:
+        return L("분할 7z를 열려면 압축 구성 요소가 포함된 앱이 필요합니다.", "Opening split 7z archives requires the app's bundled archive components.")
     case SevenZipWorkerError.worker("password-required"), SevenZipWorkerError.worker("password-or-corrupt"):
         return L("암호가 없거나 올바르지 않습니다. 암호와 압축 파일을 확인한 뒤 다시 시도하세요.", "The password is missing or incorrect. Check the password and archive, then try again.")
+    case SevenZipWorkerError.worker("missing-volume"):
+        return L("분할 볼륨이 누락되었거나 마지막 볼륨이 잘렸습니다. 모든 볼륨을 확인한 뒤 다시 여세요.", "A volume is missing or the last volume is truncated. Check all volumes and reopen the archive.")
     case SevenZipWorkerError.worker("source-changed"):
         return L("압축 파일이 작업 중 변경되어 중단했습니다. 파일을 다시 열어 시도하세요.", "The archive changed during the operation. Reopen it and try again.")
     case SevenZipWorkerError.worker("limit"):

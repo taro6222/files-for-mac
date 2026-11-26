@@ -50,7 +50,8 @@ public func archiveNeedsChildFolder(_ entries: [ArchiveEntryDescriptor], placeme
 }
 
 public func archiveChildFolderBaseName(_ archiveURL: URL) -> String {
-    let name = archiveURL.deletingPathExtension().lastPathComponent
+    let primary = SevenZipVolumes.index(of: archiveURL) == nil ? archiveURL : SevenZipVolumes.firstVolumeURL(for: archiveURL).deletingPathExtension()
+    let name = primary.deletingPathExtension().lastPathComponent
     return name.isEmpty ? "Archive" : name
 }
 

@@ -27,7 +27,7 @@ struct SevenZipCreationPlan: Sendable {
     let items: [Item]
     let totalBytes: Int64
     init(sources: [URL], destination: URL, check: () throws -> Void) throws {
-        guard !sources.isEmpty, destination.isFileURL, ArchiveFormat.detect(destination) == .sevenZip,
+        guard !sources.isEmpty, destination.isFileURL, destination.pathExtension.lowercased() == "7z",
               sources.allSatisfy(\.isFileURL), Set(sources.map(\.standardizedFileURL)).count == sources.count else {
             throw SevenZipWorkerError.invalidConfiguration
         }

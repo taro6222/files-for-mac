@@ -26,7 +26,7 @@ public struct SevenZipArchiveProvider: Sendable {
     public func create(from sources: [URL], at destination: URL, compressionLevel: ArchiveCompressionLevel = .normal,
                        password: String? = nil, encryptHeader: Bool = true, options: SevenZipCompressionOptions = .init(),
                        progress: ArchiveProgressHandler? = nil) async throws -> URL {
-        guard destination.isFileURL, options.isValid, password == nil || (password?.isEmpty == false && password?.utf8.contains(0) == false) else {
+        guard destination.isFileURL, destination.pathExtension.lowercased() == "7z", options.isValid, password == nil || (password?.isEmpty == false && password?.utf8.contains(0) == false) else {
             throw SevenZipWorkerError.invalidConfiguration
         }
         let parent = try sevenZipCanonicalDirectory(destination.deletingLastPathComponent())
@@ -357,7 +357,7 @@ private final class SevenZipSession {
                 } else if let frameSize, frame.count == frameSize {
                     guard let decoded = try? JSONDecoder().decode(SevenZipReply.self, from: frame.dropFirst(4)), decoded.version == 1 else { throw SevenZipWorkerError.invalidResponse }
                     if !decoded.ok {
-                        let known = ["sdk-load", "source-open", "password-required", "password-or-corrupt", "not-archive", "invalid-metadata", "limit", "source-changed", "internal", "output-write", "unsupported-item", "corrupt-data"]
+                        let known = ["sdk-load", "source-open", "password-required", "password-or-corrupt", "not-archive", "invalid-metadata", "limit", "source-changed", "internal", "output-write", "unsupported-item", "corrupt-data", "missing-volume"]
                         guard let code = decoded.error?.code, known.contains(code) else { throw SevenZipWorkerError.invalidResponse }
                         throw SevenZipWorkerError.worker(code)
                     }
@@ -371,8 +371,10 @@ private final class SevenZipSession {
     func open(_ archive: URL, password: String?, maximumEntries: Int = 100_000) throws -> [SevenZipItem] {
         guard archive.isFileURL, maximumEntries > 0, maximumEntries <= 100_000,
               password?.utf8.contains(0) != true else { throw SevenZipWorkerError.invalidConfiguration }
-        try send(["version": 1, "operation": "list", "archivePath": archive.path,
-                  "password": password as Any? ?? NSNull(), "maxEntries": maximumEntries])
+        var request: [String: Any] = ["version": 1, "operation": "list", "password": password as Any? ?? NSNull(), "maxEntries": maximumEntries]
+        if let parts = try SevenZipVolumes.paths(for: archive, check: check) { request["archivePaths"] = parts.map(\.path) }
+        else { request["archivePath"] = archive.path }
+        try send(request)
         let response = try receive()
         guard let items = response.items, items.count <= maximumEntries, let token = response.session, UUID(uuidString: token) != nil,
               let source = response.source, UInt64(source.device) != nil, UInt64(source.inode) != nil else { throw SevenZipWorkerError.invalidResponse }

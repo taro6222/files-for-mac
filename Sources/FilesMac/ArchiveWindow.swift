@@ -10,7 +10,10 @@ enum ArchiveReadBackend: Sendable {
             return .sevenZip(try await .bundled(in: URL(fileURLWithPath: path)))
         }
 #endif
-        guard Bundle.main.object(forInfoDictionaryKey: "FilesArchiveSDKVersion") != nil else { return .system }
+        guard Bundle.main.object(forInfoDictionaryKey: "FilesArchiveSDKVersion") != nil else {
+            if SevenZipVolumes.index(of: archive) != nil { throw SevenZipVolumeError.sdkRequired }
+            return .system
+        }
         return .sevenZip(try await .bundled())
     }
     func supportsPassword(for archive: URL) -> Bool {

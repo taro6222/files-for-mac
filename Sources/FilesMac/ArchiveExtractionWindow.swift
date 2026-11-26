@@ -13,6 +13,7 @@ final class ArchiveExtractionWindow: NSWindowController, NSWindowDelegate {
 
     static func start(archives: [URL], parent: URL, placement: ArchiveExtractionPlacement,
                       completion: @escaping @MainActor () -> Void) {
+        let archives = SevenZipVolumes.uniqueArchives(archives)
         guard !archives.isEmpty, !isRunning else { return }
         let controller = ArchiveExtractionWindow(archives: archives, parent: parent)
         operations.append(controller); controller.showWindow(nil); controller.window?.makeKeyAndOrderFront(nil)

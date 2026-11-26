@@ -7,6 +7,7 @@ extern "C" {
 typedef int (*SevenZipItemCallback)(void *, uint32_t, const char *, size_t, int, uint64_t, int);
 typedef struct { uint64_t device, inode, size; } SevenZipSourceIdentity;
 void *SevenZipOpen(const char *library, const char *archive, const char *password, int *error);
+void *SevenZipOpenVolumes(const char *library, const char *const *archives, uint32_t count, const char *password, int *error);
 int SevenZipList(void *session, uint32_t maximumEntries, void *context, SevenZipItemCallback callback);
 // Writes only one regular item's bytes to the caller-owned stream callback.
 typedef int (*SevenZipWriteCallback)(void *, const void *, size_t);

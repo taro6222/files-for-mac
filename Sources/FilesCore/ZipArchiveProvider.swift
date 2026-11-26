@@ -76,7 +76,7 @@ private struct ZipSourceEntry {
 
 private func createSynchronously(from sourceURLs: [URL], at archiveURL: URL, compressionLevel: ArchiveCompressionLevel?, password: String?, progress: ArchiveProgressHandler?) throws -> URL {
     let fm = FileManager.default, sources = sourceURLs.map(\.standardizedFileURL)
-    guard let format = ArchiveFormat.detect(archiveURL), ArchiveCapabilityMatrix.capabilities(for: format).create,
+    guard let format = ArchiveFormat.detect(archiveURL), ArchiveCapabilityMatrix.capabilities(for: format).create, archiveURL.pathExtension.lowercased() == format.rawValue,
           !sources.isEmpty, Set(sources).count == sources.count, !fm.fileExists(atPath: archiveURL.path) else { throw ZipArchiveError.invalidSource(archiveURL.path) }
     if let password {
         guard !password.isEmpty && !password.utf8.contains(0) else { throw ZipArchiveError.emptyPassword }
@@ -218,6 +218,7 @@ private func extractSynchronously(_ archiveURL: URL, to destination: URL, limits
 }
 
 private func withReader<T>(_ url: URL, password: String?, _ body: (OpaquePointer) throws -> T) throws -> T {
+    if SevenZipVolumes.index(of: url) != nil { throw SevenZipVolumeError.sdkRequired }
     guard let reader = archive_read_new() else { throw ZipArchiveError.cannotOpen(url.path) }
     defer { archive_read_close(reader); archive_read_free(reader) }
     if let password {

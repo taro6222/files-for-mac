@@ -53,7 +53,7 @@ static NSString *sdkError(int value) {
         case 1: return @"sdk-load"; case 2: return @"source-open"; case 3: return @"password-required";
         case 4: return @"password-or-corrupt"; case 5: return @"not-archive"; case 6: return @"invalid-metadata";
         case 7: return @"limit"; case 9: return @"source-changed"; case 10: return @"output-write";
-        case 11: return @"unsupported-item"; case 12: return @"corrupt-data"; default: return @"internal";
+        case 11: return @"unsupported-item"; case 12: return @"corrupt-data"; case 13: return @"missing-volume"; default: return @"internal";
     }
 }
 @interface ItemCollector : NSObject
@@ -191,7 +191,7 @@ int main(int argc, const char *argv[]) {
                     result = error ? 1 : 0; break;
                 }
                 NSSet *allowed = session ? [NSSet setWithArray:@[@"version", @"operation", @"session", @"maxEntries"]]
-                                         : [NSSet setWithArray:@[@"version", @"operation", @"archivePath", @"password", @"maxEntries"]];
+                                         : [NSSet setWithArray:@[@"version", @"operation", @"archivePath", @"archivePaths", @"password", @"maxEntries"]];
                 if (session && [request[@"operation"] isEqual:@"extract"]) {
                     allowed = [NSSet setWithArray:@[@"version", @"operation", @"session", @"index", @"expectedSize", @"maximumBytes"]];
                 }
@@ -219,12 +219,23 @@ int main(int argc, const char *argv[]) {
                 }
                 if (![request[@"operation"] isEqual:@"list"]) { reply(failure(@"unsupported-operation")); result = 1; break; }
                 if (!session) {
-                    id path = request[@"archivePath"], password = request[@"password"];
-                    if (!text(path, false) || (password && password != [NSNull null] && !text(password, true))) {
+                    id path = request[@"archivePath"], paths = request[@"archivePaths"], password = request[@"password"];
+                    bool multi = paths != nil;
+                    bool validPaths = multi ? (!path && [paths isKindOfClass:[NSArray class]] && [paths count] > 0 && [paths count] <= 1024) : text(path, false);
+                    std::vector<const char *> sourcePaths;
+                    if (validPaths && multi) {
+                        for (id value in paths) {
+                            if (!text(value, false)) { validPaths = false; break; }
+                            sourcePaths.push_back([value UTF8String]);
+                        }
+                    }
+                    if (!validPaths || (password && password != [NSNull null] && !text(password, true))) {
                         reply(failure(@"invalid-request")); result = 1; break;
                     }
                     int error = 0;
-                    session = SevenZipOpen(argv[1], [path UTF8String], [password isKindOfClass:[NSString class]] ? [password UTF8String] : nullptr, &error);
+                    const char *secret = [password isKindOfClass:[NSString class]] ? [password UTF8String] : nullptr;
+                    session = multi ? SevenZipOpenVolumes(argv[1], sourcePaths.data(), (uint32_t)sourcePaths.size(), secret, &error)
+                                    : SevenZipOpen(argv[1], [path UTF8String], secret, &error);
                     if (!session) { reply(failure(sdkError(error))); result = 1; break; }
                     token = [[NSUUID UUID] UUIDString];
                 }
