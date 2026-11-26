@@ -10,6 +10,8 @@ M7 출시 검증이 진행 중이다. [a07c80c 개발 프리뷰](verification/m7
 
 ## 최신 검증과 남은 실행
 
+사용자 요청으로 2026-11-26 18:04 KST에 장시간 시험 앱 6개와 wrapper를 모두 종료했다. [측정 기록과 종료 내역](verification/m7/LONG_RUNS_STOPPED_20261126.md)을 보존했으며 8시간 성공으로 집계하지 않는다. 자동으로 재시작하지 않는다. 350단계는 기존 폴더 게시 코드 작성 중이며 UI 연결/검증 전이다.
+
 [번들 SDK 런타임 resolver](verification/m7/INCREMENT_349.md)는 Security API의 앱/구성 요소 서명·identifier/Team 정책과 private 경로·manifest·해시·소스 pin 검증을 연결했다. 선택한 CodeDirectory/manifest identity를 고정하고 매 작업 전에 재검증하며 CLI/PATH 탐색을 사용하지 않는다. ARM 번들 포함 검사 19개·기본 CI 선택 14개, Core 성공 396개·환경 건너뜀 19개와 Debug/Release가 통과했다. 직전 EOF 회귀 9개는 macOS 15 ARM·Intel 실제 보고서 모두 통과했다. 새 resolver의 최신 두 CPU·실제 Developer ID·UI/배치 연결·메모리 격리와 정식 출시는 미완료다.
 
 | 항목 | 확인한 결과 | 남은 실행 |
