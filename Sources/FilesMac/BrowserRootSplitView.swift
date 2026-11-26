@@ -8,6 +8,17 @@ final class BrowserRootSplitView: NSSplitView, NSSplitViewDelegate {
     private var adjusting = false
     private let minimumBrowserWidth: CGFloat = 360
 
+    var preferredPanelWidths: (sidebar: CGFloat, information: CGFloat) { (sidebarWidth, informationWidth) }
+    func restorePanelWidths(sidebar: CGFloat, information: CGFloat) {
+        let nextSidebar = sidebar.isFinite ? min(320, max(180, sidebar)) : 220
+        let nextInformation = information.isFinite ? min(420, max(240, information)) : 280
+        guard nextSidebar != sidebarWidth || nextInformation != informationWidth else { return }
+        sidebarWidth = nextSidebar
+        informationWidth = nextInformation
+        adjustSubviews()
+        needsLayout = true
+    }
+
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
         delegate = self

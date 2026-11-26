@@ -1,0 +1,644 @@
+{
+  "run": {
+    "conclusion": "failure",
+    "headSha": "87675c578c7fab4a1e1d09262e9a3006a9f328d9",
+    "jobs": [
+      {
+        "completedAt": "2026-11-26T03:12:19Z",
+        "conclusion": "success",
+        "databaseId": 139666097370,
+        "name": "Xcode (arm64)",
+        "startedAt": "2026-11-26T03:10:44Z",
+        "status": "completed",
+        "steps": [
+          {
+            "completedAt": "2026-11-26T03:10:45Z",
+            "conclusion": "success",
+            "name": "Set up job",
+            "number": 1,
+            "startedAt": "2026-11-26T03:10:44Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-11-26T03:10:49Z",
+            "conclusion": "success",
+            "name": "Run actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803",
+            "number": 2,
+            "startedAt": "2026-11-26T03:10:45Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-11-26T03:12:13Z",
+            "conclusion": "success",
+            "name": "Check generated project and build the native app",
+            "number": 3,
+            "startedAt": "2026-11-26T03:10:49Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-11-26T03:12:14Z",
+            "conclusion": "success",
+            "name": "Post Run actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803",
+            "number": 6,
+            "startedAt": "2026-11-26T03:12:13Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-11-26T03:12:16Z",
+            "conclusion": "success",
+            "name": "Complete job",
+            "number": 7,
+            "startedAt": "2026-11-26T03:12:14Z",
+            "status": "completed"
+          }
+        ],
+        "url": "https://github.com/taro6222/files-for-mac/actions/runs/45747221868/job/139666097370"
+      },
+      {
+        "completedAt": "2026-11-26T03:13:22Z",
+        "conclusion": "success",
+        "databaseId": 139666097657,
+        "name": "Xcode (x86_64)",
+        "startedAt": "2026-11-26T03:10:44Z",
+        "status": "completed",
+        "steps": [
+          {
+            "completedAt": "2026-11-26T03:10:45Z",
+            "conclusion": "success",
+            "name": "Set up job",
+            "number": 1,
+            "startedAt": "2026-11-26T03:10:44Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-11-26T03:10:48Z",
+            "conclusion": "success",
+            "name": "Run actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803",
+            "number": 2,
+            "startedAt": "2026-11-26T03:10:45Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-11-26T03:13:13Z",
+            "conclusion": "success",
+            "name": "Check generated project and build the native app",
+            "number": 3,
+            "startedAt": "2026-11-26T03:10:48Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-11-26T03:13:17Z",
+            "conclusion": "success",
+            "name": "Post Run actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803",
+            "number": 6,
+            "startedAt": "2026-11-26T03:13:13Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-11-26T03:13:19Z",
+            "conclusion": "success",
+            "name": "Complete job",
+            "number": 7,
+            "startedAt": "2026-11-26T03:13:18Z",
+            "status": "completed"
+          }
+        ],
+        "url": "https://github.com/taro6222/files-for-mac/actions/runs/45747221868/job/139666097657"
+      },
+      {
+        "completedAt": "2026-11-26T03:31:27Z",
+        "conclusion": "failure",
+        "databaseId": 139666097828,
+        "name": "macOS 15 (x86_64)",
+        "startedAt": "2026-11-26T03:10:44Z",
+        "status": "completed",
+        "steps": [
+          {
+            "completedAt": "2026-11-26T03:10:46Z",
+            "conclusion": "success",
+            "name": "Set up job",
+            "number": 1,
+            "startedAt": "2026-11-26T03:10:45Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-11-26T03:10:51Z",
+            "conclusion": "success",
+            "name": "Run actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803",
+            "number": 2,
+            "startedAt": "2026-11-26T03:10:46Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-11-26T03:11:15Z",
+            "conclusion": "success",
+            "name": "Verify runner and toolchain",
+            "number": 3,
+            "startedAt": "2026-11-26T03:10:51Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-11-26T03:11:15Z",
+            "conclusion": "success",
+            "name": "Audit parity inventories",
+            "number": 4,
+            "startedAt": "2026-11-26T03:11:15Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-11-26T03:11:16Z",
+            "conclusion": "success",
+            "name": "Verify Spotlight fixture ownership guards",
+            "number": 5,
+            "startedAt": "2026-11-26T03:11:15Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-11-26T03:20:58Z",
+            "conclusion": "success",
+            "name": "Build app and test targets",
+            "number": 6,
+            "startedAt": "2026-11-26T03:11:16Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-11-26T03:20:58Z",
+            "conclusion": "skipped",
+            "name": "Run Swift tests",
+            "number": 7,
+            "startedAt": "2026-11-26T03:20:58Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-11-26T03:20:58Z",
+            "conclusion": "skipped",
+            "name": "Verify Git and directory scheduling with a constrained Swift executor",
+            "number": 8,
+            "startedAt": "2026-11-26T03:20:58Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-11-26T03:20:58Z",
+            "conclusion": "skipped",
+            "name": "Retain Git scheduling diagnostics",
+            "number": 9,
+            "startedAt": "2026-11-26T03:20:58Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-11-26T03:20:58Z",
+            "conclusion": "skipped",
+            "name": "Verify mounted file systems and AppKit file operations",
+            "number": 10,
+            "startedAt": "2026-11-26T03:20:58Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-11-26T03:20:58Z",
+            "conclusion": "skipped",
+            "name": "Verify AppKit file promise export contracts",
+            "number": 11,
+            "startedAt": "2026-11-26T03:20:58Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-11-26T03:20:58Z",
+            "conclusion": "skipped",
+            "name": "Retain file promise contract diagnostics",
+            "number": 12,
+            "startedAt": "2026-11-26T03:20:58Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-11-26T03:20:58Z",
+            "conclusion": "skipped",
+            "name": "Verify interrupted received cleanup in a fresh app process",
+            "number": 13,
+            "startedAt": "2026-11-26T03:20:58Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-11-26T03:20:58Z",
+            "conclusion": "skipped",
+            "name": "Retain cleanup restart diagnostics",
+            "number": 14,
+            "startedAt": "2026-11-26T03:20:58Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-11-26T03:21:11Z",
+            "conclusion": "success",
+            "name": "Prepare Spotlight for AppKit content search",
+            "number": 15,
+            "startedAt": "2026-11-26T03:20:58Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-11-26T03:21:18Z",
+            "conclusion": "success",
+            "name": "Verify native Spotlight query scopes",
+            "number": 16,
+            "startedAt": "2026-11-26T03:21:11Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-11-26T03:31:14Z",
+            "conclusion": "failure",
+            "name": "Verify the complete AppKit suite",
+            "number": 17,
+            "startedAt": "2026-11-26T03:21:18Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-11-26T03:31:18Z",
+            "conclusion": "success",
+            "name": "Retain AppKit reports and window captures",
+            "number": 18,
+            "startedAt": "2026-11-26T03:31:14Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-11-26T03:31:21Z",
+            "conclusion": "success",
+            "name": "Remove the owned Spotlight source fixture",
+            "number": 19,
+            "startedAt": "2026-11-26T03:31:18Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-11-26T03:31:22Z",
+            "conclusion": "success",
+            "name": "Retain Spotlight preparation diagnostics",
+            "number": 20,
+            "startedAt": "2026-11-26T03:31:21Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-11-26T03:31:22Z",
+            "conclusion": "skipped",
+            "name": "Build and launch the installed developer preview",
+            "number": 21,
+            "startedAt": "2026-11-26T03:31:22Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-11-26T03:31:22Z",
+            "conclusion": "skipped",
+            "name": "Check out the previous preview source",
+            "number": 22,
+            "startedAt": "2026-11-26T03:31:22Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-11-26T03:31:22Z",
+            "conclusion": "skipped",
+            "name": "Verify preview replacement and rollback",
+            "number": 23,
+            "startedAt": "2026-11-26T03:31:22Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-11-26T03:31:23Z",
+            "conclusion": "success",
+            "name": "Post Run actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803",
+            "number": 46,
+            "startedAt": "2026-11-26T03:31:22Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-11-26T03:31:24Z",
+            "conclusion": "success",
+            "name": "Complete job",
+            "number": 47,
+            "startedAt": "2026-11-26T03:31:23Z",
+            "status": "completed"
+          }
+        ],
+        "url": "https://github.com/taro6222/files-for-mac/actions/runs/45747221868/job/139666097828"
+      },
+      {
+        "completedAt": "2026-11-26T03:33:42Z",
+        "conclusion": "success",
+        "databaseId": 139666097892,
+        "name": "macOS 15 (arm64)",
+        "startedAt": "2026-11-26T03:12:21Z",
+        "status": "completed",
+        "steps": [
+          {
+            "completedAt": "2026-11-26T03:12:21Z",
+            "conclusion": "success",
+            "name": "Set up job",
+            "number": 1,
+            "startedAt": "2026-11-26T03:12:21Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-11-26T03:12:25Z",
+            "conclusion": "success",
+            "name": "Run actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803",
+            "number": 2,
+            "startedAt": "2026-11-26T03:12:22Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-11-26T03:12:30Z",
+            "conclusion": "success",
+            "name": "Verify runner and toolchain",
+            "number": 3,
+            "startedAt": "2026-11-26T03:12:25Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-11-26T03:12:30Z",
+            "conclusion": "success",
+            "name": "Audit parity inventories",
+            "number": 4,
+            "startedAt": "2026-11-26T03:12:30Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-11-26T03:12:31Z",
+            "conclusion": "success",
+            "name": "Verify Spotlight fixture ownership guards",
+            "number": 5,
+            "startedAt": "2026-11-26T03:12:30Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-11-26T03:19:30Z",
+            "conclusion": "success",
+            "name": "Build app and test targets",
+            "number": 6,
+            "startedAt": "2026-11-26T03:12:31Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-11-26T03:19:30Z",
+            "conclusion": "skipped",
+            "name": "Run Swift tests",
+            "number": 7,
+            "startedAt": "2026-11-26T03:19:30Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-11-26T03:19:30Z",
+            "conclusion": "skipped",
+            "name": "Verify Git and directory scheduling with a constrained Swift executor",
+            "number": 8,
+            "startedAt": "2026-11-26T03:19:30Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-11-26T03:19:30Z",
+            "conclusion": "skipped",
+            "name": "Retain Git scheduling diagnostics",
+            "number": 9,
+            "startedAt": "2026-11-26T03:19:30Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-11-26T03:19:30Z",
+            "conclusion": "skipped",
+            "name": "Verify mounted file systems and AppKit file operations",
+            "number": 10,
+            "startedAt": "2026-11-26T03:19:30Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-11-26T03:19:30Z",
+            "conclusion": "skipped",
+            "name": "Verify AppKit file promise export contracts",
+            "number": 11,
+            "startedAt": "2026-11-26T03:19:30Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-11-26T03:19:30Z",
+            "conclusion": "skipped",
+            "name": "Retain file promise contract diagnostics",
+            "number": 12,
+            "startedAt": "2026-11-26T03:19:30Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-11-26T03:19:30Z",
+            "conclusion": "skipped",
+            "name": "Verify interrupted received cleanup in a fresh app process",
+            "number": 13,
+            "startedAt": "2026-11-26T03:19:30Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-11-26T03:19:30Z",
+            "conclusion": "skipped",
+            "name": "Retain cleanup restart diagnostics",
+            "number": 14,
+            "startedAt": "2026-11-26T03:19:30Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-11-26T03:19:36Z",
+            "conclusion": "success",
+            "name": "Prepare Spotlight for AppKit content search",
+            "number": 15,
+            "startedAt": "2026-11-26T03:19:30Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-11-26T03:19:40Z",
+            "conclusion": "success",
+            "name": "Verify native Spotlight query scopes",
+            "number": 16,
+            "startedAt": "2026-11-26T03:19:36Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-11-26T03:25:42Z",
+            "conclusion": "success",
+            "name": "Verify the complete AppKit suite",
+            "number": 17,
+            "startedAt": "2026-11-26T03:19:40Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-11-26T03:25:44Z",
+            "conclusion": "success",
+            "name": "Retain AppKit reports and window captures",
+            "number": 18,
+            "startedAt": "2026-11-26T03:25:42Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-11-26T03:25:46Z",
+            "conclusion": "success",
+            "name": "Remove the owned Spotlight source fixture",
+            "number": 19,
+            "startedAt": "2026-11-26T03:25:44Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-11-26T03:25:47Z",
+            "conclusion": "success",
+            "name": "Retain Spotlight preparation diagnostics",
+            "number": 20,
+            "startedAt": "2026-11-26T03:25:46Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-11-26T03:30:33Z",
+            "conclusion": "success",
+            "name": "Build and launch the installed developer preview",
+            "number": 21,
+            "startedAt": "2026-11-26T03:25:47Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-11-26T03:30:37Z",
+            "conclusion": "success",
+            "name": "Check out the previous preview source",
+            "number": 22,
+            "startedAt": "2026-11-26T03:30:33Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-11-26T03:33:36Z",
+            "conclusion": "success",
+            "name": "Verify preview replacement and rollback",
+            "number": 23,
+            "startedAt": "2026-11-26T03:30:37Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-11-26T03:33:36Z",
+            "conclusion": "success",
+            "name": "Post Check out the previous preview source",
+            "number": 45,
+            "startedAt": "2026-11-26T03:33:36Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-11-26T03:33:37Z",
+            "conclusion": "success",
+            "name": "Post Run actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803",
+            "number": 46,
+            "startedAt": "2026-11-26T03:33:36Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-11-26T03:33:40Z",
+            "conclusion": "success",
+            "name": "Complete job",
+            "number": 47,
+            "startedAt": "2026-11-26T03:33:37Z",
+            "status": "completed"
+          }
+        ],
+        "url": "https://github.com/taro6222/files-for-mac/actions/runs/45747221868/job/139666097892"
+      },
+      {
+        "completedAt": "2026-11-26T03:10:41Z",
+        "conclusion": "skipped",
+        "databaseId": 139666099216,
+        "name": "Optimized performance (${{ matrix.architecture }})",
+        "startedAt": "2026-11-26T03:10:42Z",
+        "status": "completed",
+        "steps": [],
+        "url": "https://github.com/taro6222/files-for-mac/actions/runs/45747221868/job/139666099216"
+      }
+    ],
+    "status": "completed",
+    "url": "https://github.com/taro6222/files-for-mac/actions/runs/45747221868"
+  },
+  "appkitReports": {
+    "arm64": {
+      "tabs-en-light": {
+        "checkCount": 18,
+        "failures": [],
+        "sha256": "8c7ea58db35d39197a12b053f583fba009acff534def6be24e64c77900d59e6f"
+      },
+      "en-dark": {
+        "checkCount": 294,
+        "failures": [],
+        "sha256": "4e37e4298a28db9be7e9511a274c0361104e2d07a074603ae50c8a5ebf08e83a"
+      },
+      "ko-light": {
+        "checkCount": 294,
+        "failures": [],
+        "sha256": "38231060a8ed6d6dbee0a49e416eada0a5258f513034ba2012d3c069ca9766c9"
+      },
+      "en-light": {
+        "checkCount": 294,
+        "failures": [],
+        "sha256": "ed0e8399fb037cc14e3b25cdf6b3dec390c3f33fc16b690551804c948a05789f"
+      },
+      "tabs-ko-dark": {
+        "checkCount": 18,
+        "failures": [],
+        "sha256": "d14f0ebb7836c334065287abcc60161673f48e525a3d647fc8d6ea82de87a617"
+      },
+      "tabs-ko-light": {
+        "checkCount": 18,
+        "failures": [],
+        "sha256": "1b569fbfbb07dfa73d081a669fe6cb1161f69877bed214dfbe4ec0d80dfad9b9"
+      },
+      "tabs-en-dark": {
+        "checkCount": 18,
+        "failures": [],
+        "sha256": "4cd5dc149461c75b593e647a0784a7a4efc95a8c5c56558ef4fd9754202c353c"
+      },
+      "ko-dark": {
+        "checkCount": 294,
+        "failures": [],
+        "sha256": "6489b468080466cd35ebab0298d5a83a2da407676389ab2635304abdd55e3893"
+      }
+    },
+    "x86_64": {
+      "tabs-en-light": {
+        "checkCount": 18,
+        "failures": [],
+        "sha256": "8c7ea58db35d39197a12b053f583fba009acff534def6be24e64c77900d59e6f"
+      },
+      "en-dark": {
+        "checkCount": 294,
+        "failures": [],
+        "sha256": "6e68e03d31d6c3aea4ed9cd69443eade6ced295fa320216edc023cc3a210d5f4"
+      },
+      "ko-light": {
+        "checkCount": 294,
+        "failures": [
+          "gitWindow"
+        ],
+        "sha256": "0c7e4c0550855cb09ab46404ddab0740462bbd58ab1787f6a0a263e586e20e10"
+      },
+      "en-light": {
+        "checkCount": 294,
+        "failures": [],
+        "sha256": "558b14e01eeacc12558638baab6ee3aaf1126fff87ec93905f79a206a2faff13"
+      },
+      "tabs-ko-dark": {
+        "checkCount": 18,
+        "failures": [],
+        "sha256": "d14f0ebb7836c334065287abcc60161673f48e525a3d647fc8d6ea82de87a617"
+      },
+      "tabs-ko-light": {
+        "checkCount": 18,
+        "failures": [],
+        "sha256": "1b569fbfbb07dfa73d081a669fe6cb1161f69877bed214dfbe4ec0d80dfad9b9"
+      },
+      "tabs-en-dark": {
+        "checkCount": 18,
+        "failures": [],
+        "sha256": "4cd5dc149461c75b593e647a0784a7a4efc95a8c5c56558ef4fd9754202c353c"
+      },
+      "ko-dark": {
+        "checkCount": 294,
+        "failures": [],
+        "sha256": "dece43a45210377323c324860e38c55273cd89111b5982b93953768900cfde2f"
+      }
+    }
+  },
+  "limits": [
+    "Source 87675c5 only; not acceptance of increment 330.",
+    "Intel ko-light gitWindow failed; other full and tab boundary checks passed. The Git failure remains under investigation."
+  ]
+}

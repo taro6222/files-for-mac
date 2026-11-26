@@ -184,6 +184,22 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         savePosition(allowWhileLoading: true)
         return model.snapshot
     }
+    var windowGeometry: WorkspaceWindowGeometry? {
+        guard let frame = compactOverlayState?.frame ?? window?.frame else { return nil }
+        let widths = rootSplit.preferredPanelWidths
+        return WorkspaceWindowGeometry(x: Double(frame.minX), y: Double(frame.minY),
+            width: Double(frame.width), height: Double(frame.height),
+            sidebarWidth: Double(widths.sidebar), informationWidth: Double(widths.information))
+    }
+    func synchronizePanelWidths(from other: BrowserWindow) {
+        let widths = other.rootSplit.preferredPanelWidths
+        rootSplit.restorePanelWidths(sidebar: widths.sidebar, information: widths.information)
+    }
+    func restoreWindowGeometry(_ geometry: WorkspaceWindowGeometry) {
+        window?.setFrame(BrowserGeometryRestoration.frame(for: geometry, screens: NSScreen.screens.map(\.visibleFrame)), display: false)
+        rootSplit.restorePanelWidths(sidebar: CGFloat(geometry.sidebarWidth), information: CGFloat(geometry.informationWidth))
+    }
+
     func workspaceSnapshot() -> SplitTabState {
         let primary = PaneSnapshot(id: primaryPaneID, tab: tabSnapshot())
         guard let secondaryPane else { return SplitTabState(primary: primary) }
@@ -4865,6 +4881,8 @@ extension BrowserWindow {
                                          ratio: 0.6, activePaneID: secondary.id),
                     other: SplitTabState(primary: secondary))
                 checks.merge(desktopChecks) { _, value in value }
+                let geometryChecks = try await BrowserGeometryRestoration.verify(preferences: preferences)
+                checks.merge(geometryChecks) { _, value in value }
                 let sameTab = BrowserWindow(preferences: preferences, restoresFrame: false, initialSnapshot: primary.tab)
                 sameTab.showWindow(nil)
                 let splitSameTab = sameTab.splitByDroppingTab(from: sameTab, at: .right)

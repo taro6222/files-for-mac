@@ -25,6 +25,7 @@ final class BrowserTabs {
     func insert(_ browser: BrowserWindow, at requestedIndex: Int? = nil, select: Bool = true) {
         let frame = selected?.window?.frame
         if browser.tabs !== self { browser.tabs.remove(browser) }
+        if let selected { browser.synchronizePanelWidths(from: selected) }
         var current = browsers.filter { $0 !== browser }
         current.insert(browser, at: min(max(0, requestedIndex ?? current.count), current.count))
         members = current.map(Member.init)
@@ -34,14 +35,21 @@ final class BrowserTabs {
         if select { self.select(browser) } else { browser.window?.orderOut(nil) }
     }
     func remove(_ browser: BrowserWindow) {
-        if let frame = selected?.window?.frame { browser.window?.setFrame(frame, display: false) }
+        if let selected {
+            browser.synchronizePanelWidths(from: selected)
+            if let frame = selected.window?.frame { browser.window?.setFrame(frame, display: false) }
+        }
         let old = browsers
         let index = old.firstIndex { $0 === browser } ?? 0
         members.removeAll { $0.browser == nil || $0.browser === browser }
         if selected === browser {
             selected = nil
             let remaining = browsers
-            if !remaining.isEmpty { select(remaining[min(index, remaining.count - 1)]) }
+            if !remaining.isEmpty {
+                let next = remaining[min(index, remaining.count - 1)]
+                next.synchronizePanelWidths(from: browser)
+                select(next)
+            }
         }
         refresh()
     }
@@ -49,8 +57,9 @@ final class BrowserTabs {
         guard browsers.contains(where: { $0 === browser }), !switching else { return }
         switching = true; defer { switching = false }
         let previous = selected
-        if previous !== browser, let frame = previous?.window?.frame {
-            browser.window?.setFrame(frame, display: false)
+        if previous !== browser, let previous {
+            browser.synchronizePanelWidths(from: previous)
+            if let frame = previous.window?.frame { browser.window?.setFrame(frame, display: false) }
         }
         selected = browser
         for other in browsers where other !== browser { other.window?.orderOut(nil) }
@@ -81,7 +90,8 @@ final class BrowserTabs {
         }
         return WorkspaceDesktopSession(windows: groups.map { group in
             WorkspaceWindowSession(tabs: group.map { $0.workspaceSnapshot() },
-                selectedIndex: group.firstIndex { $0 === group.first?.tabs.selected } ?? 0)
+                selectedIndex: group.firstIndex { $0 === group.first?.tabs.selected } ?? 0,
+                geometry: (group.first?.tabs.selected ?? group.first)?.windowGeometry)
         }, focusedWindowIndex: groups.firstIndex { group in group.contains { $0 === focused } } ?? 0)
     }
 
@@ -94,6 +104,7 @@ final class BrowserTabs {
             let browsers = saved.tabs.map(makeBrowser)
             guard let first = browsers.first else { continue }
             for browser in browsers.dropFirst() { first.attachTab(browser, select: false) }
+            if let geometry = saved.geometry { for browser in browsers { browser.restoreWindowGeometry(geometry) } }
             let selected = browsers[saved.selectedIndex]
             selections.append(selected)
             if index == session.focusedWindowIndex { focused = selected }

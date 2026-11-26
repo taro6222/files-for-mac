@@ -98,9 +98,11 @@ public struct SplitTabState: Codable, Equatable, Sendable {
 public struct WorkspaceWindowSession: Equatable, Sendable {
     public let tabs: [SplitTabState]
     public let selectedIndex: Int
-    public init(tabs: [SplitTabState], selectedIndex: Int = 0) {
+    public let geometry: WorkspaceWindowGeometry?
+    public init(tabs: [SplitTabState], selectedIndex: Int = 0, geometry: WorkspaceWindowGeometry? = nil) {
         self.tabs = tabs
         self.selectedIndex = tabs.indices.contains(selectedIndex) ? selectedIndex : 0
+        self.geometry = geometry
     }
 }
 
@@ -146,7 +148,7 @@ public final class WorkspaceSessionStore: @unchecked Sendable {
         let entries = session.windows.enumerated().flatMap { windowIndex, window in
             let group = UUID()
             return window.tabs.enumerated().map { tabIndex, workspace in
-                EncodedWorkspace(workspace: workspace, windowGroupID: group,
+                EncodedWorkspace(workspace: workspace, windowGroupID: group, windowGeometry: window.geometry,
                     selectedInWindow: tabIndex == window.selectedIndex,
                     focusedTab: windowIndex == session.focusedWindowIndex && tabIndex == window.selectedIndex)
             }
@@ -174,7 +176,8 @@ public final class WorkspaceSessionStore: @unchecked Sendable {
             let selected = group.firstIndex { $0.entry.selectedInWindow }
                 ?? group.firstIndex { $0.entry.focusedTab }
                 ?? group.firstIndex { $0.index == selectedFlatIndex } ?? 0
-            return WorkspaceWindowSession(tabs: group.compactMap { $0.entry.workspace }, selectedIndex: selected)
+            return WorkspaceWindowSession(tabs: group.compactMap { $0.entry.workspace }, selectedIndex: selected,
+                geometry: group[selected].entry.windowGeometry ?? group.compactMap { $0.entry.windowGeometry }.first)
         }
         return WorkspaceDesktopSession(windows: windows, focusedWindowIndex: explicitFocus ?? legacyFocus ?? 0)
     }
@@ -182,13 +185,15 @@ public final class WorkspaceSessionStore: @unchecked Sendable {
     private struct EncodedWorkspace: Encodable {
         let workspace: SplitTabState
         let windowGroupID: UUID
+        let windowGeometry: WorkspaceWindowGeometry?
         let selectedInWindow: Bool
         let focusedTab: Bool
-        enum CodingKeys: String, CodingKey { case windowGroupID, selectedInWindow, focusedTab }
+        enum CodingKeys: String, CodingKey { case windowGroupID, windowGeometry, selectedInWindow, focusedTab }
         func encode(to encoder: any Encoder) throws {
             try workspace.encode(to: encoder)
             var values = encoder.container(keyedBy: CodingKeys.self)
             try values.encode(windowGroupID, forKey: .windowGroupID)
+            try values.encodeIfPresent(windowGeometry, forKey: .windowGeometry)
             try values.encode(selectedInWindow, forKey: .selectedInWindow)
             try values.encode(focusedTab, forKey: .focusedTab)
         }
@@ -197,13 +202,15 @@ public final class WorkspaceSessionStore: @unchecked Sendable {
     private struct SavedWorkspace: Decodable {
         let workspace: SplitTabState?
         let windowGroupID: UUID?
+        let windowGeometry: WorkspaceWindowGeometry?
         let selectedInWindow: Bool
         let focusedTab: Bool
-        enum CodingKeys: String, CodingKey { case windowGroupID, selectedInWindow, focusedTab }
+        enum CodingKeys: String, CodingKey { case windowGroupID, windowGeometry, selectedInWindow, focusedTab }
         init(from decoder: any Decoder) {
             workspace = try? SplitTabState(from: decoder)
             let values = try? decoder.container(keyedBy: CodingKeys.self)
             windowGroupID = try? values?.decode(UUID.self, forKey: .windowGroupID)
+            windowGeometry = try? values?.decode(WorkspaceWindowGeometry.self, forKey: .windowGeometry)
             selectedInWindow = (try? values?.decode(Bool.self, forKey: .selectedInWindow)) ?? false
             focusedTab = (try? values?.decode(Bool.self, forKey: .focusedTab)) ?? false
         }
