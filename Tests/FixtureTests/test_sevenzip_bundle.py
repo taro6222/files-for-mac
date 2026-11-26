@@ -39,9 +39,19 @@ class SevenZipBundleGuards(unittest.TestCase):
                              architectures=['arm64'], builds={'arm64': {'inputs': dict(architecture='arm64', SDKSourceSHA256=source_hash,
                                 minimumOS='14.0', helperSourcesSHA256={name: bundle.digest(root / 'Sources/Tools/SevenZipWorker' / name)
                                     for name in ['ArchiveSDK.h', 'ArchiveSDK.cpp', 'main.mm']},
-                                buildRecipeSHA256=bundle.digest(root / 'Sources/scripts/build-sevenzip-worker.py'))}},
+                                buildRecipeSHA256=bundle.digest(root / 'Sources/scripts/build-sevenzip-worker.py'), SDKChanges=bundle.SDK_CHANGES)}},
                              filesSHA256={name: bundle.digest(self.app / name) for name in bundle.FILES})
         self.save()
+
+    def test_sdk_change_description_is_required_and_exact(self):
+        inputs = self.manifest['builds']['arm64']['inputs']
+        original = inputs['SDKChanges']
+        for value in [None, dict(original, identifier='unmodified')]:
+            if value is None: inputs.pop('SDKChanges', None)
+            else: inputs['SDKChanges'] = value
+            self.save()
+            with self.assertRaises(ValueError): bundle.verify(self.app)
+        inputs['SDKChanges'] = original
 
     def save(self):
         (self.app / bundle.RESOURCE / 'manifest.json').write_text(json.dumps(self.manifest))

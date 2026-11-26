@@ -11,13 +11,14 @@ import subprocess
 from sevenzip_fixture import empty_files
 
 TESTS = [
+    'archiveEditUnicodeZIPLongPasswordsAndNormalizationRemainExact',
     'archiveEditTransactionCancellationBeforeSwapPreservesBothFiles',
     'archiveEditTransactionPublishesBacksUpAndUndoesWithMetadata',
     'archiveEditTransactionPreservesExternalChangesAndBrokenRecords',
     'archiveEditTransactionSerializesAndPreservesUnpublishedCandidate',
     'archiveEditTransactionRecoversPublishAndUndoProcessInterruptions',
     'archiveEditTransactionZIPAndEncrypted7zRoundTrip',
-    'archiveEditVerificationKeepsUnicodeZIPMetadataAndRejectsUnsupportedAddition',
+    'archiveEditVerificationKeepsUnicodeZIPMetadataAndAddsEncryptedData',
     'archiveEditVerificationRejectsChangedCandidateAndSource',
     'archiveEditPlanExpandsDirectoriesAndRejectsConflicts',
     'archiveEditCandidateUsesSandboxedClientAndPreservesOriginal',

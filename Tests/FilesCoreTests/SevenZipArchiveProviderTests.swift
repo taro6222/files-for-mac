@@ -1525,7 +1525,7 @@ func archiveEditVerificationRejectsChangedCandidateAndSource() async throws {
 }
 
 @Test(.enabled(if: hasIntegrationFixture("FILES_TEST_SEVENZIP_REFERENCE") && hasIntegrationFixture("FILES_TEST_SEVENZIP_WORKER"), "Requires native SDK and reference"))
-func archiveEditVerificationKeepsUnicodeZIPMetadataAndRejectsUnsupportedAddition() async throws {
+func archiveEditVerificationKeepsUnicodeZIPMetadataAndAddsEncryptedData() async throws {
     let root = try sdkRoot(); defer { try? FileManager.default.removeItem(at: root) }
     let source = root.appendingPathComponent("한글.txt"), archive = root.appendingPathComponent("unicode.zip"), password = "암호-🔑"
     let bytes = Data("Unicode encrypted data".utf8); try bytes.write(to: source)
@@ -1536,11 +1536,15 @@ func archiveEditVerificationKeepsUnicodeZIPMetadataAndRejectsUnsupportedAddition
         let fd = Darwin.open(candidate.path, O_WRONLY | O_CREAT | O_EXCL | O_CLOEXEC, 0o600)
         guard fd >= 0 else { throw SevenZipWorkerError.ioFailure }; defer { Darwin.close(fd) }
         let operations: [ArchiveEditOperation] = index == 2 ? [.add(sources: [source], directory: "nested")] : [.rename(path: source.lastPathComponent, newName: "renamed.txt")]
-        if index == 0 {
+        if index != 1 {
             let receipt = try await provider.writeVerifiedEditCandidate(archive, candidate: candidate, outputFD: fd, operations: operations, password: secret, encryptNewData: true)
-            #expect(receipt.entries.count == 1 && receipt.entries[0].path == "renamed.txt" && receipt.entries[0].isEncrypted)
+            #expect(receipt.entries.count == (index == 0 ? 1 : 2) && receipt.entries.allSatisfy(\.isEncrypted))
+            let restored = root.appendingPathComponent("restored-\(index)")
+            try FileManager.default.createDirectory(at: restored, withIntermediateDirectories: false)
+            _ = try await ZipArchiveProvider().extract(candidate, to: restored, password: secret)
+            #expect(try Data(contentsOf: restored.appendingPathComponent(index == 0 ? "renamed.txt" : "nested/한글.txt")) == bytes)
         } else {
-            let expected = SevenZipWorkerError.worker(index == 1 ? "password-or-corrupt" : "unsupported-item")
+            let expected = SevenZipWorkerError.worker("password-or-corrupt")
             await #expect(throws: expected) { try await provider.writeVerifiedEditCandidate(archive, candidate: candidate, outputFD: fd, operations: operations, password: secret, encryptNewData: true) }
             var info = stat(); #expect(fstat(fd, &info) == 0 && info.st_size == 0)
         }
@@ -1736,4 +1740,48 @@ func archiveEditTransactionCancellationBeforeSwapPreservesBothFiles() async thro
     guard case .unpublished(let report) = try await SevenZipArchiveProvider.recoverArchiveEdit(journal: journal, journalDirectory: journals) else { Issue.record("Cancelled edit was published"); return }
     #expect(try Data(contentsOf: report.backup) != original)
     #expect(try await provider.entries(at: report.backup).contains { $0.path == "empty" })
+}
+
+@Test(.enabled(if: hasIntegrationFixture("FILES_TEST_SEVENZIP_REFERENCE") && hasIntegrationFixture("FILES_TEST_SEVENZIP_WORKER"), "Requires native SDK and reference"))
+func archiveEditUnicodeZIPLongPasswordsAndNormalizationRemainExact() async throws {
+    let root = try sdkRoot(); defer { try? FileManager.default.removeItem(at: root) }
+    let source = root.appendingPathComponent("old.txt"), added = root.appendingPathComponent("한글-추가.txt")
+    let bytes = Data("new Unicode payload".utf8)
+    try Data("old Unicode payload".utf8).write(to: source); try bytes.write(to: added)
+    let provider = try sdkRealProvider(), reference = URL(fileURLWithPath: try #require(ProcessInfo.processInfo.environment["FILES_TEST_SEVENZIP_REFERENCE"]))
+    let passwords = ["한글-🔑-374", String(repeating: "한글-🔑", count: 40), "é-374", "e\u{301}-374", "line\nbreak\t암호"]
+    for (index, password) in passwords.enumerated() {
+        let archive = root.appendingPathComponent("unicode-\(index).zip"), journals = root.appendingPathComponent("journals-\(index)")
+        _ = try await ZipArchiveProvider().create(from: [source], at: archive, password: password)
+        let original = try Data(contentsOf: archive)
+        let saved = try await provider.edit(archive, operations: [.add(sources: [added], directory: "nested"), .rename(path: "old.txt", newName: "renamed.txt")], password: password, encryptNewData: true, journalDirectory: journals)
+        #expect(try Data(contentsOf: saved.backup) == original)
+        let output = root.appendingPathComponent("restored-\(index)")
+        try FileManager.default.createDirectory(at: output, withIntermediateDirectories: false)
+        _ = try await ZipArchiveProvider().extract(archive, to: output, password: password)
+        #expect(try Data(contentsOf: output.appendingPathComponent("nested/한글-추가.txt")) == bytes)
+        if index != 1 && index != 4 {
+            let destination = root.appendingPathComponent("official-\(index)")
+            let process = Process(), input = Pipe()
+            process.executableURL = reference; process.arguments = ["x", "-y", "-o" + destination.path, archive.path]
+            process.standardInput = input; process.standardOutput = FileHandle.nullDevice; process.standardError = FileHandle.nullDevice
+            try process.run(); defer { if process.isRunning { kill(process.processIdentifier, SIGKILL); process.waitUntilExit() } }
+            try input.fileHandleForWriting.write(contentsOf: Data((password + "\n" + password + "\n").utf8)); try input.fileHandleForWriting.close()
+            let deadline = ContinuousClock.now + .seconds(15)
+            while process.isRunning, ContinuousClock.now < deadline { try await Task.sleep(for: .milliseconds(5)) }
+            guard !process.isRunning else { throw SevenZipWorkerError.timedOut }
+            #expect(process.terminationStatus == 0)
+            #expect(try Data(contentsOf: destination.appendingPathComponent("nested/한글-추가.txt")) == bytes)
+        }
+        if index == 2 || index == 3 {
+            let wrong = index == 2 ? passwords[3] : passwords[2]
+            await #expect(throws: SevenZipWorkerError.worker("password-or-corrupt")) {
+                try await provider.edit(archive, operations: [.createDirectory(path: "must-not-appear")], password: wrong, encryptNewData: true, journalDirectory: journals)
+            }
+        }
+        _ = try await SevenZipArchiveProvider.recoverArchiveEdit(journal: saved.journal, journalDirectory: journals, undo: true)
+        #expect(try Data(contentsOf: archive) == original)
+        let eventData = try FileManager.default.contentsOfDirectory(at: saved.journal, includingPropertiesForKeys: nil).filter { $0.pathExtension == "json" }.map { try Data(contentsOf: $0) }.reduce(Data(), +)
+        #expect(!String(decoding: eventData, as: UTF8.self).contains(password))
+    }
 }

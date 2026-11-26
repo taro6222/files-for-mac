@@ -16,6 +16,25 @@ import sevenzip_reference as reference
 
 def digest(path): return hashlib.sha256(path.read_bytes()).hexdigest()
 
+SDK_CHANGES = {'identifier': 'zip-aes-utf8-bounded-password-v1',
+ 'CPP/7zip/Archive/Zip/ZipHandlerOut.cpp:original': '7e5dbd19afbdb61998f9e10e86f88452f4ce9a48790f3ad634ac3b74a08f66fe',
+ 'CPP/7zip/Archive/Zip/ZipHandlerOut.cpp:modified': '8a6a2853d3177b34cab032a2f22a208f15f69cd97a7d00b6e0e3b783953ef08e',
+ 'CPP/7zip/Crypto/WzAes.h:original': '6e5686fb017e2e06e967d135ba9deca19bcdfb1bb5ff16888c549a611a2715de',
+ 'CPP/7zip/Crypto/WzAes.h:modified': 'a5928d541ee78884a26abefb142fbcedd7a56e4bfd217805687a24a3f5029ccc'}
+
+def apply_sdk_changes(source):
+    """Only these fingerprinted substitutions modify the verified upstream source."""
+    edits = [('CPP/7zip/Archive/Zip/ZipHandlerOut.cpp', b'      if (!IsSimpleAsciiString(password))\r\n        return E_INVALIDARG;\r\n      if (password)\r\n        UnicodeStringToMultiByte2(options.Password, (LPCOLESTR)password, CP_OEMCP);', b'      // Files for mac: match UTF-8 WinZip AES passphrases; keep ZipCrypto rules.\r\n      if (!options.IsAesMode && !IsSimpleAsciiString(password))\r\n        return E_INVALIDARG;\r\n      if (password)\r\n        UnicodeStringToMultiByte2(options.Password, (LPCOLESTR)password, options.IsAesMode ? CP_UTF8 : CP_OEMCP);'), ('CPP/7zip/Crypto/WzAes.h', b'const UInt32 kPasswordSizeMax = 99; // 128;', b'const UInt32 kPasswordSizeMax = 1048576; // Files for mac: bounded private request size.')]
+    for name, before, after in edits:
+        path = source / name
+        data = path.read_bytes()
+        if hashlib.sha256(data).hexdigest() != SDK_CHANGES[name + ':original'] or data.count(before) != 1:
+            raise ValueError('SDK change precondition failed')
+        updated = data.replace(before, after)
+        if hashlib.sha256(updated).hexdigest() != SDK_CHANGES[name + ':modified']:
+            raise ValueError('SDK changed-source hash mismatch')
+        path.write_bytes(updated)
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--architecture', choices=['arm64', 'x86_64'], default=platform.machine())
@@ -28,7 +47,7 @@ def main():
     sdk = subprocess.check_output(['xcrun', '--show-sdk-version'], text=True).strip()
     inputs = {'SDKVersion': reference.VERSION, 'SDKSourceSHA256': reference.SOURCE_SHA256, 'architecture': args.architecture,
               'minimumOS': '14.0', 'compiler': compiler, 'AppleSDK': sdk,
-              'buildRecipeSHA256': digest(Path(__file__)),
+              'buildRecipeSHA256': digest(Path(__file__)), 'SDKChanges': SDK_CHANGES,
               'helperSourcesSHA256': {p.name: digest(p) for p in files}}
     fingerprint = hashlib.sha256(json.dumps(inputs, sort_keys=True).encode()).hexdigest()
     output = repo / 'build/sevenzip-worker' / args.architecture / fingerprint
@@ -67,6 +86,7 @@ def main():
                 else:
                     path.parent.mkdir(parents=True, exist_ok=True)
                     with path.open('xb') as stream: stream.write(package.extractfile(member).read())
+        apply_sdk_changes(source)
         suffix = 'arm64' if args.architecture == 'arm64' else 'x64'
         info = staging / 'Info.plist'
         info.write_bytes(plistlib.dumps({'CFBundleIdentifier': 'org.taro6222.files-for-mac.sevenzip-worker',

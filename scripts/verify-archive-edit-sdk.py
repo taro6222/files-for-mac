@@ -184,7 +184,7 @@ def main():
             response = invoke(archive, dict(format=fmt,password=secret,items=[]), target, nonempty=True)
             check(label + '-nonempty-output-preserved', response['error'] == 6 and target.read_bytes() == b'foreign')
     # Unicode AES ZIP reading/metadata edits must not inherit the SDK ZIP writer's
-    # non-ASCII creation restriction. New encrypted payloads still need a product bridge.
+    # non-ASCII creation restriction. The bundled SDK encodes new AES passwords as UTF-8.
     password = '한글-é-🔑-370'; archive = args.output / 'unicode-aes.zip'
     payload = unicode_aes_zip(archive, password); before = archive.read_bytes()
     subprocess.run([str(args.reference), 't', str(archive)], input=(password + '\n').encode(),
@@ -200,9 +200,13 @@ def main():
     check('unicode-zip-encryption-preserved', next(e for e in inspect(target,1,password) if e['path']=='한글-renamed.txt')['encrypted'])
     fd = os.open(added,os.O_RDONLY)
     try:
-        target = args.output / 'unicode-zip-addition-unsupported'
+        target = args.output / 'unicode-zip-addition.zip'
         response = invoke(archive,dict(format=1,password=password,encrypt=True,items=[dict(old=0),dict(fd=fd,path='new')]),target,extra=(fd,))
-        check('unicode-zip-new-encrypted-data-rejected-before-output',response['error']==11 and target.stat().st_size==0 and archive.read_bytes()==before)
+        check('unicode-zip-new-encrypted-data-written', response['error'] == 0 and archive.read_bytes() == before)
+        restored = args.output / 'unicode-addition-restored'
+        subprocess.run([str(args.reference), 'x', '-y', '-o' + str(restored), str(target)], input=(password + '\n').encode(), stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True, timeout=20)
+        check('unicode-zip-new-official-payload', (restored / 'new').read_bytes() == added.read_bytes() and (restored / 'unicode-old.txt').read_bytes() == payload)
+        check('unicode-zip-all-files-remain-encrypted', all(e['encrypted'] for e in inspect(target, 1, password)))
     finally:os.close(fd)
     # Failure races use a source snapshot taken before the pause, not a mock decoder.
     archive = args.output / 'zip-plain.zip'; original = archive.read_bytes(); index = next(e['index'] for e in inspect(archive,1) if e['path']=='root.txt')
@@ -256,7 +260,7 @@ def main():
     report = dict(passed=True, checks=checks, architecture=arch, librarySHA256=digest(args.library), probeSHA256=digest(executable),
                   sourcesSHA256={str(p.relative_to(repo)):digest(p) for p in [repo/'Tools/SevenZipWorker/ArchiveSDK.cpp',repo/'Tools/SevenZipWorker/ArchiveSDK.h',repo/'Tools/SevenZipEditProbe/main.mm',Path(__file__).resolve()]},
                   productIPCExercised=False, atomicPublicationImplemented=False, editingCapabilityEnabled=False, localGUIStarted=False,
-                  unicodeZIPEncryptedAdditionsSupported=False)
+                  unicodeZIPEncryptedAdditionsSupported=True)
     report['packagedSourcesBound'] = bool(args.app)
     (args.output / 'result.json').write_text(json.dumps(report,ensure_ascii=False,indent=2)+'\n')
     print(json.dumps(dict(passed=True, checks=len(checks)),indent=2))

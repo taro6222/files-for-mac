@@ -7,7 +7,7 @@ private func resolverManifest() -> [String: Any] {
     let hash = String(repeating: "a", count: 64)
     let inputs: [String: Any] = ["architecture": "arm64", "SDKVersion": "26.06", "SDKSourceSHA256": SevenZipBundleVerifier.sourceSHA256,
         "minimumOS": "14.0", "helperSourcesSHA256": Dictionary(uniqueKeysWithValues: SevenZipBundleVerifier.helperSources.map { ($0, hash) }),
-        "buildRecipeSHA256": hash]
+        "buildRecipeSHA256": hash, "SDKChanges": SevenZipBundleVerifier.sdkChanges]
     return ["version": 1, "SDKVersion": "26.06", "SDKSourceSHA256": SevenZipBundleVerifier.sourceSHA256, "architectures": ["arm64"],
             "filesSHA256": Dictionary(uniqueKeysWithValues: SevenZipBundleVerifier.files.map { ($0, hash) }), "builds": ["arm64": ["inputs": inputs]]]
 }
@@ -18,6 +18,15 @@ private func resolverManifest() -> [String: Any] {
         try JSONDecoder().decode(SevenZipBundleVerifier.Manifest.self, from: JSONSerialization.data(withJSONObject: value))
     }
     try decode(valid).validate()
+    for change in ["missing", "changed"] {
+        var changed = valid
+        var builds = changed["builds"] as! [String: [String: Any]], build = builds["arm64"]!
+        var inputs = build["inputs"] as! [String: Any]
+        if change == "missing" { inputs.removeValue(forKey: "SDKChanges") }
+        else { var changes = SevenZipBundleVerifier.sdkChanges; changes["identifier"] = "unmodified"; inputs["SDKChanges"] = changes }
+        build["inputs"] = inputs; builds["arm64"] = build; changed["builds"] = builds
+        #expect(throws: (any Error).self) { try decode(changed).validate() }
+    }
     for (key, value) in [("version", true as Any), ("SDKVersion", "old" as Any), ("SDKSourceSHA256", String(repeating: "0", count: 64) as Any),
                          ("architectures", ["arm64", "arm64"] as Any), ("filesSHA256", ["../escape": String(repeating: "a", count: 64)] as Any)] {
         var changed = valid; changed[key] = value

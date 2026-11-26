@@ -298,12 +298,18 @@ jobs:
           name: files-preview-build-${{ matrix.architecture }}
           path: build/preview-build-diagnostics/
           if-no-files-found: ignore
+      - name: Pack packaged SDK execution reports
+        if: always() && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.verify_full_appkit))
+        run: |
+          if [[ -d build/sevenzip-package-verification ]]; then
+            COPYFILE_DISABLE=1 tar -czf build/sevenzip-package-verification.tar.gz -C build sevenzip-package-verification
+          fi
       - name: Retain packaged SDK execution reports
         if: always() && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.verify_full_appkit))
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: files-archive-package-${{ matrix.architecture }}
-          path: build/sevenzip-package-verification/
+          path: build/sevenzip-package-verification.tar.gz
           if-no-files-found: ignore
       - name: Check out the previous preview source
         if: github.event_name == 'workflow_dispatch' && inputs.verify_upgrade

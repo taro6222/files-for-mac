@@ -931,11 +931,6 @@ extern "C" int SevenZipEdit(void *handle, int outputFD, const SevenZipEditItem *
         if ((encryptNewData || headerEncrypted) && !session->openCallback->password.Len()) return 6;
         // An encrypted archive cannot silently accept plaintext additions through a default policy.
         if (fileAdditions && (retainedEncrypted || headerEncrypted) && !encryptNewData) return 6;
-        // The pinned ZIP writer rejects non-ASCII encryption passwords. Metadata-only
-        // edits copy encrypted payloads without asking that writer to encrypt new data.
-        if (session->editFormat == 1 && fileAdditions && encryptNewData)
-            for (unsigned i = 0; i < session->openCallback->password.Len(); ++i)
-                if (session->openCallback->password[i] < 0x20 || session->openCallback->password[i] > 0x7F) return 11;
         if (!testIndices.empty()) {
             std::sort(testIndices.begin(), testIndices.end());
             auto tester = new EditTestCallback(); CMyComPtr<IArchiveExtractCallback> owner(tester);

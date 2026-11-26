@@ -1,0 +1,86 @@
+{
+  "increment": 374,
+  "status": "Unicode AES ZIP new data, validation, publication and Undo verified; F23/M7 and editing UI remain in progress",
+  "sourcesSHA256": {
+    "Sources/FilesCore/SevenZipBundledBackend.swift": "a3f2a8c10c0da6cd0304fd25bbeaf0ec72d476db7a7ecec6aaf785516e6fd198",
+    "Tests/FilesCoreTests/SevenZipArchiveProviderTests.swift": "e4d1de747c67742a1e1d415940117d1b33e0ba2e880050bb57b2518f9594fbde",
+    "Tests/FilesCoreTests/SevenZipBundledBackendTests.swift": "e7a84969097552f828e4f541d5df8d77b1c3ae9122b16506c62df79bcd79785c",
+    "Tests/FixtureTests/test_sevenzip_bundle.py": "283bcedede977006b3fdea0152bfa03d687f09e271d9432adf7c0843654e6d0c",
+    "Tools/SevenZipWorker/ArchiveSDK.cpp": "958928627edfb068560dc917412a27a8d8454cfb9e1015ee9e00677d470cd8da",
+    "scripts/build-sevenzip-worker.py": "75973aa518a6c8667e2a6884225b6625c87df8e414b9e0c705e898e9ce79414d",
+    "scripts/sevenzip_bundle.py": "3b1c92f7c61ee97e8b57e96687a3724fc94d3288d8ee1bbffcfe4d3a1d09f97c",
+    "scripts/verify-archive-edit-sdk.py": "6bf687b80e1b77afad35addca276ee95594f57848614a93d7faad21e6c1b0d80",
+    "scripts/verify-sevenzip-client.py": "468b9985ca703475f892fbc66d8861392a86722b3df1e9a8982097ac077c8668",
+    ".github/workflows/macos.yml": "6a662b2c0094aeec4d009cbd1609041058693814cf81219e8b161f54b93c19d3"
+  },
+  "SDKChanges": {
+    "identifier": "zip-aes-utf8-bounded-password-v1",
+    "CPP/7zip/Archive/Zip/ZipHandlerOut.cpp:original": "7e5dbd19afbdb61998f9e10e86f88452f4ce9a48790f3ad634ac3b74a08f66fe",
+    "CPP/7zip/Archive/Zip/ZipHandlerOut.cpp:modified": "8a6a2853d3177b34cab032a2f22a208f15f69cd97a7d00b6e0e3b783953ef08e",
+    "CPP/7zip/Crypto/WzAes.h:original": "6e5686fb017e2e06e967d135ba9deca19bcdfb1bb5ff16888c549a611a2715de",
+    "CPP/7zip/Crypto/WzAes.h:modified": "a5928d541ee78884a26abefb142fbcedd7a56e4bfd217805687a24a3f5029ccc"
+  },
+  "upstreamArchiveSHA256": "a4e374c8f864f51df48c2cfd0e1413ec3b2ea030deae852d6a655402ebb61ac4",
+  "bundleManifestSHA256": "a21cda5cf995d64e3a7d73990377345b431323693167ad03e45ad6f9f4d78dff",
+  "reports": {
+    "client": {
+      "path": "build/edit-374-current-report/client/result.json",
+      "sha256": "7415cccf13f44dee4b5aa62125fa3d042bb3269cf02fb45299b1195db450a17e",
+      "passed": true,
+      "count": 69
+    },
+    "worker": {
+      "path": "build/edit-374-current-report/worker/result.json",
+      "sha256": "3089f64b1ff0ba5e7461c743df37718fa550b6955c655fef764a0ce4d31677c7",
+      "passed": true,
+      "count": 113
+    },
+    "diagnostic-worker": {
+      "path": "build/edit-374-current-report/diagnostic-worker/result.json",
+      "sha256": "1d26419050f26861ade1902683b713d84cae178b3d2c100ac7dfc31a3f80a885",
+      "passed": true,
+      "count": 205
+    },
+    "edit-sdk": {
+      "path": "build/edit-374-current-report/edit-sdk/result.json",
+      "sha256": "746227d1d31ef0e86e1dbc70bd6809c4a65922cc95c5e3037539e23d0aa4435e",
+      "passed": true,
+      "count": 85
+    },
+    "authority": {
+      "path": "build/edit-374-current-report/authority/result.json",
+      "sha256": "0b100e7630a8cc632e8ada1c251a22d7a08d0a921be8a14e788ecf464e3b0ce6",
+      "passed": true,
+      "count": 15
+    }
+  },
+  "fixtures": {
+    "passed": true,
+    "count": 9,
+    "log": "build/edit-374-fixtures-final.log",
+    "sha256": "80813fea2a5c418cf207c936fb2200286c24f040ff6f1c23936712ed80c7e1bb"
+  },
+  "builds": {
+    "debugSeconds": 14.31,
+    "releaseSeconds": 33.85,
+    "debugLogSHA256": "068e088d74bc44b62b7d696201692a5dc4ea1496542e8145b97bfc48ed26de2a",
+    "releaseLogSHA256": "83ed998886cb02fd9133f8ee55a668bea0539e40e62f1827ee4d1061c22d22ea"
+  },
+  "unicodeZIPEncryptedAdditionsSupported": true,
+  "longAndControlPasswordsVerifiedWith": "existing Core ZIP reader and modified SDK; official CLI fixtures kept separate",
+  "editingCapabilityEnabled": false,
+  "editingUIImplemented": false,
+  "localGUIStarted": false,
+  "artifactRoundTrip": {
+    "passed": true,
+    "workflowParsed": true,
+    "newlineFilesPreserved": 4,
+    "archiveSHA256": "b51ea280d85616177ca62e7270e7f717d38de76dd7ebad5f4af65777e7ecd4c3"
+  },
+  "priorRemoteFailure": {
+    "run": 45860713694,
+    "intel": "artifact rejected newline fixture filename",
+    "arm": "cancelled",
+    "logSHA256": "08a5a0ecb87c5db3674713bbb158eb0d82d2b07b709fd41451fa9eb64b5f1c12"
+  }
+}

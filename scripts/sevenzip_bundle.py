@@ -13,6 +13,12 @@ import tempfile
 import urllib.request
 import sevenzip_reference as reference
 
+SDK_CHANGES = {'identifier': 'zip-aes-utf8-bounded-password-v1',
+ 'CPP/7zip/Archive/Zip/ZipHandlerOut.cpp:original': '7e5dbd19afbdb61998f9e10e86f88452f4ce9a48790f3ad634ac3b74a08f66fe',
+ 'CPP/7zip/Archive/Zip/ZipHandlerOut.cpp:modified': '8a6a2853d3177b34cab032a2f22a208f15f69cd97a7d00b6e0e3b783953ef08e',
+ 'CPP/7zip/Crypto/WzAes.h:original': '6e5686fb017e2e06e967d135ba9deca19bcdfb1bb5ff16888c549a611a2715de',
+ 'CPP/7zip/Crypto/WzAes.h:modified': 'a5928d541ee78884a26abefb142fbcedd7a56e4bfd217805687a24a3f5029ccc'}
+
 RESOURCE = 'Contents/Resources/ThirdParty/7zip'
 CODE = ['Contents/Helpers/SevenZipWorker', 'Contents/Helpers/7z.so']
 NOTICES = ['License.txt', 'copying.txt', 'unRarLicense.txt', 'readme.txt']
@@ -122,6 +128,7 @@ def verify(app, signatures=True, changed_code=False):
         inputs = build['inputs']
         if inputs['architecture'] != architecture or inputs['SDKSourceSHA256'] != reference.SOURCE_SHA256 or inputs['minimumOS'] != '14.0':
             raise ValueError('SDK build inputs changed')
+        if inputs.get('SDKChanges') != SDK_CHANGES: raise ValueError('SDK changes differ from the required recipe')
         for name, expected_hash in inputs['helperSourcesSHA256'].items():
             if name not in ['ArchiveSDK.h', 'ArchiveSDK.cpp', 'main.mm'] or digest(root / 'Sources/Tools/SevenZipWorker' / name) != expected_hash:
                 raise ValueError('Corresponding helper source changed')
@@ -190,7 +197,14 @@ Upstream: {reference.SOURCE_URL}
 License.txt, copying.txt, unRarLicense.txt and readme.txt are copied verbatim from
 the archive's DOC directory. Per-file BSD/public-domain notices remain in the
 complete archive. The Files helper adapter and build recipe are in Sources;
-Sources/LICENSE.txt is their project license. No SDK source patches are applied.
+Sources/LICENSE.txt is their project license. The recipe applies two exact,
+hash-checked source changes before compiling: ZipHandlerOut.cpp encodes WinZip AES
+passwords as UTF-8 while retaining ZipCrypto restrictions; Crypto/WzAes.h raises
+its implementation password bound to the private request ceiling (1 MiB).
+Cipher, KDF, authentication, iteration count and random salt generation are unchanged.
+SDKChanges in manifest.json records the original and modified file SHA-256 values.
+The upstream archive itself remains unchanged. The complete substitutions are in
+Sources/scripts/build-sevenzip-worker.py (apply_sdk_changes).
 
 Copy this entire 7zip directory out of the installed app to a writable directory
 before rebuilding. Do not modify the installed signed app in place.

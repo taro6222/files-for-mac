@@ -40,6 +40,13 @@ enum SevenZipBundleVerifier {
     static let workerPath = "Contents/Helpers/SevenZipWorker", libraryPath = "Contents/Helpers/7z.so"
     static let sdkVersion = "26.06"
     static let sourceSHA256 = "a4e374c8f864f51df48c2cfd0e1413ec3b2ea030deae852d6a655402ebb61ac4"
+    static let sdkChanges: [String: String] = [
+        "identifier": "zip-aes-utf8-bounded-password-v1",
+        "CPP/7zip/Archive/Zip/ZipHandlerOut.cpp:original": "7e5dbd19afbdb61998f9e10e86f88452f4ce9a48790f3ad634ac3b74a08f66fe",
+        "CPP/7zip/Archive/Zip/ZipHandlerOut.cpp:modified": "8a6a2853d3177b34cab032a2f22a208f15f69cd97a7d00b6e0e3b783953ef08e",
+        "CPP/7zip/Crypto/WzAes.h:original": "6e5686fb017e2e06e967d135ba9deca19bcdfb1bb5ff16888c549a611a2715de",
+        "CPP/7zip/Crypto/WzAes.h:modified": "a5928d541ee78884a26abefb142fbcedd7a56e4bfd217805687a24a3f5029ccc"
+    ]
     static let helperSources = ["ArchiveSDK.h", "ArchiveSDK.cpp", "main.mm"]
     static let sourceFiles = ["Sources/LICENSE.txt", "Sources/scripts/build-sevenzip-worker.py", "Sources/scripts/sevenzip_reference.py"] + helperSources.map { "Sources/Tools/SevenZipWorker/" + $0 }
     static let resources = ["License.txt", "copying.txt", "unRarLicense.txt", "readme.txt", "7z2606-src.tar.xz", "BUILD.md"] + sourceFiles
@@ -54,6 +61,7 @@ enum SevenZipBundleVerifier {
             struct Inputs: Decodable {
                 let architecture: String, SDKVersion: String, SDKSourceSHA256: String, minimumOS: String
                 let helperSourcesSHA256: [String: String], buildRecipeSHA256: String
+                let SDKChanges: [String: String]
             }
             let inputs: Inputs
         }
@@ -70,7 +78,7 @@ enum SevenZipBundleVerifier {
             for (architecture, build) in builds {
                 let inputs = build.inputs
                 guard inputs.architecture == architecture, inputs.SDKVersion == SDKVersion, inputs.SDKSourceSHA256 == SDKSourceSHA256,
-                      inputs.minimumOS == "14.0", Set(inputs.helperSourcesSHA256.keys) == Set(SevenZipBundleVerifier.helperSources),
+                      inputs.minimumOS == "14.0", inputs.SDKChanges == SevenZipBundleVerifier.sdkChanges, Set(inputs.helperSourcesSHA256.keys) == Set(SevenZipBundleVerifier.helperSources),
                       inputs.helperSourcesSHA256.values.allSatisfy(SevenZipBundleVerifier.validHash),
                       SevenZipBundleVerifier.validHash(inputs.buildRecipeSHA256) else { throw SevenZipBundleError.invalidManifest }
             }
