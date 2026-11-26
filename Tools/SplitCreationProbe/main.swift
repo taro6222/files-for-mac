@@ -23,7 +23,7 @@ private struct Configuration: Decodable {
                     guard let journal = config.journal else { throw ArchiveEditError.invalidJournal }
                     let result = try await SevenZipArchiveProvider.recoverArchiveEdit(journal: URL(fileURLWithPath: journal), journalDirectory: directory,
                         action: mode.hasPrefix("edit-redo") ? .redo : mode == "edit-recover" ? .inspect : .undo, progress: mode.contains("crash") ? boundary : nil)
-                    switch result { case .unpublished: print("unpublished"); case .committed: print("committed"); case .undone: print("undone") }
+                    switch result { case .unpublished: print("unpublished"); case .committed: print("committed"); case .undone: print("undone"); case .discarded: print("discarded") }
                 } else {
                     guard ["edit-crash-prepared", "edit-crash-published"].contains(mode), let source = config.source,
                           let worker = config.worker, let library = config.library else { throw ArchiveEditError.invalidJournal }

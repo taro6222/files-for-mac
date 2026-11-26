@@ -9,10 +9,12 @@ final class ArchiveEditRecoveryWindow: NSWindowController, NSWindowDelegate, NST
     private let inspectButton = NSButton(title: L("파일 상태 확인", "Verify Files"), target: nil, action: nil)
     private let undoButton = NSButton(title: L("실행 취소…", "Undo…"), target: nil, action: nil)
     private let redoButton = NSButton(title: L("다시 실행…", "Redo…"), target: nil, action: nil)
+    private let discardButton = NSButton(title: L("미완료 출력 휴지통으로…", "Trash Unpublished Output…"), target: nil, action: nil)
     private let revealButton = NSButton(title: L("보존 위치 보기", "Reveal Retained Files"), target: nil, action: nil)
     private let refreshButton = NSButton(title: L("새로 고침", "Refresh"), target: nil, action: nil)
     private let stopButton = NSButton(title: L("중단", "Stop"), target: nil, action: nil)
     private var records: [ArchiveEditHistoryItem] = [], verifiedJournal: URL?, verifiedState: String?
+    private var verifiedDiscardable = false
     private var busy = false, pendingClose = false, task: Task<Void, Never>?, confirmation: NSAlert?
     private var selected: ArchiveEditHistoryItem? { records.indices.contains(table.selectedRow) ? records[table.selectedRow] : nil }
     static func present(journalDirectory: URL? = nil) {
@@ -25,15 +27,15 @@ final class ArchiveEditRecoveryWindow: NSWindowController, NSWindowDelegate, NST
         startupTask?.cancel()
         startupTask = Task {
             guard let items = try? await SevenZipArchiveProvider.archiveEditHistory(journalDirectory: ArchiveSplitRecoveryWindow.journalDirectory), !Task.isCancelled else { return }
-            let count = items.filter { !$0.readable || ["building", "prepared", "swapIntent", "undoIntent", "redoIntent"].contains($0.recordedState ?? "") }.count
+            let count = items.filter { !$0.readable || ["building", "prepared", "swapIntent", "undoIntent", "redoIntent", "discardIntent"].contains($0.recordedState ?? "") }.count
             let item = NSApp.mainMenu?.items.first?.submenu?.items.first { $0.identifier?.rawValue == "archive-edit-history" }
             item?.title = L("압축 편집 기록 및 복구…", "Archive Edit History and Recovery…") + (count > 0 ? L(" (\(count)개 확인 필요)", " (\(count) need review)") : "")
         }
     }
     private init(directory: URL) {
         self.directory = directory
-        let panel = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 880, height: 520), styleMask: [.titled, .closable, .resizable, .utilityWindow], backing: .buffered, defer: false)
-        super.init(window: panel); panel.title = L("압축 편집 기록 및 복구", "Archive Edit History and Recovery"); panel.isReleasedWhenClosed = false; panel.delegate = self; panel.minSize = NSSize(width: 800, height: 440); panel.center()
+        let panel = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 880, height: 620), styleMask: [.titled, .closable, .resizable, .utilityWindow], backing: .buffered, defer: false)
+        super.init(window: panel); panel.title = L("압축 편집 기록 및 복구", "Archive Edit History and Recovery"); panel.isReleasedWhenClosed = false; panel.delegate = self; panel.minSize = NSSize(width: 800, height: 600); panel.center()
         let note = NSTextField(wrappingLabelWithString: L("목록은 기록에 적힌 상태입니다. 먼저 파일 상태를 확인한 뒤 복원을 선택하세요. 변경된 파일과 읽을 수 없는 기록은 보존합니다.", "The list shows recorded states. Verify the files before choosing a restore action. Changed files and unreadable records are preserved."))
         table.addTableColumn({ let c = NSTableColumn(identifier: .init("archive")); c.title = L("압축 파일", "Archive"); c.width = 460; return c }())
         table.addTableColumn({ let c = NSTableColumn(identifier: .init("state")); c.title = L("기록상 상태 · 미검증", "Recorded State · Unverified"); c.width = 310; return c }())
@@ -46,8 +48,10 @@ final class ArchiveEditRecoveryWindow: NSWindowController, NSWindowDelegate, NST
         detail.textContainer?.containerSize = NSSize(width: 844, height: CGFloat.greatestFiniteMagnitude)
         let details = NSScrollView(frame: NSRect(x: 0, y: 0, width: 844, height: 130)); details.documentView = detail; details.hasVerticalScroller = true; details.borderType = .bezelBorder
         let actions = NSStackView(views: [refreshButton, inspectButton, undoButton, redoButton, revealButton, stopButton]); actions.orientation = .horizontal; actions.spacing = 8
+        let cleanup = NSStackView(views: [discardButton]); cleanup.orientation = .horizontal
         for (button, action) in [(refreshButton, #selector(refresh(_:))), (inspectButton, #selector(inspect(_:))), (undoButton, #selector(undo(_:))), (redoButton, #selector(redo(_:))), (revealButton, #selector(reveal(_:))), (stopButton, #selector(stop(_:)))] { button.target = self; button.action = action; button.bezelStyle = .rounded; button.setAccessibilityLabel(button.title) }
-        let stack = NSStackView(views: [note, status, scroll, details, actions]); stack.orientation = .vertical; stack.alignment = .leading; stack.spacing = 10; stack.translatesAutoresizingMaskIntoConstraints = false
+        discardButton.target = self; discardButton.action = #selector(discard(_:)); discardButton.bezelStyle = .rounded; discardButton.setAccessibilityLabel(discardButton.title)
+        let stack = NSStackView(views: [note, status, scroll, details, actions, cleanup]); stack.orientation = .vertical; stack.alignment = .leading; stack.spacing = 10; stack.translatesAutoresizingMaskIntoConstraints = false
         panel.contentView!.addSubview(stack)
         NSLayoutConstraint.activate([stack.leadingAnchor.constraint(equalTo: panel.contentView!.leadingAnchor, constant: 18), stack.trailingAnchor.constraint(equalTo: panel.contentView!.trailingAnchor, constant: -18), stack.topAnchor.constraint(equalTo: panel.contentView!.topAnchor, constant: 18), stack.bottomAnchor.constraint(equalTo: panel.contentView!.bottomAnchor, constant: -18), scroll.heightAnchor.constraint(greaterThanOrEqualToConstant: 160), details.heightAnchor.constraint(equalToConstant: 130)])
         for view in [note, status, scroll, details] { view.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true }; render()
@@ -61,6 +65,8 @@ final class ArchiveEditRecoveryWindow: NSWindowController, NSWindowDelegate, NST
         case "prepared": return L("게시 전 기록", "Recorded before publication")
         case "swapIntent", "undoIntent", "redoIntent": return L("교체 의도 기록 · 확인 필요", "Exchange intent · needs verification")
         case "building": return L("미완료 기록 · 확인 필요", "Unfinished record · needs verification")
+        case "discardIntent": return L("휴지통 이동 중단 · 확인 필요", "Trash move interrupted · needs verification")
+        case "discarded": return L("미완료 출력 휴지통 이동 기록", "Unpublished output moved to Trash")
         default: return L("기록을 읽지 못함 · 보존", "Unreadable record · preserved")
         }
     }
@@ -82,6 +88,7 @@ final class ArchiveEditRecoveryWindow: NSWindowController, NSWindowDelegate, NST
         refreshButton.isEnabled = available; inspectButton.isEnabled = available && selected?.readable == true
         undoButton.isEnabled = available && verifiedJournal == selected?.journal && verifiedState == "committed"
         redoButton.isEnabled = available && verifiedJournal == selected?.journal && verifiedState == "undone"
+        discardButton.isEnabled = available && verifiedJournal == selected?.journal && verifiedState == "unpublished" && verifiedDiscardable
         revealButton.isEnabled = available && selected != nil; stopButton.isEnabled = busy
         table.isEnabled = !busy
         if let item = selected { detail.string = stateText(item.recordedState) + "\n" + L("검증 결과: ", "Verification: ") + (verifiedJournal == item.journal ? verifiedText : L("미확인", "Not verified")) + "\n" + (item.archive?.path ?? "") + "\n" + (item.retainedFile?.path ?? "") + "\n" + item.journal.path }
@@ -92,6 +99,7 @@ final class ArchiveEditRecoveryWindow: NSWindowController, NSWindowDelegate, NST
         case "committed": return L("저장본과 이전 원본 확인됨", "Saved archive and original verified")
         case "undone": return L("이전 원본 복원됨", "Previous original restored")
         case "unpublished": return L("원본 미교체", "Original not replaced")
+        case "discarded": return L("미완료 출력 휴지통 이동 확인됨", "Unpublished output verified in Trash")
         default: return L("미확인", "Not verified")
         }
     }
@@ -99,26 +107,33 @@ final class ArchiveEditRecoveryWindow: NSWindowController, NSWindowDelegate, NST
     @objc private func inspect(_ sender: Any?) { run(.inspect) }
     @objc private func undo(_ sender: Any?) { confirmAction(.undo) }
     @objc private func redo(_ sender: Any?) { confirmAction(.redo) }
+    @objc private func discard(_ sender: Any?) { confirmAction(.discard) }
     private func confirmAction(_ action: ArchiveEditRecoveryAction) {
         guard !busy, let item = selected, verifiedJournal == item.journal, let window,
-              (action == .undo ? verifiedState == "committed" : verifiedState == "undone") else { return }
+              (action == .undo ? verifiedState == "committed" : action == .discard ? verifiedState == "unpublished" && verifiedDiscardable : verifiedState == "undone") else { return }
         let alert = NSAlert(); alert.messageText = action == .undo ? L("압축 편집을 실행 취소할까요?", "Undo this archive edit?") : L("압축 편집을 다시 실행할까요?", "Redo this archive edit?")
         alert.informativeText = (item.archive?.path ?? "") + "\n\n" + L("두 파일의 내용을 다시 확인하고 교체합니다. 현재 버전도 별도로 보존합니다.", "Both files are verified again before exchange. The current version is retained too.")
         alert.addButton(withTitle: action == .undo ? L("실행 취소", "Undo") : L("다시 실행", "Redo")); alert.addButton(withTitle: L("취소", "Cancel")); confirmation = alert
+        if action == .discard {
+            alert.messageText = L("미완료 출력을 휴지통으로 옮길까요?", "Move unpublished output to Trash?")
+            alert.informativeText = (item.retainedFile?.path ?? "") + "\n\n" + L("원본과 출력의 상태를 다시 확인합니다. 원본과 복구 기록은 보존하며, 출력은 같은 볼륨의 휴지통으로 옮깁니다. 휴지통을 비우기 전까지 복사해 복구할 수 있습니다.", "The original and output are verified again. The original and recovery record are preserved; output moves to this volume’s Trash. You can copy it back before emptying Trash.")
+            alert.buttons.first?.title = L("휴지통으로 이동", "Move to Trash")
+        }
         alert.beginSheetModal(for: window) { [weak self] response in guard let self else { return }; alert.window.orderOut(nil); self.confirmation = nil; self.render(); if response == .alertFirstButtonReturn { self.run(action) } }; render()
     }
     private func run(_ action: ArchiveEditRecoveryAction) {
         guard !busy, selected?.readable == true, let item = selected else { return }
-        busy = true; verifiedJournal = nil; verifiedState = nil; status.stringValue = L("실제 파일을 확인하는 중…", "Verifying the files…"); render()
+        busy = true; verifiedJournal = nil; verifiedState = nil; verifiedDiscardable = false; status.stringValue = L("실제 파일을 확인하는 중…", "Verifying the files…"); render()
         task = Task { [weak self] in
             guard let self else { return }
             do {
                 let result = try await SevenZipArchiveProvider.recoverArchiveEdit(journal: item.journal, journalDirectory: self.directory, action: action)
                 self.verifiedJournal = item.journal
                 switch result {
-                case .unpublished: self.verifiedState = "unpublished"; self.status.stringValue = L("원본은 교체되지 않았습니다. 보존된 출력은 자동으로 삭제하지 않습니다.", "The original was not replaced. Retained output is not deleted automatically.")
+                case .unpublished(let report): self.verifiedState = "unpublished"; self.verifiedDiscardable = report.canDiscardUnpublishedOutput; self.status.stringValue = L("원본은 교체되지 않았습니다. 보존된 출력은 자동으로 삭제하지 않습니다.", "The original was not replaced. Retained output is not deleted automatically.")
                 case .committed: self.verifiedState = "committed"; self.status.stringValue = action == .redo ? L("편집을 다시 적용했습니다.", "The edit was reapplied.") : L("저장본과 이전 원본을 확인했습니다.", "The saved archive and previous original were verified.")
                 case .undone: self.verifiedState = "undone"; self.status.stringValue = L("이전 원본으로 복원된 상태입니다.", "The previous original is restored.")
+                case .discarded: self.verifiedState = "discarded"; self.status.stringValue = L("미완료 출력을 휴지통으로 옮겼습니다. 원본과 복구 기록은 보존했습니다.", "Unpublished output moved to Trash. The original and recovery record were preserved.")
                 }
                 do {
                     self.records = try await SevenZipArchiveProvider.archiveEditHistory(journalDirectory: self.directory); self.table.reloadData()
@@ -156,6 +171,8 @@ final class ArchiveEditRecoveryWindow: NSWindowController, NSWindowDelegate, NST
     }
     var qaCanUndo: Bool { undoButton.isEnabled }
     var qaCanRedo: Bool { redoButton.isEnabled }
+    var qaCanDiscard: Bool { discardButton.isEnabled }
+    func qaDiscard() { discard(nil) }
     func qaSelect(_ row: Int) { table.selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false) }
     func qaVerify() { inspect(nil) }
     func qaUndo() { undo(nil) }

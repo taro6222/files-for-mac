@@ -64,9 +64,9 @@ func verifyArchiveEditingUI(_ controller: ArchiveWindow, root: URL, progress: (S
     checks["archiveHistoryListsRecords"] = !history.qaRecords.isEmpty
     guard let row = history.qaRecords.firstIndex(where: { $0.journal == controller.qaRedoJournal }) else { throw ArchiveEditError.invalidJournal }
     history.qaSelect(row)
-    checks["archiveHistoryRequiresVerification"] = !history.qaCanUndo && !history.qaCanRedo
+    checks["archiveHistoryRequiresVerification"] = !history.qaCanUndo && !history.qaCanRedo && !history.qaCanDiscard
     history.qaVerify(); try await historyIdle()
-    checks["archiveHistoryVerifiesRedoCandidate"] = history.qaCanRedo && !history.qaCanUndo
+    checks["archiveHistoryVerifiesRedoCandidate"] = history.qaCanRedo && !history.qaCanUndo && !history.qaCanDiscard
     checks["archiveHistoryDetailsVisible"] = history.qaDetailsVisible
     guard let currentArchive = controller.qaArchiveURL else { throw ArchiveEditError.invalidState }
     let beforeRecoveryCancel = try Data(contentsOf: currentArchive)
@@ -151,6 +151,37 @@ func verifyArchiveEditingUI(_ controller: ArchiveWindow, root: URL, progress: (S
     headerPassword.qaSubmit(policyPassword); try await idle()
     let headerOptions = controller.qaAdditionOptions()
     checks["archiveEmpty7zLocksHeaderEncryption"] = controller.qaEntryCount == 0 && headerOptions.encryptNewData && !headerOptions.encryption.isEnabled
+    progress("unpublished-output-trash")
+    let cleanupJournals = root.appendingPathComponent("archive-cleanup-journals")
+    let cleanupArchive = root.appendingPathComponent("archive-cleanup.zip")
+    try fm.copyItem(at: sourceArchive, to: cleanupArchive)
+    let cleanupOriginal = try Data(contentsOf: cleanupArchive)
+    var failedAsExpected = false
+    do { _ = try await sdk.edit(cleanupArchive, operations: [.rename(path: "does-not-exist", newName: "unused")], encryptNewData: false, journalDirectory: cleanupJournals) }
+    catch { failedAsExpected = true }
+    ArchiveEditRecoveryWindow.present(journalDirectory: cleanupJournals)
+    guard let cleanup = ArchiveEditRecoveryWindow.qaLatest else { throw ArchiveEditError.invalidState }
+    func cleanupIdle() async throws {
+        let start = ContinuousClock.now
+        while (cleanup.qaBusy || cleanup.window?.attachedSheet != nil) && start.duration(to: .now) < .seconds(10) { try await Task.sleep(for: .milliseconds(10)) }
+        guard !cleanup.qaBusy, cleanup.window?.attachedSheet == nil else { throw SevenZipWorkerError.timedOut }
+    }
+    try await cleanupIdle()
+    guard let cleanupRow = cleanup.qaRecords.firstIndex(where: { $0.recordedState == "building" }), let retained = cleanup.qaRecords[cleanupRow].retainedFile else { throw ArchiveEditError.invalidJournal }
+    cleanup.qaSelect(cleanupRow)
+    checks["archiveCleanupRequiresVerification"] = failedAsExpected && !cleanup.qaCanDiscard
+    cleanup.qaVerify(); try await cleanupIdle()
+    checks["archiveCleanupAllowsOnlyUnpublished"] = cleanup.qaCanDiscard && !cleanup.qaCanUndo && !cleanup.qaCanRedo
+    cleanup.qaDiscard(); cleanup.qaConfirm(false); try await cleanupIdle()
+    let afterCleanupCancel = try Data(contentsOf: cleanupArchive)
+    checks["archiveCleanupCancelPreservesOutput"] = fm.fileExists(atPath: retained.path) && afterCleanupCancel == cleanupOriginal
+    cleanup.qaDiscard(); cleanup.qaConfirm(true); try await cleanupIdle()
+    let afterCleanup = try Data(contentsOf: cleanupArchive)
+    let discarded = cleanup.qaRecords.first { $0.recordedState == "discarded" }
+    checks["archiveCleanupMovesOutputAndKeepsOriginal"] = discarded?.retainedFile.map { fm.fileExists(atPath: $0.path) } == true && !fm.fileExists(atPath: retained.path) && afterCleanup == cleanupOriginal
+    checks["archiveCleanupKeepsRecordAndDisablesRestore"] = discarded != nil && !cleanup.qaCanDiscard && !cleanup.qaCanUndo && !cleanup.qaCanRedo
+    try capture("archive-unpublished-output-trash", cleanup.window?.contentView)
+    cleanup.close()
     return checks
 }
 #endif

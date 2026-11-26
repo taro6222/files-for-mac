@@ -1820,6 +1820,10 @@ func archiveEditHistoryAndRedoRequireVerifiedFilesAndKeepUnreadableRecords() asy
     let edited = try Data(contentsOf: fixture.archive)
     let history = try await SevenZipArchiveProvider.archiveEditHistory(journalDirectory: journals)
     #expect(history.count == 1 && history[0].readable && history[0].recordedState == "committed" && history[0].journal == saved.journal)
+    let retainedBeforeDiscard = try Data(contentsOf: saved.backup)
+    await #expect(throws: ArchiveEditError.invalidState) { try await SevenZipArchiveProvider.recoverArchiveEdit(journal: saved.journal, journalDirectory: journals, action: .discard) }
+    #expect(try Data(contentsOf: saved.backup) == retainedBeforeDiscard)
+    #expect(try Data(contentsOf: fixture.archive) == edited)
     _ = try await SevenZipArchiveProvider.recoverArchiveEdit(journal: saved.journal, journalDirectory: journals, action: .undo)
     #expect(try Data(contentsOf: fixture.archive) == original)
     if case .committed = try await SevenZipArchiveProvider.recoverArchiveEdit(journal: saved.journal, journalDirectory: journals, action: .redo) {} else { Issue.record("Expected redo") }
@@ -1895,4 +1899,87 @@ func archiveEditEmptyZIPRequiresExplicitEncryptionAndPreservesUndo() async throw
     #expect(try Data(contentsOf: archive) == empty)
     _ = try await SevenZipArchiveProvider.recoverArchiveEdit(journal: removed.journal, journalDirectory: journals, action: .undo)
     #expect(try Data(contentsOf: archive) == original)
+}
+
+@Test func archiveEditDiscardMovesOnlyUnpublishedOutputAndKeepsRecoveryRecord() throws {
+    let root = try sdkRoot(); defer { try? FileManager.default.removeItem(at: root) }
+    let archive = root.appendingPathComponent("archive.zip"), journals = root.appendingPathComponent("journals"), trash = root.appendingPathComponent("trash")
+    try Data("source".utf8).write(to: archive); try FileManager.default.createDirectory(at: trash, withIntermediateDirectories: false)
+    var edit: ArchiveEditTransaction? = try ArchiveEditTransaction(archive: archive, journalDirectory: journals, check: {})
+    let journal = try #require(edit?.journal), candidate = try #require(edit?.candidate)
+    try Data("partial output".utf8).write(to: candidate); edit = nil
+    let report = try ArchiveEditTransaction.discard(journal: journal, directory: journals, trashDirectory: trash, check: {})
+    #expect(report.backup.path.hasPrefix(try sevenZipCanonicalDirectory(trash).path + "/")); #expect(!FileManager.default.fileExists(atPath: candidate.path))
+    #expect(try Data(contentsOf: archive) == Data("source".utf8)); #expect(try Data(contentsOf: report.backup) == Data("partial output".utf8))
+    #expect(FileManager.default.fileExists(atPath: journal.path)); #expect(!report.canDiscardUnpublishedOutput)
+    #expect(try ArchiveEditTransaction.history(directory: journals, check: {}).first?.recordedState == "discarded")
+    guard case .discarded(let inspected) = try ArchiveEditTransaction.recover(journal: journal, directory: journals, undo: false, check: {}) else { Issue.record("Expected discarded"); return }
+    #expect(inspected.backup == report.backup)
+    #expect(try ArchiveEditTransaction.discard(journal: journal, directory: journals, trashDirectory: trash, check: {}).backup == report.backup)
+    #expect(throws: (any Error).self) { try ArchiveEditTransaction.recover(journal: journal, directory: journals, undo: true, check: {}) }
+}
+
+@Test func archiveEditDiscardPreservesForeignFilesSourceChangesAndHardLinks() throws {
+    for change in ["replacement", "source", "hardlink", "extra", "legacy"] {
+        let root = try sdkRoot(); defer { try? FileManager.default.removeItem(at: root) }
+        let archive = root.appendingPathComponent("archive.zip"), journals = root.appendingPathComponent("journals"), trash = root.appendingPathComponent("trash")
+        try Data("source".utf8).write(to: archive); try FileManager.default.createDirectory(at: trash, withIntermediateDirectories: false)
+        var edit: ArchiveEditTransaction? = try ArchiveEditTransaction(archive: archive, journalDirectory: journals, check: {})
+        let journal = try #require(edit?.journal), candidate = try #require(edit?.candidate)
+        try Data("partial".utf8).write(to: candidate); edit = nil
+        if change == "replacement" { try FileManager.default.moveItem(at: candidate, to: root.appendingPathComponent("owned")); try Data("foreign".utf8).write(to: candidate) }
+        if change == "source" { try Data("changed".utf8).write(to: archive) }
+        if change == "hardlink" { #expect(link(candidate.path, root.appendingPathComponent("link").path) == 0) }
+        if change == "extra" { try Data("foreign sibling".utf8).write(to: candidate.deletingLastPathComponent().appendingPathComponent("extra")) }
+        if change == "legacy" {
+            let event = journal.appendingPathComponent("00000000.json")
+            var envelope = try #require(JSONSerialization.jsonObject(with: Data(contentsOf: event)) as? [String: Any])
+            let encodedPayload = try #require(envelope["payload"] as? String)
+            let bytes = try #require(Data(base64Encoded: encodedPayload))
+            var payload = try #require(JSONSerialization.jsonObject(with: bytes) as? [String: Any])
+            var record = try #require(payload["record"] as? [String: Any]); record.removeValue(forKey: "initialOutput"); payload["record"] = record
+            let updated = try JSONSerialization.data(withJSONObject: payload, options: [.sortedKeys])
+            envelope["payload"] = updated.base64EncodedString(); envelope["checksum"] = SHA256.hash(data: updated).map { String(format: "%02x", $0) }.joined()
+            try JSONSerialization.data(withJSONObject: envelope, options: [.sortedKeys]).write(to: event)
+            guard case .unpublished(let report) = try ArchiveEditTransaction.recover(journal: journal, directory: journals, undo: false, check: {}) else { Issue.record("Legacy record unreadable"); return }
+            #expect(!report.canDiscardUnpublishedOutput)
+        }
+        let before = try Data(contentsOf: archive), output = try Data(contentsOf: candidate)
+        if change == "extra" {
+            _ = try ArchiveEditTransaction.discard(journal: journal, directory: journals, trashDirectory: trash, check: {})
+            #expect(try Data(contentsOf: candidate.deletingLastPathComponent().appendingPathComponent("extra")) == Data("foreign sibling".utf8))
+        } else {
+            #expect(throws: (any Error).self) { try ArchiveEditTransaction.discard(journal: journal, directory: journals, trashDirectory: trash, check: {}) }
+            #expect(try Data(contentsOf: candidate) == output); #expect(try FileManager.default.contentsOfDirectory(atPath: trash.path).isEmpty)
+        }
+        #expect(try Data(contentsOf: archive) == before)
+    }
+}
+
+@Test func archiveEditDiscardResumesDurableIntentBeforeAndAfterMoveWithoutOverwrite() throws {
+    for boundary in ["before", "after", "collision"] {
+        let root = try sdkRoot(); defer { try? FileManager.default.removeItem(at: root) }
+        let archive = root.appendingPathComponent("archive.zip"), journals = root.appendingPathComponent("journals"), trash = root.appendingPathComponent("trash")
+        try Data("source".utf8).write(to: archive); try FileManager.default.createDirectory(at: trash, withIntermediateDirectories: false)
+        var edit: ArchiveEditTransaction? = try ArchiveEditTransaction(archive: archive, journalDirectory: journals, check: {})
+        let journal = try #require(edit?.journal), candidate = try #require(edit?.candidate)
+        try Data("partial".utf8).write(to: candidate); edit = nil
+        let destination = try sevenZipCanonicalDirectory(trash).appendingPathComponent("Files Archive Edit " + journal.lastPathComponent).appendingPathComponent(archive.lastPathComponent)
+        #expect(throws: CancellationError.self) {
+            try ArchiveEditTransaction.discard(journal: journal, directory: journals, trashDirectory: trash, check: {
+                if FileManager.default.fileExists(atPath: destination.deletingLastPathComponent().path) { throw CancellationError() }
+            })
+        }
+        #expect(try Data(contentsOf: candidate) == Data("partial".utf8))
+        if boundary == "after" { try FileManager.default.moveItem(at: candidate, to: destination) }
+        if boundary == "collision" { try Data("foreign".utf8).write(to: destination) }
+        if boundary == "collision" {
+            #expect(throws: (any Error).self) { try ArchiveEditTransaction.discard(journal: journal, directory: journals, trashDirectory: trash, check: {}) }
+            #expect(try Data(contentsOf: destination) == Data("foreign".utf8)); #expect(try Data(contentsOf: candidate) == Data("partial".utf8))
+        } else {
+            let report = try ArchiveEditTransaction.discard(journal: journal, directory: journals, trashDirectory: trash, check: {})
+            #expect(report.backup == destination); #expect(try Data(contentsOf: destination) == Data("partial".utf8))
+        }
+        #expect(try Data(contentsOf: archive) == Data("source".utf8))
+    }
 }

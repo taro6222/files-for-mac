@@ -7,7 +7,7 @@ public enum ArchiveEditError: Error, Sendable, Equatable {
     case metadataMismatch(String)
     case recoveryRequired(journal: URL, archive: URL, retainedFile: URL)
 }
-public enum ArchiveEditRecoveryAction: Sendable, Equatable { case inspect, undo, redo }
+public enum ArchiveEditRecoveryAction: Sendable, Equatable { case inspect, undo, redo, discard }
 public struct ArchiveEditHistoryItem: Sendable, Identifiable {
     public var id: URL { journal }
     public let journal: URL, archive: URL?, retainedFile: URL?, recordedState: String?, recordedAt: Date?
@@ -15,9 +15,10 @@ public struct ArchiveEditHistoryItem: Sendable, Identifiable {
 }
 public struct ArchiveEditReport: Sendable {
     public let archive: URL, backup: URL, journal: URL
+    public let canDiscardUnpublishedOutput: Bool
 }
 public enum ArchiveEditRecoveryOutcome: Sendable {
-    case unpublished(ArchiveEditReport), committed(ArchiveEditReport), undone(ArchiveEditReport)
+    case unpublished(ArchiveEditReport), committed(ArchiveEditReport), undone(ArchiveEditReport), discarded(ArchiveEditReport)
 }
 
 private struct ArchiveEditDirectoryProof: Codable, Equatable {
@@ -85,6 +86,9 @@ final class ArchiveEditTransaction: @unchecked Sendable {
         let parentProof: ArchiveEditDirectoryProof, rootProof: ArchiveEditDirectoryProof
         let source: ArchiveEditFileProof, sourceMetadata: ArchiveEditMetadata
         var candidate: ArchiveEditFileProof?, candidateMetadata: ArchiveEditMetadata?, state: String
+        var initialOutput: ArchiveEditFileProof? = nil
+        var discardDestination: URL? = nil
+        var discardDirectoryProof: ArchiveEditDirectoryProof? = nil
     }
     private struct Event: Codable { let sequence: Int, previous: String?, record: Record }
     private struct Envelope: Codable { let payload: Data, checksum: String }
@@ -97,8 +101,11 @@ final class ArchiveEditTransaction: @unchecked Sendable {
     private var sequence = 0, previous: String?
     private var closed = false
     private var candidateName: String { candidate.lastPathComponent }
-    var report: ArchiveEditReport { .init(archive: archive, backup: candidate, journal: journal) }
-    private var review: ArchiveEditError { .recoveryRequired(journal: journal, archive: archive, retainedFile: candidate) }
+    var report: ArchiveEditReport {
+        .init(archive: archive, backup: record.state == "discarded" ? (record.discardDestination ?? candidate) : candidate, journal: journal,
+              canDiscardUnpublishedOutput: ["building", "prepared", "discardIntent"].contains(record.state) && (record.initialOutput != nil || record.state != "building"))
+    }
+    private var review: ArchiveEditError { .recoveryRequired(journal: journal, archive: archive, retainedFile: record.discardDestination ?? candidate) }
     private static func hash(_ data: Data) -> String { SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined() }
     private static func sync(_ fd: Int32) throws { guard fsync(fd) == 0 else { throw SevenZipWorkerError.ioFailure } }
     private static func registry(_ directory: URL) throws -> URL {
@@ -161,6 +168,7 @@ final class ArchiveEditTransaction: @unchecked Sendable {
         guard outputFD >= 0 else { throw SevenZipWorkerError.ioFailure }
         self.parentFD = parentFD; self.rootFD = rootFD; self.journalFD = journalFD; self.lockFD = lockFD; self.outputFD = outputFD; adopted = true
         do {
+            record.initialOutput = try file(rootFD, candidateName, check: check).0
             try bound(); try save(); try Self.sync(rootFD); try Self.sync(parentFD)
             let registryFD = open(registry.path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
             guard registryFD >= 0 else { throw review }; defer { Darwin.close(registryFD) }
@@ -316,6 +324,26 @@ final class ArchiveEditTransaction: @unchecked Sendable {
     }
     private func reconcile(check: () throws -> Void) throws -> ArchiveEditRecoveryOutcome {
         let source = try file(parentFD, record.base, check: check)
+        if ["discardIntent", "discarded"].contains(record.state) {
+            guard matches(source, record.source, record.sourceMetadata), let destination = record.discardDestination,
+                  let directoryProof = record.discardDirectoryProof, let proof = record.candidate, let metadata = record.candidateMetadata else { throw review }
+            let fd = open(destination.deletingLastPathComponent().path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
+            guard fd >= 0 else { throw review }; defer { Darwin.close(fd) }
+            guard try ArchiveEditDirectoryProof.read(fd) == directoryProof else { throw review }
+            var retained = stat(), moved = stat()
+            let hasRetained = fstatat(rootFD, candidateName, &retained, AT_SYMLINK_NOFOLLOW) == 0
+            let retainedError = hasRetained ? 0 : errno
+            let hasMoved = fstatat(fd, destination.lastPathComponent, &moved, AT_SYMLINK_NOFOLLOW) == 0
+            let movedError = hasMoved ? 0 : errno
+            if !hasRetained, retainedError == ENOENT, hasMoved,
+               matches(try file(fd, destination.lastPathComponent, check: check), proof, metadata) {
+                if record.state != "discarded" { record.state = "discarded"; try save() }
+                return .discarded(report)
+            }
+            guard record.state == "discardIntent", hasRetained, !hasMoved, movedError == ENOENT,
+                  matches(try file(rootFD, candidateName, check: check), proof, metadata) else { throw review }
+            return .unpublished(report)
+        }
         if record.state == "building" { guard matches(source, record.source, record.sourceMetadata) else { throw review }; return .unpublished(report) }
         guard let candidateProof = record.candidate, let candidateMetadata = record.candidateMetadata else { throw ArchiveEditError.invalidJournal }
         let retained = try file(rootFD, candidateName, check: check)
@@ -357,14 +385,56 @@ final class ArchiveEditTransaction: @unchecked Sendable {
                 let (event, _, _) = try Self.load(child); let value = event.record
                 guard value.version == 1, value.id == UUID(uuidString: name), value.parent.isFileURL, value.parent.path.hasPrefix("/"), value.parent.host == nil || value.parent.host == "" || value.parent.host == "localhost",
                       ["zip", "7z"].contains(URL(fileURLWithPath: value.base).pathExtension.lowercased()), value.staging == value.parent.appendingPathComponent(".files-archive-edit-" + name, isDirectory: true),
-                      ["building", "prepared", "swapIntent", "committed", "undoIntent", "undone", "redoIntent"].contains(value.state) else { throw ArchiveEditError.invalidJournal }
+                      ["building", "prepared", "swapIntent", "committed", "undoIntent", "undone", "redoIntent", "discardIntent", "discarded"].contains(value.state) else { throw ArchiveEditError.invalidJournal }
                 try EntryOperations.validateName(value.base)
                 var info = stat(); guard fstat(child, &info) == 0 else { throw ArchiveEditError.invalidJournal }
-                items.append(.init(journal: journal, archive: value.parent.appendingPathComponent(value.base), retainedFile: value.staging.appendingPathComponent("candidate." + URL(fileURLWithPath: value.base).pathExtension.lowercased()), recordedState: value.state, recordedAt: Date(timeIntervalSince1970: Double(info.st_mtimespec.tv_sec) + Double(info.st_mtimespec.tv_nsec) / 1e9)))
+                items.append(.init(journal: journal, archive: value.parent.appendingPathComponent(value.base), retainedFile: value.state == "discarded" ? value.discardDestination : value.staging.appendingPathComponent("candidate." + URL(fileURLWithPath: value.base).pathExtension.lowercased()), recordedState: value.state, recordedAt: Date(timeIntervalSince1970: Double(info.st_mtimespec.tv_sec) + Double(info.st_mtimespec.tv_nsec) / 1e9)))
             } catch is CancellationError { throw CancellationError() }
             catch { items.append(.init(journal: journal, archive: nil, retainedFile: nil, recordedState: nil, recordedAt: nil)) }
         }
         return items.sorted { if $0.recordedAt != $1.recordedAt { return ($0.recordedAt ?? .distantPast) > ($1.recordedAt ?? .distantPast) }; return $0.journal.path < $1.journal.path }
+    }
+    /// Moves only unpublished output to a private folder in the same volume's Trash.
+    /// The intent is durable before rename; no recursive deletion or overwrite is used.
+    static func discard(journal: URL, directory: URL, trashDirectory: URL? = nil, check: () throws -> Void) throws -> ArchiveEditReport {
+        let transaction = try Self(journal: journal, directory: directory)
+        let outcome = try transaction.reconcile(check: check)
+        if case .discarded(let report) = outcome { return report }
+        guard case .unpublished = outcome, transaction.report.canDiscardUnpublishedOutput else { throw ArchiveEditError.invalidState }
+        let output = try transaction.file(transaction.rootFD, transaction.candidateName, check: check)
+        guard output.0.links == 1 else { throw transaction.review }
+        if transaction.record.state == "building" {
+            guard let initial = transaction.record.initialOutput, initial.device == output.0.device, initial.inode == output.0.inode else { throw transaction.review }
+        }
+        if transaction.record.discardDestination == nil {
+            let trash = try trashDirectory ?? FileManager.default.url(for: .trashDirectory, in: .userDomainMask, appropriateFor: transaction.candidate, create: true)
+            let actual = try sevenZipCanonicalDirectory(trash)
+            let trashFD = open(actual.path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
+            guard trashFD >= 0 else { throw transaction.review }; defer { Darwin.close(trashFD) }
+            guard try ArchiveEditDirectoryProof.read(trashFD).device == transaction.record.rootProof.device else { throw transaction.review }
+            let name = "Files Archive Edit " + transaction.record.id.uuidString
+            guard mkdirat(trashFD, name, 0o700) == 0 else { throw transaction.review }
+            let fd = openat(trashFD, name, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
+            guard fd >= 0 else { throw transaction.review }; defer { Darwin.close(fd) }
+            let proof = try ArchiveEditDirectoryProof.read(fd)
+            guard proof.owner == geteuid(), proof.mode & 0o077 == 0 else { throw transaction.review }
+            transaction.record.discardDestination = actual.appendingPathComponent(name, isDirectory: true).appendingPathComponent(transaction.record.base)
+            transaction.record.discardDirectoryProof = proof
+            transaction.record.candidate = output.0; transaction.record.candidateMetadata = output.1
+            transaction.record.state = "discardIntent"; try transaction.save(); try sync(trashFD)
+        }
+        guard let destination = transaction.record.discardDestination, let proof = transaction.record.discardDirectoryProof else { throw transaction.review }
+        let fd = open(destination.deletingLastPathComponent().path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
+        guard fd >= 0 else { throw transaction.review }; defer { Darwin.close(fd) }
+        try check(); try transaction.bound()
+        guard try ArchiveEditDirectoryProof.read(fd) == proof,
+              transaction.matches(try transaction.file(transaction.parentFD, transaction.record.base, check: check), transaction.record.source, transaction.record.sourceMetadata),
+              transaction.matches(try transaction.file(transaction.rootFD, transaction.candidateName, check: check), output.0, output.1) else { throw transaction.review }
+        guard renameatx_np(transaction.rootFD, transaction.candidateName, fd, destination.lastPathComponent, UInt32(RENAME_EXCL)) == 0 else { throw transaction.review }
+        try sync(fd); try sync(transaction.rootFD)
+        // After the move, finish reconciliation even when cancellation arrives.
+        guard case .discarded(let report) = try transaction.reconcile(check: {}) else { throw transaction.review }
+        return report
     }
     static func recover(journal: URL, directory: URL, undo: Bool, redo: Bool = false, check: () throws -> Void, progress: ArchiveProgressHandler? = nil) throws -> ArchiveEditRecoveryOutcome {
         guard !(undo && redo) else { throw ArchiveEditError.invalidState }

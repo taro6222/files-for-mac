@@ -198,7 +198,10 @@ public struct SevenZipArchiveProvider: Sendable {
         return try await withTaskCancellationHandler(operation: {
             try Task.checkCancellation()
             return try await Task.detached(priority: .userInitiated) {
-                try ArchiveEditTransaction.recover(journal: journal, directory: journalDirectory, undo: action == .undo, redo: action == .redo, check: cancellation.check, progress: progress)
+                if action == .discard {
+                    return .discarded(try ArchiveEditTransaction.discard(journal: journal, directory: journalDirectory, check: cancellation.check))
+                }
+                return try ArchiveEditTransaction.recover(journal: journal, directory: journalDirectory, undo: action == .undo, redo: action == .redo, check: cancellation.check, progress: progress)
             }.value
         }, onCancel: { cancellation.cancel() })
     }
