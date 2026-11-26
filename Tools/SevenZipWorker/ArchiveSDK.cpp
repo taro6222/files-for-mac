@@ -369,7 +369,7 @@ Z7_COM7F_IMF(CreateCallback::CryptoGetTextPassword2(Int32 *isDefined, BSTR *valu
     return StringToBstr(password, value);
 }
 extern "C" int SevenZipCreate(const char *library, int outputFD, const SevenZipCreateItem *items, uint32_t count,
-                              const char *password, int level, int encryptHeader) {
+                              const char *password, int level, int encryptHeader, uint32_t dictionarySize, uint32_t wordSize, uint32_t threads) {
     // The library stays loaded until all COM objects have been released, including exceptions.
     struct Library { void *handle; ~Library() { if (handle) dlclose(handle); } } loaded{dlopen(library, RTLD_NOW | RTLD_LOCAL)};
     if (!loaded.handle) return 1;
@@ -380,9 +380,15 @@ extern "C" int SevenZipCreate(const char *library, int outputFD, const SevenZipC
         if (!create || create(&CLSID_SevenZip, &IID_IOutArchive, (void **)&archive) != S_OK) return 1;
         CMyComPtr<ISetProperties> properties;
         if (archive->QueryInterface(IID_ISetProperties, (void **)&properties) != S_OK || !properties) return 1;
-        const wchar_t *names[] = { L"x", L"he", L"mt" };
-        NWindows::NCOM::CPropVariant values[3]; values[0] = (UInt32)level; values[1] = (encryptHeader != 0); values[2] = (UInt32)2;
-        if (properties->SetProperties(names, values, 3) != S_OK) return 6;
+        const wchar_t *names[] = { L"x", L"he", L"mt", L"0", L"0d", L"0fb" };
+        NWindows::NCOM::CPropVariant values[6];
+        values[0] = (UInt32)level; values[1] = (encryptHeader != 0); values[2] = (UInt32)threads;
+        values[3] = L"LZMA2";
+        // ISetProperties interprets numeric d as log2(bytes), not a byte count.
+        UInt32 dictionaryLog = 0;
+        for (UInt32 size = dictionarySize; size > 1; size >>= 1) ++dictionaryLog;
+        values[4] = dictionaryLog; values[5] = (UInt32)wordSize;
+        if (properties->SetProperties(names, values, level == 0 ? 3 : 6) != S_OK) return 6;
         CreateCallback *callback = new CreateCallback();
         CMyComPtr<IArchiveUpdateCallback> callbackHolder = callback;
         callback->items = items; callback->count = count; callback->defined = password != nullptr;

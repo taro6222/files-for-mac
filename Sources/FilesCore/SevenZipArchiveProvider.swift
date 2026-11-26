@@ -24,9 +24,9 @@ public struct SevenZipArchiveProvider: Sendable {
     /// Create a 7z archive in a private file and atomically publish without replacement.
     /// Passwords travel only through the private framed request pipe, never argv/environment.
     public func create(from sources: [URL], at destination: URL, compressionLevel: ArchiveCompressionLevel = .normal,
-                       password: String? = nil, encryptHeader: Bool = true,
+                       password: String? = nil, encryptHeader: Bool = true, options: SevenZipCompressionOptions = .init(),
                        progress: ArchiveProgressHandler? = nil) async throws -> URL {
-        guard destination.isFileURL, password == nil || (password?.isEmpty == false && password?.utf8.contains(0) == false) else {
+        guard destination.isFileURL, options.isValid, password == nil || (password?.isEmpty == false && password?.utf8.contains(0) == false) else {
             throw SevenZipWorkerError.invalidConfiguration
         }
         let parent = try sevenZipCanonicalDirectory(destination.deletingLastPathComponent())
@@ -56,7 +56,7 @@ public struct SevenZipArchiveProvider: Sendable {
             progress?(.init(phase: .writing, completedEntries: 0, totalEntries: plan.items.count,
                             completedBytes: 0, totalBytes: plan.totalBytes, currentPath: nil))
             try session.check()
-            try session.create(plan, level: compressionLevel, password: password, encryptHeader: encryptHeader && password != nil)
+            try session.create(plan, level: compressionLevel, password: password, encryptHeader: encryptHeader && password != nil, options: options)
             progress?(.init(phase: .publishing, completedEntries: plan.items.count, totalEntries: plan.items.count,
                             completedBytes: plan.totalBytes, totalBytes: plan.totalBytes, currentPath: target.lastPathComponent))
             try plan.verify(check: session.check)
@@ -398,9 +398,10 @@ private final class SevenZipSession {
         try waitForExit()
         self.token = nil
     }
-    func create(_ plan: SevenZipCreationPlan, level: ArchiveCompressionLevel, password: String?, encryptHeader: Bool) throws {
+    func create(_ plan: SevenZipCreationPlan, level: ArchiveCompressionLevel, password: String?, encryptHeader: Bool, options: SevenZipCompressionOptions) throws {
         try send(["version": 1, "operation": "create", "items": plan.items.map(\.request), "level": level.rawValue,
-                  "password": password as Any? ?? NSNull(), "encryptHeader": encryptHeader])
+                  "password": password as Any? ?? NSNull(), "encryptHeader": encryptHeader,
+                  "dictionarySize": options.effectiveDictionarySize(for: level), "wordSize": options.effectiveWordSize(for: level), "threads": options.threadCount])
         guard try receive().closed == true else { throw SevenZipWorkerError.invalidResponse }
         try waitForExit()
     }

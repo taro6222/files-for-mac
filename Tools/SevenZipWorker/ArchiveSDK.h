@@ -24,7 +24,7 @@ typedef struct {
 } SevenZipCreateItem;
 // Output is an already-created, caller-owned seekable file. No output paths are opened.
 int SevenZipCreate(const char *library, int output, const SevenZipCreateItem *items, uint32_t count,
-                   const char *password, int level, int encryptHeader);
+                   const char *password, int level, int encryptHeader, uint32_t dictionarySize, uint32_t wordSize, uint32_t threads);
 
 #ifdef __cplusplus
 }

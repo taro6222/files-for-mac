@@ -6,6 +6,8 @@ import UniformTypeIdentifiers
 final class ArchiveSaveOptionsView: NSStackView, NSOpenSavePanelDelegate {
     let formatButton = NSPopUpButton()
     let levelButton = NSPopUpButton()
+    let advanced: ArchiveSevenZipOptionsView
+    var sevenZipOptions: SevenZipCompressionOptions? { selectedFormat == .sevenZip && supportsSevenZipEncryption ? advanced.options : nil }
     let encryptionButton = NSButton(checkboxWithTitle: L("암호화", "Encrypt"), target: nil, action: nil)
     let passwordInput = ArchivePasswordView()
     let headerEncryptionButton = NSButton(checkboxWithTitle: L("파일 이름 암호화 (7z)", "Encrypt file names (7z)"), target: nil, action: nil)
@@ -26,6 +28,7 @@ final class ArchiveSaveOptionsView: NSStackView, NSOpenSavePanelDelegate {
     init(panel: NSSavePanel, preferences: BrowserPreferences? = nil) {
         self.panel = panel
         self.preferences = preferences
+        advanced = ArchiveSevenZipOptionsView(preferences: preferences)
         super.init(frame: NSRect(x: 0, y: 0, width: 400, height: 210))
         orientation = .vertical; alignment = .leading; spacing = 12
         formatButton.addItems(withTitles: ["ZIP (.zip)", "7z (.7z)"])
@@ -47,6 +50,7 @@ final class ArchiveSaveOptionsView: NSStackView, NSOpenSavePanelDelegate {
             let row = NSStackView(views: [label, button]); row.orientation = .horizontal; row.alignment = .centerY; row.spacing = 12
             addArrangedSubview(row)
         }
+        addArrangedSubview(advanced)
         panel.allowedContentTypes = [.zip]
         panel.allowsOtherFileTypes = false
         encryptionButton.target = self; encryptionButton.action = #selector(changeEncryption(_:))
@@ -55,10 +59,15 @@ final class ArchiveSaveOptionsView: NSStackView, NSOpenSavePanelDelegate {
         passwordInput.isHidden = true; passwordNote.isHidden = true
         passwordNote.textColor = .secondaryLabelColor; passwordNote.font = .systemFont(ofSize: 11)
         panel.delegate = self
+        if preferences?.archiveCreationFormat == .sevenZip { formatButton.selectItem(at: 1); changeFormat(formatButton) }
+        advanced.update(level: compressionLevel, supported: selectedFormat == .sevenZip && supportsSevenZipEncryption)
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
 
     func panel(_ sender: Any, validate url: URL) throws {
+        if selectedFormat == .sevenZip && supportsSevenZipEncryption && advanced.options == nil {
+            throw NSError(domain: "FilesMac.Archive", code: 2, userInfo: [NSLocalizedDescriptionKey: L("CPU 스레드 수를 1~\(SevenZipCompressionOptions.hostThreadCount) 범위의 정수로 입력하세요.", "Enter a whole thread count from 1 to \(SevenZipCompressionOptions.hostThreadCount).")])
+        }
         if encryptionButton.state == .on {
             guard selectedFormat == .zip || supportsSevenZipEncryption else { throw ZipArchiveError.unsupportedEncryption }
             guard !passwordInput.value.isEmpty && !passwordInput.value.utf8.contains(0) else {
@@ -87,6 +96,7 @@ final class ArchiveSaveOptionsView: NSStackView, NSOpenSavePanelDelegate {
     @objc private func changeLevel(_ sender: NSPopUpButton) {
         guard ArchiveCompressionLevel.allCases.indices.contains(sender.indexOfSelectedItem) else { return }
         preferences?.setArchiveCompressionLevel(compressionLevel)
+        advanced.update(level: compressionLevel, supported: selectedFormat == .sevenZip && supportsSevenZipEncryption)
     }
 
     @objc private func changeFormat(_ sender: NSPopUpButton) {
@@ -103,6 +113,8 @@ final class ArchiveSaveOptionsView: NSStackView, NSOpenSavePanelDelegate {
         panel.allowedContentTypes = [type]
         panel.nameFieldStringValue = name.isEmpty ? "" : name + "." + format.rawValue
         selectedFormat = format
+        preferences?.setArchiveCreationFormat(format)
+        advanced.update(level: compressionLevel, supported: format == .sevenZip && supportsSevenZipEncryption)
         encryptionButton.isEnabled = format == .zip || supportsSevenZipEncryption
         headerEncryptionButton.isHidden = encryptionButton.state != .on || format != .sevenZip
         passwordNote.stringValue = format == .sevenZip
@@ -124,7 +136,7 @@ final class ArchiveCreationWindow: NSWindowController, NSWindowDelegate {
     private var succeeded = false
     private var pendingClose = false
 
-    static func start(sources: [URL], destination: URL, compressionLevel: ArchiveCompressionLevel? = nil, password: String? = nil, encryptHeader: Bool = true, completion: @escaping @MainActor () -> Void) {
+    static func start(sources: [URL], destination: URL, compressionLevel: ArchiveCompressionLevel? = nil, password: String? = nil, encryptHeader: Bool = true, sevenZipOptions: SevenZipCompressionOptions? = nil, completion: @escaping @MainActor () -> Void) {
         guard !sources.isEmpty, !isRunning else { return }
         let controller = ArchiveCreationWindow(sources: sources, destination: destination)
         operations.append(controller); controller.showWindow(nil); controller.window?.makeKeyAndOrderFront(nil)
@@ -137,7 +149,7 @@ final class ArchiveCreationWindow: NSWindowController, NSWindowDelegate {
                 switch backend {
                 case .sevenZip(let provider):
                     _ = try await provider.create(from: sources, at: destination, compressionLevel: compressionLevel ?? .normal,
-                                                  password: password, encryptHeader: encryptHeader, progress: update)
+                                                  password: password, encryptHeader: encryptHeader, options: sevenZipOptions ?? .init(), progress: update)
                 case .system:
                     _ = try await ZipArchiveProvider().create(from: sources, at: destination, compressionLevel: compressionLevel, password: password, progress: update)
                 }

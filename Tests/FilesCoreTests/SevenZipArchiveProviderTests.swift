@@ -538,3 +538,80 @@ func sevenZipSDKCreationCancellationBeforePublicationDiscardsOutput() async thro
     #expect(try String(contentsOf: source, encoding: .utf8) == "keep original")
     #expect(!(try FileManager.default.contentsOfDirectory(atPath: root.path)).contains { $0.hasPrefix(".files-create-") })
 }
+
+@Test(.enabled(if: hasIntegrationFixture("FILES_TEST_SEVENZIP_REFERENCE") && hasIntegrationFixture("FILES_TEST_SEVENZIP_WORKER"), "Requires native SDK and reference"))
+func sevenZipSDKAdvancedOptionsChangeDictionaryAndRestorePayload() async throws {
+    let root = try sdkRoot(); defer { try? FileManager.default.removeItem(at: root) }
+    let source = root.appendingPathComponent("dictionary-payload.bin"), bytes = Data(repeating: 0x5b, count: 3 << 20)
+    try bytes.write(to: source)
+    let provider = try sdkRealProvider(), reference = URL(fileURLWithPath: try #require(ProcessInfo.processInfo.environment["FILES_TEST_SEVENZIP_REFERENCE"]))
+    for (index, values) in [(65536, 8, 1, 16), (262144, 273, 4, 18), (1048576, 64, 2, 20)].enumerated() {
+        let options = SevenZipCompressionOptions(dictionarySize: values.0, wordSize: values.1, threadCount: values.2)
+        let archive = root.appendingPathComponent("advanced-\(index).7z"), output = root.appendingPathComponent("advanced-out-\(index)")
+        _ = try await provider.create(from: [source], at: archive, options: options)
+        let infoFile = root.appendingPathComponent("reference-\(index).log")
+        #expect(FileManager.default.createFile(atPath: infoFile.path, contents: nil))
+        let handle = try FileHandle(forWritingTo: infoFile); defer { try? handle.close() }
+        let process = Process(); process.executableURL = reference; process.arguments = ["l", "-slt", archive.path]
+        process.standardInput = FileHandle.nullDevice; process.standardOutput = handle; process.standardError = handle
+        try process.run(); defer { if process.isRunning { kill(process.processIdentifier, SIGKILL); process.waitUntilExit() } }
+        let deadline = ContinuousClock.now + .seconds(15)
+        while process.isRunning && ContinuousClock.now < deadline { try await Task.sleep(for: .milliseconds(5)) }
+        guard !process.isRunning else { throw SevenZipWorkerError.timedOut }
+        #expect(process.terminationStatus == 0)
+        let listing = try String(contentsOf: infoFile, encoding: .utf8)
+        #expect(listing.contains("Method = LZMA2:\(values.3)"))
+        _ = try await provider.extractToNewDirectory(archive, at: output)
+        #expect(try Data(contentsOf: output.appendingPathComponent(source.lastPathComponent)) == bytes)
+    }
+    for options in [SevenZipCompressionOptions(dictionarySize: 128 << 10), .init(wordSize: 7), .init(threadCount: 0), .init(threadCount: 513)] {
+        await #expect(throws: SevenZipWorkerError.invalidConfiguration) {
+            try await provider.create(from: [source], at: root.appendingPathComponent("invalid.7z"), options: options)
+        }
+    }
+    #expect(try Data(contentsOf: source) == bytes)
+    #expect(!(try FileManager.default.contentsOfDirectory(atPath: root.path)).contains { $0 == "invalid.7z" || $0.hasPrefix(".files-create-") })
+}
+
+@Test @MainActor func sevenZipOptionsAndCreationFormatPersistAndImportTransactionally() throws {
+    let suite = "FilesCore.SevenZipOptions.\(UUID())", defaults = try #require(UserDefaults(suiteName: suite))
+    defer { defaults.removePersistentDomain(forName: suite) }
+    let preferences = BrowserPreferences(defaults: defaults, initialFavorites: [])
+    let options = SevenZipCompressionOptions(dictionarySize: 1 << 20, wordSize: 273, threadCount: 4)
+    preferences.setArchiveCreationFormat(.sevenZip); preferences.setArchiveSevenZipOptions(options)
+    let restored = BrowserPreferences(defaults: defaults)
+    #expect(restored.archiveCreationFormat == .sevenZip && restored.archiveSevenZipOptions == options)
+    let data = try preferences.exportData()
+    preferences.setArchiveCreationFormat(.zip); preferences.setArchiveSevenZipOptions(.init())
+    try preferences.importData(data)
+    #expect(preferences.archiveCreationFormat == .sevenZip && preferences.archiveSevenZipOptions == options)
+    var document = try #require(JSONSerialization.jsonObject(with: data) as? [String: Any])
+    let before = try preferences.exportData()
+    for invalid in ["rar", "unknown"] {
+        document["archiveCreationFormat"] = invalid
+        #expect(throws: BrowserPreferencesArchiveError.invalidValue) { try preferences.importData(JSONSerialization.data(withJSONObject: document)) }
+        #expect(try preferences.exportData() == before)
+    }
+    document["archiveCreationFormat"] = "7z"
+    for invalid in [["dictionarySize": 0, "wordSize": 7, "threadCount": 2], ["dictionarySize": 3, "wordSize": 32, "threadCount": 2], ["dictionarySize": 0, "wordSize": 32, "threadCount": 513]] {
+        document["archiveSevenZipOptions"] = invalid
+        #expect(throws: BrowserPreferencesArchiveError.invalidValue) { try preferences.importData(JSONSerialization.data(withJSONObject: document)) }
+        #expect(try preferences.exportData() == before)
+    }
+    document.removeValue(forKey: "archiveSevenZipOptions"); document.removeValue(forKey: "archiveCreationFormat")
+    try preferences.importData(JSONSerialization.data(withJSONObject: document))
+    #expect(preferences.archiveCreationFormat == .zip)
+    #expect(preferences.archiveSevenZipOptions == .init(threadCount: SevenZipCompressionOptions.hostThreadCount))
+    defaults.set("rar", forKey: "archiveCreationFormat"); defaults.set(Data("{}".utf8), forKey: "archiveSevenZipOptions")
+    let recovered = BrowserPreferences(defaults: defaults)
+    #expect(recovered.archiveCreationFormat == .zip && recovered.archiveSevenZipOptions.isValid)
+}
+
+@Test func sevenZipMemoryEstimateHandlesStoreAndMaximumChoices() throws {
+    let options = SevenZipCompressionOptions(dictionarySize: 1 << 30, wordSize: 273, threadCount: 512)
+    let estimate = try #require(options.estimatedMemoryBytes(for: .ultra))
+    #expect(estimate > UInt64(1 << 30) && estimate < UInt64.max)
+    #expect(options.estimatedMemoryBytes(for: .store) == 1 << 20)
+    #expect(SevenZipCompressionOptions(threadCount: Int.max).estimatedMemoryBytes(for: .normal) == nil)
+    if let available = SevenZipCompressionOptions.availableMemoryEstimate() { #expect(available <= ProcessInfo.processInfo.physicalMemory) }
+}

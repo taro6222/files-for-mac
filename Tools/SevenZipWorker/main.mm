@@ -97,7 +97,7 @@ static bool unsignedText(id value, uint64_t *number) {
     *number = result; return true;
 }
 static int createArchive(const char *library, int output, NSDictionary *request) {
-    NSSet *allowed = [NSSet setWithArray:@[@"version", @"operation", @"items", @"password", @"level", @"encryptHeader"]];
+    NSSet *allowed = [NSSet setWithArray:@[@"version", @"operation", @"items", @"password", @"level", @"encryptHeader", @"dictionarySize", @"wordSize", @"threads"]];
     id password = request[@"password"], level = request[@"level"], header = request[@"encryptHeader"], items = request[@"items"];
     if (![[NSSet setWithArray:request.allKeys] isSubsetOfSet:allowed] ||
         ![items isKindOfClass:[NSArray class]] || [items count] == 0 || [items count] > 100000 ||
@@ -105,6 +105,22 @@ static int createArchive(const char *library, int output, NSDictionary *request)
         ![header isKindOfClass:[NSNumber class]] || CFGetTypeID((__bridge CFTypeRef)header) != CFBooleanGetTypeID() ||
         (password && password != [NSNull null] && !text(password, false)) ||
         ([header boolValue] && ![password isKindOfClass:[NSString class]])) return 6;
+    id dictionary = request[@"dictionarySize"] ?: @0, word = request[@"wordSize"] ?: @0, threads = request[@"threads"] ?: @2;
+    if (!integer(dictionary, 0, 1073741824) || !integer(word, 0, 273) || !integer(threads, 1, 512)) return 6;
+    uint32_t dictionarySize = [dictionary unsignedIntValue], wordSize = [word unsignedIntValue];
+    if (dictionarySize && dictionarySize != 65536 && dictionarySize != 262144 &&
+        (dictionarySize < 1048576 || (dictionarySize & (dictionarySize - 1)) != 0)) return 6;
+    if (![@[@0, @8, @16, @32, @64, @128, @256, @273] containsObject:word]) return 6;
+    if (!dictionarySize) {
+        switch ([level intValue]) {
+            case 9: dictionarySize = 64U << 20; break;
+            case 7: dictionarySize = 32U << 20; break;
+            case 5: dictionarySize = 16U << 20; break;
+            case 3: dictionarySize = 1U << 20; break;
+            default: dictionarySize = 64U << 10; break;
+        }
+    }
+    if (!wordSize) wordSize = [level intValue] >= 7 ? 64 : 32;
     std::vector<SevenZipCreateItem> entries;
     uint64_t total = 0;
     NSMutableSet *paths = [NSMutableSet set];
@@ -133,7 +149,7 @@ static int createArchive(const char *library, int output, NSDictionary *request)
         entries.push_back(entry); [paths addObject:item[@"path"]];
     }
     return SevenZipCreate(library, output, entries.data(), (uint32_t)entries.size(),
-        [password isKindOfClass:[NSString class]] ? [password UTF8String] : nullptr, [level intValue], [header boolValue]);
+        [password isKindOfClass:[NSString class]] ? [password UTF8String] : nullptr, [level intValue], [header boolValue], dictionarySize, wordSize, [threads unsignedIntValue]);
 }
 
 int main(int argc, const char *argv[]) {

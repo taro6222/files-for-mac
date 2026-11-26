@@ -1,0 +1,118 @@
+{
+  "runID": 45791755783,
+  "headSHA": "57ffabf8b9ab07342ef36c6fb392ffb60ba39bb1",
+  "conclusion": "failure",
+  "reports": [
+    {
+      "profile": "en-dark",
+      "checks": 324,
+      "allChecksPassed": true,
+      "failedChecks": [],
+      "sevenZipChecks": {
+        "sevenZipAndRarExtraction": true,
+        "sevenZipBatchPlacement": true,
+        "sevenZipChildCollision": true,
+        "sevenZipCreation": true,
+        "sevenZipEncryptedBrowseAndRetry": true,
+        "sevenZipEncryptedExtractAndCancel": true,
+        "sevenZipHeaderCancellation": true,
+        "sevenZipPasswordCapability": true
+      },
+      "SHA256": "a22b73639f8af9ae2c0c7105e0a53502b2371d5f8b83d471b3194a2b2ec12288"
+    },
+    {
+      "profile": "en-light",
+      "checks": 324,
+      "allChecksPassed": true,
+      "failedChecks": [],
+      "sevenZipChecks": {
+        "sevenZipAndRarExtraction": true,
+        "sevenZipBatchPlacement": true,
+        "sevenZipChildCollision": true,
+        "sevenZipCreation": true,
+        "sevenZipEncryptedBrowseAndRetry": true,
+        "sevenZipEncryptedExtractAndCancel": true,
+        "sevenZipHeaderCancellation": true,
+        "sevenZipPasswordCapability": true
+      },
+      "SHA256": "07675ebed6961caa920d1fb881827afb008dcb5e833d06375b86e7f8a1fb38a0"
+    },
+    {
+      "profile": "ko-dark",
+      "checks": 324,
+      "allChecksPassed": true,
+      "failedChecks": [],
+      "sevenZipChecks": {
+        "sevenZipAndRarExtraction": true,
+        "sevenZipBatchPlacement": true,
+        "sevenZipChildCollision": true,
+        "sevenZipCreation": true,
+        "sevenZipEncryptedBrowseAndRetry": true,
+        "sevenZipEncryptedExtractAndCancel": true,
+        "sevenZipHeaderCancellation": true,
+        "sevenZipPasswordCapability": true
+      },
+      "SHA256": "af614095652c887d877f6f68e5e3aa010d32f331aa7b86718791fee24bb827be"
+    },
+    {
+      "profile": "ko-light",
+      "checks": 324,
+      "allChecksPassed": true,
+      "failedChecks": [],
+      "sevenZipChecks": {
+        "sevenZipAndRarExtraction": true,
+        "sevenZipBatchPlacement": true,
+        "sevenZipChildCollision": true,
+        "sevenZipCreation": true,
+        "sevenZipEncryptedBrowseAndRetry": true,
+        "sevenZipEncryptedExtractAndCancel": true,
+        "sevenZipHeaderCancellation": true,
+        "sevenZipPasswordCapability": true
+      },
+      "SHA256": "6cc4578d1585a1dc51bbd41b08a0035990ecbac6e027c135f4925c6510a39e9f"
+    },
+    {
+      "profile": "tabs-en-dark",
+      "checks": 18,
+      "allChecksPassed": true,
+      "failedChecks": [],
+      "sevenZipChecks": {},
+      "SHA256": "4cd5dc149461c75b593e647a0784a7a4efc95a8c5c56558ef4fd9754202c353c"
+    },
+    {
+      "profile": "tabs-en-light",
+      "checks": 18,
+      "allChecksPassed": true,
+      "failedChecks": [],
+      "sevenZipChecks": {},
+      "SHA256": "8c7ea58db35d39197a12b053f583fba009acff534def6be24e64c77900d59e6f"
+    },
+    {
+      "profile": "tabs-ko-dark",
+      "checks": 18,
+      "allChecksPassed": true,
+      "failedChecks": [],
+      "sevenZipChecks": {},
+      "SHA256": "d14f0ebb7836c334065287abcc60161673f48e525a3d647fc8d6ea82de87a617"
+    },
+    {
+      "profile": "tabs-ko-light",
+      "checks": 18,
+      "allChecksPassed": true,
+      "failedChecks": [],
+      "sevenZipChecks": {},
+      "SHA256": "1b569fbfbb07dfa73d081a669fe6cb1161f69877bed214dfbe4ec0d80dfad9b9"
+    }
+  ],
+  "intelFileOperations": {
+    "jobID": 139812270320,
+    "phase": "copy and folder merge",
+    "error": "NSCocoaErrorDomain 1570",
+    "cause": "unresolved",
+    "logSHA256": "a2648bdbce155a508625dfc2411a92fdff9950b0318834ae6a46cc43d63f6979"
+  },
+  "intelSpotlightUnmountedFixture": {
+    "passed": true,
+    "SHA256": "5cba8532ae2ded31b9bca869817734d2fa452c0ca3074f762fd7e85f1df1765a"
+  }
+}

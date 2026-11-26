@@ -21,14 +21,14 @@ def frame(value):
 
 
 class Worker:
-    def __init__(self, executable, output=False, output_fd=None, library=None):
+    def __init__(self, executable, output=False, output_fd=None, library=None, create_output=False):
         arguments = [str(executable), str(library or executable.parent / '7z.so')]
         self.output = bytearray(); self.reader = None; inherited = ()
         if output:
             read_fd, write_fd = os.pipe(); inherited = (write_fd,)
             arguments += ['--output-fd', str(write_fd)]
         elif output_fd is not None:
-            inherited = (output_fd,); arguments += ['--output-fd', str(output_fd)]
+            inherited = (output_fd,); arguments += ['--create-output-fd' if create_output else '--output-fd', str(output_fd)]
         self.process = subprocess.Popen(arguments, pass_fds=inherited,
                                         stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         if output:
@@ -224,6 +224,26 @@ def verify(executable, reference, root, library=None):
     with changed_archive.open('ab') as stream: stream.write(b'changed')
     result = extract(worker, opened, opened['items'][0]); worker.finish()
     check('extractSourceChangeBeforeOutput', not result['ok'] and result['error']['code'] == 'source-changed' and not worker.output)
+    # Invalid advanced creation options are rejected before SDK allocation/output.
+    source = (root / 'create-source').resolve(); source.write_bytes(b'keep source')
+    stat = source.stat()
+    entry = dict(source=str(source), path=source.name, device=str(stat.st_dev), inode=str(stat.st_ino),
+                 size=stat.st_size, mode=stat.st_mode, directory=0,
+                 modifiedSeconds=stat.st_mtime_ns // 10**9, modifiedNanos=stat.st_mtime_ns % 10**9,
+                 changedSeconds=stat.st_ctime_ns // 10**9, changedNanos=stat.st_ctime_ns % 10**9)
+    request = dict(version=1, operation='create', items=[entry], level=5, encryptHeader=False)
+    invalid = [('DictionaryBoolean', 'dictionarySize', True), ('DictionaryFraction', 'dictionarySize', 65536.5),
+               ('DictionaryNotChoice', 'dictionarySize', 131072), ('DictionaryTooLarge', 'dictionarySize', 2147483648),
+               ('WordBoolean', 'wordSize', True), ('WordNotChoice', 'wordSize', 33),
+               ('WordTooLarge', 'wordSize', 274), ('ThreadsBoolean', 'threads', True),
+               ('ThreadsZero', 'threads', 0), ('ThreadsNegative', 'threads', -1), ('ThreadsTooLarge', 'threads', 513)]
+    for label, key, value in invalid:
+        output = root / ('invalid-create-' + label)
+        with output.open('wb') as stream:
+            worker = Worker(executable, output_fd=stream.fileno(), library=library, create_output=True)
+            reply = worker.request(dict(request, **{key: value})); worker.finish(1)
+        check('createRejects' + label, not reply['ok'] and reply['error']['code'] == 'invalid-metadata' and not output.read_bytes())
+    check('createInvalidOptionsPreserveSource', source.read_bytes() == b'keep source')
     return checks
 
 

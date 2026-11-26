@@ -1,6 +1,6 @@
 # 7z 고급 기능 백엔드 연결 계약
 
-상태: 351단계에서 SDK의 7z 암호 생성과 파일 이름 암호화 선택을 생성 UI에 연결했다. 검증은 [351단계 기록](verification/m7/INCREMENT_351.md)을 따른다. 새 원격 UI 수용·세부 옵션/분할·메타데이터 복원·자원 격리·정식 배포는 미완료다.
+상태: 351단계에서 SDK의 7z 암호 생성과 파일 이름 암호화 선택을 생성 UI에 연결했다. 검증은 [351단계 기록](verification/m7/INCREMENT_351.md)을 따른다. 새 원격 UI 수용·분할·실제 자원 측정/격리·메타데이터 복원·자원 격리·정식 배포는 미완료다.
 
 [345단계](verification/m7/INCREMENT_345.md)는 고정 SDK에서 두 CPU helper를 빌드하고 ARM에서 실제 암호화 아카이브와 프레임/동일 원본 검증 34개를 통과했다. `Tools/SevenZipWorker`의 UInt32 big-endian 길이 + JSON(version 1) list/close 경계로 시작했다. 최초 요청은 archivePath/password, 후속 요청은 session UUID를 사용한다. 목록 반복은 열린 FD를 유지하며 원본 변경은 거부한다. 소스 FD의 부모 전달은 아직 남아 있으며 제품 번들 포함은 후속 348단계에서 구현했다.
 
@@ -42,3 +42,5 @@ worker의 입출력은 버전과 길이가 있는 프레임으로 정의한다. 
 344단계의 요청 스레드 수는 실제 스레드 사용량 측정이 아니며, 기준 도구 실행 성공은 제품 백엔드의 연결·복구·배포 수용을 대신하지 않는다.
 
 [351단계](verification/m7/INCREMENT_351.md)의 `--create-output-fd N`은 부모가 독점 생성한 빈 일반 파일 FD를 받는다. create 요청은 원본 identity/크기/mtime/ctime/mode 및 아카이브 상대 경로, 압축 수준, 암호와 파일 이름 암호화 여부를 담는다. 기존 1 MiB 요청 한도를 유지한다. helper는 출력 경로를 열지 않고 모든 입력 구성요소에서 링크를 거부하며 읽기/완료 후 원본을 재검증한다. 부모는 정상 종료 뒤 원본·임시 출력·부모 identity를 다시 확인해 RENAME_EXCL로 게시한다. 암호와 헤더 암호화는 Unicode를 지원한다. 현재 SDK 스레드는 2개를 요청하며 고급 옵션·자원 격리·실제 두 CPU UI 수용은 별도 항목이다.
+
+[352단계](verification/m7/INCREMENT_352.md)는 dictionarySize/wordSize/threads를 추가하고 양쪽 범위 검증 및 SDK 0=LZMA2/0d/0fb/mt 속성에 연결했다. 자동 사전은 고정 원본 Files의 수준별 기본값을 명시적으로 전달한다. 옵션과 형식을 저장/복원하며 예상 메모리는 원본 근사식, 사용 가능 메모리는 현재 free+inactive 페이지로 표시한다. 실제 스레드/RSS와 자원 격리·분할·새 UI 수용은 미완료다.

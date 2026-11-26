@@ -1903,7 +1903,7 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
             guard response == .OK, let destination = panel.url, let self else { return }
             let encryptHeader = options?.encryptHeader ?? true
             let password = options?.takePassword()
-            ArchiveCreationWindow.start(sources: sources, destination: destination, compressionLevel: options?.compressionLevel, password: password, encryptHeader: encryptHeader) { self.refreshActivePane() }
+            ArchiveCreationWindow.start(sources: sources, destination: destination, compressionLevel: options?.compressionLevel, password: password, encryptHeader: encryptHeader, sevenZipOptions: options?.sevenZipOptions) { self.refreshActivePane() }
         }
     }
     private static func archiveSavePanel(sources: [URL], parent: URL, preferences: BrowserPreferences? = nil) -> NSSavePanel {
@@ -5756,7 +5756,7 @@ extension BrowserWindow {
             } else {
                 for key in ["archiveEncryptionValidationAndFormatGate", "archivePasswordRevealAndClear", "archiveEncryptedCreation", "archiveEncryptedBrowserWrongPasswordAndRetry", "archiveEncryptedBrowserCancellationAndStop", "archiveEncryptedBatchExtractionAndCancel"] { checks[key] = false }
             }
-            let sevenZipKeys = ["sevenZipEncryptedBrowseAndRetry", "sevenZipEncryptedExtractAndCancel", "sevenZipBatchPlacement", "sevenZipChildCollision", "sevenZipHeaderCancellation", "sevenZipPasswordCapability", "sevenZipEncryptedCreationOptionsAndRoundTrip"]
+            let sevenZipKeys = ["sevenZipEncryptedBrowseAndRetry", "sevenZipEncryptedExtractAndCancel", "sevenZipBatchPlacement", "sevenZipChildCollision", "sevenZipHeaderCancellation", "sevenZipPasswordCapability", "sevenZipEncryptedCreationOptionsAndRoundTrip", "sevenZipAdvancedOptionsAndRestore", "sevenZipAdvancedThreadValidationAndEstimate"]
             if let referencePath = ProcessInfo.processInfo.environment["FILES_UI_QA_SEVENZIP_REFERENCE"],
                ProcessInfo.processInfo.environment["FILES_UI_QA_SEVENZIP_BUNDLE"] != nil {
                 let source = destination.appendingPathComponent("sdk-ui-source"), archive = destination.appendingPathComponent("sdk-encrypted.7z")
@@ -5833,9 +5833,39 @@ extension BrowserWindow {
                 checks[sevenZipKeys[5]] = capabilities.qaSevenZipPassword == L("생성·추출", "Create/extract")
                 capabilities.close()
                 let createdArchive = destination.appendingPathComponent("sdk-created-by-ui.7z")
-                let savePanel = Self.archiveSavePanel(sources: [source], parent: destination)
+                let advancedSuite = "FilesUI.ArchiveAdvanced.\(UUID())"
+                let advancedDefaults = UserDefaults(suiteName: advancedSuite)!
+                defer { advancedDefaults.removePersistentDomain(forName: advancedSuite) }
+                let advancedPreferences = BrowserPreferences(defaults: advancedDefaults, initialFavorites: [])
+                let savePanel = Self.archiveSavePanel(sources: [source], parent: destination, preferences: advancedPreferences)
                 if let options = savePanel.accessoryView as? ArchiveSaveOptionsView {
                     options.formatButton.selectItem(at: 1); NSApp.sendAction(options.formatButton.action!, to: options.formatButton.target, from: options.formatButton)
+                    let advanced = options.advanced
+                    let initialEstimate = advanced.memoryLabel.stringValue
+                    advanced.dictionaryButton.selectItem(withTag: 65536)
+                    NSApp.sendAction(advanced.dictionaryButton.action!, to: advanced.dictionaryButton.target, from: advanced.dictionaryButton)
+                    advanced.wordButton.selectItem(withTag: 128)
+                    NSApp.sendAction(advanced.wordButton.action!, to: advanced.wordButton.target, from: advanced.wordButton)
+                    advanced.threadsField.stringValue = "1"
+                    NSApp.sendAction(advanced.threadsField.action!, to: advanced.threadsField.target, from: advanced.threadsField)
+                    let selectedAdvanced = options.sevenZipOptions
+                    let selectedEstimate = advanced.memoryLabel.stringValue
+                    options.levelButton.selectItem(at: 5); NSApp.sendAction(options.levelButton.action!, to: options.levelButton.target, from: options.levelButton)
+                    let storeDisables = !advanced.dictionaryButton.isEnabled && !advanced.wordButton.isEnabled
+                    options.levelButton.selectItem(at: 2); NSApp.sendAction(options.levelButton.action!, to: options.levelButton.target, from: options.levelButton)
+                    let reopened = Self.archiveSavePanel(sources: [source], parent: destination, preferences: BrowserPreferences(defaults: advancedDefaults))
+                    let reopenedOptions = reopened.accessoryView as? ArchiveSaveOptionsView
+                    checks[sevenZipKeys[7]] = advanced.dictionaryButton.numberOfItems == 14 && advanced.wordButton.numberOfItems == 8 && storeDisables &&
+                        advanced.dictionaryButton.isEnabled && selectedAdvanced == SevenZipCompressionOptions(dictionarySize: 65536, wordSize: 128, threadCount: 1) &&
+                        reopenedOptions?.sevenZipOptions == selectedAdvanced && reopenedOptions?.formatButton.indexOfSelectedItem == 1 && reopened.nameFieldStringValue.hasSuffix(".7z")
+                    var invalidThreads = true
+                    for value in ["0", String(SevenZipCompressionOptions.hostThreadCount + 1), "1.5", ""] {
+                        advanced.threadsField.stringValue = value
+                        do { try options.panel(savePanel, validate: createdArchive); invalidThreads = false } catch {}
+                    }
+                    advanced.threadsField.stringValue = "1"
+                    NSApp.sendAction(advanced.threadsField.action!, to: advanced.threadsField.target, from: advanced.threadsField)
+                    checks[sevenZipKeys[8]] = invalidThreads && !selectedEstimate.isEmpty && selectedEstimate != initialEstimate && !advanced.memoryLabel.isHidden
                     options.encryptionButton.performClick(nil); options.passwordInput.value = password
                     try options.panel(savePanel, validate: createdArchive)
                     let encryptedHeader = options.encryptHeader
@@ -5845,8 +5875,8 @@ extension BrowserWindow {
                     options.appearance = window.effectiveAppearance
                     try capture("sevenzip-creation-options", view: options, backingColor: .windowBackgroundColor)
                     let creationPassword = options.takePassword()
-                    ArchiveCreationWindow.start(sources: [source], destination: createdArchive, compressionLevel: .fast,
-                                                password: creationPassword, encryptHeader: encryptedHeader) {}
+                    ArchiveCreationWindow.start(sources: [source], destination: createdArchive, compressionLevel: options.compressionLevel,
+                                                password: creationPassword, encryptHeader: encryptedHeader, sevenZipOptions: selectedAdvanced) {}
                     let start = ContinuousClock.now
                     while ArchiveCreationWindow.qaLatest?.qaRunning == true && start.duration(to: .now) < .seconds(15) { try await Task.sleep(for: .milliseconds(10)) }
                     let creationSucceeded = ArchiveCreationWindow.qaLatest?.qaSucceeded == true
@@ -5860,7 +5890,7 @@ extension BrowserWindow {
                         let restoredPayload = try Data(contentsOf: restored.appendingPathComponent(source.lastPathComponent).appendingPathComponent(filename))
                         checks[sevenZipKeys[6]] = encryptedHeader && headerCanBeDisabled && needsPassword && options.passwordInput.value.isEmpty && restoredPayload == payload
                     } else { checks[sevenZipKeys[6]] = false }
-                } else { checks[sevenZipKeys[6]] = false }
+                } else { for index in 6...8 { checks[sevenZipKeys[index]] = false } }
                 window.makeKeyAndOrderFront(nil)
             } else { for key in sevenZipKeys { checks[key] = false } }
             try await Task.sleep(for: .milliseconds(300))
