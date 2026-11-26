@@ -1,0 +1,65 @@
+{
+  "binarySHA256": "c06cbaea338ef7d79c86bdaf71bf2e9dd21d7de37b53439aa53160a25461f2b2",
+  "harnessSHA256": "c18770adc050455273a68c6ce95de164ca0a17c5d4898ca4ed0e9eba80e0e218",
+  "architecture": "arm64",
+  "os": "macOS-27.2.1-arm64-arm-64bit",
+  "durationSeconds": 180,
+  "workload": "full",
+  "exitStatus": 1,
+  "report": {
+    "cycles": 31,
+    "elapsedSeconds": 107.160556458,
+    "error": "Expected 0 rows at destination with an active watcher. Actual: 0 rows at destination, loading=true, watcher=connecting, loadFailed=false",
+    "peakPhysicalFootprintBytes": 72270928,
+    "peakRSSBytes": 147963904,
+    "primaryWatcherReleases": 31,
+    "samples": [
+      {
+        "cycle": 1,
+        "elapsedSeconds": 0.762077708,
+        "physicalFootprintBytes": 68994104,
+        "retainedPrimaryDetailCells": 55,
+        "rssBytes": 139460608
+      },
+      {
+        "cycle": 12,
+        "elapsedSeconds": 31.066966166,
+        "physicalFootprintBytes": 65356880,
+        "retainedPrimaryDetailCells": 55,
+        "rssBytes": 140918784
+      },
+      {
+        "cycle": 22,
+        "elapsedSeconds": 61.744033833,
+        "physicalFootprintBytes": 64455784,
+        "retainedPrimaryDetailCells": 55,
+        "rssBytes": 146178048
+      }
+    ],
+    "state": "failed",
+    "targetSeconds": 180,
+    "workload": "full"
+  },
+  "observations": [
+    {
+      "cyclesBefore": 5,
+      "cyclesAfter": 5,
+      "counts": {
+        "NSKeyValueDependencyContext": 1031,
+        "NSKeyValueDependency": 3263,
+        "BrowserWindow": 1,
+        "BrowserTabWindow": null,
+        "NSWindowTab": null,
+        "NSStackView": 14
+      },
+      "heapSHA256": "417f3efc4aec59bc0472f83ca911adec5ac42f0c8ffe6c8d4b50b7806185cfe0"
+    }
+  ],
+  "failure": "RuntimeError('Files did not complete its workload and both heap samples')",
+  "stabilityGatePassed": false,
+  "limits": [
+    "Short owned-process diagnostic; the latest-source 8-hour gate remains separate.",
+    "Heap sampling spans a reported cycle range rather than pausing the application.",
+    "Missing classes are null; counts alone do not establish physical-memory stability."
+  ]
+}

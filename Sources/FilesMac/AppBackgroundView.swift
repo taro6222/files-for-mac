@@ -22,6 +22,10 @@ final class AppBackgroundView: NSView {
     }
 
     override func draw(_ dirtyRect: NSRect) {
+        NSGraphicsContext.saveGraphicsState()
+        defer { NSGraphicsContext.restoreGraphicsState() }
+        // Fill images can exceed the pane; keep them out of tabs, toolbars and status bars.
+        NSBezierPath(rect: bounds).addClip()
         NSColor.controlBackgroundColor.setFill(); bounds.fill()
         guard let image, image.size.width > 0, image.size.height > 0 else { return }
         let size: NSSize

@@ -121,12 +121,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             self?.windows.removeAll { $0 === controller }
             if self?.lastFocusedBrowser === controller { self?.lastFocusedBrowser = nil }
         }
-        controller.showWindow(nil)
-        if let sourceWindow = source?.window, let targetWindow = controller.window {
-            sourceWindow.addTabbedWindow(targetWindow, ordered: .above)
-            if selectNewTab ?? BrowserPreferences.shared.alwaysSwitchToNewlyOpenedTab { targetWindow.makeKeyAndOrderFront(nil) }
-            else { sourceWindow.makeKeyAndOrderFront(nil) }
-        }
+        if let source {
+            source.attachTab(controller, select: selectNewTab ?? BrowserPreferences.shared.alwaysSwitchToNewlyOpenedTab)
+        } else { controller.showWindow(nil) }
         return controller
     }
     @objc func newWindow(_ sender: Any?) { makeBrowser() }
@@ -152,9 +149,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         guard let workspace = closedWorkspaces.popLast() else { return }
         makeBrowser(workspace: workspace, tabbedTo: currentBrowser)
     }
-    private var currentTabGroup: [NSWindow] { currentBrowser?.window?.tabbedWindows ?? currentBrowser?.window.map { [$0] } ?? [] }
-    @objc func nextTab(_ sender: Any?) { currentBrowser?.window?.selectNextTab(sender) }
-    @objc func previousTab(_ sender: Any?) { currentBrowser?.window?.selectPreviousTab(sender) }
+    private var currentTabGroup: [NSWindow] { currentBrowser?.tabs.windows ?? [] }
+    @objc func nextTab(_ sender: Any?) { currentBrowser?.tabs.selectRelative(1) }
+    @objc func previousTab(_ sender: Any?) { currentBrowser?.tabs.selectRelative(-1) }
     @objc func closeSelectedTab(_ sender: Any?) { currentBrowser?.window?.performClose(sender) }
     @objc func closeAllTabs(_ sender: Any?) { currentTabGroup.forEach { $0.performClose(sender) } }
     @objc func closeOtherTabs(_ sender: Any?) {

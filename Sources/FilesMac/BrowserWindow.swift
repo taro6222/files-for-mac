@@ -11,6 +11,11 @@ import FilesCore
 @MainActor
 final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableViewDelegate, NSComboBoxDelegate, NSMenuDelegate, NSMenuItemValidation {
     var onClose: (() -> Void)?
+    var tabs = BrowserTabs()
+    private let tabBar = BrowserTabBar()
+    var tabDisplayTitle: String { model.location.map { $0.path == "/" ? "/" : $0.lastPathComponent } ?? L("홈", "Home") }
+    func refreshTabBar() { tabBar.update() }
+    func attachTab(_ browser: BrowserWindow, select: Bool = true) { tabs.insert(browser, select: select) }
     private let model: BrowserModel
     private let table = BrowserFileTable()
 #if RELEASE_PERFORMANCE_QA
@@ -211,18 +216,21 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         self.openSystemURL = openSystemURL
         self.undoJournalDirectory = undoJournalDirectory ?? Self.operationJournalDirectory
         self.filePasteboard = filePasteboard
-        let w = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1280, height: 820),
+        let w = BrowserTabWindow(contentRect: NSRect(x: 0, y: 0, width: 1280, height: 820),
             styleMask: [.titled, .closable, .miniaturizable, .resizable], backing: .buffered, defer: false)
         super.init(window: w)
         w.title = "Files macOS"; w.minSize = NSSize(width: 900, height: 600)
         w.center()
         if restoresFrame { w.setFrameAutosaveName("BrowserWindow") }
+        w.tabbingMode = .disallowed
         w.titlebarAppearsTransparent = true
         w.isReleasedWhenClosed = false
         w.appearance = Self.appearance(preferences.appearance)
         w.contentView = BrowserBackgroundView()
         model.showHidden = preferences.showHidden
+        tabBar.owner = self
         setupUI(restoresLayout: restoresFrame)
+        tabs.register(self)
         applyAppBackground()
         model.onChange = { [weak self] in self?.render() }
         model.onListingPrepared = { [weak self] in self?.updateWatcher() }
@@ -348,6 +356,8 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         split.setHoldingPriority(.defaultLow, forSubviewAt: 1)
         split.setPosition(220, ofDividerAt: 0)
 
+        main.addArrangedSubview(tabBar)
+        tabBar.widthAnchor.constraint(equalTo: main.widthAnchor).isActive = true
         let header = TabScrollStackView(); header.orientation = .horizontal; header.spacing = 10
         header.onTabScroll = { [weak self] deltaX, deltaY in
             guard let self, let direction = TabScrollDirection.resolve(deltaX: deltaX, deltaY: deltaY, reversed: self.preferences.reverseTabScrollDirection),
@@ -362,6 +372,7 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         let choose = button("folder.badge.plus", L("폴더 열기", "Open Folder"), #selector(chooseFolder(_:)))
         header.addArrangedSubview(choose)
         let tabDrag = WorkspaceTabDragHandle()
+        tabDrag.representedBrowser = self
         header.addArrangedSubview(tabDrag)
         main.addArrangedSubview(header)
 
@@ -1145,7 +1156,8 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         // Window titles must remain usable while reading a slow or inaccessible location.
         titleLabel.stringValue = model.location.map { $0.path == "/" ? "/" : $0.lastPathComponent }
             ?? L("홈", "Home")
-        window?.title = "\(titleLabel.stringValue) — Files macOS"
+        let title = "\(titleLabel.stringValue) — Files macOS"
+        if window?.title != title { window?.title = title; tabs.refresh() }
         if pathField.currentEditor() == nil { pathField.stringValue = model.location?.path ?? "" }
         backButton.isEnabled = !model.history.back.isEmpty; forwardButton.isEnabled = !model.history.forward.isEmpty
         upButton.isEnabled = model.location != nil && model.location?.path != "/"
@@ -3224,20 +3236,26 @@ private enum TabSplitEdge {
     }
 }
 
-private final class WorkspaceTabDragHandle: NSView, NSDraggingSource {
+class WorkspaceTabDragHandle: NSView, NSDraggingSource {
     static let dragType = NSPasteboard.PasteboardType("org.taro6222.files-for-mac.tab")
     private let symbol = NSImage(systemSymbolName: "rectangle.on.rectangle", accessibilityDescription: nil)
     private var initialEvent: NSEvent?
+    weak var representedBrowser: BrowserWindow?
+    var onActivate: (() -> Void)?
+    private var escapeMonitor: Any?
+    private var dragCancelled = false
 
-    init() {
+    init(fixedSize: Bool = true) {
         super.init(frame: .zero)
         let label = L("탭을 끌어 분할", "Drag Tab to Split")
         toolTip = label
         setAccessibilityElement(true)
         setAccessibilityRole(.image)
         setAccessibilityLabel(label)
-        widthAnchor.constraint(equalToConstant: 26).isActive = true
-        heightAnchor.constraint(equalToConstant: 26).isActive = true
+        if fixedSize {
+            widthAnchor.constraint(equalToConstant: 26).isActive = true
+            heightAnchor.constraint(equalToConstant: 26).isActive = true
+        }
     }
 
     required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
@@ -3247,7 +3265,18 @@ private final class WorkspaceTabDragHandle: NSView, NSDraggingSource {
     }
 
     override func mouseDown(with event: NSEvent) { initialEvent = event }
-    override func mouseUp(with event: NSEvent) { initialEvent = nil }
+    override func mouseUp(with event: NSEvent) {
+        if initialEvent != nil { onActivate?() }
+        initialEvent = nil
+    }
+    override var acceptsFirstResponder: Bool { onActivate != nil }
+    override func accessibilityPerformPress() -> Bool { guard let onActivate else { return false }; onActivate(); return true }
+    override func keyDown(with event: NSEvent) {
+        if event.keyCode == 123 { representedBrowser?.tabs.selectRelative(-1) }
+        else if event.keyCode == 124 { representedBrowser?.tabs.selectRelative(1) }
+        else if event.keyCode == 36 || event.keyCode == 49 { onActivate?() }
+        else { super.keyDown(with: event) }
+    }
 
     override func mouseDragged(with event: NSEvent) {
         guard let initialEvent, let symbol,
@@ -3258,7 +3287,21 @@ private final class WorkspaceTabDragHandle: NSView, NSDraggingSource {
         payload.setString("tab", forType: Self.dragType)
         let item = NSDraggingItem(pasteboardWriter: payload)
         item.setDraggingFrame(bounds, contents: symbol)
+        dragCancelled = false
+        escapeMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            if event.keyCode == 53 { self?.dragCancelled = true }
+            return event
+        }
         beginDraggingSession(with: [item], event: event, source: self)
+    }
+
+    func draggingSession(_ session: NSDraggingSession, endedAt screenPoint: NSPoint, operation: NSDragOperation) {
+        if let escapeMonitor { NSEvent.removeMonitor(escapeMonitor) }
+        escapeMonitor = nil
+        guard operation.isEmpty, !dragCancelled, NSEvent.pressedMouseButtons == 0,
+              let browser = representedBrowser, browser.tabs.browsers.count > 1,
+              !NSApp.windows.contains(where: { $0.isVisible && $0.frame.contains(screenPoint) }) else { return }
+        browser.tabs.detach(browser, at: screenPoint)
     }
 
     func draggingSession(_ session: NSDraggingSession,
@@ -3287,7 +3330,7 @@ private final class WorkspaceSplitView: NSSplitView, NSSplitViewDelegate {
 
     private func tabDrop(_ sender: any NSDraggingInfo) -> (BrowserWindow, BrowserWindow, TabSplitEdge)? {
         guard let handle = sender.draggingSource as? WorkspaceTabDragHandle,
-              let source = handle.window?.windowController as? BrowserWindow,
+              let source = handle.representedBrowser ?? (handle.window?.windowController as? BrowserWindow),
               let target = window?.windowController as? BrowserWindow,
               target.canAcceptTabSplit(from: source),
               let edge = TabSplitEdge.at(convert(sender.draggingLocation, from: nil), in: bounds, flipped: isFlipped)
@@ -4721,6 +4764,44 @@ extension BrowserWindow {
                     && TabSplitEdge.at(NSPoint(x: 200, y: 10), in: dropBounds, flipped: true) == .top
                     && TabSplitEdge.at(NSPoint(x: 200, y: 10), in: dropBounds, flipped: false) == .bottom
                     && TabSplitEdge.at(NSPoint(x: 200, y: 150), in: dropBounds, flipped: false) == nil
+                do {
+                    let a = BrowserWindow(preferences: preferences, restoresFrame: false, initialSnapshot: primary.tab)
+                    let b = BrowserWindow(preferences: preferences, restoresFrame: false, initialSnapshot: secondary.tab)
+                    let c = BrowserWindow(preferences: preferences, restoresFrame: false, initialSnapshot: primary.tab)
+                    a.showWindow(nil)
+                    a.attachTab(b, select: false)
+                    a.attachTab(c)
+                    let group = a.tabs
+                    checks["browserTabsBackgroundAndSelection"] = group.browsers.count == 3
+                        && group.selected === c && c.window?.isVisible == true
+                        && a.window?.isVisible == false && b.window?.isVisible == false
+                        && group.windows.allSatisfy { $0.tabGroup == nil && $0.tabbingMode == .disallowed }
+                    group.selectRelative(1)
+                    let cycled = group.selected === a
+                    group.insert(c, at: 0)
+                    checks["browserTabsReorderAndCycle"] = cycled && group.browsers.elementsEqual([c, a, b], by: { $0 === $1 })
+                    let resized = NSRect(x: 80, y: 90, width: 1100, height: 720)
+                    c.window?.setFrame(resized, display: true)
+                    b.window?.makeKeyAndOrderFront(nil)
+                    checks["browserTabsRevealSynchronizesFrame"] = group.selected === b
+                        && b.window?.frame == resized && c.window?.isVisible == false
+                    // A fresh window needs a run-loop layout pass, including its stack's visibility changes.
+                    try await Task.sleep(for: .milliseconds(250))
+                    b.window?.contentView?.layoutSubtreeIfNeeded()
+                    checks["browserTabsVisibleLayout"] = b.tabBar.verifiesVisibleLayout
+                    try capture("browser-tabs", view: b.window!.contentView!)
+                    group.detach(a)
+                    checks["browserTabsDetach"] = a.tabs !== group && a.tabs.browsers.count == 1
+                        && a.window?.isVisible == true && group.browsers.count == 2
+                    a.attachTab(c)
+                    checks["browserTabsTransferBetweenWindows"] = c.tabs === a.tabs
+                        && a.tabs.browsers.count == 2 && group.browsers.count == 1
+                        && group.selected === b && b.window?.isVisible == true
+                    c.close()
+                    checks["browserTabsCloseSelectsNeighbor"] = a.tabs.browsers.count == 1
+                        && a.tabs.selected === a && a.window?.isVisible == true
+                    a.close(); b.close()
+                }
                 for (edge, expectedAxis, first, last) in [
                     (TabSplitEdge.left, SplitAxis.vertical, gridFolder, columnFolder),
                     (.right, .vertical, columnFolder, gridFolder),
@@ -4731,11 +4812,11 @@ extension BrowserWindow {
                     let target = BrowserWindow(preferences: preferences, restoresFrame: false, initialSnapshot: primary.tab)
                     source.showWindow(nil)
                     target.showWindow(nil)
-                    if let sourceWindow = source.window, let targetWindow = target.window {
-                        targetWindow.addTabbedWindow(sourceWindow, ordered: .above)
+                    if let sourceWindow = source.window, target.window != nil {
+                        target.attachTab(source)
                         sourceWindow.makeKeyAndOrderFront(nil)
                     }
-                    let wasTabbed = target.window?.tabbedWindows?.contains { $0 === source.window } == true
+                    let wasTabbed = target.tabs.browsers.contains { $0 === source }
                     var closedSourceState: SplitTabState?
                     var hadContentDuringClose = false
                     source.onClose = { [weak source] in
@@ -4755,7 +4836,7 @@ extension BrowserWindow {
                         && state.activePane.tab.history.forward.map { $0.url?.path } == [columnFolder.path]
                         && !target.canAcceptTabSplit(from: source)
                         && wasTabbed && target.window?.isVisible == true
-                        && target.window?.tabbedWindows?.contains { $0 === source.window } != true
+                        && !target.tabs.browsers.contains { $0 === source }
                     checks["tabClosePreservesWorkspace_\(edge)"] = hadContentDuringClose
                         && closedSourceState?.activePane.tab.location?.path == gridFolder.path
                         && closedSourceState?.activePane.tab.viewMode == .list
@@ -7724,7 +7805,7 @@ extension BrowserWindow {
         }
 
         func exerciseSecondaryWindow(relativeTo window: NSWindow) async throws {
-            let usesNativeTabs = workload != .windows
+            let usesGroupedTabs = workload != .windows
             var tab: BrowserWindow? = BrowserWindow(preferences: preferences,
                 restoresFrame: false, initialLocation: destination)
             weak let releasedTab = tab
@@ -7733,12 +7814,12 @@ extension BrowserWindow {
             var didClose = false
             do {
                 guard let tab, let tabWindow = tab.window else { throw ReleaseSoakFailure("Missing tab") }
-                if !usesNativeTabs { tabWindow.tabbingMode = .disallowed }
+                if !usesGroupedTabs { tabWindow.tabbingMode = .disallowed }
                 tab.showWindow(nil)
-                if usesNativeTabs {
-                    window.addTabbedWindow(tabWindow, ordered: .above)
-                    guard window.tabbedWindows?.count == 2 else { throw ReleaseSoakFailure("Tab did not attach") }
-                } else if (tabWindow.tabbedWindows?.count ?? 1) != 1 || (window.tabbedWindows?.count ?? 1) != 1 {
+                if usesGroupedTabs {
+                    browser.attachTab(tab)
+                    guard browser.tabs.browsers.count == 2 else { throw ReleaseSoakFailure("Tab did not attach") }
+                } else if tab.tabs.browsers.count != 1 || browser.tabs.browsers.count != 1 {
                     throw ReleaseSoakFailure("Standalone window joined a tab group")
                 }
                 try await tab.waitForSoakListing(at: destination, count: 0)
@@ -7775,7 +7856,7 @@ extension BrowserWindow {
                 }
                 try await Task.sleep(for: .milliseconds(20))
             }
-            guard (window.tabbedWindows?.count ?? 1) == 1 else { throw ReleaseSoakFailure("Closed tab remained in the window group") }
+            guard browser.tabs.browsers.count == 1 else { throw ReleaseSoakFailure("Closed tab remained in the window group") }
             if workload == .full { try fm.removeItem(at: journals) }
         }
 

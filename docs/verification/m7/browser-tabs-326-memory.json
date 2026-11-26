@@ -1,0 +1,105 @@
+{
+  "binarySHA256": "30938a042bbc85e7554f29ca89693f1a9aab8860af6da2cb25b875b4e179f02f",
+  "harnessSHA256": "f9df47e246fc36c31c974a85cdc0b4dcd315b729c9894a1a17594612cb45ba20",
+  "architecture": "arm64",
+  "os": "macOS-27.2.1-arm64-arm-64bit",
+  "durationSeconds": 180,
+  "workload": "full",
+  "exitStatus": 0,
+  "report": {
+    "cycles": 66,
+    "elapsedSeconds": 180.700562583,
+    "peakPhysicalFootprintBytes": 65258576,
+    "peakRSSBytes": 143196160,
+    "primaryWatcherReleases": 66,
+    "samples": [
+      {
+        "cycle": 1,
+        "elapsedSeconds": 0.78078225,
+        "physicalFootprintBytes": 65258576,
+        "retainedPrimaryDetailCells": 55,
+        "rssBytes": 139608064
+      },
+      {
+        "cycle": 13,
+        "elapsedSeconds": 32.895489167,
+        "physicalFootprintBytes": 57312336,
+        "retainedPrimaryDetailCells": 55,
+        "rssBytes": 139067392
+      },
+      {
+        "cycle": 25,
+        "elapsedSeconds": 65.434957125,
+        "physicalFootprintBytes": 56067152,
+        "retainedPrimaryDetailCells": 55,
+        "rssBytes": 139116544
+      },
+      {
+        "cycle": 36,
+        "elapsedSeconds": 95.84750375,
+        "physicalFootprintBytes": 54494288,
+        "retainedPrimaryDetailCells": 55,
+        "rssBytes": 139231232
+      },
+      {
+        "cycle": 47,
+        "elapsedSeconds": 126.464094583,
+        "physicalFootprintBytes": 54428752,
+        "retainedPrimaryDetailCells": 55,
+        "rssBytes": 139313152
+      },
+      {
+        "cycle": 58,
+        "elapsedSeconds": 156.496031417,
+        "physicalFootprintBytes": 54510672,
+        "retainedPrimaryDetailCells": 55,
+        "rssBytes": 139395072
+      },
+      {
+        "cycle": 66,
+        "elapsedSeconds": 180.700560917,
+        "physicalFootprintBytes": 52479056,
+        "retainedPrimaryDetailCells": 55,
+        "rssBytes": 139427840
+      }
+    ],
+    "state": "completed",
+    "targetSeconds": 180,
+    "workload": "full"
+  },
+  "observations": [
+    {
+      "cyclesBefore": 5,
+      "cyclesAfter": 5,
+      "counts": {
+        "NSKeyValueDependencyContext": 1036,
+        "NSKeyValueDependency": 3268,
+        "BrowserWindow": 1,
+        "BrowserTabWindow": null,
+        "NSWindowTab": null,
+        "NSStackView": 14
+      },
+      "heapSHA256": "7b3942ede331657060c4ce7a7458adb94c3fc882be2716011972ad9b2336de6b"
+    },
+    {
+      "cyclesBefore": 40,
+      "cyclesAfter": 40,
+      "counts": {
+        "NSKeyValueDependencyContext": 1036,
+        "NSKeyValueDependency": 3268,
+        "BrowserWindow": 1,
+        "BrowserTabWindow": null,
+        "NSWindowTab": null,
+        "NSStackView": 14
+      },
+      "heapSHA256": "7e4a1e3dd9572a447960b34927538437e5292b35739604da6e96cc98956c3eeb"
+    }
+  ],
+  "failure": null,
+  "stabilityGatePassed": false,
+  "limits": [
+    "Short owned-process diagnostic; the latest-source 8-hour gate remains separate.",
+    "Heap sampling spans a reported cycle range rather than pausing the application.",
+    "Missing classes are null; counts alone do not establish physical-memory stability."
+  ]
+}
