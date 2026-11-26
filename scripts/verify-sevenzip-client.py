@@ -15,7 +15,14 @@ TESTS = [
     'sevenZipSDKTimeoutAndCancellationReapOwnedChild', 'sevenZipSDKValidatesPathsBeforeStaging',
     'sevenZipSDKEncryptedRoundTripAndFailureStaging', 'sevenZipSDKCorruptionAndLinksNeverPublish',
     'sevenZipSDKPublicationConflictAndForeignStagingPreservation', 'sevenZipSDKCancellationBeforePublicationDiscardsStaging',
+    'sevenZipSDKBundleManifestRejectsUntrustedMetadata', 'sevenZipSDKBundleRejectsMissingLinksAndNonregularManifest',
+    'sevenZipSDKBundleCancellationAndInvalidTimeout',
+    'sevenZipSDKBundleDeveloperIDRequirementRejectsInvalidTeam',
+    'sevenZipSDKBundleBindsExecutingHostIdentity',
 ]
+BUNDLE_TESTS = ['sevenZipSDKBundleResolutionAndUse', 'sevenZipSDKBundleRejectsResealedHashMismatch',
+                'sevenZipSDKBundleRejectsAdhocStableAndWrongIdentity', 'sevenZipSDKBundleRejectsResealedSourcePinAndExtraFile',
+                'sevenZipSDKBundlePinsSelectedRevisionAcrossResigning']
 
 
 def main():
@@ -24,6 +31,7 @@ def main():
     parser.add_argument('--reference', type=Path, required=True)
     parser.add_argument('--library', type=Path)
     parser.add_argument('--bundle-manifest', type=Path)
+    parser.add_argument('--app', type=Path, help='Also require signed app resolution and tampering tests')
     parser.add_argument('--output', type=Path, required=True)
     args = parser.parse_args()
     args.output.mkdir(parents=True, exist_ok=True)
@@ -31,9 +39,13 @@ def main():
                        FILES_TEST_SEVENZIP_REFERENCE=str(args.reference.resolve()))
     if args.library: environment['FILES_TEST_SEVENZIP_LIBRARY'] = str(args.library.resolve())
     else: environment.pop('FILES_TEST_SEVENZIP_LIBRARY', None)
+    if args.app: environment['FILES_TEST_SEVENZIP_APP_BUNDLE'] = str(args.app.resolve())
+    else: environment.pop('FILES_TEST_SEVENZIP_APP_BUNDLE', None)
+    requested_tests = TESTS + (BUNDLE_TESTS if args.app else [])
+    test_filter = '(' + '|'.join(re.escape(name) for name in requested_tests) + ')'
     timed_out = False
     with (args.output / 'run.log').open('wb') as log:
-        process = subprocess.Popen(['swift', 'test', '--skip-build', '--disable-xctest', '--no-parallel', '--filter', 'sevenZipSDK'],
+        process = subprocess.Popen(['swift', 'test', '--skip-build', '--disable-xctest', '--no-parallel', '--filter', test_filter],
                                    env=environment, stdout=log, stderr=log, start_new_session=True)
         try: process.wait(timeout=120)
         except subprocess.TimeoutExpired:
@@ -43,10 +55,11 @@ def main():
             process.wait()
     log_path = args.output / 'run.log'
     text = log_path.read_text(errors='replace') if log_path.stat().st_size <= 8 * 1024 * 1024 else ''
-    observed = {name: bool(re.search(r'Test ' + re.escape(name) + r'\(\) passed after', text)) for name in TESTS}
+    observed = {name: bool(re.search(r'Test ' + re.escape(name) + r'\(\) passed after', text)) for name in requested_tests}
     passed = process.returncode == 0 and not timed_out and all(observed.values()) and 'skipped' not in text.lower()
     repo = Path(__file__).resolve().parent.parent
-    sources = ['Sources/FilesCore/SevenZipArchiveProvider.swift', 'Tests/FilesCoreTests/SevenZipArchiveProviderTests.swift']
+    sources = ['Sources/FilesCore/SevenZipArchiveProvider.swift', 'Sources/FilesCore/SevenZipBundledBackend.swift',
+               'Tests/FilesCoreTests/SevenZipArchiveProviderTests.swift', 'Tests/FilesCoreTests/SevenZipBundledBackendTests.swift']
     result = dict(passed=passed, exitCode=process.returncode, timedOut=timed_out, tests=observed,
                   sourcesSHA256={name: hashlib.sha256((repo / name).read_bytes()).hexdigest() for name in sources},
                   workerManifest=json.loads((args.bundle_manifest or args.worker.parent / 'manifest.json').read_text()),

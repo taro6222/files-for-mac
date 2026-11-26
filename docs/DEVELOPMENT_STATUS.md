@@ -10,7 +10,7 @@ M7 출시 검증이 진행 중이다. [a07c80c 개발 프리뷰](verification/m7
 
 ## 최신 검증과 남은 실행
 
-[7z SDK 포함 패키지와 진단 EOF 수정](verification/m7/INCREMENT_348.md)은 helper/라이브러리의 안쪽부터 서명, 원본 고지·대응 소스·재빌드 자료, 정확한 번들 검증과 기존 출력 보존을 연결했다. 빈 stderr EOF를 진단으로 오인하는 오류를 수정 전 재현하고 고쳤다. 새 유니버설 DMG의 읽기 전용 마운트에서 ARM SDK 조건 59개·Swift 검사 9개가 통과했고 정상 detach했다. Core 성공 386개·환경 건너뜀 19개, 보호 검사 13개와 두 CPU Release 빌드/메타데이터/서명이 통과했다. ad-hoc 검증 후보이며 새 이미지의 앱 설치 동선·UI 연결·최신 원격/지원 환경·정식 서명/공증은 남아 있다.
+[번들 SDK 런타임 resolver](verification/m7/INCREMENT_349.md)는 Security API의 앱/구성 요소 서명·identifier/Team 정책과 private 경로·manifest·해시·소스 pin 검증을 연결했다. 선택한 CodeDirectory/manifest identity를 고정하고 매 작업 전에 재검증하며 CLI/PATH 탐색을 사용하지 않는다. ARM 번들 포함 검사 19개·기본 CI 선택 14개, Core 성공 396개·환경 건너뜀 19개와 Debug/Release가 통과했다. 직전 EOF 회귀 9개는 macOS 15 ARM·Intel 실제 보고서 모두 통과했다. 새 resolver의 최신 두 CPU·실제 Developer ID·UI/배치 연결·메모리 격리와 정식 출시는 미완료다.
 
 | 항목 | 확인한 결과 | 남은 실행 |
 |---|---|---|

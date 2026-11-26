@@ -7,12 +7,17 @@ public enum SevenZipWorkerError: Error, Sendable, Equatable {
     case stagingPreserved(URL)
 }
 
-/// Explicit locations only. Production bundle discovery/signature checks are handled by packaging.
+/// Explicit locations are available for integration tools; bundled() validates private app code.
 public struct SevenZipArchiveProvider: Sendable {
     public let executable: URL, library: URL
     public let timeout: TimeInterval
+    private let verifiedBundle: URL?
+    private let verifiedIdentity: SevenZipBundleVerifier.Identity?
     public init(executable: URL, library: URL, timeout: TimeInterval = 300) {
-        self.executable = executable; self.library = library; self.timeout = timeout
+        self.executable = executable; self.library = library; self.timeout = timeout; verifiedBundle = nil; verifiedIdentity = nil
+    }
+    init(verifiedExecutable: URL, library: URL, bundle: URL, identity: SevenZipBundleVerifier.Identity, timeout: TimeInterval) {
+        executable = verifiedExecutable; self.library = library; self.timeout = timeout; verifiedBundle = bundle; verifiedIdentity = identity
     }
 
     public func entries(at archive: URL, password: String? = nil) async throws -> [ArchiveEntryDescriptor] {
@@ -84,6 +89,10 @@ public struct SevenZipArchiveProvider: Sendable {
                     continuation.resume(with: Result {
                         guard timeout.isFinite, timeout > 0, executable.isFileURL, library.isFileURL else {
                             throw SevenZipWorkerError.invalidConfiguration
+                        }
+                        if let verifiedBundle {
+                            let locations = try SevenZipBundleVerifier.verify(verifiedBundle, check: control.check)
+                            guard locations.worker == executable, locations.library == library, locations.identity == verifiedIdentity else { throw SevenZipBundleError.changedBundle }
                         }
                         let session = try SevenZipSession(provider: self, control: control)
                         defer { session.stop() }

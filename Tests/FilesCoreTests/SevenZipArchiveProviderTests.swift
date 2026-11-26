@@ -134,7 +134,7 @@ private func sdkRealProvider() throws -> SevenZipArchiveProvider {
     return SevenZipArchiveProvider(executable: binary, library: library, timeout: 20)
 }
 
-@Test(.enabled(if: hasIntegrationFixture("FILES_TEST_SEVENZIP_REFERENCE", "FILES_TEST_SEVENZIP_WORKER"), "Requires the pinned native SDK worker and reference"))
+@Test(.enabled(if: hasIntegrationFixture("FILES_TEST_SEVENZIP_REFERENCE") && hasIntegrationFixture("FILES_TEST_SEVENZIP_WORKER"), "Requires the pinned native SDK worker and reference"))
 func sevenZipSDKEncryptedRoundTripAndFailureStaging() async throws {
     let root = try sdkRoot(); defer { try? FileManager.default.removeItem(at: root) }
     let fixture = try await sdkFixture(root: root, password: "QA-347-한글-🔑"), provider = try sdkRealProvider()
@@ -155,7 +155,7 @@ func sevenZipSDKEncryptedRoundTripAndFailureStaging() async throws {
     #expect(!(try FileManager.default.contentsOfDirectory(atPath: root.path)).contains { $0 == "failed" || $0 == "limited" || $0.hasPrefix(".files-7z-") })
 }
 
-@Test(.enabled(if: hasIntegrationFixture("FILES_TEST_SEVENZIP_REFERENCE", "FILES_TEST_SEVENZIP_WORKER"), "Requires the pinned native SDK worker and reference"))
+@Test(.enabled(if: hasIntegrationFixture("FILES_TEST_SEVENZIP_REFERENCE") && hasIntegrationFixture("FILES_TEST_SEVENZIP_WORKER"), "Requires the pinned native SDK worker and reference"))
 func sevenZipSDKCorruptionAndLinksNeverPublish() async throws {
     let root = try sdkRoot(); defer { try? FileManager.default.removeItem(at: root) }
     let provider = try sdkRealProvider(), fixture = try await sdkFixture(root: root)
@@ -192,7 +192,7 @@ private final class SDKPublicationMutation: @unchecked Sendable {
     var succeeded: Bool { lock.withLock { applied && failure == nil } }
 }
 
-@Test(.enabled(if: hasIntegrationFixture("FILES_TEST_SEVENZIP_REFERENCE", "FILES_TEST_SEVENZIP_WORKER"), "Requires the pinned native SDK worker and reference"))
+@Test(.enabled(if: hasIntegrationFixture("FILES_TEST_SEVENZIP_REFERENCE") && hasIntegrationFixture("FILES_TEST_SEVENZIP_WORKER"), "Requires the pinned native SDK worker and reference"))
 func sevenZipSDKPublicationConflictAndForeignStagingPreservation() async throws {
     let root = try sdkRoot(); defer { try? FileManager.default.removeItem(at: root) }
     let fixture = try await sdkFixture(root: root), provider = try sdkRealProvider()
@@ -228,7 +228,7 @@ private final class SDKPublicationGate: @unchecked Sendable {
     }
 }
 
-@Test(.enabled(if: hasIntegrationFixture("FILES_TEST_SEVENZIP_REFERENCE", "FILES_TEST_SEVENZIP_WORKER"), "Requires the pinned native SDK worker and reference"))
+@Test(.enabled(if: hasIntegrationFixture("FILES_TEST_SEVENZIP_REFERENCE") && hasIntegrationFixture("FILES_TEST_SEVENZIP_WORKER"), "Requires the pinned native SDK worker and reference"))
 func sevenZipSDKCancellationBeforePublicationDiscardsStaging() async throws {
     let root = try sdkRoot(); defer { try? FileManager.default.removeItem(at: root) }
     let fixture = try await sdkFixture(root: root), provider = try sdkRealProvider(), gate = SDKPublicationGate()
@@ -240,4 +240,111 @@ func sevenZipSDKCancellationBeforePublicationDiscardsStaging() async throws {
     task.cancel(); gate.release.signal()
     await #expect(throws: CancellationError.self) { try await task.value }
     #expect(!(try FileManager.default.contentsOfDirectory(atPath: root.path)).contains { $0 == "result" || $0.hasPrefix(".files-7z-") })
+}
+
+private func sdkBundleCopy(root: URL, name: String = "Copied Files.app") throws -> URL {
+    let source = URL(fileURLWithPath: try #require(ProcessInfo.processInfo.environment["FILES_TEST_SEVENZIP_APP_BUNDLE"]))
+    let copy = root.appendingPathComponent(name)
+    try FileManager.default.copyItem(at: source, to: copy)
+    return copy
+}
+
+private func sdkResignOuter(_ bundle: URL, root: URL, identifier: String? = nil) async throws {
+    let log = root.appendingPathComponent("sign-\(UUID()).log")
+    FileManager.default.createFile(atPath: log.path, contents: nil)
+    let output = try FileHandle(forWritingTo: log); defer { try? output.close() }
+    let process = Process(); process.executableURL = URL(fileURLWithPath: "/usr/bin/codesign")
+    process.arguments = ["--force", "--timestamp=none", "--sign", "-"] + (identifier.map { ["--identifier", $0] } ?? []) + [bundle.path]
+    process.standardOutput = output; process.standardError = output
+    try process.run()
+    defer { if process.isRunning { kill(process.processIdentifier, SIGKILL); process.waitUntilExit() } }
+    let deadline = ContinuousClock.now + .seconds(10)
+    while process.isRunning, ContinuousClock.now < deadline { try await Task.sleep(for: .milliseconds(5)) }
+    guard !process.isRunning, process.terminationStatus == 0 else { throw SevenZipWorkerError.unexpectedExit }
+}
+
+@Test(.enabled(if: hasIntegrationFixture("FILES_TEST_SEVENZIP_APP_BUNDLE") && hasIntegrationFixture("FILES_TEST_SEVENZIP_REFERENCE"), "Requires the signed packaged SDK and reference"))
+func sevenZipSDKBundleResolutionAndUse() async throws {
+    let root = try sdkRoot(); defer { try? FileManager.default.removeItem(at: root) }
+    let bundle = try sdkBundleCopy(root: root), provider = try await SevenZipArchiveProvider.bundled(in: bundle)
+    #expect(throws: SevenZipBundleError.invalidSignature) { try SevenZipBundleVerifier.checkRunningHost(against: provider.executable) }
+    #expect(provider.executable.path == bundle.appendingPathComponent("Contents/Helpers/SevenZipWorker").path)
+    #expect(provider.library.path == bundle.appendingPathComponent("Contents/Frameworks/7z.so").path)
+    let fixture = try await sdkFixture(root: root, password: "QA-349-한글-🔑")
+    #expect(try await provider.entries(at: fixture.archive, password: "QA-349-한글-🔑").count == 3)
+    let destination = root.appendingPathComponent("resolved-result")
+    let report = try await provider.extractToNewDirectory(fixture.archive, at: destination, password: "QA-349-한글-🔑")
+    #expect(report.entries == 3)
+    for (name, data) in fixture.payloads { #expect(try Data(contentsOf: destination.appendingPathComponent(name)) == data) }
+    // Mutation after resolution must be checked again before the next worker is spawned.
+    try Data("changed after resolution".utf8).write(to: bundle.appendingPathComponent(SevenZipBundleVerifier.resource + "/BUILD.md"))
+    do { _ = try await provider.entries(at: fixture.archive, password: "QA-349-한글-🔑"); Issue.record("Modified resolved bundle executed") }
+    catch let error as SevenZipBundleError { #expect(error == .invalidSignature || error == .changedBundle) }
+}
+
+@Test(.enabled(if: hasIntegrationFixture("FILES_TEST_SEVENZIP_APP_BUNDLE") && hasIntegrationFixture("FILES_TEST_SEVENZIP_REFERENCE"), "Requires the signed packaged SDK and reference"))
+func sevenZipSDKBundleRejectsResealedHashMismatch() async throws {
+    let root = try sdkRoot(); defer { try? FileManager.default.removeItem(at: root) }
+    let bundle = try sdkBundleCopy(root: root)
+    try Data("changed resource".utf8).write(to: bundle.appendingPathComponent(SevenZipBundleVerifier.resource + "/BUILD.md"))
+    try await sdkResignOuter(bundle, root: root)
+    await #expect(throws: SevenZipBundleError.changedBundle) { try await SevenZipArchiveProvider.bundled(in: bundle) }
+}
+
+@Test(.enabled(if: hasIntegrationFixture("FILES_TEST_SEVENZIP_APP_BUNDLE") && hasIntegrationFixture("FILES_TEST_SEVENZIP_REFERENCE"), "Requires the signed packaged SDK and reference"))
+func sevenZipSDKBundleRejectsAdhocStableAndWrongIdentity() async throws {
+    let root = try sdkRoot(); defer { try? FileManager.default.removeItem(at: root) }
+    let stable = try sdkBundleCopy(root: root, name: "Stable.app"), plist = stable.appendingPathComponent("Contents/Info.plist")
+    var info = try #require(PropertyListSerialization.propertyList(from: Data(contentsOf: plist), format: nil) as? [String: Any])
+    info["FilesReleaseChannel"] = "stable"
+    try PropertyListSerialization.data(fromPropertyList: info, format: .xml, options: 0).write(to: plist)
+    try await sdkResignOuter(stable, root: root)
+    await #expect(throws: SevenZipBundleError.invalidSignature) { try await SevenZipArchiveProvider.bundled(in: stable) }
+    let wrong = try sdkBundleCopy(root: root, name: "Wrong identity.app"), worker = wrong.appendingPathComponent("Contents/Helpers/SevenZipWorker")
+    // Keep a valid standalone helper signature while changing its identity, then reseal the parent.
+    try await sdkResignOuter(worker, root: root, identifier: "org.taro6222.files-for-mac.unexpected-worker")
+    try await sdkResignOuter(wrong, root: root)
+    let workerSignature = await CodeSignatureInspector.inspect(worker), parentSignature = await CodeSignatureInspector.inspect(wrong)
+    #expect(workerSignature.state == .valid && workerSignature.identifier == "org.taro6222.files-for-mac.unexpected-worker")
+    #expect(parentSignature.state == .valid)
+    await #expect(throws: SevenZipBundleError.invalidSignature) { try await SevenZipArchiveProvider.bundled(in: wrong) }
+}
+
+@Test(.enabled(if: hasIntegrationFixture("FILES_TEST_SEVENZIP_APP_BUNDLE") && hasIntegrationFixture("FILES_TEST_SEVENZIP_REFERENCE"), "Requires the signed packaged SDK and reference"))
+func sevenZipSDKBundleRejectsResealedSourcePinAndExtraFile() async throws {
+    let root = try sdkRoot(); defer { try? FileManager.default.removeItem(at: root) }
+    let bundle = try sdkBundleCopy(root: root), resource = bundle.appendingPathComponent(SevenZipBundleVerifier.resource)
+    let archive = resource.appendingPathComponent("7z2606-src.tar.xz")
+    try Data("changed source archive".utf8).write(to: archive)
+    let manifestURL = resource.appendingPathComponent("manifest.json")
+    var manifest = try #require(JSONSerialization.jsonObject(with: Data(contentsOf: manifestURL)) as? [String: Any])
+    var hashes = try #require(manifest["filesSHA256"] as? [String: String])
+    hashes[SevenZipBundleVerifier.resource + "/7z2606-src.tar.xz"] = try await FilePropertiesInspector().sha256(archive)
+    manifest["filesSHA256"] = hashes
+    try JSONSerialization.data(withJSONObject: manifest).write(to: manifestURL)
+    try await sdkResignOuter(bundle, root: root)
+    await #expect(throws: SevenZipBundleError.changedBundle) { try await SevenZipArchiveProvider.bundled(in: bundle) }
+    let extra = try sdkBundleCopy(root: root, name: "Extra.app")
+    let foreign = extra.appendingPathComponent(SevenZipBundleVerifier.resource + "/foreign.txt")
+    try Data("preserve foreign file".utf8).write(to: foreign); try await sdkResignOuter(extra, root: root)
+    await #expect(throws: SevenZipBundleError.invalidLayout) { try await SevenZipArchiveProvider.bundled(in: extra) }
+    #expect(try String(contentsOf: foreign, encoding: .utf8) == "preserve foreign file")
+}
+
+@Test(.enabled(if: hasIntegrationFixture("FILES_TEST_SEVENZIP_APP_BUNDLE") && hasIntegrationFixture("FILES_TEST_SEVENZIP_REFERENCE"), "Requires the signed packaged SDK and reference"))
+func sevenZipSDKBundlePinsSelectedRevisionAcrossResigning() async throws {
+    let root = try sdkRoot(); defer { try? FileManager.default.removeItem(at: root) }
+    let bundle = try sdkBundleCopy(root: root), original = try await SevenZipArchiveProvider.bundled(in: bundle)
+    let resource = bundle.appendingPathComponent(SevenZipBundleVerifier.resource), document = resource.appendingPathComponent("BUILD.md")
+    try Data("valid updated documentation".utf8).write(to: document)
+    let manifestURL = resource.appendingPathComponent("manifest.json")
+    var manifest = try #require(JSONSerialization.jsonObject(with: Data(contentsOf: manifestURL)) as? [String: Any])
+    var hashes = try #require(manifest["filesSHA256"] as? [String: String])
+    hashes[SevenZipBundleVerifier.resource + "/BUILD.md"] = try await FilePropertiesInspector().sha256(document)
+    manifest["filesSHA256"] = hashes
+    try JSONSerialization.data(withJSONObject: manifest).write(to: manifestURL)
+    try await sdkResignOuter(bundle, root: root)
+    // The replacement is independently valid, but an existing operation must not switch revisions.
+    _ = try await SevenZipArchiveProvider.bundled(in: bundle)
+    await #expect(throws: SevenZipBundleError.changedBundle) { try await original.entries(at: root.appendingPathComponent("not-opened.7z")) }
 }

@@ -1,6 +1,6 @@
 # 7z 고급 기능 백엔드 연결 계약
 
-상태: 공식 도구 획득·독립 호환성/옵션 검증, SDK helper의 목록·선택 항목 추출, Swift 클라이언트의 새 폴더 게시와 ad-hoc 패키징 구현 완료. 앱 UI·생성·정식 배포 연결은 진행 예정이며 현재 제품의 7z 암호·분할 capability는 미지원이다.
+상태: 공식 도구 획득·독립 호환성/옵션 검증, SDK helper의 목록·선택 항목 추출, Swift 클라이언트의 새 폴더 게시·ad-hoc 패키징·런타임 bundle resolver 구현 완료. 앱 UI·배치별 게시·생성·정식 배포 연결은 진행 예정이며 현재 제품의 7z 암호·분할 capability는 미지원이다.
 
 [345단계](verification/m7/INCREMENT_345.md)는 고정 SDK에서 두 CPU helper를 빌드하고 ARM에서 실제 암호화 아카이브와 프레임/동일 원본 검증 34개를 통과했다. `Tools/SevenZipWorker`의 UInt32 big-endian 길이 + JSON(version 1) list/close 경계로 시작했다. 최초 요청은 archivePath/password, 후속 요청은 session UUID를 사용한다. 목록 반복은 열린 FD를 유지하며 원본 변경은 거부한다. 소스 FD의 부모 전달은 아직 남아 있으며 제품 번들 포함은 후속 348단계에서 구현했다.
 
@@ -9,6 +9,10 @@
 [347단계](verification/m7/INCREMENT_347.md)의 SevenZipArchiveProvider는 private 파이프·버전/길이/형식·수명·IPC 기한·취소 후 PID 회수와 Core 경로/총량 검증을 연결했다. descriptor 기준으로 staging을 만들고 모든 파일·최종 helper 종료를 확인한 뒤 하나의 새 폴더를 RENAME_EXCL로 게시한다. 충돌은 보존하고 다른 항목이 끼어든 staging은 삭제하지 않으며 stagingPreserved(URL)로 위치를 반환한다. 여기/스마트 병합 게시·UI 암호 흐름·기존 메타데이터 복원·helper의 메모리/권한 격리·서명된 패키징은 후속 단계다. helper와 소스 FD는 session 동안 유지하며 sourcePath를 다시 열어 추출하지 않는다.
 
 [348단계](verification/m7/INCREMENT_348.md)는 Helpers/SevenZipWorker와 Frameworks/7z.so를 앱과 같은 CPU 구성으로 포함하고 라이브러리 → helper → 앱 순으로 서명한다. Resources/ThirdParty/7zip에는 원본 License/copying/unRarLicense/readme, 고정 원본 소스 archive와 helper/빌드 소스·재빌드 자료·manifest를 포함한다. SDK의 라이브러리 ID는 @rpath/7z.so로 정리하며 부모는 명시한 경로로 로드한다. 새 유니버설 DMG에서 구성/고지/소스/서명과 native SDK 59개·Swift 9개를 확인했다. 347 ARM CI의 invalidResponse를 조사해 빈 진단 파이프 EOF를 데이터로 오인하는 경로를 실제로 재현하고 수정했다. 최신 두 CPU native 재수용·제품 UI 연결·메모리/권한 격리·Developer ID/공증은 계속 남아 있다.
+
+[349단계](verification/m7/INCREMENT_349.md)는 `SevenZipArchiveProvider.bundled(in:)`를 추가했다. native Security API와 CryptoKit으로 앱/두 구성 요소의 서명·역할 identifier·Team 정책, 고정 경로/파일 집합·manifest·source pin·hash를 검증한다. preview에서만 ad-hoc을 허용하고 stable/non-ad-hoc에는 Developer ID requirement와 동일 Team을 요구한다. 앱으로부터 받은 경로를 다시 찾거나 PATH/Python을 실행하지 않는다. 반환 provider도 매번 원본 bundle을 재검증한 뒤 worker를 생성한다. 정상 signature의 잘못된 identifier·재서명한 hash/source pin 변경·선택 후 변조를 거부했고 실제 번들에서 암호 7z를 복원했다. 현재 ArchiveWindow/일괄 추출 UI는 여전히 기존 provider를 사용한다. 여기/스마트 배치의 게시·UI 선택·메타데이터/자원 제한과 최신 두 CPU resolver 수용이 남아 있다.
+
+선택한 CodeDirectory/manifest identity를 provider에 고정한다. 다른 유효한 재서명 번들도 기존 provider에서 자동으로 채택하지 않는다. 현재 앱 자체를 선택하면 실행 중인 호스트도 해당 designated requirement를 만족해야 하며 코드 메타데이터는 현재 프로세스 CPU로 조회한다. 이 검증과 posix_spawn/dlopen을 하나의 원자적 연산으로 만든 것은 아니며 악의적인 동시 교체의 전체 차단·자원 격리는 별도 수용 항목이다. 실제 Developer ID 인증서/공증 수용도 아직 남아 있다.
 
 근거는 [344단계](verification/m7/INCREMENT_344.md)의 실행 결과와 [원본 옵션 대응표](reference/ARCHIVE_OPTIONS_PARITY.md)다. 공식 7-Zip 26.06의 macOS ARM·Intel 자산, 대응 소스와 SHA-256을 고정한다. [공식 다운로드](https://www.7-zip.org/download.html)에서 연결되는 ip7z/7zip 릴리스를 사용한다. 획득 코드는 [sevenzip_reference.py](../scripts/sevenzip_reference.py)에 있으며 전역 설치 없이 build 아래에 저장한다. 공식 7zz 실행 파일은 검증 도구이고 앱에는 자체 빌드한 SDK helper/라이브러리를 포함한다. 앱 UI에서의 SDK 선택·호출은 아직 연결하지 않았다.
 
