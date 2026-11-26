@@ -1,8 +1,8 @@
 # F23 압축 내부 편집 — 구현 및 수용 기준
 
-현재 상태: **부분 구현·제품 연결 중·출시 전 해결 필요**. ArchiveCapabilityMatrix의 모든 update 값은 false이고 ArchiveWindow에는 내부 항목 추가/이름 변경/삭제 작업이 없다. 기존 MACOS_DESIGN의 임시 아카이브 교체 정책과 FEATURE_PARITY_AND_PLAN의 F23 수정 검증을 구체화한다. 새 범위를 추가하거나 기존 요구를 다음 버전으로 미루는 문서가 아니다.
+현재 상태: **부분 구현·제품 연결 중·출시 전 해결 필요**. [375 구현 기록](verification/m7/INCREMENT_375.md)에서 ArchiveWindow의 추가/이름 변경/삭제/Undo를 연결하고 ZIP/7z update를 true로 전환했다. runtime SDK와 source version으로 실제 활성 조건을 확인하며 원격 UI 및 전체 지원 환경 수용은 대기 중이다. 기존 MACOS_DESIGN의 임시 아카이브 교체 정책과 FEATURE_PARITY_AND_PLAN의 F23 수정 검증을 구체화한다. 새 범위를 추가하거나 기존 요구를 다음 버전으로 미루는 문서가 아니다.
 
-[370단계](verification/m7/INCREMENT_370.md)에서 FD 기반 네이티브 ZIP/7z API를 부분 구현하고 실제 대응 소스/라이브러리로 83개를 통과했다. [371 구현 기록](verification/m7/INCREMENT_371.md)에서 실제 격리 helper IPC·공통 계획·Swift candidate 생성을 연결했다. [372 구현 기록](verification/m7/INCREMENT_372.md)에서 전체 내용·보존 속성·항목·암호화 및 source/output 변경 검증을 별도 읽기 전용 세션에 연결했다. [373 구현 기록](verification/m7/INCREMENT_373.md)에서 로컬 APFS 교체/백업·Undo·재시작 복구 API를 연결했다. [374 구현 기록](verification/m7/INCREMENT_374.md)에서 수정한 SDK의 UTF-8 AES 경로로 Unicode 새 암호 데이터 추가와 실제 저장/Undo를 확인했다. 다른 게시 방식/압축 저장 metadata·Redo·UI·빈 암호 archive 정책 등 전체 수용은 남아 있다. 기존 Core AES ZIP과 수정 SDK의 Unicode 암호 새 데이터 왕복을 통과했다. SDK 원본 archive와 변경 recipe/hash를 번들에 포함하며 ASCII 암호만 허용하는 제품으로 축소하지 않는다. 남은 UI와 경계 수용을 완료하기 전 전체 완료로 표시하지 않는다.
+[370단계](verification/m7/INCREMENT_370.md)에서 FD 기반 네이티브 ZIP/7z API를 부분 구현하고 실제 대응 소스/라이브러리로 83개를 통과했다. [371 구현 기록](verification/m7/INCREMENT_371.md)에서 실제 격리 helper IPC·공통 계획·Swift candidate 생성을 연결했다. [372 구현 기록](verification/m7/INCREMENT_372.md)에서 전체 내용·보존 속성·항목·암호화 및 source/output 변경 검증을 별도 읽기 전용 세션에 연결했다. [373 구현 기록](verification/m7/INCREMENT_373.md)에서 로컬 APFS 교체/백업·Undo·재시작 복구 API를 연결했다. [374 구현 기록](verification/m7/INCREMENT_374.md)에서 수정한 SDK의 UTF-8 AES 경로로 Unicode 새 암호 데이터 추가와 실제 저장/Undo를 확인했다. 375에서 UI와 source version을 연결하고 빈 암호 7z의 header를 유지한다. 다른 게시 방식/압축 저장 metadata·Redo·기록 화면·실제 UI 및 빈 ZIP 정책 등 전체 수용은 남아 있다. 기존 Core AES ZIP과 수정 SDK의 Unicode 암호 새 데이터 왕복을 통과했다. SDK 원본 archive와 변경 recipe/hash를 번들에 포함하며 ASCII 암호만 허용하는 제품으로 축소하지 않는다. 남은 UI와 경계 수용을 완료하기 전 전체 완료로 표시하지 않는다.
 
 ## 고정 원본과 현재 차이
 

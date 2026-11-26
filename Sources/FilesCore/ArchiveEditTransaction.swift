@@ -125,7 +125,7 @@ final class ArchiveEditTransaction: @unchecked Sendable {
         guard flock(fd, LOCK_EX | LOCK_NB) == 0 else { Darwin.close(fd); throw ArchiveEditError.busy }
         return fd
     }
-    init(archive: URL, journalDirectory: URL, check: () throws -> Void) throws {
+    init(archive: URL, journalDirectory: URL, expectedSource: ArchiveEditSourceVersion? = nil, check: () throws -> Void) throws {
         guard archive.isFileURL, !archive.path.utf8.contains(0), ["zip", "7z"].contains(archive.pathExtension.lowercased()) else { throw SevenZipWorkerError.invalidConfiguration }
         try EntryOperations.validateName(archive.lastPathComponent)
         let parent = try sevenZipCanonicalDirectory(archive.deletingLastPathComponent()), registry = try Self.registry(journalDirectory), id = UUID()
@@ -137,8 +137,11 @@ final class ArchiveEditTransaction: @unchecked Sendable {
         lockFD = try Self.lock(registry: registry, parent: parentProof, base: archive.lastPathComponent)
         let sourceFD = openat(parentFD, archive.lastPathComponent, O_RDONLY | O_NOFOLLOW | O_CLOEXEC | O_NONBLOCK)
         guard sourceFD >= 0 else { throw SevenZipWorkerError.worker("source-open") }; defer { Darwin.close(sourceFD) }
+        var currentSource = stat(); guard fstat(sourceFD, &currentSource) == 0 else { throw SevenZipWorkerError.ioFailure }
+        try expectedSource?.verify(currentSource)
         let source = try ArchiveEditFileProof.capture(sourceFD, check: check), metadata = try ArchiveEditMetadata.capture(sourceFD, check: check)
-        guard try ArchiveEditFileProof.capture(sourceFD, check: check) == source else { throw SevenZipWorkerError.worker("source-changed") }
+        guard try ArchiveEditFileProof.capture(sourceFD, check: check) == source, fstat(sourceFD, &currentSource) == 0 else { throw SevenZipWorkerError.worker("source-changed") }
+        try expectedSource?.verify(currentSource)
         let staging = parent.appendingPathComponent(".files-archive-edit-" + id.uuidString, isDirectory: true)
         journal = registry.appendingPathComponent(id.uuidString, isDirectory: true)
         guard mkdir(staging.path, 0o700) == 0 else { throw SevenZipWorkerError.ioFailure }

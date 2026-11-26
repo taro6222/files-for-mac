@@ -13,11 +13,13 @@ import tempfile
 import urllib.request
 import sevenzip_reference as reference
 
-SDK_CHANGES = {'identifier': 'zip-aes-utf8-bounded-password-v1',
+SDK_CHANGES = {'identifier': 'archive-edit-utf8-empty-header-v2',
  'CPP/7zip/Archive/Zip/ZipHandlerOut.cpp:original': '7e5dbd19afbdb61998f9e10e86f88452f4ce9a48790f3ad634ac3b74a08f66fe',
  'CPP/7zip/Archive/Zip/ZipHandlerOut.cpp:modified': '8a6a2853d3177b34cab032a2f22a208f15f69cd97a7d00b6e0e3b783953ef08e',
  'CPP/7zip/Crypto/WzAes.h:original': '6e5686fb017e2e06e967d135ba9deca19bcdfb1bb5ff16888c549a611a2715de',
- 'CPP/7zip/Crypto/WzAes.h:modified': 'a5928d541ee78884a26abefb142fbcedd7a56e4bfd217805687a24a3f5029ccc'}
+ 'CPP/7zip/Crypto/WzAes.h:modified': 'a5928d541ee78884a26abefb142fbcedd7a56e4bfd217805687a24a3f5029ccc',
+ 'CPP/7zip/Archive/7z/7zOut.cpp:original': '286ece330007728d5e44e0c888ac6246f5aa392679fca175a9fbad3a286b4b3d',
+ 'CPP/7zip/Archive/7z/7zOut.cpp:modified': 'c1b05d1a22a51601eca1b2bf3c736009bde23821cc32db2907f96c78af450928'}
 
 RESOURCE = 'Contents/Resources/ThirdParty/7zip'
 CODE = ['Contents/Helpers/SevenZipWorker', 'Contents/Helpers/7z.so']
@@ -197,10 +199,12 @@ Upstream: {reference.SOURCE_URL}
 License.txt, copying.txt, unRarLicense.txt and readme.txt are copied verbatim from
 the archive's DOC directory. Per-file BSD/public-domain notices remain in the
 complete archive. The Files helper adapter and build recipe are in Sources;
-Sources/LICENSE.txt is their project license. The recipe applies two exact,
+Sources/LICENSE.txt is their project license. The recipe applies three exact,
 hash-checked source changes before compiling: ZipHandlerOut.cpp encodes WinZip AES
 passwords as UTF-8 while retaining ZipCrypto restrictions; Crypto/WzAes.h raises
 its implementation password bound to the private request ceiling (1 MiB).
+7zOut.cpp retains an encrypted header for an empty database when header password
+options are defined, so deleting the last item does not remove header protection.
 Cipher, KDF, authentication, iteration count and random salt generation are unchanged.
 SDKChanges in manifest.json records the original and modified file SHA-256 values.
 The upstream archive itself remains unchanged. The complete substitutions are in

@@ -1,0 +1,112 @@
+{
+  "increment": 375,
+  "status": "editing UI connected and compiled; remote GUI/physical input acceptance pending",
+  "sourcesSHA256": {
+    "Sources/FilesCore/ArchiveEditSourceVersion.swift": "4b347c973c35ddc0e0933bfb7e55d0f397b9e03ca6f863a0fd0ba577814ff560",
+    "Sources/FilesCore/ArchiveEditTransaction.swift": "da05ba7b3804b521526e43875775b3f60fc4567c918d1f85625246dd1824fd31",
+    "Sources/FilesCore/SevenZipArchiveProvider.swift": "eaaa624c0ba92ba54c395771cb951fe3fd55d9bb8824be386d2e3b6ce60b0a2a",
+    "Sources/FilesCore/SevenZipBundledBackend.swift": "1dd300891c5f29937b044c2584ecb660c7b4b656b8be958fe61939df7c78c140",
+    "Sources/FilesCore/ArchiveCapabilities.swift": "dfb6921e1bbd9948f1dfc64e1fa3616b2216704d6248d4075eb87462b5ddd9b5",
+    "Sources/FilesMac/ArchiveWindow.swift": "46ff106cfe468cf40727fb7ce252b50b43365689daa366e63b7fb54449ce4bca",
+    "Sources/FilesMac/ArchiveEditingUIVerification.swift": "20a97354b77f22a82b6d40b1fe3faf386331927594c6e2d6deb23ecedfe18949",
+    "Sources/FilesMac/ArchiveCapabilitiesWindow.swift": "a823bcf7a98ccda52e749b9bc156a9b77ca1452dc3a4fe9486cf52d503ea03a2",
+    "Sources/FilesMac/ArchiveErrorPresentation.swift": "1e1d8c46f48c198c4b67a717400186a396b819face40913e311a2b7992bf337f",
+    "Sources/FilesMac/BrowserWindow.swift": "5d126f0e6093de1cfe407dbeafd1a635f83ca1dda4611168368597df1361ced2",
+    "Tests/FilesCoreTests/SevenZipArchiveProviderTests.swift": "3e8f1c1f90ada081448e7c220dc298176b3a22b7c04cce67e9c1fc1921c22274",
+    "Tests/FilesCoreTests/ArchiveCapabilitiesTests.swift": "86d5ade57cd7febd3369a842539b02cf66dc91703ba9a1e22c02836be0cc25f7",
+    "scripts/build-sevenzip-worker.py": "fd4d6ed24495b0d9be5d9739b5242128453eac10f15f7cd3ec13da27bbbb8828",
+    "scripts/sevenzip_bundle.py": "409ca25c2bc7de10b658b29c68eab612d46d0eb476184cf488a2cbd4b59c9d33",
+    "scripts/verify-sevenzip-client.py": "ddbba45f517d0037d2a5b70c0d2c532ae5f705d7f782d43e0bfe08acd5359f39",
+    "scripts/verify-ui.sh": "5b2ca336ebc4e1f02bf9a15f7241521fe35291677198846b77db94e5e1b6a3af",
+    "FilesMac.xcodeproj/project.pbxproj": "8f5d77eb28ebf8f8f6e448d6685ae7263810f5938e7894494c25a203af8dc557"
+  },
+  "reports": {
+    "client": {
+      "path": "build/edit-375-current-report/client/result.json",
+      "sha256": "9fb28afbe774357a5f1285e89e64499a6094c42464e457770e65e25269c59950",
+      "passed": true,
+      "count": 71
+    },
+    "worker": {
+      "path": "build/edit-375-current-report/worker/result.json",
+      "sha256": "0b48607091a97c76aaf188337f4be7b533216dc07b07865b5e71a0b7e309b863",
+      "passed": true,
+      "count": 113
+    },
+    "diagnostic-worker": {
+      "path": "build/edit-375-current-report/diagnostic-worker/result.json",
+      "sha256": "f639b4d206d7ade43ae8e4491bfaa34050c26715e29f45825eefabdccca45a0d",
+      "passed": true,
+      "count": 205
+    },
+    "edit-sdk": {
+      "path": "build/edit-375-current-report/edit-sdk/result.json",
+      "sha256": "40601201ba456914919dddac66ef28bf16f6f7c185d10a26c67ad434ad83ac8e",
+      "passed": true,
+      "count": 85
+    },
+    "authority": {
+      "path": "build/edit-375-current-report/authority/result.json",
+      "sha256": "ec2dd5d2dc4ece4f1527b5310794ffa850ca8e633fb15634846c53d37e08c06d",
+      "passed": true,
+      "count": 15
+    }
+  },
+  "SDKChanges": {
+    "identifier": "archive-edit-utf8-empty-header-v2",
+    "CPP/7zip/Archive/Zip/ZipHandlerOut.cpp:original": "7e5dbd19afbdb61998f9e10e86f88452f4ce9a48790f3ad634ac3b74a08f66fe",
+    "CPP/7zip/Archive/Zip/ZipHandlerOut.cpp:modified": "8a6a2853d3177b34cab032a2f22a208f15f69cd97a7d00b6e0e3b783953ef08e",
+    "CPP/7zip/Crypto/WzAes.h:original": "6e5686fb017e2e06e967d135ba9deca19bcdfb1bb5ff16888c549a611a2715de",
+    "CPP/7zip/Crypto/WzAes.h:modified": "a5928d541ee78884a26abefb142fbcedd7a56e4bfd217805687a24a3f5029ccc",
+    "CPP/7zip/Archive/7z/7zOut.cpp:original": "286ece330007728d5e44e0c888ac6246f5aa392679fca175a9fbad3a286b4b3d",
+    "CPP/7zip/Archive/7z/7zOut.cpp:modified": "c1b05d1a22a51601eca1b2bf3c736009bde23821cc32db2907f96c78af450928"
+  },
+  "bundleManifestSHA256": "e45e54a57cb489f8195b6797034f043dffde95809d83de6ba7a726a8537177a1",
+  "debugBuild": {
+    "seconds": 32.83,
+    "logSHA256": "9e958b64f18f72c8e343b2efee7791c573d50e90f31ad2170ec90099370fe782"
+  },
+  "releaseBuild": {
+    "seconds": 36.96,
+    "logSHA256": "3f1bb1061e98b2cd8a616c5a2a7d1827863a52d7d1607dc805618f43371879a6"
+  },
+  "fixtureTests": {
+    "passed": true,
+    "count": 9,
+    "logSHA256": "069c11799e48bc915b465b9d5130e15be2b9027abb1f78b857bcf35cf70ab133"
+  },
+  "localGUIStarted": false,
+  "editingCapabilityEnabledFor": [
+    "zip",
+    "7z"
+  ],
+  "runtimeSDKAndSourceVersionRequired": true,
+  "emptyEncrypted7zHeaderVerified": true,
+  "newUIChecksDefined": [
+    "archiveEditingAddFile",
+    "archiveEditingAvailable",
+    "archiveEditingDeleteCancel",
+    "archiveEditingDeleteTree",
+    "archiveEditingDisablesDuplicateOperation",
+    "archiveEditingDuplicateRejected",
+    "archiveEditingInvalidName",
+    "archiveEditingMenuRoute",
+    "archiveEditingNewFolder",
+    "archiveEditingPasswordCancel",
+    "archiveEditingPasswordPrompt",
+    "archiveEditingPasswordRetry",
+    "archiveEditingPreservesInput",
+    "archiveEditingRenameFolder",
+    "archiveEditingStaleSelectionNeedsReload",
+    "archiveEditingStaleSelectionPreserved",
+    "archiveEditingUndoAdd",
+    "archiveEditingUndoDelete",
+    "archiveEditingUndoEnabled",
+    "archiveEditingUnicodePasswordAddition",
+    "archiveEditingWrongPasswordPreservesArchive"
+  ],
+  "expectedFullUIChecks": 353,
+  "newUIChecksExecutedLocally": false,
+  "physicalInputVerified": false,
+  "remoteFullUIAcceptance": "pending dispatch after source commit"
+}

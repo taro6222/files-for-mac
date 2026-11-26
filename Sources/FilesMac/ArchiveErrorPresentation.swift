@@ -76,3 +76,16 @@ func archiveErrorMessage(_ error: Error) -> String {
         return error.localizedDescription
     }
 }
+
+func archiveEditErrorMessage(_ error: Error) -> String {
+    switch error {
+    case ArchiveEditError.busy: return L("다른 창에서 이 압축 파일을 편집하거나 복구하고 있습니다.", "This archive is being edited or recovered in another window.")
+    case ArchiveEditError.invalidJournal, ArchiveEditError.invalidState: return L("복구 기록이나 파일 상태를 확인할 수 없습니다. 파일은 보존했습니다.", "The recovery record or file state could not be verified. Files were preserved.")
+    case ArchiveEditError.metadataNotPreserved, ArchiveEditError.metadataMismatch: return L("파일 속성을 보존하여 저장할 수 없어 중단했습니다. 기존 압축 파일을 확인하세요.", "Saving stopped because file attributes could not be preserved. Check the existing archive.")
+    case let ArchiveEditError.recoveryRequired(journal, _, retained): return L("저장 상태를 확인해야 합니다. 보존된 파일과 기록을 확인하세요.", "The save needs review. Check the retained file and recovery record.") + "\n" + retained.path + "\n" + journal.path
+    case SevenZipWorkerError.worker("source-changed"): return L("압축 파일이나 추가 입력이 외부에서 변경되었습니다. 다시 열어 내용을 확인하세요.", "The archive or an input changed externally. Reopen it and review its contents.")
+    case SevenZipWorkerError.editVerificationFailed: return L("편집 결과를 검증하지 못해 원본을 교체하지 않았습니다.", "The edited archive could not be verified, so the original was not replaced.")
+    case ArchiveValidationError.duplicatePath: return L("같은 경로의 항목이 있습니다. 다른 이름이나 위치를 선택하세요.", "An item with the same path exists. Choose another name or location.")
+    default: return archiveErrorMessage(error)
+    }
+}

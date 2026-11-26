@@ -16,15 +16,29 @@ import sevenzip_reference as reference
 
 def digest(path): return hashlib.sha256(path.read_bytes()).hexdigest()
 
-SDK_CHANGES = {'identifier': 'zip-aes-utf8-bounded-password-v1',
+SDK_CHANGES = {'identifier': 'archive-edit-utf8-empty-header-v2',
  'CPP/7zip/Archive/Zip/ZipHandlerOut.cpp:original': '7e5dbd19afbdb61998f9e10e86f88452f4ce9a48790f3ad634ac3b74a08f66fe',
  'CPP/7zip/Archive/Zip/ZipHandlerOut.cpp:modified': '8a6a2853d3177b34cab032a2f22a208f15f69cd97a7d00b6e0e3b783953ef08e',
  'CPP/7zip/Crypto/WzAes.h:original': '6e5686fb017e2e06e967d135ba9deca19bcdfb1bb5ff16888c549a611a2715de',
- 'CPP/7zip/Crypto/WzAes.h:modified': 'a5928d541ee78884a26abefb142fbcedd7a56e4bfd217805687a24a3f5029ccc'}
+ 'CPP/7zip/Crypto/WzAes.h:modified': 'a5928d541ee78884a26abefb142fbcedd7a56e4bfd217805687a24a3f5029ccc',
+ 'CPP/7zip/Archive/7z/7zOut.cpp:original': '286ece330007728d5e44e0c888ac6246f5aa392679fca175a9fbad3a286b4b3d',
+ 'CPP/7zip/Archive/7z/7zOut.cpp:modified': 'c1b05d1a22a51601eca1b2bf3c736009bde23821cc32db2907f96c78af450928'}
 
 def apply_sdk_changes(source):
     """Only these fingerprinted substitutions modify the verified upstream source."""
-    edits = [('CPP/7zip/Archive/Zip/ZipHandlerOut.cpp', b'      if (!IsSimpleAsciiString(password))\r\n        return E_INVALIDARG;\r\n      if (password)\r\n        UnicodeStringToMultiByte2(options.Password, (LPCOLESTR)password, CP_OEMCP);', b'      // Files for mac: match UTF-8 WinZip AES passphrases; keep ZipCrypto rules.\r\n      if (!options.IsAesMode && !IsSimpleAsciiString(password))\r\n        return E_INVALIDARG;\r\n      if (password)\r\n        UnicodeStringToMultiByte2(options.Password, (LPCOLESTR)password, options.IsAesMode ? CP_UTF8 : CP_OEMCP);'), ('CPP/7zip/Crypto/WzAes.h', b'const UInt32 kPasswordSizeMax = 99; // 128;', b'const UInt32 kPasswordSizeMax = 1048576; // Files for mac: bounded private request size.')]
+    edits = [('CPP/7zip/Archive/Zip/ZipHandlerOut.cpp',
+  b'      if (!IsSimpleAsciiString(password))\r\n        return E_INVALIDARG;\r\n      if (passw'
+  b'ord)\r\n        UnicodeStringToMultiByte2(options.Password, (LPCOLESTR)password, CP_OEMCP);',
+  b'      // Files for mac: match UTF-8 WinZip AES passphrases; keep ZipCrypto rules.\r\n      if '
+  b'(!options.IsAesMode && !IsSimpleAsciiString(password))\r\n        return E_INVALIDARG;\r\n  '
+  b'    if (password)\r\n        UnicodeStringToMultiByte2(options.Password, (LPCOLESTR)password, '
+  b'options.IsAesMode ? CP_UTF8 : CP_OEMCP);'),
+ ('CPP/7zip/Crypto/WzAes.h',
+  b'const UInt32 kPasswordSizeMax = 99; // 128;',
+  b'const UInt32 kPasswordSizeMax = 1048576; // Files for mac: bounded private request size.'),
+ ('CPP/7zip/Archive/7z/7zOut.cpp',
+  b'  if (!db.IsEmpty())',
+  b'  if (!db.IsEmpty() || (options && options->PasswordIsDefined))')]
     for name, before, after in edits:
         path = source / name
         data = path.read_bytes()

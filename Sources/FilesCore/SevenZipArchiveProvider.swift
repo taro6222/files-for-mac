@@ -168,12 +168,12 @@ public struct SevenZipArchiveProvider: Sendable {
     }
 
     public func edit(_ archive: URL, operations: [ArchiveEditOperation], password: String? = nil, encryptNewData: Bool,
-                     journalDirectory: URL, progress: ArchiveProgressHandler? = nil) async throws -> ArchiveEditReport {
+                     journalDirectory: URL, expectedSource: ArchiveEditSourceVersion? = nil, progress: ArchiveProgressHandler? = nil) async throws -> ArchiveEditReport {
         let cancellation = CopyCancellation()
         return try await withTaskCancellationHandler(operation: {
             try Task.checkCancellation()
             let transaction = try await Task.detached(priority: .userInitiated) {
-                try ArchiveEditTransaction(archive: archive, journalDirectory: journalDirectory, check: cancellation.check)
+                try ArchiveEditTransaction(archive: archive, journalDirectory: journalDirectory, expectedSource: expectedSource, check: cancellation.check)
             }.value
             let verified = try await writeVerifiedEditCandidate(transaction.archive, candidate: transaction.candidate, outputFD: transaction.outputFD,
                 operations: operations, password: password, encryptNewData: encryptNewData)

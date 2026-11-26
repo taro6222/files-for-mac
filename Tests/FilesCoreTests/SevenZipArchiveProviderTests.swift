@@ -1785,3 +1785,27 @@ func archiveEditUnicodeZIPLongPasswordsAndNormalizationRemainExact() async throw
         #expect(!String(decoding: eventData, as: UTF8.self).contains(password))
     }
 }
+
+@Test(.enabled(if: hasIntegrationFixture("FILES_TEST_SEVENZIP_REFERENCE") && hasIntegrationFixture("FILES_TEST_SEVENZIP_WORKER"), "Requires native SDK and reference"))
+func archiveEditPreservesEmptyEncrypted7zHeaderAndRejectsStaleSelection() async throws {
+    let root = try sdkRoot(); defer { try? FileManager.default.removeItem(at: root) }
+    let source = root.appendingPathComponent("source.txt"), archive = root.appendingPathComponent("archive.7z"), journals = root.appendingPathComponent("journals")
+    try Data("original".utf8).write(to: source)
+    let provider = try sdkRealProvider(), password = "빈-압축-🔑"
+    _ = try await provider.create(from: [source], at: archive, password: password)
+    let original = try Data(contentsOf: archive), version = try ArchiveEditSourceVersion(at: archive)
+    let empty = try await provider.edit(archive, operations: [.delete(paths: [source.lastPathComponent])], password: password, encryptNewData: true, journalDirectory: journals, expectedSource: version)
+    #expect(try await provider.entries(at: archive, password: password).isEmpty)
+    await #expect(throws: SevenZipWorkerError.worker("password-required")) { try await provider.entries(at: archive) }
+    let emptyBytes = try Data(contentsOf: archive)
+    await #expect(throws: SevenZipWorkerError.worker("source-changed")) {
+        try await provider.edit(archive, operations: [.createDirectory(path: "stale")], password: password, encryptNewData: true, journalDirectory: journals, expectedSource: version)
+    }
+    #expect(try Data(contentsOf: archive) == emptyBytes)
+    let added = try await provider.edit(archive, operations: [.add(sources: [source], directory: "")], password: password, encryptNewData: true, journalDirectory: journals, expectedSource: ArchiveEditSourceVersion(at: archive))
+    #expect(try await provider.entries(at: archive, password: password).count == 1)
+    _ = try await SevenZipArchiveProvider.recoverArchiveEdit(journal: added.journal, journalDirectory: journals, undo: true)
+    #expect(try Data(contentsOf: archive) == emptyBytes)
+    _ = try await SevenZipArchiveProvider.recoverArchiveEdit(journal: empty.journal, journalDirectory: journals, undo: true)
+    #expect(try Data(contentsOf: archive) == original)
+}

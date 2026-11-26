@@ -3,6 +3,7 @@ import FilesCore
 
 @MainActor
 final class ArchiveCapabilitiesWindow: NSWindowController {
+    private var updateLabels: [ArchiveFormat: NSTextField] = [:]
     private let sevenZipSplit = NSTextField(labelWithString: "")
     private let sevenZipPassword = NSTextField(labelWithString: "")
     private var task: Task<Void, Never>?
@@ -21,7 +22,9 @@ final class ArchiveCapabilitiesWindow: NSWindowController {
             let split: NSTextField
             if item.format == .sevenZip { sevenZipSplit.stringValue = L("확인 중", "Checking"); sevenZipSplit.textColor = .secondaryLabelColor; split = sevenZipSplit }
             else { split = mark(item.splitVolumes) }
-            grid.addRow(with: [NSTextField(labelWithString: item.format.rawValue.uppercased()), mark(item.browse), mark(item.extract), mark(item.create), mark(item.update), password, split])
+            let update = mark(false)
+            if item.update { update.stringValue = L("확인 중", "Checking"); updateLabels[item.format] = update }
+            grid.addRow(with: [NSTextField(labelWithString: item.format.rawValue.uppercased()), mark(item.browse), mark(item.extract), mark(item.create), update, password, split])
         }
         let note = NSTextField(wrappingLabelWithString: L("암호 열에는 지원하는 작업을 표시합니다. 포맷과 설치된 앱에서 확인한 기능만 사용할 수 있습니다.", "The password column lists supported operations. Availability depends on the format and verified app components."))
         let stack = NSStackView(views: [grid, note]); stack.orientation = .vertical; stack.alignment = .leading; stack.spacing = 22; stack.translatesAutoresizingMaskIntoConstraints = false; panel.contentView!.addSubview(stack)
@@ -35,12 +38,14 @@ final class ArchiveCapabilitiesWindow: NSWindowController {
             do {
                 let backend = try await ArchiveReadBackend.resolve(for: URL(fileURLWithPath: "/format.7z"))
                 guard let self, !Task.isCancelled else { return }
+                let editing = (try? await ArchiveReadBackend.editingProvider()) != nil
+                for label in self.updateLabels.values { label.stringValue = editing ? L("지원", "Yes") : L("미지원", "No"); label.textColor = editing ? .systemGreen : .secondaryLabelColor }
                 let supported = backend.supportsPassword(for: URL(fileURLWithPath: "/format.7z"))
                 self.sevenZipPassword.stringValue = supported ? L("생성·추출", "Create/extract") : L("미지원", "No")
                 self.sevenZipPassword.textColor = supported ? .systemGreen : .secondaryLabelColor
                 self.sevenZipSplit.stringValue = supported ? L("생성·탐색·추출", "Create/browse/extract") : L("미지원", "No")
                 self.sevenZipSplit.textColor = supported ? .systemGreen : .secondaryLabelColor
-            } catch { guard let self, !Task.isCancelled else { return }; self.sevenZipPassword.stringValue = L("확인 실패", "Unavailable"); self.sevenZipPassword.textColor = .secondaryLabelColor; self.sevenZipSplit.stringValue = L("확인 실패", "Unavailable"); self.sevenZipSplit.textColor = .secondaryLabelColor }
+            } catch { guard let self, !Task.isCancelled else { return }; for label in self.updateLabels.values { label.stringValue = L("확인 실패", "Unavailable"); label.textColor = .secondaryLabelColor }; self.sevenZipPassword.stringValue = L("확인 실패", "Unavailable"); self.sevenZipPassword.textColor = .secondaryLabelColor; self.sevenZipSplit.stringValue = L("확인 실패", "Unavailable"); self.sevenZipSplit.textColor = .secondaryLabelColor }
         }
     }
 #if DEBUG

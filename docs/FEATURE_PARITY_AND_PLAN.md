@@ -1,6 +1,6 @@
 # 기능 대응 및 개발 계획
 
-[374 구현 기록](verification/m7/INCREMENT_374.md): 원본 SDK pin을 유지한 두 변경을 hash로 고정해 WinZip AES UTF-8 암호와 긴 암호의 새 ZIP 데이터 추가를 연결했다. 실제 저장·백업·Undo, Core ZIP 및 공식 7-Zip 복원을 확인했고 Swift 69개·helper 113개·진단 205개·native 85개·권한 15개·fixture 9개와 Debug/Release가 통과했다. 이전 Intel artifact의 개행 파일명 실패는 보고서 tar.gz 보관으로 수정했고 원격 재수용은 남아 있다. 편집 UI·다른 게시 방식/압축 저장 metadata·Redo·빈 암호 archive 정책 등 F23/M7은 진행 중, update=false다. 로컬 GUI/장시간 앱은 실행하지 않았다.
+[375 구현 기록](verification/m7/INCREMENT_375.md): 압축 창의 추가·새 폴더·이름 변경·삭제·Undo, 메뉴/선택·암호 재입력/취소를 실제 저장 API에 연결했다. 목록을 읽은 source version을 저장에 묶고 빈 암호 7z의 header 보호도 유지한다. format update는 ZIP/7z true이며 runtime/source 조건으로 활성화한다. Swift 71개·helper 113개·진단 205개·native 85개·권한 15개·fixture 9개와 Debug/Release는 통과했다. 새 UI 21개를 더한 353개 검증은 원격 수용 대기다. 실제 화면/입력·다른 게시 방식/압축 저장 metadata·Redo·기록 화면·빈 ZIP 정책 등 F23/M7은 진행 중이다. 로컬 GUI/장시간 앱은 실행하지 않았다.
 
 [369단계](verification/m7/INCREMENT_369.md)에서 F23 압축 내부 추가/폴더 생성/이름 변경/삭제가 실제 미구현임을 고정 원본과 제품 API로 확인했다. [구현·수용 계획](ARCHIVE_EDITING_PLAN.md)을 기존 요구에 연결했으며 출시 전 해결 항목이다. 분리한 4a6c79d의 원격 빌드는 ARM 213.879초·Intel 405.439초로 모두 성공했고 전체 AppKit은 진행 중이다. 제품 코드를 바꾸거나 로컬 GUI/장시간 시험을 실행하지 않았다.
 

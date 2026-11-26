@@ -4028,6 +4028,7 @@ extension BrowserWindow {
         case #selector(closeSecondaryPane(_:)), #selector(closeActivePane(_:)): return secondaryPane != nil
         case #selector(redoLastMove(_:)): return availableMoveRedo != nil
         case #selector(undoLastFileTransfer(_:)):
+            menuItem.title = L("마지막 파일 전송 실행 취소…", "Undo Last File Transfer…")
             return !fileOperationIsRunning && window?.attachedSheet == nil &&
                 EntryOperations.PendingTransferUndo.latest(in: undoJournalDirectory) != nil
         case #selector(undoLastMove(_:)):
@@ -4035,7 +4036,7 @@ extension BrowserWindow {
                 EntryOperations.latestUndoMove(journalDirectory: undoJournalDirectory) != nil
         case #selector(undoLastCopy(_:)):
             return canUndoCopy(journalDirectory: undoJournalDirectory)
-        case #selector(deleteSelection(_:)): return canDeleteSelection
+        case #selector(deleteSelection(_:)): menuItem.title = L("휴지통으로 이동", "Move to Trash"); return canDeleteSelection
         case #selector(restoreSelection(_:)): return canRestoreSelection
         case #selector(permanentlyDeleteSelection(_:)): return canPermanentDeleteSelection
         case #selector(moveSelection(_:)): return canMoveSelection
@@ -5537,6 +5538,12 @@ extension BrowserWindow {
                 let extractedArchiveText = try String(contentsOf: archiveDestination.appendingPathComponent("00000-한글-é-📁-long-file-name.txt"), encoding: .utf8)
                 checks["archiveExtraction"] = controller.archiveWindow?.qaSucceeded == true && extractedArchiveText == "fixture"
                 try capture("archive", view: controller.archiveWindow?.window?.contentView)
+                if let archiveWindow = controller.archiveWindow {
+                    checkpoint(checks, phase: "archive-editing")
+                    let editing = try await verifyArchiveEditingUI(archiveWindow, root: destination) { name, view in try capture(name, view: view) }
+                    checks.merge(editing, uniquingKeysWith: { _, new in new })
+                    checkpoint(checks, phase: "archive-editing-complete")
+                }
                 controller.archiveWindow?.close(); window.makeKeyAndOrderFront(nil)
                 let placementSources = destination.appendingPathComponent("archive-placement-sources", isDirectory: true)
                 let singleRoot = placementSources.appendingPathComponent("single-root", isDirectory: true)

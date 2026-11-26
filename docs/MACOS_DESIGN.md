@@ -1,6 +1,6 @@
 # Files macOS 제품·UI·기술 설계
 
-[374 구현 기록](verification/m7/INCREMENT_374.md): 원본 SDK pin을 유지한 두 변경을 hash로 고정해 WinZip AES UTF-8 암호와 긴 암호의 새 ZIP 데이터 추가를 연결했다. 실제 저장·백업·Undo, Core ZIP 및 공식 7-Zip 복원을 확인했고 Swift 69개·helper 113개·진단 205개·native 85개·권한 15개·fixture 9개와 Debug/Release가 통과했다. 이전 Intel artifact의 개행 파일명 실패는 보고서 tar.gz 보관으로 수정했고 원격 재수용은 남아 있다. 편집 UI·다른 게시 방식/압축 저장 metadata·Redo·빈 암호 archive 정책 등 F23/M7은 진행 중, update=false다. 로컬 GUI/장시간 앱은 실행하지 않았다.
+[375 구현 기록](verification/m7/INCREMENT_375.md): 압축 창의 추가·새 폴더·이름 변경·삭제·Undo, 메뉴/선택·암호 재입력/취소를 실제 저장 API에 연결했다. 목록을 읽은 source version을 저장에 묶고 빈 암호 7z의 header 보호도 유지한다. format update는 ZIP/7z true이며 runtime/source 조건으로 활성화한다. Swift 71개·helper 113개·진단 205개·native 85개·권한 15개·fixture 9개와 Debug/Release는 통과했다. 새 UI 21개를 더한 353개 검증은 원격 수용 대기다. 실제 화면/입력·다른 게시 방식/압축 저장 metadata·Redo·기록 화면·빈 ZIP 정책 등 F23/M7은 진행 중이다. 로컬 GUI/장시간 앱은 실행하지 않았다.
 
 [367단계](verification/m7/INCREMENT_367.md)는 큰 UI 검증 본문을 세 개의 MainActor 비동기 구간으로 나눴다. 함수 경계/들여쓰기를 되돌리면 기존 소스와 바이트 단위로 같으며 검사 삭제는 없다. Debug 34.13초·Release 16.87초 빌드가 통과했다. 원격 컴파일 시간 개선·전체 UI 수용은 아직 진행 중이며 로컬 GUI/장시간 시험은 실행하지 않았다.
 

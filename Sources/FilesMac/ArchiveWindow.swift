@@ -16,6 +16,12 @@ enum ArchiveReadBackend: Sendable {
         }
         return .sevenZip(try await .bundled())
     }
+    static func editingProvider() async throws -> SevenZipArchiveProvider {
+#if DEBUG
+        if let path = ProcessInfo.processInfo.environment["FILES_UI_QA_SEVENZIP_BUNDLE"] { return try await .bundled(in: URL(fileURLWithPath: path)) }
+#endif
+        return try await .bundled()
+    }
     func supportsPassword(for archive: URL) -> Bool {
         if case .sevenZip = self { return true }
         return ArchiveFormat.detect(archive) == .zip
@@ -85,18 +91,22 @@ extension ArchivePasswordView: NSTextFieldDelegate {
 final class ArchivePasswordPrompt {
     let input = ArchivePasswordView()
     private let alert = NSAlert()
-    private init(name: String, reading: Bool) {
+    private init(name: String, reading: Bool, editing: Bool) {
         alert.messageText = L("압축 파일 암호", "Archive Password")
         alert.informativeText = reading ? L("‘\(name)’의 목록을 열 암호를 입력하세요.", "Enter the password to open ‘\(name)’.") : L("‘\(name)’의 내용을 추출할 암호를 입력하세요.", "Enter the password to extract ‘\(name)’.")
         alert.addButton(withTitle: reading ? L("열기", "Open") : L("추출", "Extract")); alert.addButton(withTitle: L("취소", "Cancel"))
+        if editing {
+            alert.informativeText = L("‘\(name)’을 편집할 현재 암호를 입력하세요.", "Enter the current password to edit ‘\(name)’.")
+            alert.buttons[0].title = L("계속", "Continue")
+        }
         alert.accessoryView = input; alert.buttons[0].isEnabled = false
         input.onChange = { [weak self] in
             guard let self else { return }
             self.alert.buttons[0].isEnabled = !self.input.value.isEmpty && !self.input.value.utf8.contains(0)
         }
     }
-    static func request(for window: NSWindow, archiveName: String, reading: Bool = false) async -> String? {
-        let prompt = ArchivePasswordPrompt(name: archiveName, reading: reading)
+    static func request(for window: NSWindow, archiveName: String, reading: Bool = false, editing: Bool = false) async -> String? {
+        let prompt = ArchivePasswordPrompt(name: archiveName, reading: reading, editing: editing)
 #if DEBUG
         qaLatest = prompt
 #endif
@@ -134,17 +144,60 @@ final class ArchivePasswordPrompt {
 }
 
 @MainActor
-final class ArchiveWindow: NSWindowController, NSTableViewDataSource, NSTableViewDelegate, NSWindowDelegate {
+private final class ArchiveNameInput: NSStackView, NSTextFieldDelegate {
+    let field = NSTextField(), errorLabel = NSTextField(wrappingLabelWithString: "")
+    let validation: (String) -> String?
+    var onValidity: ((Bool) -> Void)?
+    init(initial: String, validate: @escaping (String) -> String?) {
+        validation = validate; super.init(frame: NSRect(x: 0, y: 0, width: 380, height: 70))
+        orientation = .vertical; alignment = .leading; spacing = 6
+        field.stringValue = initial; field.delegate = self; field.widthAnchor.constraint(equalToConstant: 380).isActive = true
+        field.setAccessibilityLabel(L("이름", "Name")); errorLabel.textColor = .systemRed
+        addArrangedSubview(field); addArrangedSubview(errorLabel)
+    }
+    required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
+    func validate() { let message = validation(field.stringValue); errorLabel.stringValue = message ?? ""; onValidity?(message == nil) }
+    func controlTextDidChange(_ obj: Notification) { validate() }
+}
+@MainActor
+private final class ArchiveEditingTable: NSTableView {
+    var onRename: (() -> Void)?
+    override func keyDown(with event: NSEvent) {
+        if [36, 76].contains(event.keyCode) && event.modifierFlags.intersection([.command, .control, .option, .shift]).isEmpty { onRename?(); return }
+        super.keyDown(with: event)
+    }
+    override func menu(for event: NSEvent) -> NSMenu? {
+        let row = row(at: convert(event.locationInWindow, from: nil))
+        if isEnabled {
+            if row < 0 { deselectAll(nil) }
+            else if !selectedRowIndexes.contains(row) { selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false) }
+        }
+        return super.menu(for: event)
+    }
+}
+
+@MainActor
+final class ArchiveWindow: NSWindowController, NSTableViewDataSource, NSTableViewDelegate, NSWindowDelegate, NSMenuItemValidation {
     private var backend: ArchiveReadBackend = .system
     private var operationID = UUID()
     private var pendingClose = false
-    private let table = NSTableView(), status = NSTextField(labelWithString: ""), progress = NSProgressIndicator()
+    private let table = ArchiveEditingTable(), status = NSTextField(labelWithString: ""), progress = NSProgressIndicator()
     private let extractButton = NSButton(), cancelButton = NSButton()
+    private let addButton = NSButton(), folderButton = NSButton(), renameButton = NSButton(), deleteButton = NSButton(), undoButton = NSButton(), recoveryButton = NSButton()
+    private var editor: SevenZipArchiveProvider?, sourceVersion: ArchiveEditSourceVersion?
+    private var isRunning = false, hasLoaded = false, cancelRequested = false, editingOperation = false
+    private var undoReports: [ArchiveEditReport] = [], recoveryLocations: [URL] = []
+    private var nameAlert: NSAlert?, nameInput: ArchiveNameInput?
+    private var storedConfirmation: NSAlert?
+    #if DEBUG
+    var qaJournalDirectory: URL?
+    #endif
+    private var pendingPresentation: (URL, (() -> Void)?)?
     private var archiveURL: URL?, entries: [ArchiveEntryDescriptor] = [], task: Task<Void, Never>?
 
     init() {
-        let panel = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 720, height: 520), styleMask: [.titled, .closable, .resizable, .utilityWindow], backing: .buffered, defer: false)
-        super.init(window: panel); panel.isReleasedWhenClosed = false; panel.delegate = self; buildUI()
+        let panel = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 820, height: 520), styleMask: [.titled, .closable, .resizable, .utilityWindow], backing: .buffered, defer: false)
+        super.init(window: panel); panel.minSize = NSSize(width: 760, height: 360); panel.isReleasedWhenClosed = false; panel.delegate = self; buildUI()
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
     deinit { task?.cancel() }
@@ -156,14 +209,26 @@ final class ArchiveWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         for (id, title, width) in [("path", L("경로", "Path"), 430.0), ("kind", L("종류", "Kind"), 100.0), ("size", L("크기", "Size"), 110.0)] {
             let column = NSTableColumn(identifier: .init(id)); column.title = title; column.width = width; table.addTableColumn(column)
         }
-        table.dataSource = self; table.delegate = self; table.allowsMultipleSelection = false
+        table.dataSource = self; table.delegate = self; table.allowsMultipleSelection = true
+        table.onRename = { [weak self] in self?.renameSelection(nil) }
+        let actions = NSStackView(); actions.orientation = .horizontal; actions.spacing = 6
+        for (button, title, action) in [(addButton, L("파일 추가…", "Add Files…"), #selector(addFiles(_:))),
+            (folderButton, L("새 폴더…", "New Folder…"), #selector(createFolder(_:))), (renameButton, L("이름 변경…", "Rename…"), #selector(renameSelection(_:))),
+            (deleteButton, L("압축에서 삭제…", "Delete from Archive…"), #selector(deleteSelection(_:))), (undoButton, L("실행 취소…", "Undo…"), #selector(undoLastFileTransfer(_:)))] {
+            button.title = title; button.target = self; button.action = action; configureFooterButton(button); button.setAccessibilityLabel(title); actions.addArrangedSubview(button)
+        }
+        let menu = NSMenu()
+        for button in [addButton, folderButton, renameButton, deleteButton, undoButton] { let item = NSMenuItem(title: button.title, action: button.action, keyEquivalent: ""); item.target = self; menu.addItem(item) }
+        table.menu = menu; stack.addArrangedSubview(actions)
         let scroll = NSScrollView(); scroll.documentView = table; scroll.hasVerticalScroller = true; stack.addArrangedSubview(scroll)
         let footer = NSStackView(); footer.orientation = .horizontal; footer.spacing = 8
         status.textColor = .secondaryLabelColor; status.lineBreakMode = .byTruncatingMiddle; footer.addArrangedSubview(status)
         progress.style = .bar; progress.controlSize = .small; progress.isIndeterminate = true; progress.minValue = 0; progress.maxValue = 1; progress.isDisplayedWhenStopped = false; progress.widthAnchor.constraint(equalToConstant: 130).isActive = true; footer.addArrangedSubview(progress)
         cancelButton.title = L("중단", "Stop"); configureFooterButton(cancelButton); cancelButton.target = self; cancelButton.action = #selector(cancel(_:)); footer.addArrangedSubview(cancelButton)
         extractButton.title = L("추출…", "Extract…"); configureFooterButton(extractButton); extractButton.target = self; extractButton.action = #selector(chooseDestination(_:)); footer.addArrangedSubview(extractButton)
-        stack.addArrangedSubview(footer); render()
+        stack.addArrangedSubview(footer)
+        recoveryButton.title = L("보존된 파일 보기…", "Show Preserved Files…"); recoveryButton.target = self; recoveryButton.action = #selector(showRecovery(_:)); recoveryButton.isHidden = true; stack.addArrangedSubview(recoveryButton)
+        render()
     }
 
     private func configureFooterButton(_ button: NSButton) {
@@ -174,7 +239,11 @@ final class ArchiveWindow: NSWindowController, NSTableViewDataSource, NSTableVie
     }
 
     func present(archiveURL: URL, onRead: (() -> Void)? = nil) {
+        if isRunning { pendingPresentation = (archiveURL, onRead); task?.cancel(); return }
+        if let sheet = window?.attachedSheet { pendingPresentation = (archiveURL, onRead); window?.endSheet(sheet, returnCode: sheet is NSOpenPanel ? .cancel : .alertSecondButtonReturn); return }
+        if self.archiveURL?.standardizedFileURL != archiveURL.standardizedFileURL { undoReports = [] }
         task?.cancel(); pendingClose = false; operationID = UUID(); let currentID = operationID
+        sourceVersion = nil; hasLoaded = false; editor = nil; recoveryLocations = []; recoveryButton.isHidden = true
         self.archiveURL = archiveURL; entries = []; table.reloadData()
         window?.title = L("압축 파일: ", "Archive: ") + archiveURL.lastPathComponent
         status.stringValue = L("목록을 읽는 중…", "Reading archive…"); setRunning(true)
@@ -183,10 +252,13 @@ final class ArchiveWindow: NSWindowController, NSTableViewDataSource, NSTableVie
             do {
                 let backend = try await ArchiveReadBackend.resolve(for: archiveURL)
                 guard let self, self.operationID == currentID, let window = self.window else { return }
+                let version = try? await Task.detached { try ArchiveEditSourceVersion(at: archiveURL) }.value
                 let loaded = try await backend.readWithPassword(archiveURL, window: window).entries
+                let editor = try? await ArchiveReadBackend.editingProvider()
+                if let version { guard try await Task.detached(operation: { try ArchiveEditSourceVersion(at: archiveURL) }).value == version else { throw SevenZipWorkerError.worker("source-changed") } }
                 guard self.operationID == currentID else { return }
                 try Task<Never, Never>.checkCancellation()
-                self.backend = backend; self.entries = loaded; self.status.stringValue = L("\(loaded.count)개 항목", "\(loaded.count) items"); self.setRunning(false); self.table.reloadData()
+                self.backend = backend; self.editor = editor; self.sourceVersion = version; self.hasLoaded = true; self.entries = loaded; self.status.stringValue = L("\(loaded.count)개 항목", "\(loaded.count) items"); self.setRunning(false); self.table.reloadData()
                 onRead?()
             } catch is CancellationError { guard let self, self.operationID == currentID else { return }; self.status.stringValue = L("읽기를 중단했습니다.", "Reading stopped."); self.setRunning(false) }
             catch { guard let self, self.operationID == currentID else { return }; self.status.stringValue = archiveErrorMessage(error); self.setRunning(false) }
@@ -219,18 +291,195 @@ final class ArchiveWindow: NSWindowController, NSTableViewDataSource, NSTableVie
             catch { guard let self, self.operationID == currentID else { return }; self.status.stringValue = archiveExtractionErrorMessage(error, encrypted: self.entries.contains(where: \.isEncrypted)); self.setRunning(false) }
         }
     }
-    @objc private func cancel(_ sender: Any?) { task?.cancel() }
+    @objc private func cancel(_ sender: Any?) { cancelRequested = true; cancelButton.isEnabled = false; status.stringValue = L("중단 요청을 처리하는 중…", "Finishing the stop request…"); task?.cancel() }
     private func updateProgress(_ update: ArchiveProgress) {
-        guard cancelButton.isEnabled else { return }
+        guard isRunning, !cancelRequested else { return }
         progress.isIndeterminate = update.totalBytes == 0 && update.totalEntries == 0
         let byteFraction = update.totalBytes > 0 ? Double(update.completedBytes) / Double(update.totalBytes) : 0
         let entryFraction = update.totalEntries > 0 ? Double(update.completedEntries) / Double(update.totalEntries) : 0
         progress.doubleValue = max(byteFraction, entryFraction)
-        let phase = update.phase == .publishing ? L("결과 확정", "Publishing") : L("추출", "Extracting")
+        let phase = update.phase == .publishing ? L("결과 확정", "Publishing") : (editingOperation ? L("편집", "Editing") : L("추출", "Extracting"))
         status.stringValue = "\(phase) · \(update.completedEntries)/\(update.totalEntries) · \(ByteCountFormatter.string(fromByteCount: update.completedBytes, countStyle: .file))" + (update.currentPath.map { " · \($0)" } ?? "")
     }
-    private func setRunning(_ running: Bool) { if running { progress.isIndeterminate = true; progress.startAnimation(nil) } else { progress.stopAnimation(nil) }; cancelButton.isEnabled = running; extractButton.isEnabled = !running && !entries.isEmpty; if !running && pendingClose { pendingClose = false; window?.close() } }
-    func windowShouldClose(_ sender: NSWindow) -> Bool { if cancelButton.isEnabled { pendingClose = true; task?.cancel(); return false }; return true }
+    private func setRunning(_ running: Bool) {
+        isRunning = running
+        if running { cancelRequested = false; progress.isIndeterminate = true; progress.startAnimation(nil) } else { progress.stopAnimation(nil) }
+        cancelButton.isEnabled = running; extractButton.isEnabled = !running && !entries.isEmpty; table.isEnabled = !running; renderEditActions()
+        if !running && pendingClose { pendingClose = false; pendingPresentation = nil; window?.close() }
+        else if !running, let next = pendingPresentation { pendingPresentation = nil; present(archiveURL: next.0, onRead: next.1) }
+    }
+    func windowShouldClose(_ sender: NSWindow) -> Bool { if isRunning { pendingClose = true; cancel(nil); return false }; return true }
+    private var selectedEntries: [ArchiveEntryDescriptor] { table.selectedRowIndexes.compactMap { entries.indices.contains($0) ? entries[$0] : nil } }
+    private func cleanPath(_ path: String) -> String { path.trimmingCharacters(in: CharacterSet(charactersIn: "/")) }
+    private var targetDirectory: String {
+        guard selectedEntries.count == 1, let entry = selectedEntries.first else { return "" }
+        return entry.kind == .directory ? cleanPath(entry.path) : cleanPath(entry.path).split(separator: "/").dropLast().joined(separator: "/")
+    }
+    private var canEdit: Bool { hasLoaded && !isRunning && window?.attachedSheet == nil && editor != nil && sourceVersion != nil && archiveURL.map { [.zip, .sevenZip].contains(ArchiveFormat.detect($0)) && SevenZipVolumes.index(of: $0) == nil } == true }
+    private func renderEditActions() {
+        for button in [addButton, folderButton] { button.isEnabled = canEdit }
+        renameButton.isEnabled = canEdit && selectedEntries.count == 1
+        deleteButton.isEnabled = canEdit && !selectedEntries.isEmpty
+        undoButton.isEnabled = canEdit && !undoReports.isEmpty
+    }
+    func tableViewSelectionDidChange(_ notification: Notification) { renderEditActions() }
+    func validateMenuItem(_ item: NSMenuItem) -> Bool {
+        switch item.action {
+        case #selector(addFiles(_:)), #selector(createFolder(_:)): return canEdit
+        case #selector(renameSelection(_:)): return canEdit && selectedEntries.count == 1
+        case #selector(deleteSelection(_:)): item.title = L("압축에서 삭제…", "Delete from Archive…"); return canEdit && !selectedEntries.isEmpty
+        case #selector(undoLastFileTransfer(_:)): item.title = L("마지막 압축 편집 실행 취소…", "Undo Last Archive Edit…"); return canEdit && !undoReports.isEmpty
+        default: return false
+        }
+    }
+    @objc private func addFiles(_ sender: Any?) {
+        guard canEdit, let window else { return }; let directory = targetDirectory
+        let panel = NSOpenPanel(); panel.canChooseFiles = true; panel.canChooseDirectories = true; panel.allowsMultipleSelection = true
+        panel.prompt = L("추가", "Add"); panel.message = L("추가 위치: /", "Add to: /") + directory
+        panel.beginSheetModal(for: window) { [weak self] response in
+            guard let self else { return }; self.renderEditActions()
+            if response == .OK { self.performEdit([.add(sources: panel.urls, directory: directory)], selecting: panel.urls.map { (directory.isEmpty ? "" : directory + "/") + $0.lastPathComponent }) }
+            else { self.setRunning(false) }
+        }; renderEditActions()
+    }
+    @objc func createFolder(_ sender: Any?) {
+        guard canEdit else { return }; let directory = targetDirectory
+        askName(title: L("압축 안에 새 폴더", "New Folder in Archive"), initial: L("새 폴더", "New Folder"), directory: directory, renaming: nil) { [weak self] name in
+            let path = (directory.isEmpty ? "" : directory + "/") + name
+            self?.performEdit([.createDirectory(path: path)], selecting: [path])
+        }
+    }
+    @objc func renameSelection(_ sender: Any?) {
+        guard canEdit, selectedEntries.count == 1, let entry = selectedEntries.first else { return }
+        let path = cleanPath(entry.path), directory = path.split(separator: "/").dropLast().joined(separator: "/")
+        askName(title: L("압축 항목 이름 변경", "Rename Archive Item"), initial: path.split(separator: "/").last.map(String.init) ?? path, directory: directory, renaming: entry) { [weak self] name in
+            self?.performEdit([.rename(path: path, newName: name)], selecting: [(directory.isEmpty ? "" : directory + "/") + name])
+        }
+    }
+    private func askName(title: String, initial: String, directory: String, renaming: ArchiveEntryDescriptor?, submit: @escaping @MainActor (String) -> Void) {
+        guard canEdit, let window else { return }
+        let alert = NSAlert(); alert.messageText = title; alert.informativeText = L("위치: /", "Location: /") + directory
+        alert.addButton(withTitle: L("저장", "Save")); alert.addButton(withTitle: L("취소", "Cancel"))
+        let input = ArchiveNameInput(initial: initial) { [weak self] name in
+            guard let self else { return L("창이 닫혔습니다.", "The window closed.") }
+            do {
+                guard !name.contains("/") else { throw ArchiveValidationError.invalidPath(name) }
+                _ = try ArchiveExtractionValidator.validate([.init(path: name, kind: .regularFile)])
+                if let renaming, name == initial { return L("다른 이름을 입력하세요.", "Enter a different name.") }
+                let desired = (directory.isEmpty ? "" : directory + "/") + name
+                let old = renaming.map { self.cleanPath($0.path) }
+                var result = Set<String>()
+                for entry in self.entries {
+                    let path = self.cleanPath(entry.path)
+                    let changed = old.map { path == $0 || (renaming?.kind == .directory && path.hasPrefix($0 + "/")) } ?? false
+                    let next = changed ? desired + String(path.dropFirst(old!.count)) : path
+                    if !result.insert(next.precomposedStringWithCanonicalMapping).inserted { return L("같은 이름의 항목이 있습니다.", "An item with this name already exists.") }
+                }
+                if old == nil && result.contains(desired.precomposedStringWithCanonicalMapping) { return L("같은 이름의 항목이 있습니다.", "An item with this name already exists.") }
+                return nil
+            } catch { return L("비어 있지 않은 올바른 이름을 입력하세요.", "Enter a valid, nonempty name.") }
+        }
+        alert.accessoryView = input; input.onValidity = { [weak alert] valid in alert?.buttons.first?.isEnabled = valid }; input.validate()
+        nameAlert = alert; nameInput = input
+        alert.beginSheetModal(for: window) { [weak self] response in
+            guard let self else { return }; alert.window.orderOut(nil); self.nameAlert = nil; self.nameInput = nil; self.renderEditActions()
+            if response == .alertFirstButtonReturn { submit(input.field.stringValue) } else { self.setRunning(false) }
+        }; alert.window.makeFirstResponder(input.field); renderEditActions()
+    }
+    @objc func deleteSelection(_ sender: Any?) {
+        guard canEdit, !selectedEntries.isEmpty else { return }; let selected = selectedEntries
+        let paths = selected.map { cleanPath($0.path) }
+        let count = entries.filter { entry in selected.contains { selection in let path = cleanPath(selection.path); return cleanPath(entry.path) == path || (selection.kind == .directory && entry.path.hasPrefix(path + "/")) } }.count
+        confirm(title: L("압축에서 삭제", "Delete from Archive"), message: L("하위 항목을 포함하여 \(count)개 항목을 삭제합니다. 이전 원본은 실행 취소를 위해 보관합니다.", "Delete \(count) items, including descendants. The previous archive is retained for Undo."), button: L("삭제", "Delete")) { [weak self] in self?.performEdit([.delete(paths: paths)], selecting: []) }
+    }
+    private func confirm(title: String, message: String, button: String, action: @escaping @MainActor () -> Void) {
+        guard let window else { return }; let alert = NSAlert(); alert.messageText = title; alert.informativeText = message
+        alert.addButton(withTitle: button); alert.addButton(withTitle: L("취소", "Cancel")); storedConfirmation = alert
+        alert.beginSheetModal(for: window) { [weak self] response in
+            guard let self else { return }; alert.window.orderOut(nil); self.storedConfirmation = nil; self.renderEditActions()
+            if response == .alertFirstButtonReturn { action() } else { self.setRunning(false) }
+        }; renderEditActions()
+    }
+    private func performEdit(_ operations: [ArchiveEditOperation], selecting paths: [String]) {
+        guard canEdit, let editor, let archiveURL, let sourceVersion else { return }
+        operationID = UUID(); let currentID = operationID; editingOperation = true
+        status.stringValue = L("압축 파일을 편집하는 중…", "Editing archive…"); setRunning(true)
+        task = Task { [weak self] in
+            guard let self else { return }; var password: String?, saved = false
+            do {
+                var report: ArchiveEditReport?
+                while report == nil {
+                    do {
+                        report = try await editor.edit(archiveURL, operations: operations, password: password, encryptNewData: password != nil || self.entries.contains(where: \.isEncrypted), journalDirectory: self.editJournalDirectory, expectedSource: sourceVersion) { [weak self] update in
+                            Task { @MainActor [weak self] in guard let self, self.operationID == currentID else { return }; self.updateProgress(update) }
+                        }
+                    } catch SevenZipWorkerError.worker(let code) where code == "password-required" || code == "password-or-corrupt" {
+                        try Task.checkCancellation(); guard self.operationID == currentID, let window = self.window else { throw CancellationError() }
+                        self.status.stringValue = L("암호를 확인하세요.", "Check the archive password.")
+                        guard let entered = await ArchivePasswordPrompt.request(for: window, archiveName: archiveURL.lastPathComponent, editing: true) else { throw CancellationError() }
+                        password = entered
+                    }
+                }
+                guard let report else { throw SevenZipWorkerError.invalidResponse }
+                saved = true; self.undoReports.append(report); self.archiveURL = report.archive; self.sourceVersion = nil
+                try await self.reloadAfterEdit(password: password, selecting: paths)
+                guard self.operationID == currentID else { return }
+                self.status.stringValue = L("저장했습니다 · \(self.entries.count)개 항목", "Saved · \(self.entries.count) items")
+            } catch is CancellationError { self.status.stringValue = saved ? L("저장했습니다. 목록을 다시 열어 확인하세요.", "Saved. Reopen the archive to refresh its listing.") : L("편집을 중단했습니다. 파일은 보존했습니다.", "Editing stopped. Files were preserved.") }
+            catch {
+                self.status.stringValue = saved ? L("저장했지만 목록을 새로 읽지 못했습니다. 다시 여세요.", "Saved, but the listing could not be refreshed. Reopen the archive.") : archiveEditErrorMessage(error)
+                if case SevenZipWorkerError.worker("source-changed") = error { self.sourceVersion = nil }
+                if case let ArchiveEditError.recoveryRequired(journal, _, retained) = error { self.recoveryLocations = [retained, journal]; self.recoveryButton.isHidden = false }
+            }
+            guard self.operationID == currentID else { return }; self.editingOperation = false; self.setRunning(false)
+            NSAccessibility.post(element: self.status, notification: .valueChanged)
+        }
+    }
+    private var editJournalDirectory: URL {
+#if DEBUG
+        if let qaJournalDirectory { return qaJournalDirectory }
+#endif
+        return ArchiveSplitRecoveryWindow.journalDirectory
+    }
+    private func reloadAfterEdit(password: String?, selecting paths: [String]) async throws {
+        guard let archiveURL else { throw SevenZipWorkerError.invalidConfiguration }; let backend = self.backend
+        let refresh = Task.detached { () -> ([ArchiveEntryDescriptor], ArchiveEditSourceVersion) in
+            let version = try ArchiveEditSourceVersion(at: archiveURL)
+            let entries = try await backend.entries(at: archiveURL, password: password)
+            guard try ArchiveEditSourceVersion(at: archiveURL) == version else { throw SevenZipWorkerError.worker("source-changed") }
+            return (entries, version)
+        }
+        let loaded = try await withTaskCancellationHandler(operation: { try await refresh.value }, onCancel: { refresh.cancel() })
+        entries = loaded.0; sourceVersion = loaded.1; hasLoaded = true; table.reloadData()
+        let desired = Set(paths.map(cleanPath)), selected = IndexSet(entries.indices.filter { desired.contains(cleanPath(entries[$0].path)) })
+        table.selectRowIndexes(selected, byExtendingSelection: false)
+        if let first = selected.first { table.scrollRowToVisible(first) }; window?.makeFirstResponder(table)
+    }
+    @objc func undoLastFileTransfer(_ sender: Any?) {
+        guard canEdit, let report = undoReports.last else { return }
+        confirm(title: L("마지막 압축 편집 실행 취소", "Undo Last Archive Edit"), message: L("이전 원본을 복원합니다. 수정본도 별도로 보존합니다.", "Restore the previous archive and retain the edited version."), button: L("실행 취소", "Undo")) { [weak self] in self?.performUndo(report) }
+    }
+    private func performUndo(_ report: ArchiveEditReport) {
+        guard canEdit else { return }; operationID = UUID(); let currentID = operationID; editingOperation = true
+        status.stringValue = L("이전 원본을 복원하는 중…", "Restoring the previous archive…"); setRunning(true)
+        task = Task { [weak self] in
+            guard let self else { return }; var restored = false
+            do {
+                guard case .undone = try await SevenZipArchiveProvider.recoverArchiveEdit(journal: report.journal, journalDirectory: self.editJournalDirectory, undo: true) else { throw ArchiveEditError.invalidState }
+                restored = true; _ = self.undoReports.popLast(); self.sourceVersion = nil
+                // Reopening an encrypted-header listing may require a password again.
+                let loaded = Task { @MainActor in
+                    guard let window = self.window else { throw CancellationError() }
+                    let result = try await self.backend.readWithPassword(report.archive, window: window)
+                    try await self.reloadAfterEdit(password: result.password, selecting: [])
+                }
+                try await withTaskCancellationHandler(operation: { try await loaded.value }, onCancel: { loaded.cancel() }); self.status.stringValue = L("압축 편집을 실행 취소했습니다.", "Archive edit undone.")
+            } catch { self.status.stringValue = restored ? L("복원했습니다. 목록을 다시 열어 확인하세요.", "Restored. Reopen the archive to refresh its listing.") : archiveEditErrorMessage(error) }
+            guard self.operationID == currentID else { return }; self.editingOperation = false; self.setRunning(false)
+            NSAccessibility.post(element: self.status, notification: .valueChanged)
+        }
+    }
+    @objc private func showRecovery(_ sender: Any?) { guard !recoveryLocations.isEmpty else { return }; NSWorkspace.shared.activateFileViewerSelecting(recoveryLocations) }
     private func render() { setRunning(false); status.stringValue = L("압축 파일을 여세요.", "Open an archive.") }
     func numberOfRows(in tableView: NSTableView) -> Int { entries.count }
     func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
@@ -240,10 +489,22 @@ final class ArchiveWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         return cell
     }
 #if DEBUG
-    var qaLoaded: Bool { task == nil || (!cancelButton.isEnabled && !entries.isEmpty) }
+    var qaEditReady: Bool { canEdit }
+    var qaEntryPaths: [String] { entries.map { cleanPath($0.path) } }
+    var qaCanUndoEdit: Bool { undoButton.isEnabled }
+    func qaSelectPaths(_ paths: [String]) { let selected = Set(paths); table.selectRowIndexes(IndexSet(entries.indices.filter { selected.contains(cleanPath(entries[$0].path)) }), byExtendingSelection: false) }
+    func qaCreateFolder() { createFolder(nil) }
+    func qaRename() { renameSelection(nil) }
+    func qaDelete() { deleteSelection(nil) }
+    func qaUndoEdit() { undoLastFileTransfer(nil) }
+    func qaSubmitName(_ name: String?) { guard let alert = nameAlert else { return }; if let name { nameInput?.field.stringValue = name; nameInput?.validate(); if alert.buttons[0].isEnabled { alert.buttons[0].performClick(nil) } } else { window?.endSheet(alert.window, returnCode: .alertSecondButtonReturn) } }
+    var qaNameRejected: Bool { nameAlert?.buttons.first?.isEnabled == false }
+    func qaConfirm(_ accepted: Bool) { storedConfirmation?.buttons[accepted ? 0 : 1].performClick(nil) }
+    func qaAdd(_ sources: [URL], directory: String) { performEdit([.add(sources: sources, directory: directory)], selecting: sources.map { (directory.isEmpty ? "" : directory + "/") + $0.lastPathComponent }) }
+    var qaLoaded: Bool { !isRunning && hasLoaded }
     var qaEntryCount: Int { entries.count }
     func qaExtract(to destination: URL) { extract(to: destination) }
-    var qaIsRunning: Bool { cancelButton.isEnabled }
+    var qaIsRunning: Bool { isRunning }
     var qaSucceeded: Bool { status.stringValue.contains(L("추출했습니다", "Extracted")) }
     var qaMessage: String { status.stringValue }
     func qaCancel() { cancel(nil) }
