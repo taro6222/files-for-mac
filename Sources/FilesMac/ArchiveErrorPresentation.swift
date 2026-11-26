@@ -41,11 +41,13 @@ func archiveErrorMessage(_ error: Error) -> String {
     case SevenZipWorkerError.worker("unsupported-item"), SevenZipWorkerError.worker("invalid-metadata"):
         return L("안전하게 추출할 수 없는 경로나 항목이 있어 중단했습니다.", "The archive contains an unsafe path or entry.")
     case let SevenZipWorkerError.stagingPreserved(url):
-        return L("임시 결과가 변경되어 자동 삭제하지 않았습니다. 확인할 위치: ", "Temporary output changed and was preserved. Inspect: ") + url.path
+        return L("임시 결과를 안전하게 정리하지 못해 보존했습니다. 확인할 위치: ", "Temporary output could not be safely cleaned up and was preserved. Inspect: ") + url.path
     case let SevenZipWorkerError.publicationRecovery(staging, published):
-        return L("일부 결과가 변경되어 되돌리지 않았습니다. 다음 위치를 확인하세요: ", "Some results changed and were preserved. Inspect: ") + ([staging] + published).map(\.path).joined(separator: " · ")
+        return L("일부 결과를 안전하게 되돌리지 못해 보존했습니다. 다음 위치를 확인하세요: ", "Some results could not be safely rolled back and were preserved. Inspect: ") + ([staging] + published).map(\.path).joined(separator: " · ")
     case is SevenZipBundleError, SevenZipWorkerError.unavailable:
         return L("압축 구성 요소를 확인할 수 없습니다. 앱을 다시 설치한 뒤 시도하세요.", "The archive components could not be verified. Reinstall the app and try again.")
+    case SevenZipWorkerError.metadataRestoreFailed:
+        return L("압축 항목의 수정 시각 또는 권한을 복원하지 못했습니다.", "An archive item's modification time or permissions could not be restored.")
     case SevenZipWorkerError.memoryLimitExceeded:
         return L("압축 작업의 메모리 사용량이 제한을 초과해 중단했습니다. 생성 중이었다면 압축 수준·사전 크기·스레드 수를 줄여 다시 시도하세요.", "The archive operation exceeded its memory budget and was stopped. If creating an archive, try a lower compression level, dictionary size, or thread count.")
     case SevenZipWorkerError.timedOut:

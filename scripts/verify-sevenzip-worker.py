@@ -146,6 +146,10 @@ def verify(executable, reference, root, library=None):
     payloads = {'line\nbreak-한글.txt': b'payload', 'emoji-🔑.txt': b'12345', 'folder/child.txt': b'child'}
     for name, payload in payloads.items():
         path = fixture / name; path.parent.mkdir(parents=True, exist_ok=True); path.write_bytes(payload)
+    metadata_file = fixture / 'emoji-🔑.txt'
+    metadata_file.chmod(0o4751)
+    os.utime(metadata_file, ns=(-123456789000000000 + 987654300,) * 2)
+    os.utime(fixture / 'folder', ns=(1600000000123456700,) * 2)
     (fixture / 'link').symlink_to('emoji-🔑.txt')
     def create(name, encrypted):
         archive = root / name
@@ -173,6 +177,12 @@ def verify(executable, reference, root, library=None):
     check('directoryKind', items['folder']['kind'] == 'directory')
     check('symbolicLinkKind', items['link']['kind'] == 'symbolicLink')
     check('encryptedFileProperties', all(items[name]['encrypted'] for name in payloads))
+    for name in ['emoji-🔑.txt', 'folder']:
+        info = (fixture / name).stat()
+        seconds, nanos = divmod(info.st_mtime_ns, 1_000_000_000)
+        check('metadata' + ('File' if name == 'emoji-🔑.txt' else 'Directory'),
+              items[name]['metadata'] == dict(permissions=info.st_mode & 0o777, modifiedSeconds=seconds, modifiedNanos=nanos // 100 * 100))
+    check('metadataPrivilegeBitsStripped', items['emoji-🔑.txt']['metadata']['permissions'] == 0o751)
     info = encrypted.stat()
     check('sourceIdentity', response['source'] == dict(device=str(info.st_dev), inode=str(info.st_ino), size=info.st_size))
     token = response['session']

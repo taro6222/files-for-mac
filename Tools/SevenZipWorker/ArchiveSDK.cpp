@@ -222,7 +222,7 @@ extern "C" void *SevenZipOpenDescriptors(const char *library, int *descriptors, 
 static bool property(IInArchive *archive, UInt32 index, PROPID id, NWindows::NCOM::CPropVariant &value) {
     return archive->GetProperty(index, id, &value) == S_OK;
 }
-static int metadata(IInArchive *archive, UInt32 i, AString &utf8, UInt64 &bytes, int &kind, bool &isEncrypted) {
+static int metadata(IInArchive *archive, UInt32 i, AString &utf8, UInt64 &bytes, int &kind, bool &isEncrypted, SevenZipEntryMetadata *extra = nullptr) {
     NWindows::NCOM::CPropVariant path, size, directory, encrypted, symbolic, hard, attributes, posix;
     if (!property(archive, i, kpidPath, path) || path.vt != VT_BSTR ||
         !property(archive, i, kpidSize, size) || !property(archive, i, kpidIsDir, directory) ||
@@ -239,6 +239,24 @@ static int metadata(IInArchive *archive, UInt32 i, AString &utf8, UInt64 &bytes,
     else if (hard.vt == VT_BSTR && SysStringLen(hard.bstrVal)) kind = 3;
     else if ((mode & S_IFMT) && (mode & S_IFMT) != S_IFREG && (mode & S_IFMT) != S_IFDIR) kind = 4;
     isEncrypted = encrypted.vt == VT_BOOL && encrypted.boolVal;
+    if (extra) {
+        NWindows::NCOM::CPropVariant modified;
+        if (!property(archive, i, kpidMTime, modified) || (modified.vt != VT_EMPTY && modified.vt != VT_FILETIME) ||
+            (posix.vt != VT_EMPTY && posix.vt != VT_UI4) || (attributes.vt != VT_EMPTY && attributes.vt != VT_UI4)) return 6;
+        *extra = {};
+        if (modified.vt == VT_FILETIME) {
+            const uint64_t ticks = ((uint64_t)modified.filetime.dwHighDateTime << 32) | modified.filetime.dwLowDateTime;
+            extra->hasModifiedTime = 1;
+            extra->modifiedSeconds = (int64_t)(ticks / 10000000ULL) - 11644473600LL;
+            extra->modifiedNanos = (uint32_t)(ticks % 10000000ULL) * 100;
+        }
+        // 7z stores Unix mode in the high word with FILE_ATTRIBUTE_UNIX_EXTENSION.
+        // Do not mistake an ordinary Windows attribute word for a Unix mode.
+        if (posix.vt == VT_UI4 || (attributes.vt == VT_UI4 && (attributes.ulVal & 0x8000))) {
+            extra->hasPermissions = 1;
+            extra->permissions = mode & 0777; // Never restore setuid/setgid/sticky or ownership.
+        }
+    }
     return 0;
 }
 extern "C" int SevenZipList(void *handle, uint32_t maximum, void *context, SevenZipItemCallback callback) {
@@ -250,9 +268,10 @@ extern "C" int SevenZipList(void *handle, uint32_t maximum, void *context, Seven
         if (count > maximum) return 7;
         for (UInt32 i = 0; i < count; ++i) {
             AString utf8; UInt64 bytes = 0; int kind = 0; bool encrypted = false;
-            int error = metadata(session->archive, i, utf8, bytes, kind, encrypted);
+            SevenZipEntryMetadata extra = {};
+            int error = metadata(session->archive, i, utf8, bytes, kind, encrypted, &extra);
             if (error) return error;
-            if (!callback(context, i, utf8.Ptr(), utf8.Len(), kind, bytes, encrypted)) return 7;
+            if (!callback(context, i, utf8.Ptr(), utf8.Len(), kind, bytes, encrypted, &extra)) return 7;
         }
         return session->stream->unchanged() ? 0 : 9;
     } catch (...) { return 8; }
@@ -480,6 +499,12 @@ Z7_COM7F_IMF(CreateCallback::GetProperty(UInt32 index, PROPID propertyID, PROPVA
         case kpidSize: property = (UInt64)item.size; break;
         case kpidIsAnti: property = false; break;
         case kpidPosixAttrib: property = (UInt32)item.mode; break;
+        case kpidAttrib: {
+            // Match the SDK's Get_WinAttribPosix_From_PosixMode representation.
+            UInt32 attributes = 0x8000 | ((item.mode & 0xFFFF) << 16) | (item.directory ? 0x10 : 0x20);
+            if (!(item.mode & 0222)) attributes |= 0x01;
+            property = attributes; break;
+        }
         case kpidMTime: {
             // SDK FILETIME uses 100ns ticks since 1601.
             if (item.modifiedSeconds >= -11644473600LL) {

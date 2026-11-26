@@ -2,7 +2,7 @@ import Foundation
 import Darwin
 
 public enum SevenZipWorkerError: Error, Sendable, Equatable {
-    case unavailable, invalidConfiguration, invalidResponse, ioFailure, timedOut, unexpectedExit, memoryLimitExceeded
+    case unavailable, invalidConfiguration, invalidResponse, ioFailure, timedOut, unexpectedExit, memoryLimitExceeded, metadataRestoreFailed
     case worker(String)
     case stagingPreserved(URL)
     case publicationRecovery(staging: URL, published: [URL])
@@ -178,7 +178,7 @@ public struct SevenZipArchiveProvider: Sendable {
                 var completed: Int64 = 0
                 for (index, entry) in validated.enumerated() {
                     try session.check()
-                    if entry.kind == .directory { try tree.directory(entry.relativePath) }
+                    if entry.kind == .directory { try tree.directory(entry.relativePath, metadata: listed[index].metadata) }
                     else {
                         let fd = try tree.file(entry.relativePath)
                         defer { Darwin.close(fd) }
@@ -197,13 +197,14 @@ public struct SevenZipArchiveProvider: Sendable {
                             progress?(.init(phase: .reading, completedEntries: index, totalEntries: validated.count,
                                             completedBytes: completed, totalBytes: total, currentPath: entry.relativePath))
                         }
-                        try tree.completedFile(entry.relativePath, fd: fd, size: entry.uncompressedSize)
+                        try tree.completedFile(entry.relativePath, fd: fd, size: entry.uncompressedSize, metadata: listed[index].metadata)
                     }
                     progress?(.init(phase: .reading, completedEntries: index + 1, totalEntries: validated.count,
                                     completedBytes: completed, totalBytes: total, currentPath: entry.relativePath))
                 }
                 try session.close()
                 try session.check()
+                try tree.sealDirectories(check: session.check)
                 progress?(.init(phase: .publishing, completedEntries: validated.count, totalEntries: validated.count,
                                 completedBytes: completed, totalBytes: total, currentPath: nil))
                 try session.check()
@@ -311,8 +312,22 @@ private final class SevenZipProcessControl: @unchecked Sendable {
     }
 }
 
+private struct SevenZipEntryMetadata: Decodable {
+    let permissions: UInt16?
+    let modifiedSeconds: Int64?
+    let modifiedNanos: Int?
+    var isValid: Bool {
+        guard permissions == nil || permissions! <= 0o777 else { return false }
+        guard (modifiedSeconds == nil) == (modifiedNanos == nil) else { return false }
+        if let seconds = modifiedSeconds, let nanos = modifiedNanos {
+            return (-11_644_473_600...1_833_029_933_770).contains(seconds) && (0..<1_000_000_000).contains(nanos)
+        }
+        return true
+    }
+}
 private struct SevenZipItem: Decodable {
     let index: UInt32, path: String, kind: String, size: Int64, encrypted: Bool
+    let metadata: SevenZipEntryMetadata?
     var descriptor: ArchiveEntryDescriptor {
         .init(path: path, kind: ArchiveEntryKind(rawValue: kind)!, uncompressedSize: size, isEncrypted: encrypted)
     }
@@ -559,7 +574,7 @@ private final class SevenZipSession {
               let source = response.source, UInt64(source.device) != nil, UInt64(source.inode) != nil else { throw SevenZipWorkerError.invalidResponse }
         for (index, item) in items.enumerated() {
             guard item.index == UInt32(index), ArchiveEntryKind(rawValue: item.kind) != nil, item.size >= 0,
-                  !item.path.utf8.contains(0) else { throw SevenZipWorkerError.invalidResponse }
+                  !item.path.utf8.contains(0), item.metadata?.isValid != false else { throw SevenZipWorkerError.invalidResponse }
         }
         self.token = token
         return items
@@ -622,6 +637,7 @@ private final class SevenZipStagingTree {
     private let parentFD: Int32, rootFD: Int32
     private var published = false
     private var records: [String: stat] = [:]
+    private var directoryMetadata: [String: SevenZipEntryMetadata] = [:]
     init(destination: URL, intoExisting: Bool) throws {
         guard destination.isFileURL, !["", ".", "..", "/"].contains(destination.lastPathComponent) else { throw SevenZipWorkerError.invalidConfiguration }
         self.destination = destination
@@ -665,7 +681,10 @@ private final class SevenZipStagingTree {
             return current
         } catch { Darwin.close(current); throw error }
     }
-    func directory(_ path: String) throws { Darwin.close(try directoryFD(path.split(separator: "/"))) }
+    func directory(_ path: String, metadata: SevenZipEntryMetadata?) throws {
+        Darwin.close(try directoryFD(path.split(separator: "/")))
+        directoryMetadata[path] = metadata
+    }
     func file(_ path: String) throws -> Int32 {
         let parts = path.split(separator: "/"), fd = try directoryFD(Array(parts.dropLast()))
         defer { Darwin.close(fd) }
@@ -676,13 +695,62 @@ private final class SevenZipStagingTree {
         records[path] = info
         return output
     }
-    func completedFile(_ path: String, fd: Int32, size: Int64) throws {
+    func completedFile(_ path: String, fd: Int32, size: Int64, metadata: SevenZipEntryMetadata?) throws {
         var info = stat()
         guard fstat(fd, &info) == 0, let expected = records[path], sameIdentity(expected, info), info.st_size == size else { throw SevenZipWorkerError.ioFailure }
+        try apply(metadata, to: fd)
+        guard fstat(fd, &info) == 0, sameIdentity(expected, info), info.st_size == size else { throw SevenZipWorkerError.ioFailure }
         records[path] = info
+    }
+    private func apply(_ metadata: SevenZipEntryMetadata?, to fd: Int32) throws {
+        guard let metadata else { return }
+        if let seconds = metadata.modifiedSeconds, let nanos = metadata.modifiedNanos {
+            var before = stat()
+            guard fstat(fd, &before) == 0 else { throw SevenZipWorkerError.metadataRestoreFailed }
+            var times = [before.st_atimespec, timespec(tv_sec: Int(seconds), tv_nsec: nanos)]
+            guard futimens(fd, &times) == 0 else { throw SevenZipWorkerError.metadataRestoreFailed }
+        }
+        if let permissions = metadata.permissions {
+            guard fchmod(fd, mode_t(permissions)) == 0 else { throw SevenZipWorkerError.metadataRestoreFailed }
+        }
+        var after = stat()
+        guard fstat(fd, &after) == 0,
+              metadata.permissions == nil || (after.st_mode & 0o777) == mode_t(metadata.permissions!),
+              metadata.modifiedSeconds == nil || (after.st_mtimespec.tv_sec == metadata.modifiedSeconds! && after.st_mtimespec.tv_nsec == metadata.modifiedNanos!) else {
+            throw SevenZipWorkerError.metadataRestoreFailed
+        }
+    }
+    private func finalizeDirectories(base: Int32, check: () throws -> Void) throws {
+        // Descendants finish first. Every not-yet-finalized ancestor remains searchable;
+        // Mode 000 directories need no descriptor per item or temporary permission relaxation.
+        let paths = directoryMetadata.keys.sorted {
+            let left = $0.split(separator: "/").count, right = $1.split(separator: "/").count
+            return left == right ? $0 < $1 : left > right
+        }
+        for path in paths {
+            try check()
+            guard let fd = checkedDirectory(path, base: base, expectedRecords: records) else { throw SevenZipWorkerError.ioFailure }
+            defer { Darwin.close(fd) }
+            try apply(directoryMetadata[path], to: fd)
+            var info = stat()
+            guard fstat(fd, &info) == 0 else { throw SevenZipWorkerError.ioFailure }
+            records[path] = info
+        }
     }
     private func sameIdentity(_ first: stat, _ second: stat) -> Bool {
         first.st_dev == second.st_dev && first.st_ino == second.st_ino && (first.st_mode & S_IFMT) == (second.st_mode & S_IFMT)
+    }
+    func sealDirectories(check: () throws -> Void) throws {
+        // Child creation changes parent times. Capture those known staging directories
+        // once writing ends, before exposing any top-level item to publication callbacks.
+        for (path, expected) in records where (expected.st_mode & S_IFMT) == S_IFDIR {
+            try check()
+            guard let fd = checkedDirectory(path, base: rootFD, expectedRecords: records) else { throw SevenZipWorkerError.ioFailure }
+            defer { Darwin.close(fd) }
+            var current = stat()
+            guard fstat(fd, &current) == 0, current.st_mode == expected.st_mode else { throw SevenZipWorkerError.ioFailure }
+            records[path] = current
+        }
     }
     private func checkedDirectory(_ path: String, base: Int32, expectedRecords: [String: stat]) -> Int32? {
         var current = dup(base), prefix = ""
@@ -721,8 +789,9 @@ private final class SevenZipStagingTree {
                 if path.isEmpty && allowOtherTopLevel && expectedRecords[key] == nil { continue }
                 var actual = stat()
                 guard let expected = expectedRecords[key], fstatat(fd, name, &actual, AT_SYMLINK_NOFOLLOW) == 0, sameIdentity(expected, actual) else { valid = false; break }
-                if contents && (actual.st_mode & S_IFMT) == S_IFREG &&
-                    (actual.st_size != expected.st_size || actual.st_mtimespec.tv_sec != expected.st_mtimespec.tv_sec ||
+                if contents && actual.st_mode != expected.st_mode { valid = false; break }
+                if contents &&
+                    (((actual.st_mode & S_IFMT) == S_IFREG && actual.st_size != expected.st_size) || actual.st_mtimespec.tv_sec != expected.st_mtimespec.tv_sec ||
                      actual.st_mtimespec.tv_nsec != expected.st_mtimespec.tv_nsec || actual.st_ctimespec.tv_sec != expected.st_ctimespec.tv_sec ||
                      actual.st_ctimespec.tv_nsec != expected.st_ctimespec.tv_nsec) { valid = false; break }
                 seen.insert(key)
@@ -743,6 +812,9 @@ private final class SevenZipStagingTree {
     func publish(intoExisting: Bool, check: () throws -> Void, onItem: (String) -> Void) throws -> [URL] {
         guard verify(contents: true) else { throw SevenZipWorkerError.ioFailure }
         if intoExisting { return try publishItems(check: check, onItem: onItem) }
+        try finalizeDirectories(base: rootFD, check: check)
+        try check()
+        guard matches(parentFD, at: parent.path), matches(rootFD, at: staging.path) else { throw SevenZipWorkerError.ioFailure }
         // Strict descriptor-relative no-replace publication; unsupported file systems fail safely.
         guard renameatx_np(parentFD, staging.lastPathComponent, parentFD, destination.lastPathComponent, UInt32(RENAME_EXCL)) == 0 else {
             if errno == EEXIST { throw ZipArchiveError.destinationConflict(destination.lastPathComponent) }
@@ -755,6 +827,7 @@ private final class SevenZipStagingTree {
         try preflight()
         let names = Set(records.keys.compactMap { $0.split(separator: "/").first.map(String.init) }).sorted()
         var moved: [String] = [], remaining = records, movedRecords: [String: stat] = [:]
+        var metadataStarted = false
         func subset(_ values: [String: stat], name: String) -> [String: stat] { values.filter { $0.key == name || $0.key.hasPrefix(name + "/") } }
         func refreshTop(_ name: String, at fd: Int32) -> Bool {
             var now = stat()
@@ -779,11 +852,19 @@ private final class SevenZipStagingTree {
             }
             try check()
             guard verifyRecords(contents: true, base: parentFD, expectedRecords: movedRecords, allowOtherTopLevel: true),
-                  verifyRecords(contents: true, base: rootFD, expectedRecords: [:], allowOtherTopLevel: false),
-                  unlinkat(parentFD, staging.lastPathComponent, AT_REMOVEDIR) == 0 else { throw SevenZipWorkerError.ioFailure }
+                  verifyRecords(contents: true, base: rootFD, expectedRecords: [:], allowOtherTopLevel: false) else { throw SevenZipWorkerError.ioFailure }
+            metadataStarted = !directoryMetadata.isEmpty
+            try finalizeDirectories(base: parentFD, check: check)
+            try check()
+            guard unlinkat(parentFD, staging.lastPathComponent, AT_REMOVEDIR) == 0 else { throw SevenZipWorkerError.ioFailure }
             published = true
             return names.map { destination.appendingPathComponent($0) }
         } catch {
+            // Restrictive modes can make descendants inaccessible. Preserve published data
+            // and report its exact location instead of changing permissions to force rollback.
+            if metadataStarted {
+                throw SevenZipWorkerError.publicationRecovery(staging: staging, published: moved.map { destination.appendingPathComponent($0) })
+            }
             var retained: [String] = []
             for name in moved.reversed() {
                 let expected = subset(movedRecords, name: name)

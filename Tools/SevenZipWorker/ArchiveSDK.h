@@ -4,7 +4,12 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
-typedef int (*SevenZipItemCallback)(void *, uint32_t, const char *, size_t, int, uint64_t, int);
+typedef struct {
+    int hasModifiedTime, hasPermissions;
+    int64_t modifiedSeconds;
+    uint32_t modifiedNanos, permissions;
+} SevenZipEntryMetadata;
+typedef int (*SevenZipItemCallback)(void *, uint32_t, const char *, size_t, int, uint64_t, int, const SevenZipEntryMetadata *);
 typedef struct { uint64_t device, inode, size; } SevenZipSourceIdentity;
 void *SevenZipOpen(const char *library, const char *archive, const char *password, int *error);
 void *SevenZipOpenVolumes(const char *library, const char *const *archives, uint32_t count, const char *password, int *error);

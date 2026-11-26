@@ -66,7 +66,7 @@ static NSString *sdkError(int value) {
 @end
 @implementation ItemCollector
 @end
-static int item(void *context, uint32_t index, const char *bytes, size_t length, int kind, uint64_t size, int encrypted) {
+static int item(void *context, uint32_t index, const char *bytes, size_t length, int kind, uint64_t size, int encrypted, const SevenZipEntryMetadata *metadata) {
     ItemCollector *collector = (__bridge ItemCollector *)context;
     if (length > RequestLimit || collector.pathBytes + length > ResponseLimit) return 0;
     if (memchr(bytes, 0, length) || kind < 0 || kind > 4) { collector.invalidMetadata = YES; return 0; }
@@ -75,7 +75,10 @@ static int item(void *context, uint32_t index, const char *bytes, size_t length,
     collector.pathBytes += length;
     [collector.items addObject:@{ @"index": @(index), @"path": path,
         @"kind": @[@"regularFile", @"directory", @"symbolicLink", @"hardLink", @"other"][(NSUInteger)kind],
-        @"size": @(size), @"encrypted": @(encrypted != 0) }];
+        @"size": @(size), @"encrypted": @(encrypted != 0),
+        @"metadata": @{ @"permissions": metadata->hasPermissions ? @(metadata->permissions) : [NSNull null],
+            @"modifiedSeconds": metadata->hasModifiedTime ? @(metadata->modifiedSeconds) : [NSNull null],
+            @"modifiedNanos": metadata->hasModifiedTime ? @(metadata->modifiedNanos) : [NSNull null] } }];
     return 1;
 }
 static int outputBytes(void *context, const void *bytes, size_t length) {

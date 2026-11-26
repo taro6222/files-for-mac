@@ -10,6 +10,10 @@ import signal
 import subprocess
 
 TESTS = [
+    'sevenZipSDKRestoresFileAndDirectoryTimesAndPermissions', 'sevenZipSDKRestrictiveDirectoryMetadataFinishesAfterChildren',
+    'sevenZipSDKRejectsMalformedMetadataBeforeStaging',
+    'sevenZipSDKPublishedDirectoryTimeChangeIsPreserved',
+    'sevenZipSDKUnrepresentableTimeFailsAndPreservesRestrictedRecovery',
     'sevenZipSDKMemoryBudgetKillsAndReapsWithoutPublishing', 'sevenZipSDKRejectsZeroMemoryBudgetBeforeLaunching',
     'sevenZipCreationBrokerRejectsInvalidAndTruncatedRequests',
     'sevenZipCreationBrokerKeepsPlannedIdentityAndReadOnlyAccess', 'sevenZipSDKCreationBrokerManyInputsAndPreflightPreserveSources',

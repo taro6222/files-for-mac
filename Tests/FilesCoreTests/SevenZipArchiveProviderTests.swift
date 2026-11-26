@@ -1106,3 +1106,181 @@ func sevenZipSDKCreationBrokerManyInputsAndPreflightPreserveSources() async thro
         #expect(!(try FileManager.default.contentsOfDirectory(atPath: root.path)).contains { $0.hasPrefix(".files-create-") })
     }
 }
+
+private func sdkMetadataStat(_ path: URL) throws -> stat {
+    var info = stat()
+    try #require(lstat(path.path, &info) == 0)
+    return info
+}
+
+@Test(.enabled(if: hasIntegrationFixture("FILES_TEST_SEVENZIP_REFERENCE") && hasIntegrationFixture("FILES_TEST_SEVENZIP_WORKER"), "Requires native SDK and reference"))
+func sevenZipSDKRestoresFileAndDirectoryTimesAndPermissions() async throws {
+    let root = try sdkRoot(), source = root.appendingPathComponent("metadata"), nested = source.appendingPathComponent("nested")
+    defer {
+        for parent in [root.appendingPathComponent("new/metadata"), root.appendingPathComponent("existing/metadata"), source] { _ = chmod(parent.path, 0o700) }
+        try? FileManager.default.removeItem(at: root)
+    }
+    try FileManager.default.createDirectory(at: nested, withIntermediateDirectories: true)
+    let executable = nested.appendingPathComponent("tool.sh"), readOnly = nested.appendingPathComponent("read-only")
+    try Data("#!/bin/sh\nexit 0\n".utf8).write(to: executable)
+    try Data("read only".utf8).write(to: readOnly)
+    for (path, mode, seconds, nanos) in [(executable, 0o4751, Int64(-123_456_789), 987_654_300), (readOnly, 0o440, Int64(1_700_000_123), 456_789_100),
+                                       (nested, 0o750, Int64(1_600_000_000), 123_456_700), (source, 0o500, Int64(1_500_000_000), 765_432_100)] {
+        let fd = open(path.path, O_RDONLY | O_NOFOLLOW | O_CLOEXEC)
+        try #require(fd >= 0); defer { close(fd) }
+        var times = [timespec(tv_sec: Int(seconds), tv_nsec: nanos), timespec(tv_sec: Int(seconds), tv_nsec: nanos)]
+        try #require(futimens(fd, &times) == 0)
+        try #require(fchmod(fd, mode_t(mode)) == 0)
+    }
+    let provider = try sdkRealProvider(), archive = root.appendingPathComponent("metadata.7z")
+    _ = try await provider.create(from: [source], at: archive, compressionLevel: .store)
+    let before = try Data(contentsOf: archive)
+    for existing in [false, true] {
+        let destination = root.appendingPathComponent(existing ? "existing" : "new")
+        if existing {
+            try FileManager.default.createDirectory(at: destination, withIntermediateDirectories: true)
+            try Data("keep".utf8).write(to: destination.appendingPathComponent("unrelated"))
+            _ = try await provider.extract(archive, to: destination)
+            #expect(try Data(contentsOf: destination.appendingPathComponent("unrelated")) == Data("keep".utf8))
+        } else { _ = try await provider.extractToNewDirectory(archive, at: destination) }
+        for relative in ["", "nested", "nested/tool.sh", "nested/read-only"] {
+            let original = try sdkMetadataStat(relative.isEmpty ? source : source.appendingPathComponent(relative))
+            let restored = try sdkMetadataStat(relative.isEmpty ? destination.appendingPathComponent("metadata") : destination.appendingPathComponent("metadata/" + relative))
+            #expect(restored.st_mode & 0o7777 == original.st_mode & 0o777)
+            #expect(restored.st_mtimespec.tv_sec == original.st_mtimespec.tv_sec)
+            #expect(restored.st_mtimespec.tv_nsec == original.st_mtimespec.tv_nsec)
+        }
+        #expect(try Data(contentsOf: destination.appendingPathComponent("metadata/nested/tool.sh")) == Data(contentsOf: executable))
+    }
+    #expect(try Data(contentsOf: archive) == before)
+    #expect(!(try FileManager.default.contentsOfDirectory(atPath: root.path)).contains { $0.hasPrefix(".files-") })
+}
+
+@Test func sevenZipSDKRestrictiveDirectoryMetadataFinishesAfterChildren() async throws {
+    for existing in [false, true] {
+        let root = try sdkRoot(), destination = root.appendingPathComponent("result"), locked = destination.appendingPathComponent("locked"), inner = locked.appendingPathComponent("inner")
+        defer {
+            _ = chmod(locked.path, 0o700); _ = chmod(inner.path, 0o700)
+            try? FileManager.default.removeItem(at: root)
+        }
+        let meta: [String: Any] = ["permissions": 0, "modifiedSeconds": 1_600_000_123, "modifiedNanos": 456_789_100]
+        var innerMeta = meta; innerMeta["permissions"] = 0o111
+        let entries: [[String: Any]] = [
+            ["index": 0, "path": "locked", "kind": "directory", "size": 0, "encrypted": false, "metadata": meta],
+            ["index": 1, "path": "locked/inner", "kind": "directory", "size": 0, "encrypted": false, "metadata": innerMeta],
+            ["index": 2, "path": "locked/inner/tool", "kind": "regularFile", "size": 1, "encrypted": false, "metadata": meta]
+        ]
+        let entriesJSON = String(data: try JSONSerialization.data(withJSONObject: entries, options: [.sortedKeys]), encoding: .utf8)!
+        let listing = sdkEmptyReply.replacingOccurrences(of: "[]", with: entriesJSON)
+        let provider = try sdkMock("""
+        request(); reply('\(listing)'); request();
+        open(my $out,'>&=3') or die; print $out 'x'; close($out);
+        reply('{"version":1,"ok":true,"session":"5BC9424B-FAE6-4A89-9DD5-AC627611EFD3","written":1}');
+        request(); reply('{"version":1,"ok":true,"closed":true}');
+        """, root: root)
+        if existing {
+            try FileManager.default.createDirectory(at: destination, withIntermediateDirectories: true)
+            try Data("keep".utf8).write(to: destination.appendingPathComponent("unrelated"))
+            _ = try await provider.extract(root.appendingPathComponent("archive.7z"), to: destination)
+            #expect(try Data(contentsOf: destination.appendingPathComponent("unrelated")) == Data("keep".utf8))
+        } else { _ = try await provider.extractToNewDirectory(root.appendingPathComponent("archive.7z"), at: destination) }
+        var info = try sdkMetadataStat(locked)
+        #expect(info.st_mode & 0o777 == 0 && info.st_mtimespec.tv_sec == 1_600_000_123 && info.st_mtimespec.tv_nsec == 456_789_100)
+        try #require(chmod(locked.path, 0o700) == 0)
+        info = try sdkMetadataStat(inner)
+        #expect(info.st_mode & 0o777 == 0o111 && info.st_mtimespec.tv_nsec == 456_789_100)
+        try #require(chmod(inner.path, 0o700) == 0)
+        let file = inner.appendingPathComponent("tool"); info = try sdkMetadataStat(file)
+        #expect(info.st_mode & 0o777 == 0 && info.st_mtimespec.tv_nsec == 456_789_100)
+        try #require(chmod(file.path, 0o600) == 0)
+        #expect(try Data(contentsOf: file) == Data("x".utf8))
+        #expect(!(try FileManager.default.contentsOfDirectory(atPath: root.path)).contains { $0.hasPrefix(".files-") })
+    }
+}
+
+@Test func sevenZipSDKRejectsMalformedMetadataBeforeStaging() async throws {
+    let cases: [[String: Any]] = [
+        ["permissions": 0o7777], ["permissions": true], ["permissions": "755"],
+        ["modifiedSeconds": 1], ["modifiedNanos": 100], ["modifiedSeconds": 0, "modifiedNanos": -1],
+        ["modifiedSeconds": 0, "modifiedNanos": 1_000_000_000], ["modifiedSeconds": -11_644_473_601, "modifiedNanos": 0]
+    ]
+    for metadata in cases {
+        let root = try sdkRoot(); defer { try? FileManager.default.removeItem(at: root) }
+        let entry: [String: Any] = ["index": 0, "path": "payload", "kind": "regularFile", "size": 0, "encrypted": false, "metadata": metadata]
+        let entriesJSON = String(data: try JSONSerialization.data(withJSONObject: [entry]), encoding: .utf8)!
+        let listing = sdkEmptyReply.replacingOccurrences(of: "[]", with: entriesJSON)
+        let provider = try sdkMock("request(); reply('\(listing)'); sleep 10;", root: root)
+        await #expect(throws: SevenZipWorkerError.invalidResponse) {
+            try await provider.extractToNewDirectory(root.appendingPathComponent("archive.7z"), at: root.appendingPathComponent("result"))
+        }
+        #expect(!(try FileManager.default.contentsOfDirectory(atPath: root.path)).contains { $0 == "result" || $0.hasPrefix(".files-") })
+    }
+}
+
+@Test(.enabled(if: hasIntegrationFixture("FILES_TEST_SEVENZIP_REFERENCE") && hasIntegrationFixture("FILES_TEST_SEVENZIP_WORKER"), "Requires native SDK and reference"))
+func sevenZipSDKPublishedDirectoryTimeChangeIsPreserved() async throws {
+    let root = try sdkRoot(); defer { try? FileManager.default.removeItem(at: root) }
+    let fixture = try await sdkFixture(root: root), provider = try sdkRealProvider(), destination = root.appendingPathComponent("destination")
+    try FileManager.default.createDirectory(at: destination, withIntermediateDirectories: false)
+    do {
+        _ = try await provider.extract(fixture.archive, to: destination) { update in
+            guard update.phase == .publishing, update.currentPath == "folder" else { return }
+            let fd = open(destination.appendingPathComponent("folder").path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW)
+            guard fd >= 0 else { return }; defer { close(fd) }
+            var times = [timespec(tv_sec: 1_234_567_890, tv_nsec: 123_456_700), timespec(tv_sec: 1_234_567_890, tv_nsec: 123_456_700)]
+            _ = futimens(fd, &times)
+        }
+        Issue.record("Externally changed directory time was overwritten")
+    } catch SevenZipWorkerError.publicationRecovery(_, let published) {
+        #expect(published.map(\.lastPathComponent) == ["folder"])
+    }
+    let retained = try sdkMetadataStat(destination.appendingPathComponent("folder"))
+    #expect(retained.st_mtimespec.tv_sec == 1_234_567_890 && retained.st_mtimespec.tv_nsec == 123_456_700)
+    #expect(try Data(contentsOf: destination.appendingPathComponent("folder/large.bin")) == fixture.payloads["folder/large.bin"])
+}
+
+@Test func sevenZipSDKUnrepresentableTimeFailsAndPreservesRestrictedRecovery() async throws {
+    for existing in [false, true] {
+        let root = try sdkRoot(), destination = root.appendingPathComponent("result")
+        var preservedRoot: URL?
+        defer {
+            if let preservedRoot { _ = chmod(preservedRoot.appendingPathComponent("locked/inner").path, 0o700) }
+            try? FileManager.default.removeItem(at: root)
+        }
+        let entries: [[String: Any]] = [
+            ["index": 0, "path": "locked", "kind": "directory", "size": 0, "encrypted": false,
+             "metadata": ["permissions": 0o700, "modifiedSeconds": 1_833_029_933_770 as Int64, "modifiedNanos": 0]],
+            ["index": 1, "path": "locked/inner", "kind": "directory", "size": 0, "encrypted": false, "metadata": ["permissions": 0]],
+            ["index": 2, "path": "locked/inner/payload", "kind": "regularFile", "size": 1, "encrypted": false]
+        ]
+        let entriesJSON = String(data: try JSONSerialization.data(withJSONObject: entries), encoding: .utf8)!
+        let listing = sdkEmptyReply.replacingOccurrences(of: "[]", with: entriesJSON)
+        let provider = try sdkMock("""
+        request(); reply('\(listing)'); request(); open(my $out,'>&=3') or die; print $out 'x'; close($out);
+        reply('{"version":1,"ok":true,"session":"5BC9424B-FAE6-4A89-9DD5-AC627611EFD3","written":1}');
+        request(); reply('{"version":1,"ok":true,"closed":true}');
+        """, root: root)
+        if existing {
+            try FileManager.default.createDirectory(at: destination, withIntermediateDirectories: false)
+            try Data("keep".utf8).write(to: destination.appendingPathComponent("unrelated"))
+        }
+        do {
+            if existing { _ = try await provider.extract(root.appendingPathComponent("archive.7z"), to: destination) }
+            else { _ = try await provider.extractToNewDirectory(root.appendingPathComponent("archive.7z"), at: destination) }
+            Issue.record("Filesystem-clamped time was reported as restored")
+        } catch SevenZipWorkerError.publicationRecovery(let staging, let published) {
+            #expect(existing && published.map(\.lastPathComponent) == ["locked"])
+            #expect(FileManager.default.fileExists(atPath: staging.path))
+            preservedRoot = destination
+        } catch SevenZipWorkerError.stagingPreserved(let staging) {
+            #expect(!existing && !FileManager.default.fileExists(atPath: destination.path))
+            preservedRoot = staging
+        }
+        let retained = try #require(preservedRoot)
+        #expect(try sdkMetadataStat(retained.appendingPathComponent("locked/inner")).st_mode & 0o777 == 0)
+        try #require(chmod(retained.appendingPathComponent("locked/inner").path, 0o700) == 0)
+        #expect(try Data(contentsOf: retained.appendingPathComponent("locked/inner/payload")) == Data("x".utf8))
+        #expect(try Data(contentsOf: root.appendingPathComponent("archive.7z")) == Data("zip".utf8))
+        if existing { #expect(try Data(contentsOf: destination.appendingPathComponent("unrelated")) == Data("keep".utf8)) }
+    }
+}
