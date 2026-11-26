@@ -22,6 +22,10 @@ class CommandFailure(RuntimeError):
         super().__init__(f'{arguments[0]} failed ({returncode}): ' + os.fsdecode(stderr))
 
 
+class ImageVolumeUnmounted(RuntimeError):
+    """The owned image is attached, with no filesystem mounted from it."""
+
+
 def command(arguments, timeout=60, plist=False):
     result = subprocess.run(arguments, capture_output=True, timeout=timeout)
     if result.returncode:
@@ -65,27 +69,69 @@ def validate_resource(state, state_path):
             raise RuntimeError('Backing image identity changed; cleanup refused')
 
 
+def image_device(mapping):
+    devices = [entry['dev-entry'] for entry in mapping.get('system-entities', [])
+               if entry.get('content-hint') == 'GUID_partition_scheme' and
+               re.fullmatch(r'/dev/disk[0-9]+', entry.get('dev-entry', ''))]
+    if len(devices) != 1:
+        raise RuntimeError('Could not identify the image device from its current attachment')
+    return devices[0]
+
+
+def validate_volume_layout(state, mapping, info):
+    if info.get('FilesystemType') != 'apfs' or not info.get('VolumeUUID'):
+        raise RuntimeError('Expected an APFS volume with a stable UUID')
+    if state.get('volumeUUID') and info['VolumeUUID'] != state['volumeUUID']:
+        raise RuntimeError('Mounted volume UUID changed; cleanup refused')
+    device = image_device(mapping)
+    container = info.get('APFSContainerReference', '')
+    volume = info.get('DeviceIdentifier', '')
+    if not re.fullmatch(r'disk[0-9]+', container) or not re.fullmatch(r'disk[0-9]+s[0-9]+', volume):
+        raise RuntimeError('Missing APFS container or volume identity; cleanup refused')
+    containers = command(['/usr/sbin/diskutil', 'apfs', 'list', '-plist', container], plist=True).get('Containers', [])
+    if len(containers) != 1 or containers[0].get('ContainerReference') != container:
+        raise RuntimeError('APFS container identity changed; cleanup refused')
+    stores, volumes = containers[0].get('PhysicalStores', []), containers[0].get('Volumes', [])
+    if len(stores) != 1 or len(volumes) != 1 or volumes[0].get('APFSVolumeUUID') != info['VolumeUUID'] \
+            or volumes[0].get('DeviceIdentifier') != volume:
+        raise RuntimeError('Image must contain exactly one owned APFS volume; cleanup refused')
+    store = stores[0].get('DeviceIdentifier', '')
+    if not re.fullmatch(re.escape(device.removeprefix('/dev/')) + r's[0-9]+', store):
+        raise RuntimeError('APFS physical store belongs to another image; cleanup refused')
+    expected_devices = {device, '/dev/' + store, '/dev/' + container, '/dev/' + volume}
+    actual_devices = [entry.get('dev-entry') for entry in mapping.get('system-entities', [])]
+    if len(actual_devices) != 4 or set(actual_devices) != expected_devices:
+        raise RuntimeError('Unrecognized image partitions or volumes; cleanup refused')
+    return device
+
+
 def mounted_volume(state):
     mount = Path(state['mountPoint'])
     mapping = image_mapping(state)
     if not mapping:
         raise RuntimeError('Owned image is not attached')
     entries = mapping.get('system-entities', [])
-    mounted = [entry for entry in entries if entry.get('mount-point') and
-               Path(entry['mount-point']).resolve() == mount.resolve()]
-    if len(mounted) != 1 or not os.path.ismount(mount):
+    mounted = [entry for entry in entries if entry.get('mount-point')]
+    if not mounted and not os.path.ismount(mount):
+        raise ImageVolumeUnmounted('Owned image is attached but its volume is unmounted')
+    if len(mounted) != 1 or Path(mounted[0]['mount-point']).resolve() != mount.resolve() or not os.path.ismount(mount):
         raise RuntimeError('Image mount does not match the owned mount point')
     info = command(['/usr/sbin/diskutil', 'info', '-plist', str(mount)], plist=True)
-    if info.get('FilesystemType') != 'apfs' or not info.get('VolumeUUID'):
-        raise RuntimeError('Expected an APFS volume with a stable UUID')
-    if state.get('volumeUUID') and info['VolumeUUID'] != state['volumeUUID']:
-        raise RuntimeError('Mounted volume UUID changed; cleanup refused')
-    devices = [entry['dev-entry'] for entry in entries
-               if entry.get('content-hint') == 'GUID_partition_scheme' and
-               re.fullmatch(r'/dev/disk[0-9]+', entry.get('dev-entry', ''))]
-    if len(devices) != 1:
-        raise RuntimeError('Could not identify the image device from its current attachment')
-    return devices[0], info
+    return validate_volume_layout(state, mapping, info), info
+
+
+def unmounted_image_device(state):
+    mapping = image_mapping(state)
+    mount = Path(state['mountPoint'])
+    if not mapping or any(entry.get('mount-point') for entry in mapping.get('system-entities', [])) or os.path.ismount(mount):
+        raise RuntimeError('Unmounted image state changed; cleanup refused')
+    identity(mount, stat.S_IFDIR)
+    if any(mount.iterdir()) or not state.get('volumeUUID'):
+        raise RuntimeError('Unmounted mount point contains data or lacks an owned UUID; cleanup refused')
+    info = command(['/usr/sbin/diskutil', 'info', '-plist', state['volumeUUID']], plist=True)
+    if info.get('MountPoint') or info.get('Mounted') is True:
+        raise RuntimeError('Owned volume is mounted elsewhere; cleanup refused')
+    return validate_volume_layout(state, mapping, info)
 
 
 def attach(state, save, readonly=False):
@@ -174,21 +220,37 @@ def validate_source_only(state):
 
 
 
-def detach(state, state_path):
+def detach(state, state_path, save=None):
     # Indexers may briefly retain the just-finished query volume. Never force an unmount.
     for attempt in range(5):
         validate_resource(state, state_path)
-        device, _ = mounted_volume(state)
-        validate_source_only(state)
+        try:
+            device, _ = mounted_volume(state)
+            validate_source_only(state)
+            mounted = True
+        except ImageVolumeUnmounted:
+            device = unmounted_image_device(state)
+            mounted = False
+        event = {'attempt': attempt + 1, 'device': device, 'volumeMounted': mounted}
+        state.setdefault('detachAttempts', []).append(event)
+        if save: save(state)
         try:
             command(['/usr/bin/hdiutil', 'detach', device], timeout=60)
         except CommandFailure as error:
+            event['exitCode'] = error.returncode
+            if save: save(state)
             if error.returncode != 16 or attempt == 4:
                 raise
-            if not image_mapping(state):
+            remaining = image_mapping(state)
+            event['remainingEntities'] = [{key: entry[key] for key in ['dev-entry', 'mount-point', 'content-hint'] if key in entry}
+                                          for entry in (remaining or {}).get('system-entities', [])]
+            if save: save(state)
+            if not remaining:
                 return
             time.sleep(1)
             continue
+        event['exitCode'] = 0
+        if save: save(state)
         if image_mapping(state):
             raise RuntimeError('Image remains attached; resources retained')
         return
@@ -200,9 +262,7 @@ def cleanup(state, state_path, save):
         return
     validate_resource(state, state_path)
     if image_mapping(state):
-        mounted_volume(state)
-        validate_source_only(state)
-        detach(state, state_path)
+        detach(state, state_path, save)
     # Inspect the final immutable filesystem, avoiding a write between inspection and unmount.
     if Path(state['image']).exists():
         attach(state, save, readonly=True)
@@ -212,7 +272,7 @@ def cleanup(state, state_path, save):
         except Exception:
             # Keep the mounted image and backing file for inspection; never delete unknown data.
             raise
-        detach(state, state_path)
+        detach(state, state_path, save)
     validate_resource(state, state_path)
     mount = Path(state['mountPoint'])
     if mount.is_symlink() or (mount.exists() and any(mount.iterdir())):

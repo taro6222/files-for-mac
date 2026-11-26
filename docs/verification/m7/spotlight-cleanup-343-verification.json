@@ -1,0 +1,206 @@
+{
+  "sourceBase": "cf63dcf1bcb32b37635301b045dadadf862e3516",
+  "releaseComplete": false,
+  "remoteRootCauseConfirmed": false,
+  "remoteAcceptancePending": true,
+  "appSourcesUnchanged": true,
+  "environment": {
+    "macOS": "27.2.1",
+    "architecture": "arm64"
+  },
+  "sourceSHA256": {
+    "scripts/spotlight_volume_fixture.py": "15be272b55032ff99c965171c8a7bd1d8a8d42ead5599eef20187e50c9b4b3e7",
+    "scripts/verify-spotlight-unmounted-cleanup.py": "18ad00fdb27726cad1e4cf11c0a611b60284ded23dd4b0a1896272544caf4bc1",
+    "Tests/FixtureTests/test_spotlight_volume_fixture.py": "da056349ad9e16447f52c50e0a94587c8a3903b85146913298550de778f64042",
+    ".github/workflows/macos.yml": "424cbc88b62971fd9c45127a82cc4e07cb94d835910fb734b6832b34276a308d"
+  },
+  "ownershipUnitTests": 23,
+  "nativeCases": [
+    {
+      "case": "spotlight-343",
+      "stateSHA256": "62ebc41e1d27132813e73ef4b78fc6d5a0d6c4ab5954a2f1b5c53c5818ab0130",
+      "cleaned": true,
+      "imageAbsent": true,
+      "resourceDirectoryAbsent": true,
+      "readOnlyCleanupInspection": "passed",
+      "detachAttempts": []
+    },
+    {
+      "case": "spotlight-343-unmounted",
+      "stateSHA256": "898840005ba0fac8b6e3246b50ec19668ecb8882b5caaf4122c5e2f0058d966f",
+      "cleaned": true,
+      "imageAbsent": true,
+      "resourceDirectoryAbsent": true,
+      "readOnlyCleanupInspection": "passed",
+      "detachAttempts": [
+        {
+          "attempt": 1,
+          "device": "/dev/disk4",
+          "volumeMounted": false,
+          "exitCode": 0
+        },
+        {
+          "attempt": 1,
+          "device": "/dev/disk4",
+          "volumeMounted": true,
+          "exitCode": 0
+        }
+      ]
+    },
+    {
+      "case": "spotlight-343-foreign",
+      "stateSHA256": "1740cd2e709aeb6593598f723d32d34254fd1fc852f550eeaf66e86fe25f9199",
+      "cleaned": true,
+      "imageAbsent": true,
+      "resourceDirectoryAbsent": true,
+      "readOnlyCleanupInspection": "passed",
+      "detachAttempts": [
+        {
+          "attempt": 1,
+          "device": "/dev/disk4",
+          "volumeMounted": false,
+          "exitCode": 0
+        },
+        {
+          "attempt": 1,
+          "device": "/dev/disk4",
+          "volumeMounted": true,
+          "exitCode": 0
+        },
+        {
+          "attempt": 1,
+          "device": "/dev/disk4",
+          "volumeMounted": true,
+          "exitCode": 0
+        }
+      ]
+    },
+    {
+      "case": "spotlight-343-busy",
+      "stateSHA256": "9e877f02f9a37d5250ca850c32632a96c89b4ee7c340dd2d4e1556f7f3ea3e9a",
+      "cleaned": true,
+      "imageAbsent": true,
+      "resourceDirectoryAbsent": true,
+      "readOnlyCleanupInspection": "passed",
+      "detachAttempts": [
+        {
+          "attempt": 1,
+          "device": "/dev/disk4",
+          "volumeMounted": true,
+          "exitCode": 16,
+          "remainingEntities": [
+            {
+              "dev-entry": "/dev/disk4",
+              "content-hint": "GUID_partition_scheme"
+            },
+            {
+              "dev-entry": "/dev/disk4s1",
+              "content-hint": "7C3457EF-0000-11AA-AA11-00306543ECAC"
+            },
+            {
+              "dev-entry": "/dev/disk5",
+              "content-hint": "EF57347C-0000-11AA-AA11-00306543ECAC"
+            },
+            {
+              "dev-entry": "/dev/disk5s1",
+              "mount-point": "/Users/changhun/Desktop/Workspace/Files/build/spotlight-343-busy/volume.76069mjt/Volume",
+              "content-hint": "41504653-0000-11AA-AA11-00306543ECAC"
+            }
+          ]
+        },
+        {
+          "attempt": 2,
+          "device": "/dev/disk4",
+          "volumeMounted": true,
+          "exitCode": 0
+        },
+        {
+          "attempt": 1,
+          "device": "/dev/disk4",
+          "volumeMounted": true,
+          "exitCode": 0
+        }
+      ]
+    }
+  ],
+  "baselineFailureReproduced": {
+    "volumeUUID": "0887BF8E-C46F-4FDC-99E3-E07AEA53AEBE",
+    "ownedImageDevice": "/dev/disk4",
+    "mountIsMounted": false,
+    "imageStillAttached": true,
+    "cleanupError": "Image mount does not match the owned mount point",
+    "imagePreserved": true
+  },
+  "nativeForeignDataPreservation": {
+    "passed": true,
+    "probeSHA256": "034117ed05944ef34c67532160a6b371efa7cc8f4c98f37192aa74c53693cf28",
+    "imageAttachedWithUnmountedVolume": true,
+    "cleanupRejection": "Unrecognized data on the fixture volume; cleanup refused",
+    "foreignDataPreservedReadOnly": true,
+    "cleaned": true,
+    "readOnlyCleanupInspection": "passed",
+    "detachAttempts": [
+      {
+        "attempt": 1,
+        "device": "/dev/disk4",
+        "volumeMounted": false,
+        "exitCode": 0
+      },
+      {
+        "attempt": 1,
+        "device": "/dev/disk4",
+        "volumeMounted": true,
+        "exitCode": 0
+      },
+      {
+        "attempt": 1,
+        "device": "/dev/disk4",
+        "volumeMounted": true,
+        "exitCode": 0
+      }
+    ],
+    "elapsedSeconds": 1.9652324999915436
+  },
+  "nativeBusyRetry": {
+    "detachCommands": [
+      [
+        "/usr/bin/hdiutil",
+        "detach",
+        "/dev/disk4"
+      ],
+      [
+        "/usr/bin/hdiutil",
+        "detach",
+        "/dev/disk4"
+      ],
+      [
+        "/usr/bin/hdiutil",
+        "detach",
+        "/dev/disk4"
+      ]
+    ],
+    "busyExitCodes": [
+      16
+    ],
+    "cleaned": true,
+    "readOnlyCleanupInspection": "passed",
+    "passed": true,
+    "holderExitCode": -15,
+    "elapsedSeconds": 1.9875263329886366
+  },
+  "verificationSHA256": {
+    "build/spotlight-343/baseline-busy.json": "8d3786d742573f033297baa6aba95d7ee40bbecf43b9af7041bfd7c38aaceb7b",
+    "build/spotlight-343/baseline-events.json": "0998ad53cdfb04208258c3a880006a6e501343caac8ee0a7460d5a50b06c9cb1",
+    "build/spotlight-343-unmounted/baseline-repro.json": "a937e143154fe670b789bef5b1a14ba9d7b108569358499e26ff3268ea32567e",
+    "build/spotlight-343-foreign/verification.json": "32e6db9282937351473bf17d1fe0ac9d6fed681416678aa44a33c5fc46a11a3c",
+    "build/spotlight-343-busy/verification.json": "8ba522f76f767071e1376881802778f5d9993e5cbf9d95d7b29e90831dc9369f",
+    "build/spotlight-343-ownership.log": "5172d2a116bfdab27cdbf268b0fa7fb3fc3fe07a9d36bb66c2dd893272bd96bb",
+    "build/spotlight-343-workflow.log": "db2c34fc9670c154ab77ddfe6de56e2bb734513358b27b081b098e22f5fd56d1",
+    "build/spotlight-343-parity.log": "f2e8f311d376fa306990bf6651b074ea8c5cdac5bfc49dd049df9ac2a1b96f01"
+  },
+  "limitations": [
+    "remote failure sequence not proven",
+    "macOS 15 both CPU native gate acceptance pending",
+    "latest app physical input, VoiceOver, long run and signed release pending"
+  ]
+}

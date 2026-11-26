@@ -149,6 +149,105 @@ class SpotlightVolumeOwnershipTests(unittest.TestCase):
         self.assertEqual(command.call_count, 1)
         self.assertTrue(self.image.exists())
 
+    def unmounted_layout(self):
+        self.root.rename(self.parent / 'saved-source')
+        self.state.update(volumeUUID='owned-uuid', imageDevice='/dev/disk99')
+        mapping = {'system-entities': [
+            {'dev-entry': '/dev/disk2', 'content-hint': 'GUID_partition_scheme'},
+            {'dev-entry': '/dev/disk2s1'}, {'dev-entry': '/dev/disk3'}, {'dev-entry': '/dev/disk3s1'}]}
+        info = {'FilesystemType': 'apfs', 'VolumeUUID': 'owned-uuid', 'APFSContainerReference': 'disk3',
+                'DeviceIdentifier': 'disk3s1', 'MountPoint': ''}
+        containers = {'Containers': [{'ContainerReference': 'disk3',
+                      'PhysicalStores': [{'DeviceIdentifier': 'disk2s1'}],
+                      'Volumes': [{'DeviceIdentifier': 'disk3s1', 'APFSVolumeUUID': 'owned-uuid'}]}]}
+        return mapping, info, containers
+
+    def inspect_unmounted(self, mapping, info, containers):
+        def command(arguments, **kwargs):
+            if arguments == ['/usr/sbin/diskutil', 'info', '-plist', 'owned-uuid']: return info
+            if arguments == ['/usr/sbin/diskutil', 'apfs', 'list', '-plist', 'disk3']: return containers
+            self.fail('Unexpected device command: ' + str(arguments))
+        with patch.object(fixture, 'image_mapping', return_value=mapping), \
+             patch.object(fixture.os.path, 'ismount', return_value=False), \
+             patch.object(fixture, 'command', side_effect=command):
+            return fixture.unmounted_image_device(self.state)
+
+    def test_unmounted_owned_volume_uses_verified_current_image_device(self):
+        self.assertEqual(self.inspect_unmounted(*self.unmounted_layout()), '/dev/disk2')
+        self.assertEqual(self.state['imageDevice'], '/dev/disk99')
+        self.assertTrue(self.image.exists())
+
+    def test_unmounted_uuid_and_container_membership_changes_are_rejected(self):
+        mapping, info, containers = self.unmounted_layout()
+        info['VolumeUUID'] = 'another-uuid'
+        with self.assertRaisesRegex(RuntimeError, 'UUID changed'): self.inspect_unmounted(mapping, info, containers)
+        info['VolumeUUID'] = 'owned-uuid'
+        containers['Containers'][0]['Volumes'][0]['DeviceIdentifier'] = 'disk8s1'
+        with self.assertRaisesRegex(RuntimeError, 'exactly one owned'): self.inspect_unmounted(mapping, info, containers)
+        self.assertTrue(self.image.exists())
+
+    def test_unmounted_volume_on_foreign_physical_store_is_rejected(self):
+        mapping, info, containers = self.unmounted_layout()
+        containers['Containers'][0]['PhysicalStores'][0]['DeviceIdentifier'] = 'disk8s1'
+        with self.assertRaisesRegex(RuntimeError, 'another image'): self.inspect_unmounted(mapping, info, containers)
+        self.assertTrue(self.image.exists())
+
+    def test_additional_unmounted_apfs_volume_and_partition_are_not_adopted(self):
+        mapping, info, containers = self.unmounted_layout()
+        volumes = containers['Containers'][0]['Volumes']
+        volumes.append({'DeviceIdentifier': 'disk3s2', 'APFSVolumeUUID': 'user-volume'})
+        with self.assertRaisesRegex(RuntimeError, 'exactly one owned'): self.inspect_unmounted(mapping, info, containers)
+        volumes.pop(); mapping['system-entities'].append({'dev-entry': '/dev/disk2s2'})
+        with self.assertRaisesRegex(RuntimeError, 'Unrecognized image'): self.inspect_unmounted(mapping, info, containers)
+        self.assertTrue(self.image.exists())
+
+    def test_foreign_mount_or_remounted_volume_blocks_unmounted_recovery(self):
+        mapping, info, containers = self.unmounted_layout()
+        mapping['system-entities'][-1]['mount-point'] = str(self.parent / 'foreign-mount')
+        with self.assertRaisesRegex(RuntimeError, 'state changed'): self.inspect_unmounted(mapping, info, containers)
+        mapping['system-entities'][-1].pop('mount-point'); info['MountPoint'] = str(self.parent / 'elsewhere')
+        with self.assertRaisesRegex(RuntimeError, 'mounted elsewhere'): self.inspect_unmounted(mapping, info, containers)
+        self.assertTrue(self.image.exists())
+
+    def test_unmounted_host_data_and_mountpoint_symlink_are_preserved(self):
+        layout = self.unmounted_layout()
+        foreign = self.mount / 'user-file.txt'; foreign.write_text('must remain')
+        with self.assertRaisesRegex(RuntimeError, 'contains data'): self.inspect_unmounted(*layout)
+        self.assertEqual(foreign.read_text(), 'must remain')
+        foreign.unlink(); self.mount.rmdir()
+        self.mount.symlink_to(self.parent / 'saved-source', target_is_directory=True)
+        with self.assertRaisesRegex(RuntimeError, 'type changed'): self.inspect_unmounted(*layout)
+        self.assertTrue(self.image.exists())
+
+    def test_unmounted_volume_without_recorded_uuid_is_not_adopted(self):
+        layout = self.unmounted_layout(); self.state.pop('volumeUUID')
+        with self.assertRaisesRegex(RuntimeError, 'lacks an owned UUID'): self.inspect_unmounted(*layout)
+        self.assertTrue(self.image.exists())
+
+    def test_mounted_volume_with_an_extra_mount_is_rejected(self):
+        mapping, info, containers = self.unmounted_layout()
+        mapping['system-entities'][-1]['mount-point'] = str(self.mount)
+        mapping['system-entities'].append({'dev-entry': '/dev/disk3s2', 'mount-point': str(self.parent / 'other')})
+        with patch.object(fixture, 'image_mapping', return_value=mapping), \
+             patch.object(fixture.os.path, 'ismount', return_value=True), \
+             patch.object(fixture, 'command', side_effect=AssertionError('Must reject before disk commands')):
+            with self.assertRaisesRegex(RuntimeError, 'does not match'): fixture.mounted_volume(self.state)
+        self.assertTrue(self.image.exists())
+
+    def test_busy_detach_recovers_when_only_the_filesystem_unmounts(self):
+        busy = fixture.CommandFailure(['hdiutil'], 16, b'Resource busy')
+        with patch.object(fixture, 'mounted_volume', side_effect=[('/dev/disk2', {}), fixture.ImageVolumeUnmounted()]), \
+             patch.object(fixture, 'unmounted_image_device', return_value='/dev/disk9'), \
+             patch.object(fixture, 'image_mapping', side_effect=[{'attached': True}, None]), \
+             patch.object(fixture, 'command', side_effect=[busy, 'detached']) as command, \
+             patch.object(fixture.time, 'sleep'):
+            fixture.detach(self.state, self.state_path)
+        self.assertEqual([call.args[0] for call in command.call_args_list],
+                         [['/usr/bin/hdiutil', 'detach', '/dev/disk2'], ['/usr/bin/hdiutil', 'detach', '/dev/disk9']])
+        self.assertEqual([event['volumeMounted'] for event in self.state['detachAttempts']], [True, False])
+        self.assertEqual([event['exitCode'] for event in self.state['detachAttempts']], [16, 0])
+        self.assertTrue(self.image.exists())
+
 
 if __name__ == '__main__':
     unittest.main()

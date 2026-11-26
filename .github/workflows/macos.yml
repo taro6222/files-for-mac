@@ -102,6 +102,12 @@ jobs:
         run: python3 scripts/audit-parity.py
       - name: Verify Spotlight fixture ownership guards
         run: PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s Tests/FixtureTests -p 'test_spotlight_volume_fixture.py'
+      - name: Verify unmounted Spotlight image cleanup
+        if: github.event_name == 'workflow_dispatch' && inputs.verify_full_appkit
+        timeout-minutes: 5
+        run: |
+          python3 scripts/prepare-spotlight-fixture.py prepare --state build/spotlight-unmounted-fixture/state.json --isolated-volume --enable-indexing
+          python3 scripts/verify-spotlight-unmounted-cleanup.py --state build/spotlight-unmounted-fixture/state.json --output build/spotlight-unmounted-fixture/verification.json --verify-foreign-data
       - name: Build app and test targets
         if: github.event_name != 'workflow_dispatch' || !inputs.verify_upgrade || inputs.verify_full_appkit
         timeout-minutes: ${{ matrix.debug_build_minutes }}
@@ -207,6 +213,8 @@ jobs:
           path: |
             build/spotlight-fixture/state.json
             build/spotlight-fixture/native-queries/
+            build/spotlight-unmounted-fixture/state.json
+            build/spotlight-unmounted-fixture/verification.json
           if-no-files-found: ignore
       - name: Build and launch the installed developer preview
         if: github.event_name != 'pull_request'
