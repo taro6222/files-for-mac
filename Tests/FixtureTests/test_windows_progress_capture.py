@@ -146,7 +146,7 @@ class EditorFocusEvidenceTests(unittest.TestCase):
 
 class ArchiveCreationEvidenceTests(unittest.TestCase):
     def archive_tree(self, enabled=True):
-        root = ET.Element('Window')
+        root = ET.Element('Window', Name='Create archive', IsOffscreen='False')
         for identifier in ('FileNameBox', 'FileFormatSelector', 'CompressionLevelSelector', 'PrimaryButton', 'CloseButton'):
             ET.SubElement(root, 'Control', AutomationId=identifier, IsOffscreen='False',
                           IsEnabled=str(enabled) if identifier == 'PrimaryButton' else 'True',
@@ -191,6 +191,27 @@ class ArchiveCreationEvidenceTests(unittest.TestCase):
             result = self.archive_tree()
             result.find(f".//*[@AutomationId='{identifier}']").set('IsEnabled', 'False')
             self.assertFalse(capture.archive_creation_controls(result, enabled=True))
+
+    def test_tab_close_button_does_not_conflict_with_dialog_cancel(self):
+        root = ET.Element('Window', Name='Files Reference')
+        root.append(self.archive_tree().getroot())
+        ET.SubElement(root, 'Button', AutomationId='CloseButton', Name='Close Tab',
+                      IsOffscreen='False', IsEnabled='True')
+        self.assertTrue(capture.archive_creation_controls(ET.ElementTree(root), enabled=True))
+
+    def test_missing_or_multiple_archive_dialogs_are_not_accepted(self):
+        result = self.archive_tree()
+        result.getroot().set('Name', 'Rename')
+        self.assertFalse(capture.archive_creation_controls(result, enabled=True))
+        root = ET.Element('Window')
+        root.extend([self.archive_tree().getroot(), self.archive_tree().getroot()])
+        self.assertFalse(capture.archive_creation_controls(ET.ElementTree(root), enabled=True))
+
+    def test_visible_warning_popup_can_be_outside_the_dialog_subtree(self):
+        root = ET.Element('Window', Name='Files Reference')
+        root.append(self.archive_tree(False).getroot())
+        ET.SubElement(root, 'Window', ClassName='Popup', Name='The item name specified is invalid', IsOffscreen='False')
+        self.assertTrue(capture.archive_creation_controls(ET.ElementTree(root), enabled=False, invalid=True))
 
 
 if __name__ == '__main__':

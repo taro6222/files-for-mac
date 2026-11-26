@@ -1,0 +1,26 @@
+{
+  "runURL": "https://github.com/taro6222/files-for-mac/actions/runs/45754753555",
+  "sourceSHA": "cc0031b5f4e802cd522449068e7187ec87a1eb9f",
+  "error": "Timed out waiting for the populated archive dialog with Create enabled",
+  "imageSHA256": "ca6ea7f7d5714ebd4097bba1c9fe933df16b2861de5e2a4612d632b6369bf114",
+  "treeSHA256": "b77701186f67096e2056555ff1b4f20e66217685edbcd2492b372adbf2b5f3c5",
+  "freshSourceDiagnostic": {
+    "sourceRefreshedAfterFailure": true,
+    "sourceAttemptUnixSeconds": 1795667441.9976726
+  },
+  "collision": [
+    {
+      "automationID": "CloseButton",
+      "name": "Cancel",
+      "scope": "Create archive dialog"
+    },
+    {
+      "automationID": "CloseButton",
+      "name": "Close Tab",
+      "scope": "outer tab"
+    }
+  ],
+  "correctedDialogPredicateMatchesFailureTree": true,
+  "scopedCancelMatchCount": 1,
+  "archiveInputAndCancellationAccepted": false
+}

@@ -4945,6 +4945,13 @@ extension BrowserWindow {
                 let gitLoad = ContinuousClock.now
                 while !gitPanel.qaLoaded && gitLoad.duration(to: .now) < .seconds(10) { try await Task.sleep(for: .milliseconds(10)) }
                 checks["gitWindow"] = gitPanel.window?.isVisible == true && gitPanel.qaLoaded && gitPanel.qaBranch != nil
+                diagnostics["gitWindowWaitSeconds"] = elapsed(gitLoad)
+                diagnostics["gitWindowBeforeCleanup"] = gitPanel.qaLoadDiagnostic
+                if checks["gitWindow"] == false {
+                    let sampling = destination.appendingPathComponent("git-window-timeout", isDirectory: true)
+                    try fm.createDirectory(at: sampling, withIntermediateDirectories: true)
+                    diagnostics["gitWindowTimeoutSampling"] = await GitCloneWindow.qaCaptureTimeout(in: sampling)
+                }
                 checks["gitAccessibility"] = gitPanel.qaAccessibilityReady
                 checks["gitSupportBoundary"] = gitPanel.qaSupportBoundaryVisible
                 checks["gitMenuCommand"] = paletteEntries.contains { $0.item.action == #selector(AppDelegate.showGitStatus(_:)) }
@@ -4952,7 +4959,8 @@ extension BrowserWindow {
                     #selector(AppDelegate.synchronizeGitRepository(_:))].allSatisfy { action in
                         paletteEntries.contains { $0.item.action == action }
                     }
-                try capture("git-status", view: gitPanel.window?.contentView); gitPanel.close(); window.makeKeyAndOrderFront(nil)
+                try capture("git-status", view: gitPanel.window?.contentView, backingColor: .windowBackgroundColor)
+                gitPanel.close(); window.makeKeyAndOrderFront(nil)
                 var clonedLocation: URL?
                 let clonePanel = GitCloneWindow { clonedLocation = $0 }
                 clonePanel.present(); let cloneDestination = destination.appendingPathComponent("git-clone-ui", isDirectory: true); try? fm.removeItem(at: cloneDestination)

@@ -222,7 +222,11 @@ def bulk_rename_controls(tree, *, enabled, invalid=False):
 
 
 def archive_creation_controls(tree, *, enabled, invalid=False):
-    visible = [element for element in tree.iter() if element.get("IsOffscreen") == "False"]
+    dialogs = [element for element in tree.iter("Window") if element.get("Name") == "Create archive"
+               and element.get("IsOffscreen") == "False"]
+    if len(dialogs) != 1:
+        return False
+    visible = [element for element in dialogs[0].iter() if element.get("IsOffscreen") == "False"]
     required = {}
     for identifier in ("FileNameBox", "FileFormatSelector", "CompressionLevelSelector", "PrimaryButton", "CloseButton"):
         matches = [element for element in visible if element.get("AutomationId") == identifier]
@@ -238,7 +242,7 @@ def archive_creation_controls(tree, *, enabled, invalid=False):
         return False
     warning = any(element.get("ClassName") == "Popup"
                   and element.get("Name") == "The item name specified is invalid"
-                  for element in visible)
+                  and element.get("IsOffscreen") == "False" for element in tree.iter())
     return warning if invalid else not warning
 
 
@@ -526,7 +530,8 @@ def capture(output, app_id, window_handle, fixture=None, scope="all"):
                     if transfer_fixture_manifest(fixture) != before:
                         raise RuntimeError("Editing an archive name changed the fixture before confirmation")
                     capture_layout(tree, f"UI-13-create-{identifier}", "archive")
-                request("POST", element_route("accessibility id", "CloseButton") + "/click", {})
+                cancel = element_route("xpath", "//Window[@Name='Create archive' and @IsOffscreen='False']//Button[@AutomationId='CloseButton' and @Name='Cancel' and @IsEnabled='True' and @IsOffscreen='False']")
+                request("POST", cancel + "/click", {})
 
                 def returned_archive_source():
                     tree = folder_source()

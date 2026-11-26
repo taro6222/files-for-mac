@@ -9,6 +9,9 @@ final class GitWindow: NSWindowController, NSTableViewDataSource, NSTableViewDel
     private var branches: [GitBranch] = []
     private var remotes: [GitRemote] = []
     private var task: Task<Void, Never>?
+#if DEBUG
+    private var qaLoadStage = "idle"
+#endif
     private let repositoryLabel = NSTextField(labelWithString: "")
     private let branchLabel = NSTextField(labelWithString: "")
     private let stateLabel = NSTextField(labelWithString: "")
@@ -67,8 +70,14 @@ final class GitWindow: NSWindowController, NSTableViewDataSource, NSTableViewDel
         task = Task { [weak self] in
             guard let self else { return }
             do {
+#if DEBUG
+                qaLoadStage = "snapshot"
+#endif
                 async let snapshot = provider.snapshot(at: location)
                 let loaded = try await snapshot
+#if DEBUG
+                qaLoadStage = "branches-and-remotes"
+#endif
                 async let branches = provider.branches(at: loaded.root)
                 async let remotes = provider.remotes(at: loaded.root)
                 self.snapshot = loaded; self.branches = try await branches; self.remotes = try await remotes
@@ -79,8 +88,20 @@ final class GitWindow: NSWindowController, NSTableViewDataSource, NSTableViewDel
                 } else {
                     stateLabel.stringValue = loaded.entries.isEmpty ? L("변경 없음", "Working tree clean") : L("변경 \(loaded.entries.count)개", "\(loaded.entries.count) changes")
                 }
-            } catch is CancellationError { stateLabel.stringValue = L("작업이 중단되었습니다.", "Operation cancelled.") }
-            catch { snapshot = nil; branches = []; remotes = []; stateLabel.stringValue = errorText(error) }
+#if DEBUG
+                qaLoadStage = "loaded"
+#endif
+            } catch is CancellationError {
+                stateLabel.stringValue = L("작업이 중단되었습니다.", "Operation cancelled.")
+#if DEBUG
+                qaLoadStage = "cancelled"
+#endif
+            } catch {
+                snapshot = nil; branches = []; remotes = []; stateLabel.stringValue = errorText(error)
+#if DEBUG
+                qaLoadStage = "failed"
+#endif
+            }
             task = nil; render(); updateControls()
         }
         updateControls()
@@ -139,6 +160,12 @@ final class GitWindow: NSWindowController, NSTableViewDataSource, NSTableViewDel
         return cell
     }
 #if DEBUG
+    var qaLoadDiagnostic: [String: Any] {
+        ["stage": qaLoadStage, "running": task != nil, "status": stateLabel.stringValue,
+         "visible": window?.isVisible == true,
+         "location": location?.path ?? "", "branch": snapshot?.branch ?? "", "hasSnapshot": snapshot != nil,
+         "rowCount": snapshot?.entries.count ?? 0]
+    }
     var qaLoaded: Bool { task == nil && snapshot != nil }
     var qaRowCount: Int { snapshot?.entries.count ?? 0 }
     var qaBranch: String? { snapshot?.branch }

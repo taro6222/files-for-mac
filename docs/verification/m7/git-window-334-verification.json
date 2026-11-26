@@ -1,0 +1,159 @@
+{
+  "sourceBaseSHA": "cc0031b5f4e802cd522449068e7187ec87a1eb9f",
+  "sourceSHA256": {
+    "Sources/FilesMac/GitWindow.swift": "04f4138a916fc1a4fac140bb2c08e5dd6d4a9725296e224b2e82f209e38c2b04",
+    "Sources/FilesMac/BrowserWindow.swift": "e9da81dd2998d33d2a0840902b87d657fd7173f3e899124c3ba4af808c39dfbb",
+    "scripts/capture-windows-reference.py": "ea2dd7569a50f15f9385cac2006fab1e2163f87bcb399af810ada8d81a501b79",
+    "Tests/FixtureTests/test_windows_progress_capture.py": "f7a5185c30cc91953c746ba103ce1f040e8b6af503733141daa597b581a52fca"
+  },
+  "debugBinarySHA256": "4738d782f5cc2772122c761857d1affda19c5386d917cd6aa66819fa79530d7b",
+  "ui": {
+    "ko-light": {
+      "fullCheckCount": 303,
+      "boundaryCheckCount": 18,
+      "reportSHA256": "03477f33cfe9a299c06af41ef375d76bec8a80e1a1c97f8e9ee58f11fce0bb75",
+      "boundaryReportSHA256": "5b008d20c14072811f18b76134b1c3416b0e5965e58149ded52f3fba9b860b27",
+      "gitWindowWaitSeconds": 0.447975208,
+      "gitWindowDiagnostic": {
+        "branch": "main",
+        "hasSnapshot": true,
+        "location": "/Users/changhun/Desktop/Workspace/Files",
+        "rowCount": 30349,
+        "running": false,
+        "stage": "loaded",
+        "status": "\ubcc0\uacbd 30349\uac1c",
+        "visible": true
+      },
+      "gitStatusCaptureSHA256": "f69840c0db801fa8172e80bde392ed3b44b358e7917b6d38d44a932fc21ce224"
+    },
+    "ko-dark": {
+      "fullCheckCount": 303,
+      "boundaryCheckCount": 18,
+      "reportSHA256": "d0bfa8e01da45a858d5f8e5f428e6e450201e999364525852cccfa590b349911",
+      "boundaryReportSHA256": "f9e4644de8b42404017c390334d5bb70e231d287107ede7b437aa36ef7820105",
+      "gitWindowWaitSeconds": 0.203938417,
+      "gitWindowDiagnostic": {
+        "branch": "main",
+        "hasSnapshot": true,
+        "location": "/Users/changhun/Desktop/Workspace/Files",
+        "rowCount": 30349,
+        "running": false,
+        "stage": "loaded",
+        "status": "\ubcc0\uacbd 30349\uac1c",
+        "visible": true
+      },
+      "gitStatusCaptureSHA256": "da8a8cda5eda06b658b91597c388c7818d8b6e66905954113b93b8b4b4fa2e37"
+    },
+    "en-light": {
+      "fullCheckCount": 303,
+      "boundaryCheckCount": 18,
+      "reportSHA256": "7d0abc2f090c3db177ca95f22e71764e1739aba91bf26573f9fbd1d60048b220",
+      "boundaryReportSHA256": "8c264c2a29119eb2daf0ea2712c24b4be6ec4fa7c3f0f318ef2bc5a95b7dccc3",
+      "gitWindowWaitSeconds": 0.450885042,
+      "gitWindowDiagnostic": {
+        "branch": "main",
+        "hasSnapshot": true,
+        "location": "/Users/changhun/Desktop/Workspace/Files",
+        "rowCount": 30350,
+        "running": false,
+        "stage": "loaded",
+        "status": "30350 changes",
+        "visible": true
+      },
+      "gitStatusCaptureSHA256": "5ebb9f370dd30815347900f5302a03b3af2db402ad6d3b8427bbcfc572dab90f"
+    },
+    "en-dark": {
+      "fullCheckCount": 303,
+      "boundaryCheckCount": 18,
+      "reportSHA256": "2c95afb1d6f0ccb2af77da04a37a06fe3b82d11688e452fb52c3fc6d9eadac8f",
+      "boundaryReportSHA256": "c336c66ffa5615d15ce0ad8170538ddff2d86cefbb915dd613652aef3c4d8698",
+      "gitWindowWaitSeconds": 0.199425459,
+      "gitWindowDiagnostic": {
+        "branch": "main",
+        "hasSnapshot": true,
+        "location": "/Users/changhun/Desktop/Workspace/Files",
+        "rowCount": 30350,
+        "running": false,
+        "stage": "loaded",
+        "status": "30350 changes",
+        "visible": true
+      },
+      "gitStatusCaptureSHA256": "846c189432f12b3af1c8933ec0da4449edd96e4f4f7ca110da6799ec0c5adf90"
+    }
+  },
+  "captureGuardTests": 19,
+  "logsSHA256": {
+    "build-final": "03e451d1286c7d8dc3b97526c6eed136bfef05674ce44e1e49ef2393186d2e7a",
+    "ui": "04383693d5f254957d2b33aa71b8dad69731a882cd4899cbaeba4403f9128f27",
+    "parity": "f2e8f311d376fa306990bf6651b074ea8c5cdac5bfc49dd049df9ac2a1b96f01",
+    "capture-tests-final": "642e0169e454fff80ab62d0f2cb1dcea590d522e82dbcf9b62633217b9adea61"
+  },
+  "releaseSourceComparison": {
+    "comparison": "DEBUG sections excluded and whitespace normalized; changed catch formatting reviewed separately.",
+    "normalizedSHA256": {
+      "Sources/FilesMac/GitWindow.swift": "46f88a0a4839930d90e7b29418767cf96a8bb25f635719f13528851685cb8d67",
+      "Sources/FilesMac/BrowserWindow.swift": "ce202b5401f164e42e42fdbad941fb1a852abc867eb7031c313da2359787d64d"
+    }
+  },
+  "precedingIntel": {
+    "runURL": "https://github.com/taro6222/files-for-mac/actions/runs/45752296059",
+    "sourceSHA": "81524f8f0c0a59ab2bc318d5051ef7bb21b0b2e0",
+    "reports": {
+      "tabs-en-light": {
+        "checkCount": 18,
+        "failed": [],
+        "reportSHA256": "8c7ea58db35d39197a12b053f583fba009acff534def6be24e64c77900d59e6f"
+      },
+      "en-dark": {
+        "checkCount": 302,
+        "failed": [],
+        "reportSHA256": "ef7d60804d6c2c8dd980a275e7343f5ff093220d1b9ba27b590958d6b00061a0"
+      },
+      "ko-light": {
+        "checkCount": 302,
+        "failed": [
+          "gitWindow"
+        ],
+        "reportSHA256": "86a9141d86371ebed6a4c5b1524a5f5ecaeea79037963fd49300f119b6bd2cc4"
+      },
+      "en-light": {
+        "checkCount": 302,
+        "failed": [],
+        "reportSHA256": "0e086014b3ab8f2ac54d305a7704be6a7a32c7b015ba27ccfc4988f9be4ff42c"
+      },
+      "tabs-ko-dark": {
+        "checkCount": 18,
+        "failed": [],
+        "reportSHA256": "d14f0ebb7836c334065287abcc60161673f48e525a3d647fc8d6ea82de87a617"
+      },
+      "tabs-ko-light": {
+        "checkCount": 18,
+        "failed": [],
+        "reportSHA256": "1b569fbfbb07dfa73d081a669fe6cb1161f69877bed214dfbe4ec0d80dfad9b9"
+      },
+      "tabs-en-dark": {
+        "checkCount": 18,
+        "failed": [],
+        "reportSHA256": "4cd5dc149461c75b593e647a0784a7a4efc95a8c5c56558ef4fd9754202c353c"
+      },
+      "ko-dark": {
+        "checkCount": 302,
+        "failed": [],
+        "reportSHA256": "e0a507838462ec99c125b71abac9040d51a47d6ec0b6449c7ca06e23934ab42d"
+      }
+    },
+    "failureCaptureSHA256": "5197da56fa1bf09b0ee6465b2413f11ae06e61f363d31a146d98fdb3bfcad78b"
+  },
+  "intelDelayRootCauseConfirmed": false,
+  "physicalInputAccepted": false,
+  "releaseComplete": false,
+  "remaining": [
+    "Intel first Git-window timeout diagnosis and resolution",
+    "latest-source remote acceptance",
+    "Windows archive input/cancellation capture",
+    "8-hour memory stability",
+    "physical input and VoiceOver",
+    "supported environments and external services",
+    "Developer ID and notarization"
+  ]
+}
