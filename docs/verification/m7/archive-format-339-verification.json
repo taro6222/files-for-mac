@@ -1,0 +1,278 @@
+{
+  "sourceBase": "774083b868f7a19e544dc4b44f8fd37821a5ae21",
+  "releaseComplete": false,
+  "sourceSHA256": {
+    "Sources/FilesMac/BrowserWindow.swift": "0bcb08e2bf9767ea3ca700ab25ab902258c54aeb3378b2e9f40adba70d8c247b",
+    "Sources/FilesMac/ArchiveCreationWindow.swift": "1f7b8e8b56da783a5ac2b9845726382350b5490b3849cc2badedfc27ccaa9534",
+    "scripts/verify-ui.sh": "1ea8e89d3644d24d26a6eaed13acd648557716cc0d6c8d5726e9fd6707c01637"
+  },
+  "binariesSHA256": {
+    "debug": "704ed85df43d8c5d2967de7804c47d830c1281c3eff395231c88a5cf05ee49b1",
+    "release": "07c72bd1e1abe168dccea497200c718009b917841305c181e1d9c4776e98db75"
+  },
+  "logsSHA256": {
+    "build/archive-format-339-final-build.log": "eacea01eb6330b17c0b6ac61888d98ff90e6a9b1fef84af89e266c9eed18ac0e",
+    "build/archive-format-339-release.log": "98d37f5f78e185293f73d4a7963b76bca46c4059ba8d725b83dfc7c6fb11a032",
+    "build/archive-format-339-ui.log": "2021e2466deeeaa410eb081a58056bc55b0527c9c1185944d38dc3a8cb13586f",
+    "build/archive-format-339-parity.log": "f2e8f311d376fa306990bf6651b074ea8c5cdac5bfc49dd049df9ac2a1b96f01"
+  },
+  "localUI": [
+    {
+      "combination": "en-dark",
+      "checks": 310,
+      "reportSHA256": "43e284d9e7b3fd63e3239d2c6f93c71481b4c953d42015df7a447313405e355b",
+      "formatChecks": {
+        "archiveFormatDefault": true,
+        "archiveFormatEmptyAndExplicitExtension": true,
+        "archiveFormatPreservesEditedBaseAndRoundTrips": true,
+        "archiveFormatSevenZipSelection": true
+      },
+      "componentCapture": {
+        "path": "archive-format-339-en-dark.png",
+        "sha256": "3e516a170b4c297893d17c62cdc5655e7562967ec8ab18d36bd1eb78ca3b7e47",
+        "scope": "accessory component only; not a whole save panel or physical input acceptance"
+      }
+    },
+    {
+      "combination": "en-light",
+      "checks": 310,
+      "reportSHA256": "9b172c53a117263d087568f23961d570d53a12e36865b74d8871b11443094752",
+      "formatChecks": {
+        "archiveFormatDefault": true,
+        "archiveFormatEmptyAndExplicitExtension": true,
+        "archiveFormatPreservesEditedBaseAndRoundTrips": true,
+        "archiveFormatSevenZipSelection": true
+      },
+      "componentCapture": {
+        "path": "archive-format-339-en-light.png",
+        "sha256": "617b64577e9faa7853293645abecfdeb36b5ba3defdca7daaff42ba4eb3b84c9",
+        "scope": "accessory component only; not a whole save panel or physical input acceptance"
+      }
+    },
+    {
+      "combination": "ko-dark",
+      "checks": 310,
+      "reportSHA256": "b35e4d13e81d9579c45fc566f321ccafc98305c978947b0017876f18a4844da9",
+      "formatChecks": {
+        "archiveFormatDefault": true,
+        "archiveFormatEmptyAndExplicitExtension": true,
+        "archiveFormatPreservesEditedBaseAndRoundTrips": true,
+        "archiveFormatSevenZipSelection": true
+      },
+      "componentCapture": {
+        "path": "archive-format-339-ko-dark.png",
+        "sha256": "e70cad4bf355c3f0fd1b56ea87c694d9a25a9590569811fdae07cc8398bbd8e1",
+        "scope": "accessory component only; not a whole save panel or physical input acceptance"
+      }
+    },
+    {
+      "combination": "ko-light",
+      "checks": 310,
+      "reportSHA256": "81853479e61c84891513dbeab928090baebb2258ec4cb2e3e80baad1349df198",
+      "formatChecks": {
+        "archiveFormatDefault": true,
+        "archiveFormatEmptyAndExplicitExtension": true,
+        "archiveFormatPreservesEditedBaseAndRoundTrips": true,
+        "archiveFormatSevenZipSelection": true
+      },
+      "componentCapture": {
+        "path": "archive-format-339-ko-light.png",
+        "sha256": "f5b8325860ff6eacd4dc8adf6dde951214ef816e844d16962dac63a34c5c8d7b",
+        "scope": "accessory component only; not a whole save panel or physical input acceptance"
+      }
+    },
+    {
+      "combination": "tabs-en-dark",
+      "checks": 18,
+      "reportSHA256": "c336c66ffa5615d15ce0ad8170538ddff2d86cefbb915dd613652aef3c4d8698"
+    },
+    {
+      "combination": "tabs-en-light",
+      "checks": 18,
+      "reportSHA256": "8c264c2a29119eb2daf0ea2712c24b4be6ec4fa7c3f0f318ef2bc5a95b7dccc3"
+    },
+    {
+      "combination": "tabs-ko-dark",
+      "checks": 18,
+      "reportSHA256": "f9e4644de8b42404017c390334d5bb70e231d287107ede7b437aa36ef7820105"
+    },
+    {
+      "combination": "tabs-ko-light",
+      "checks": 18,
+      "reportSHA256": "5b008d20c14072811f18b76134b1c3416b0e5965e58149ded52f3fba9b860b27"
+    }
+  ],
+  "previousSourceRemoteReports": [
+    {
+      "source": "05dd05d",
+      "architecture": "arm64",
+      "run": 45758991064,
+      "reports": [
+        {
+          "combination": "en-dark",
+          "checks": 303,
+          "reportSHA256": "f5452e9fb2f5ba43004248482166a32ae537ba4bd3d4ee3aebca7761254376e6",
+          "gitWaitSeconds": 0.275446167
+        },
+        {
+          "combination": "en-light",
+          "checks": 303,
+          "reportSHA256": "cd2ad1d8ead92878c3aa4990d13d9a95e5c93e697181082878c0e44a592d43be",
+          "gitWaitSeconds": 0.32277775
+        },
+        {
+          "combination": "ko-dark",
+          "checks": 303,
+          "reportSHA256": "4b0305b716f58d398bf202f848882c99851cd6345a28fcbe61ddbb6867060af3",
+          "gitWaitSeconds": 0.328005458
+        },
+        {
+          "combination": "ko-light",
+          "checks": 303,
+          "reportSHA256": "dc03dce6aa5f3022ef016ffa346bb50d715de8b01193b14884aa5289918ba57f",
+          "gitWaitSeconds": 0.331164208
+        },
+        {
+          "combination": "tabs-en-dark",
+          "checks": 18,
+          "reportSHA256": "4cd5dc149461c75b593e647a0784a7a4efc95a8c5c56558ef4fd9754202c353c",
+          "gitWaitSeconds": null
+        },
+        {
+          "combination": "tabs-en-light",
+          "checks": 18,
+          "reportSHA256": "8c7ea58db35d39197a12b053f583fba009acff534def6be24e64c77900d59e6f",
+          "gitWaitSeconds": null
+        },
+        {
+          "combination": "tabs-ko-dark",
+          "checks": 18,
+          "reportSHA256": "d14f0ebb7836c334065287abcc60161673f48e525a3d647fc8d6ea82de87a617",
+          "gitWaitSeconds": null
+        },
+        {
+          "combination": "tabs-ko-light",
+          "checks": 18,
+          "reportSHA256": "1b569fbfbb07dfa73d081a669fe6cb1161f69877bed214dfbe4ec0d80dfad9b9",
+          "gitWaitSeconds": null
+        }
+      ]
+    },
+    {
+      "source": "05dd05d",
+      "architecture": "intel",
+      "run": 45758991064,
+      "reports": [
+        {
+          "combination": "en-dark",
+          "checks": 303,
+          "reportSHA256": "780cfe4985dd0588ff251091eb31b86310849064458f66c4bdeaa2447985e091",
+          "gitWaitSeconds": 0.306371094
+        },
+        {
+          "combination": "en-light",
+          "checks": 303,
+          "reportSHA256": "a2a279c4c1dc5d3676f7635d0c8dc127729d9afcd108788dd8a4908a847aa8e7",
+          "gitWaitSeconds": 0.349497053
+        },
+        {
+          "combination": "ko-dark",
+          "checks": 303,
+          "reportSHA256": "bb79af1590bba5b2dd4726e6de20aaf0c8898da2465e64823e88beab49662d9d",
+          "gitWaitSeconds": 0.361384334
+        },
+        {
+          "combination": "ko-light",
+          "checks": 303,
+          "reportSHA256": "ee828fb6ee21fb2bddaed5ac5b15b786402c15489ce2937128a943e1588cb712",
+          "gitWaitSeconds": 0.366722253
+        },
+        {
+          "combination": "tabs-en-dark",
+          "checks": 18,
+          "reportSHA256": "4cd5dc149461c75b593e647a0784a7a4efc95a8c5c56558ef4fd9754202c353c",
+          "gitWaitSeconds": null
+        },
+        {
+          "combination": "tabs-en-light",
+          "checks": 18,
+          "reportSHA256": "8c7ea58db35d39197a12b053f583fba009acff534def6be24e64c77900d59e6f",
+          "gitWaitSeconds": null
+        },
+        {
+          "combination": "tabs-ko-dark",
+          "checks": 18,
+          "reportSHA256": "d14f0ebb7836c334065287abcc60161673f48e525a3d647fc8d6ea82de87a617",
+          "gitWaitSeconds": null
+        },
+        {
+          "combination": "tabs-ko-light",
+          "checks": 18,
+          "reportSHA256": "1b569fbfbb07dfa73d081a669fe6cb1161f69877bed214dfbe4ec0d80dfad9b9",
+          "gitWaitSeconds": null
+        }
+      ]
+    },
+    {
+      "source": "7da2fd7",
+      "architecture": "arm64",
+      "run": 45760253784,
+      "reports": [
+        {
+          "combination": "en-dark",
+          "checks": 306,
+          "reportSHA256": "36827f134b705de4d3095b9d25b41c3275fef9470536d06e0e5956d81d56a624",
+          "gitWaitSeconds": 0.327153958
+        },
+        {
+          "combination": "en-light",
+          "checks": 306,
+          "reportSHA256": "4d736fbaae59dbc74f76bf0180b4570dfad9516cc4f6a048ae63bf607fb12ee8",
+          "gitWaitSeconds": 0.302043333
+        },
+        {
+          "combination": "ko-dark",
+          "checks": 306,
+          "reportSHA256": "a2b94d5ba4a22c29917fdc4ff0759eaa1c0f2b298e1f90e808bd718ffb32f0b1",
+          "gitWaitSeconds": 0.323435958
+        },
+        {
+          "combination": "ko-light",
+          "checks": 306,
+          "reportSHA256": "a4d3aec853d633f84c5a39181dea21c9e370bfa6a64a3cf280b18226b0a03f15",
+          "gitWaitSeconds": 0.439308958
+        },
+        {
+          "combination": "tabs-en-dark",
+          "checks": 18,
+          "reportSHA256": "4cd5dc149461c75b593e647a0784a7a4efc95a8c5c56558ef4fd9754202c353c",
+          "gitWaitSeconds": null
+        },
+        {
+          "combination": "tabs-en-light",
+          "checks": 18,
+          "reportSHA256": "8c7ea58db35d39197a12b053f583fba009acff534def6be24e64c77900d59e6f",
+          "gitWaitSeconds": null
+        },
+        {
+          "combination": "tabs-ko-dark",
+          "checks": 18,
+          "reportSHA256": "d14f0ebb7836c334065287abcc60161673f48e525a3d647fc8d6ea82de87a617",
+          "gitWaitSeconds": null
+        },
+        {
+          "combination": "tabs-ko-light",
+          "checks": 18,
+          "reportSHA256": "1b569fbfbb07dfa73d081a669fe6cb1161f69877bed214dfbe4ec0d80dfad9b9",
+          "gitWaitSeconds": null
+        }
+      ]
+    }
+  ],
+  "limitations": [
+    "no physical input or VoiceOver acceptance",
+    "original full archive dialog parity incomplete",
+    "new source ARM/Intel CI pending",
+    "Developer ID and notarization pending"
+  ]
+}

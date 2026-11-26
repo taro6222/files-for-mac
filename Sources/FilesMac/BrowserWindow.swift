@@ -1904,11 +1904,11 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
     }
     private static func archiveSavePanel(sources: [URL], parent: URL) -> NSSavePanel {
         let panel = NSSavePanel()
-        panel.allowedContentTypes = [.zip, UTType(filenameExtension: "7z")!]
         panel.canCreateDirectories = true; panel.isExtensionHidden = false
         let base = sources.count == 1 ? sources[0].lastPathComponent : parent.lastPathComponent
         panel.nameFieldStringValue = (base.isEmpty || base == "/" ? L("압축 파일", "Archive") : base) + ".zip"
         panel.directoryURL = parent; panel.prompt = L("압축", "Compress")
+        panel.accessoryView = ArchiveSaveOptionsView(panel: panel)
         return panel
     }
     private var selectedArchiveURLs: [URL] {
@@ -5585,6 +5585,35 @@ extension BrowserWindow {
                 parent: archiveParent).nameFieldStringValue == "archive-default-parent.v1.zip"
             checks["archiveDefaultNameRootFallback"] = Self.archiveSavePanel(sources: archiveSources,
                 parent: URL(fileURLWithPath: "/", isDirectory: true)).nameFieldStringValue == L("압축 파일.zip", "Archive.zip")
+            let formatPanel = Self.archiveSavePanel(sources: [archiveParent.appendingPathComponent("preview.txt")], parent: archiveParent)
+            if let options = formatPanel.accessoryView as? ArchiveSaveOptionsView {
+                let button = options.formatButton
+                checks["archiveFormatDefault"] = button.itemTitles == ["ZIP (.zip)", "7z (.7z)"] && button.indexOfSelectedItem == 0 &&
+                    formatPanel.allowedContentTypes == [.zip] && !formatPanel.allowsOtherFileTypes
+                button.selectItem(at: 1); NSApp.sendAction(button.action!, to: button.target, from: button)
+                checks["archiveFormatSevenZipSelection"] = formatPanel.nameFieldStringValue == "preview.txt.7z" &&
+                    formatPanel.allowedContentTypes == [UTType(filenameExtension: "7z")!] && formatPanel.directoryURL == archiveParent
+                formatPanel.nameFieldStringValue = "한글.이름.tar.gz"
+                button.selectItem(at: 0); NSApp.sendAction(button.action!, to: button.target, from: button)
+                NSApp.sendAction(button.action!, to: button.target, from: button)
+                let manualNamePreserved = formatPanel.nameFieldStringValue == "한글.이름.tar.gz.zip" && formatPanel.allowedContentTypes == [.zip]
+                formatPanel.nameFieldStringValue = "archive.ZIP.zip"
+                button.selectItem(at: 1); NSApp.sendAction(button.action!, to: button.target, from: button)
+                button.selectItem(at: 0); NSApp.sendAction(button.action!, to: button.target, from: button)
+                checks["archiveFormatPreservesEditedBaseAndRoundTrips"] = manualNamePreserved && formatPanel.nameFieldStringValue == "archive.ZIP.zip"
+                formatPanel.nameFieldStringValue = ""
+                button.selectItem(at: 1); NSApp.sendAction(button.action!, to: button.target, from: button)
+                let emptyNamePreserved = formatPanel.nameFieldStringValue.isEmpty
+                formatPanel.nameFieldStringValue = "already.7Z"
+                button.selectItem(at: 0); NSApp.sendAction(button.action!, to: button.target, from: button)
+                checks["archiveFormatEmptyAndExplicitExtension"] = emptyNamePreserved && formatPanel.nameFieldStringValue == "already.zip"
+                options.appearance = window.effectiveAppearance
+                try capture("archive-format-options", view: options, backingColor: .windowBackgroundColor)
+            } else {
+                checks["archiveFormatDefault"] = false; checks["archiveFormatSevenZipSelection"] = false
+                checks["archiveFormatPreservesEditedBaseAndRoundTrips"] = false
+                checks["archiveFormatEmptyAndExplicitExtension"] = false
+            }
             let createdArchive = destination.appendingPathComponent("created-by-ui.zip")
             try? fm.removeItem(at: createdArchive)
             ArchiveCreationWindow.start(sources: [fixture.appendingPathComponent("00000-한글-é-📁-long-file-name.txt")], destination: createdArchive) {}

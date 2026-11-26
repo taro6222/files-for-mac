@@ -16,13 +16,15 @@ M7 출시 검증이 진행 중이다. [유니버설 개발 프리뷰](verificati
 |---|---|---|
 | 설치·업데이트 | 새 a07c80c 유니버설 프리뷰의 macOS 27.2.1 arm64 격리 설치·교체·복원. 이전 프리뷰의 Sonoma 14.8.7·실제 업데이트 메뉴 조회는 별도 기록 | 서명·공증된 정식 배포본의 다운로드·최초 실행·버전 교체 |
 | SMB | 파일 시각, 이동·실행 취소, 게시 후 세션 재연결과 기록 중 단절 시 원본 보호·[서버 권한 회수 후 기존 대상 복구](verification/m7/INCREMENT_290.md) | 장기 단절 및 외부 서버 검증 |
-| 원격 전체 AppKit | `81524f8` ARM 네 조합 각각 세션 비교 한 검사 실패·나머지 301개 및 경계 18개 성공. [큰 창 로컬 재현과 보완](verification/m7/INCREMENT_333.md) 참고 | 보완된 세션 검사·최신 소스 두 CPU 전체 수용. 81524f8 Intel은 한국어 밝음 Git 창만 실패했고 초기 조회 단계 진단은 새 소스로 확인 |
+| 원격 전체 AppKit | `05dd05d` 두 CPU 작업 성공: 각각 네 조합 전체 303개/경계 18개. 세션 비율 위치 오차 최대 ARM 0.4pt·Intel 0.2pt. `7da2fd7` ARM 네 조합 306개/18개 성공 | 최신 소스 두 CPU 수용과 간헐 Git 초기 조회 지연 원인 확인. 774083b 조기 진단 CI 진행 중 |
 | Xcode 진입점 | `55c1bee`의 Apple Silicon·Intel Xcode 빌드 성공. 전체 AppKit·설치 수용은 별도 진행 | 정식 서명·배포된 산출물의 수용 검증 |
 | 장시간 | `5284cb3` 8시간·9,525사이클 종료. 물리 메모리 초기/마지막 60표본 중앙값 52→160MiB로 안정성 미수용. [새 탭 구현의 단기 진단](verification/m7/INCREMENT_330.md)은 컨텍스트 개수 유지 | 최신 소스 8시간 종료 및 물리 메모리 안정성 판정 |
 
 실행별 증거와 정확한 제한은 [설치 프리뷰](verification/m7/INCREMENT_280.md), [SMB 기록 중 단절](verification/m7/INCREMENT_277.md), [서버 권한 회수](verification/m7/INCREMENT_285.md), [Intel UI 진단](verification/m7/INCREMENT_282.md), [Xcode 연결](verification/m7/INCREMENT_284.md), [8시간 시험](verification/m7/INCREMENT_283.md)에 기록했다.
 
 ## 이번 구현 단위
+
+[압축 생성 형식 선택](verification/m7/INCREMENT_339.md)은 실제 저장 창에 ZIP·7z 팝업을 추가하고 선택한 형식과 확장자를 연결한다. 한글·복수 확장자·명시적 확장자·빈 이름을 보존하는 동작을 확인했다. 네 조합 전체 UI 각각 310개/경계 18개·Debug/Release·parity가 통과했다. 이전 고정 소스의 두 CPU 성공 보고서도 확인했다. 최신 원격/장시간·전체 원본 UI 대조·실제 입력/VoiceOver·정식 서명/공증은 미완료다.
 
 [압축 저장 기본 이름](verification/m7/INCREMENT_337.md)을 원본과 맞춰 단일 항목의 전체 이름과 여러 항목의 부모 폴더 이름을 보존한다. 실제 NSSavePanel 객체로 TXT·한글·점/복수 확장자·ZIP·여러 항목·루트 대체값을 확인했다. 네 조합 전체 UI 각각 306개/경계 18개·Debug/Release가 통과했다. 기존 a07c80c 프리뷰와 새 변경을 구분하며 원격/최신 후보·Git snapshot 지연·장시간·실제 입력·정식 서명/공증 수용은 미완료다.
 

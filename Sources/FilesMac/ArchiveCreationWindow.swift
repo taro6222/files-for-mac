@@ -1,5 +1,42 @@
 import AppKit
 import FilesCore
+import UniformTypeIdentifiers
+
+@MainActor
+final class ArchiveSaveOptionsView: NSStackView {
+    let formatButton = NSPopUpButton()
+    private weak var panel: NSSavePanel?
+    private let formats: [ArchiveFormat] = [.zip, .sevenZip]
+    private var selectedFormat: ArchiveFormat = .zip
+
+    init(panel: NSSavePanel) {
+        self.panel = panel
+        super.init(frame: NSRect(x: 0, y: 0, width: 340, height: 32))
+        orientation = .horizontal; alignment = .centerY; spacing = 12
+        addArrangedSubview(NSTextField(labelWithString: L("압축 형식:", "Archive format:")))
+        formatButton.addItems(withTitles: ["ZIP (.zip)", "7z (.7z)"])
+        formatButton.setAccessibilityLabel(L("압축 형식", "Archive format"))
+        formatButton.identifier = NSUserInterfaceItemIdentifier("archive-format")
+        formatButton.target = self; formatButton.action = #selector(changeFormat(_:))
+        addArrangedSubview(formatButton)
+        panel.allowedContentTypes = [.zip]
+        panel.allowsOtherFileTypes = false
+    }
+    required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
+
+    @objc private func changeFormat(_ sender: NSPopUpButton) {
+        guard formats.indices.contains(sender.indexOfSelectedItem), let panel else { return }
+        let format = formats[sender.indexOfSelectedItem]
+        guard format != selectedFormat, let type = UTType(filenameExtension: format.rawValue) else { return }
+        var name = panel.nameFieldStringValue
+        if let existing = formats.first(where: { name.lowercased().hasSuffix("." + $0.rawValue) }) {
+            name.removeLast(existing.rawValue.count + 1)
+        }
+        panel.allowedContentTypes = [type]
+        panel.nameFieldStringValue = name.isEmpty ? "" : name + "." + format.rawValue
+        selectedFormat = format
+    }
+}
 
 @MainActor
 final class ArchiveCreationWindow: NSWindowController, NSWindowDelegate {
