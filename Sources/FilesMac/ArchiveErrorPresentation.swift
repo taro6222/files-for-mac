@@ -3,6 +3,10 @@ import FilesCore
 
 func archiveErrorMessage(_ error: Error) -> String {
     switch error {
+    case ZipArchiveError.emptyPassword:
+        return L("비어 있지 않고 NUL 문자를 포함하지 않는 암호를 입력하세요.", "Enter a nonempty password without NUL characters.")
+    case ZipArchiveError.unsupportedEncryption:
+        return L("이 포맷의 암호 압축 생성을 지원하지 않습니다.", "Encrypted creation is not supported for this format.")
     case ZipArchiveError.destinationNotDirectory:
         return L("추출 대상으로 쓸 수 있는 폴더를 선택하세요.", "Choose a writable folder for extraction.")
     case let ZipArchiveError.destinationConflict(name):

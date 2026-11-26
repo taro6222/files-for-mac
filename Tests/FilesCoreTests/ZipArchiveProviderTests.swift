@@ -226,3 +226,117 @@ func archiveCompressionLevelsRoundTripAndStoreRemainsUncompressed(format: Archiv
     #expect(ultra < stored / 4)
     #expect(try fm.contentsOfDirectory(atPath: root.path).allSatisfy { !$0.hasPrefix(".files-create-") })
 }
+
+@Test(arguments: [ArchiveCompressionLevel.store, .ultra])
+func encryptedZIPRoundTripsAndRejectsWrongOrMissingPassword(level: ArchiveCompressionLevel) async throws {
+    let fm = FileManager.default, root = fm.temporaryDirectory.appendingPathComponent("zip-aes-\(UUID())", isDirectory: true)
+    try fm.createDirectory(at: root, withIntermediateDirectories: true)
+    defer { try? fm.removeItem(at: root) }
+    let source = root.appendingPathComponent("한글-é.txt"), archive = root.appendingPathComponent("encrypted.zip")
+    let password = "한글-é-🔑-" + UUID().uuidString
+    let payload = Data(String(repeating: "secret payload 0123456789\n", count: 8192).utf8)
+    try payload.write(to: source)
+    let provider = ZipArchiveProvider()
+    _ = try await provider.create(from: [source], at: archive, compressionLevel: level, password: password)
+    let descriptors = try provider.entries(at: archive)
+    #expect(descriptors.count == 1 && descriptors[0].isEncrypted)
+    let bytes = try Data(contentsOf: archive)
+    // WinZip AES uses ZIP method 99; filenames remain visible in the header.
+    #expect(bytes.count > 30 && bytes[8] == 99 && bytes[9] == 0 && bytes[6] & 1 == 1)
+    #expect(bytes.range(of: Data(password.utf8)) == nil)
+    for wrong in [nil, "wrong-password"] as [String?] {
+        let destination = root.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try fm.createDirectory(at: destination, withIntermediateDirectories: false)
+        do {
+            _ = try await provider.extract(archive, to: destination, password: wrong)
+            Issue.record("Encrypted data was extracted without the correct password")
+        } catch {
+            #expect(!String(describing: error).contains(password))
+        }
+        #expect(try fm.contentsOfDirectory(atPath: destination.path).isEmpty)
+        #expect(try Data(contentsOf: archive) == bytes)
+    }
+    let destination = root.appendingPathComponent("correct", isDirectory: true)
+    try fm.createDirectory(at: destination, withIntermediateDirectories: false)
+    _ = try await provider.extract(archive, to: destination, password: password)
+    #expect(try Data(contentsOf: destination.appendingPathComponent(source.lastPathComponent)) == payload)
+    #expect(try Data(contentsOf: source) == payload)
+    #expect(try fm.contentsOfDirectory(atPath: root.path).allSatisfy { !$0.hasPrefix(".files-create-") })
+}
+
+@Test func encryptedZIPInvalidPasswordUnsupportedFormatAndConflictsPreserveFiles() async throws {
+    let fm = FileManager.default, root = fm.temporaryDirectory.appendingPathComponent("zip-aes-protection-\(UUID())", isDirectory: true)
+    try fm.createDirectory(at: root, withIntermediateDirectories: true)
+    defer { try? fm.removeItem(at: root) }
+    let source = root.appendingPathComponent("source.txt"), archive = root.appendingPathComponent("encrypted.zip")
+    let content = Data("preserved source".utf8); try content.write(to: source)
+    let provider = ZipArchiveProvider()
+    for invalid in ["", "prefix\0suffix"] {
+        await #expect(throws: ZipArchiveError.emptyPassword) {
+            _ = try await provider.create(from: [source], at: archive, password: invalid)
+        }
+        #expect(!fm.fileExists(atPath: archive.path))
+    }
+    let unsupported = root.appendingPathComponent("unsupported.7z")
+    await #expect(throws: ZipArchiveError.unsupportedEncryption) {
+        _ = try await provider.create(from: [source], at: unsupported, password: "password")
+    }
+    #expect(!fm.fileExists(atPath: unsupported.path))
+    _ = try await provider.create(from: [source], at: archive, password: "password")
+    let originalArchive = try Data(contentsOf: archive)
+    do { _ = try await provider.create(from: [source], at: archive, password: "password"); Issue.record("Overwrote existing archive") }
+    catch { #expect(try Data(contentsOf: archive) == originalArchive) }
+    let destination = root.appendingPathComponent("existing", isDirectory: true)
+    try fm.createDirectory(at: destination, withIntermediateDirectories: false)
+    let target = destination.appendingPathComponent(source.lastPathComponent), existing = Data("existing target".utf8)
+    try existing.write(to: target)
+    await #expect(throws: ZipArchiveError.destinationConflict(source.lastPathComponent)) {
+        _ = try await provider.extract(archive, to: destination, password: "password")
+    }
+    #expect(try Data(contentsOf: target) == existing)
+    #expect(try Data(contentsOf: source) == content)
+    #expect(try fm.contentsOfDirectory(atPath: root.path).allSatisfy { !$0.hasPrefix(".files-create-") })
+}
+
+@Test func encryptedZIPRejectsModifiedStoredCiphertextWithoutPublishingPlaintext() async throws {
+    let fm = FileManager.default, root = fm.temporaryDirectory.appendingPathComponent("zip-aes-tamper-\(UUID())", isDirectory: true)
+    try fm.createDirectory(at: root, withIntermediateDirectories: true)
+    defer { try? fm.removeItem(at: root) }
+    let source = root.appendingPathComponent("payload.bin"), archive = root.appendingPathComponent("encrypted.zip")
+    let content = Data(repeating: 0x61, count: 128 * 1024); try content.write(to: source)
+    let provider = ZipArchiveProvider()
+    _ = try await provider.create(from: [source], at: archive, compressionLevel: .store, password: "test-password")
+    var bytes = try Data(contentsOf: archive)
+    func word(_ offset: Int) -> Int { Int(bytes[offset]) | Int(bytes[offset + 1]) << 8 }
+    // Local ZIP header + name + extra + AES-256 salt (16) + password verifier (2).
+    let ciphertext = 30 + word(26) + word(28) + 18
+    try #require(bytes.count > ciphertext + 100)
+    bytes[ciphertext + 64] ^= 0x80
+    let tampered = root.appendingPathComponent("tampered.zip"); try bytes.write(to: tampered)
+    let destination = root.appendingPathComponent("destination", isDirectory: true)
+    try fm.createDirectory(at: destination, withIntermediateDirectories: false)
+    do {
+        _ = try await provider.extract(tampered, to: destination, password: "test-password")
+        Issue.record("Modified encrypted stored data bypassed authentication")
+    } catch {
+        #expect(try fm.contentsOfDirectory(atPath: destination.path).isEmpty)
+    }
+    #expect(try Data(contentsOf: source) == content)
+    #expect(try Data(contentsOf: tampered) == bytes)
+}
+
+@Test func encryptedZIPCancellationAfterWritingRemovesStagingOutput() async throws {
+    let fm = FileManager.default, root = fm.temporaryDirectory.appendingPathComponent("zip-aes-cancel-\(UUID())", isDirectory: true)
+    try fm.createDirectory(at: root, withIntermediateDirectories: true)
+    defer { try? fm.removeItem(at: root) }
+    let source = root.appendingPathComponent("payload.bin"), archive = root.appendingPathComponent("encrypted.zip")
+    let content = Data(repeating: 0x61, count: 1024 * 1024); try content.write(to: source)
+    await #expect(throws: CancellationError.self) {
+        _ = try await ZipArchiveProvider().create(from: [source], at: archive, compressionLevel: .store, password: "test-password") { update in
+            if update.completedBytes > 0 { withUnsafeCurrentTask { $0?.cancel() } }
+        }
+    }
+    #expect(!fm.fileExists(atPath: archive.path))
+    #expect(try Data(contentsOf: source) == content)
+    #expect(try fm.contentsOfDirectory(atPath: root.path).allSatisfy { !$0.hasPrefix(".files-create-") })
+}

@@ -6,8 +6,9 @@ public struct ArchiveEntryDescriptor: Sendable, Equatable {
     public let path: String
     public let kind: ArchiveEntryKind
     public let uncompressedSize: Int64
-    public init(path: String, kind: ArchiveEntryKind, uncompressedSize: Int64 = 0) {
-        self.path = path; self.kind = kind; self.uncompressedSize = uncompressedSize
+    public let isEncrypted: Bool
+    public init(path: String, kind: ArchiveEntryKind, uncompressedSize: Int64 = 0, isEncrypted: Bool = false) {
+        self.path = path; self.kind = kind; self.uncompressedSize = uncompressedSize; self.isEncrypted = isEncrypted
     }
 }
 

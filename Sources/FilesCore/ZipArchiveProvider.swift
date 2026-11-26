@@ -9,6 +9,8 @@ public enum ZipArchiveError: Error, Sendable, Equatable {
     case destinationConflict(String)
     case publishFailed(String)
     case invalidSource(String)
+    case emptyPassword
+    case unsupportedEncryption
 }
 
 public struct ArchiveExtractionReport: Sendable, Equatable {
@@ -38,8 +40,8 @@ public typealias ArchiveProgressHandler = @Sendable (ArchiveProgress) -> Void
 public struct ZipArchiveProvider: Sendable {
     public init() {}
 
-    public func entries(at archiveURL: URL) throws -> [ArchiveEntryDescriptor] {
-        try withReader(archiveURL) { reader in
+    public func entries(at archiveURL: URL, password: String? = nil) throws -> [ArchiveEntryDescriptor] {
+        try withReader(archiveURL, password: password) { reader in
             var result: [ArchiveEntryDescriptor] = [], entry: OpaquePointer?
             while true {
                 try Task<Never, Never>.checkCancellation()
@@ -53,13 +55,13 @@ public struct ZipArchiveProvider: Sendable {
         }
     }
 
-    public func extract(_ archiveURL: URL, to destination: URL, limits: ArchiveExtractionLimits = .init(), progress: ArchiveProgressHandler? = nil) async throws -> ArchiveExtractionReport {
-        let worker = Task.detached(priority: .userInitiated) { try extractSynchronously(archiveURL, to: destination, limits: limits, progress: progress) }
+    public func extract(_ archiveURL: URL, to destination: URL, limits: ArchiveExtractionLimits = .init(), password: String? = nil, progress: ArchiveProgressHandler? = nil) async throws -> ArchiveExtractionReport {
+        let worker = Task.detached(priority: .userInitiated) { try extractSynchronously(archiveURL, to: destination, limits: limits, password: password, progress: progress) }
         return try await withTaskCancellationHandler(operation: { try await worker.value }, onCancel: { worker.cancel() })
     }
 
-    public func create(from sources: [URL], at archiveURL: URL, compressionLevel: ArchiveCompressionLevel? = nil, progress: ArchiveProgressHandler? = nil) async throws -> URL {
-        let worker = Task.detached(priority: .userInitiated) { try createSynchronously(from: sources, at: archiveURL, compressionLevel: compressionLevel, progress: progress) }
+    public func create(from sources: [URL], at archiveURL: URL, compressionLevel: ArchiveCompressionLevel? = nil, password: String? = nil, progress: ArchiveProgressHandler? = nil) async throws -> URL {
+        let worker = Task.detached(priority: .userInitiated) { try createSynchronously(from: sources, at: archiveURL, compressionLevel: compressionLevel, password: password, progress: progress) }
         return try await withTaskCancellationHandler(operation: { try await worker.value }, onCancel: { worker.cancel() })
     }
 }
@@ -72,10 +74,14 @@ private struct ZipSourceEntry {
     let permissions: Int
 }
 
-private func createSynchronously(from sourceURLs: [URL], at archiveURL: URL, compressionLevel: ArchiveCompressionLevel?, progress: ArchiveProgressHandler?) throws -> URL {
+private func createSynchronously(from sourceURLs: [URL], at archiveURL: URL, compressionLevel: ArchiveCompressionLevel?, password: String?, progress: ArchiveProgressHandler?) throws -> URL {
     let fm = FileManager.default, sources = sourceURLs.map(\.standardizedFileURL)
     guard let format = ArchiveFormat.detect(archiveURL), ArchiveCapabilityMatrix.capabilities(for: format).create,
           !sources.isEmpty, Set(sources).count == sources.count, !fm.fileExists(atPath: archiveURL.path) else { throw ZipArchiveError.invalidSource(archiveURL.path) }
+    if let password {
+        guard !password.isEmpty && !password.utf8.contains(0) else { throw ZipArchiveError.emptyPassword }
+        guard format == .zip else { throw ZipArchiveError.unsupportedEncryption }
+    }
     var planned: [ZipSourceEntry] = [], descriptors: [ArchiveEntryDescriptor] = []
     let keys: Set<URLResourceKey> = [.isDirectoryKey, .isRegularFileKey, .isSymbolicLinkKey, .fileSizeKey, .contentModificationDateKey]
     func append(_ url: URL, path: String) throws {
@@ -107,7 +113,7 @@ private func createSynchronously(from sourceURLs: [URL], at archiveURL: URL, com
     let parent = archiveURL.deletingLastPathComponent(); try fm.createDirectory(at: parent, withIntermediateDirectories: true)
     let staging = parent.appendingPathComponent(".files-create-\(UUID().uuidString).\(format.rawValue)")
     defer { try? fm.removeItem(at: staging) }
-    try withWriter(staging, format: format, compressionLevel: compressionLevel) { writer in
+    try withWriter(staging, format: format, compressionLevel: compressionLevel, password: password) { writer in
         for item in planned {
             try Task<Never, Never>.checkCancellation()
             guard let entry = archive_entry_new() else { throw ZipArchiveError.readFailed("cannot allocate archive entry") }
@@ -144,10 +150,10 @@ private func createSynchronously(from sourceURLs: [URL], at archiveURL: URL, com
     return archiveURL
 }
 
-private func extractSynchronously(_ archiveURL: URL, to destination: URL, limits: ArchiveExtractionLimits, progress: ArchiveProgressHandler?) throws -> ArchiveExtractionReport {
+private func extractSynchronously(_ archiveURL: URL, to destination: URL, limits: ArchiveExtractionLimits, password: String?, progress: ArchiveProgressHandler?) throws -> ArchiveExtractionReport {
     let fm = FileManager.default
     guard (try? destination.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true else { throw ZipArchiveError.destinationNotDirectory }
-    let provider = ZipArchiveProvider(), descriptors = try provider.entries(at: archiveURL)
+    let provider = ZipArchiveProvider(), descriptors = try provider.entries(at: archiveURL, password: password)
     let validated = try ArchiveExtractionValidator.validate(descriptors, limits: limits)
     let topLevel = Set(validated.compactMap { $0.relativePath.split(separator: "/").first.map(String.init) }).sorted()
     for name in topLevel where fm.fileExists(atPath: destination.appendingPathComponent(name).path) { throw ZipArchiveError.destinationConflict(name) }
@@ -157,7 +163,7 @@ private func extractSynchronously(_ archiveURL: URL, to destination: URL, limits
     var actualTotal: Int64 = 0
     let totalBytes = validated.reduce(Int64(0)) { $0 + $1.uncompressedSize }
     progress?(ArchiveProgress(phase: .reading, completedEntries: 0, totalEntries: validated.count, completedBytes: 0, totalBytes: totalBytes, currentPath: nil))
-    try withReader(archiveURL) { reader in
+    try withReader(archiveURL, password: password) { reader in
         var entry: OpaquePointer?, index = 0
         while true {
             try Task<Never, Never>.checkCancellation()
@@ -211,9 +217,13 @@ private func extractSynchronously(_ archiveURL: URL, to destination: URL, limits
     return ArchiveExtractionReport(entries: validated.count, extractedBytes: actualTotal, publishedURLs: published)
 }
 
-private func withReader<T>(_ url: URL, _ body: (OpaquePointer) throws -> T) throws -> T {
+private func withReader<T>(_ url: URL, password: String?, _ body: (OpaquePointer) throws -> T) throws -> T {
     guard let reader = archive_read_new() else { throw ZipArchiveError.cannotOpen(url.path) }
     defer { archive_read_close(reader); archive_read_free(reader) }
+    if let password {
+        guard !password.isEmpty && !password.utf8.contains(0) else { throw ZipArchiveError.emptyPassword }
+        guard archive_read_add_passphrase(reader, password) == FILES_ARCHIVE_OK else { throw ZipArchiveError.cannotOpen(errorText(reader)) }
+    }
     archive_read_support_filter_all(reader)
     switch ArchiveFormat.detect(url) {
     case .zip: archive_read_support_format_zip(reader)
@@ -228,9 +238,10 @@ private func withReader<T>(_ url: URL, _ body: (OpaquePointer) throws -> T) thro
     return try body(reader)
 }
 
-private func withWriter<T>(_ url: URL, format: ArchiveFormat, compressionLevel: ArchiveCompressionLevel?, _ body: (OpaquePointer) throws -> T) throws -> T {
+private func withWriter<T>(_ url: URL, format: ArchiveFormat, compressionLevel: ArchiveCompressionLevel?, password: String?, _ body: (OpaquePointer) throws -> T) throws -> T {
     guard let writer = archive_write_new() else { throw ZipArchiveError.cannotOpen(url.path) }
-    defer { archive_write_close(writer); archive_write_free(writer) }
+    // free also closes an unfinished writer when the body throws.
+    defer { archive_write_free(writer) }
     let formatStatus = format == .zip ? archive_write_set_format_zip(writer) : archive_write_set_format_7zip(writer)
     guard formatStatus == FILES_ARCHIVE_OK,
           archive_write_add_filter_none(writer) == FILES_ARCHIVE_OK else { throw ZipArchiveError.cannotOpen(errorText(writer)) }
@@ -241,9 +252,15 @@ private func withWriter<T>(_ url: URL, format: ArchiveFormat, compressionLevel: 
             throw ZipArchiveError.cannotOpen(errorText(writer))
         }
     }
+    if let password {
+        guard archive_write_set_format_option(writer, nil, "encryption", "aes256") == FILES_ARCHIVE_OK,
+              archive_write_set_passphrase(writer, password) == FILES_ARCHIVE_OK else { throw ZipArchiveError.cannotOpen(errorText(writer)) }
+    }
     let status = url.withUnsafeFileSystemRepresentation { path in archive_write_open_filename(writer, path) }
     guard status == FILES_ARCHIVE_OK else { throw ZipArchiveError.cannotOpen(errorText(writer)) }
-    return try body(writer)
+    let result = try body(writer)
+    guard archive_write_close(writer) == FILES_ARCHIVE_OK else { throw ZipArchiveError.readFailed(errorText(writer)) }
+    return result
 }
 
 private func descriptor(_ entry: OpaquePointer) throws -> ArchiveEntryDescriptor {
@@ -260,7 +277,7 @@ private func descriptor(_ entry: OpaquePointer) throws -> ArchiveEntryDescriptor
         default: kind = .other
         }
     }
-    return ArchiveEntryDescriptor(path: path, kind: kind, uncompressedSize: size)
+    return ArchiveEntryDescriptor(path: path, kind: kind, uncompressedSize: size, isEncrypted: archive_entry_is_encrypted(entry) > 0)
 }
 
 private func errorText(_ reader: OpaquePointer) -> String {
