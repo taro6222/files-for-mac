@@ -1,0 +1,93 @@
+{
+  "sourceBase": "7da2fd7c6c7339d6310aeb3fbaac7602a613a1b5",
+  "releaseComplete": false,
+  "change": "DEBUG-only early Git sampling; non-DEBUG content identical to sourceBase",
+  "deadlineSeconds": 10,
+  "defaultSamplingAfterMS": 1000,
+  "localSamplingAfterMS": 10,
+  "sourceSHA256": {
+    "Sources/FilesMac/BrowserWindow.swift": "274655df352183fe8a898c45689eb269ea8913d8beea8c5f977734d311290eb8",
+    "Sources/FilesMac/GitWindow.swift": "a38143c527c2ea38dda047782cfd1b252a07c4c3d56b8f858f76104ea14b6284"
+  },
+  "binarySHA256": "d5ceb839b3867f598f1ff0cb5c702d4f178d03b98ce980287c141fbc05d5ad10",
+  "logsSHA256": {
+    "build/git-early-338-build.log": "5fb36b194063fc96577f2352d42f7ae0310c224b5a57226af8816ceeb5d39e85",
+    "build/git-early-338-ui.log": "a70d04900204ffff5ff5672093e1a664e1d6b26c777e6571aa5e40197429aab4",
+    "build/git-early-338-parity.log": "f2e8f311d376fa306990bf6651b074ea8c5cdac5bfc49dd049df9ac2a1b96f01"
+  },
+  "reports": [
+    {
+      "combination": "en-dark",
+      "checks": 306,
+      "reportSHA256": "5a18aefeb7fff340a3b9d039b8a48f7ebfa4b730c26b5e3b169fa624c5768537",
+      "waitSeconds": 0.303493292,
+      "samplingStartedSeconds": 0.012181417,
+      "sampling": {
+        "findGitChildren": 1,
+        "parentSample": 0
+      },
+      "parentSampleSHA256": "49c645a1031aacba128734d3a7788a2cc7e37e8657e2a5cb54fd9fdedb241072"
+    },
+    {
+      "combination": "en-light",
+      "checks": 306,
+      "reportSHA256": "116eb1a2e3818c5ecbc4208e61b6afb0a15a9dfb9145c36b7a25e0c6ddbffccc",
+      "waitSeconds": 0.297614709,
+      "samplingStartedSeconds": 0.010509,
+      "sampling": {
+        "findGitChildren": 1,
+        "parentSample": 0
+      },
+      "parentSampleSHA256": "1f4bde6f6f01f7f26af2eb2d0122fa868bc30bacd833d6103c7cb5832727f6ab"
+    },
+    {
+      "combination": "ko-dark",
+      "checks": 306,
+      "reportSHA256": "80fd6ca8be34326f25c6da7acfd0e1a4e0883f1127dc7022ed0945dd2e9713a9",
+      "waitSeconds": 0.421204083,
+      "samplingStartedSeconds": 0.012202375,
+      "sampling": {
+        "findGitChildren": 1,
+        "parentSample": 0
+      },
+      "parentSampleSHA256": "f5b6f991d4e08c391b1f35c2a5e5828cc716e02aec9d70f11945600c099ea1c4"
+    },
+    {
+      "combination": "ko-light",
+      "checks": 306,
+      "reportSHA256": "d5e3e1706a0ccaf08f4313fa007ce74b13dba6205cdbbcebf8d6216367c3d028",
+      "waitSeconds": 0.400451917,
+      "samplingStartedSeconds": 0.012183583,
+      "sampling": {
+        "findGitChildren": 1,
+        "parentSample": 0
+      },
+      "parentSampleSHA256": "1eb1a675b1f1fd5a2be56bf1f27e044fe7c7d275a0a6aaa8bb3c5d186b9ce3c3"
+    },
+    {
+      "combination": "tabs-en-dark",
+      "checks": 18,
+      "reportSHA256": "c336c66ffa5615d15ce0ad8170538ddff2d86cefbb915dd613652aef3c4d8698"
+    },
+    {
+      "combination": "tabs-en-light",
+      "checks": 18,
+      "reportSHA256": "8c264c2a29119eb2daf0ea2712c24b4be6ec4fa7c3f0f318ef2bc5a95b7dccc3"
+    },
+    {
+      "combination": "tabs-ko-dark",
+      "checks": 18,
+      "reportSHA256": "f9e4644de8b42404017c390334d5bb70e231d287107ede7b437aa36ef7820105"
+    },
+    {
+      "combination": "tabs-ko-light",
+      "checks": 18,
+      "reportSHA256": "5b008d20c14072811f18b76134b1c3416b0e5965e58149ded52f3fba9b860b27"
+    }
+  ],
+  "limitations": [
+    "CI intermittent initial Git snapshot delay unresolved",
+    "sampling may affect timing; no performance acceptance",
+    "physical input, VoiceOver, supported environments and signed release not accepted"
+  ]
+}

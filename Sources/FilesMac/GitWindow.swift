@@ -167,6 +167,7 @@ final class GitWindow: NSWindowController, NSTableViewDataSource, NSTableViewDel
          "rowCount": snapshot?.entries.count ?? 0]
     }
     var qaLoaded: Bool { task == nil && snapshot != nil }
+    var qaRunning: Bool { task != nil }
     var qaRowCount: Int { snapshot?.entries.count ?? 0 }
     var qaBranch: String? { snapshot?.branch }
     func qaShowsPath(_ path: String, as renderedPath: String) -> Bool {

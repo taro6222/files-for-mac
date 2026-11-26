@@ -4950,11 +4950,25 @@ extension BrowserWindow {
                 window.makeKeyAndOrderFront(nil)
                 let gitPanel = GitWindow(); gitPanel.present(location: URL(fileURLWithPath: fm.currentDirectoryPath, isDirectory: true))
                 let gitLoad = ContinuousClock.now
-                while !gitPanel.qaLoaded && gitLoad.duration(to: .now) < .seconds(10) { try await Task.sleep(for: .milliseconds(10)) }
+                let traceAfterMS = min(9_000, max(0, Int(ProcessInfo.processInfo.environment["FILES_GIT_TRACE_AFTER_MS"] ?? "1000") ?? 1_000))
+                var gitSampling: Task<[String: Int32], Never>?
+                while !gitPanel.qaLoaded && gitLoad.duration(to: .now) < .seconds(10) {
+                    if gitSampling == nil, gitPanel.qaRunning, gitLoad.duration(to: .now) >= .milliseconds(traceAfterMS) {
+                        let directory = destination.appendingPathComponent("git-window-timeout", isDirectory: true)
+                        try fm.createDirectory(at: directory, withIntermediateDirectories: true)
+                        diagnostics["gitWindowSamplingStartedSeconds"] = elapsed(gitLoad)
+                        diagnostics["gitWindowAtSamplingStart"] = gitPanel.qaLoadDiagnostic
+                        gitSampling = Task { await GitCloneWindow.qaCaptureTimeout(in: directory) }
+                    }
+                    try await Task.sleep(for: .milliseconds(10))
+                }
+                // Freeze the original deadline result before awaiting diagnostic tools.
                 checks["gitWindow"] = gitPanel.window?.isVisible == true && gitPanel.qaLoaded && gitPanel.qaBranch != nil
                 diagnostics["gitWindowWaitSeconds"] = elapsed(gitLoad)
                 diagnostics["gitWindowBeforeCleanup"] = gitPanel.qaLoadDiagnostic
-                if checks["gitWindow"] == false {
+                if let gitSampling {
+                    diagnostics["gitWindowEarlySampling"] = await gitSampling.value
+                } else if checks["gitWindow"] == false {
                     let sampling = destination.appendingPathComponent("git-window-timeout", isDirectory: true)
                     try fm.createDirectory(at: sampling, withIntermediateDirectories: true)
                     diagnostics["gitWindowTimeoutSampling"] = await GitCloneWindow.qaCaptureTimeout(in: sampling)
