@@ -2,6 +2,8 @@
 
 상태: 357단계에서 생성 입력도 부모 FD 공급으로 연결해 제품의 읽기·생성에서 SDK가 원본 경로를 직접 열지 않게 했다. [357단계](verification/m7/INCREMENT_357.md)를 따른다. 파일/네트워크 권한·자원 격리·메타데이터·최신 원격/지원 환경과 정식 출시는 미완료다.
 
+[358단계](verification/m7/INCREMENT_358.md)는 부모의 독립 메모리 관찰과 초과 helper 종료·회수, 한/영 오류 안내를 연결했다. 새 번들 47개 검사가 통과했고 목록·추출·일반/분할 생성의 원본 보존과 미게시를 확인했다. 표본 관찰은 할당 하드 상한이 아니며 파일/네트워크 권한·CPU/프로세스 트리 격리·메타데이터·최신 지원 환경과 정식 출시는 미완료다. 로컬 GUI/장시간 시험은 재시작하지 않았다.
+
 [345단계](verification/m7/INCREMENT_345.md)는 고정 SDK에서 두 CPU helper를 빌드하고 ARM에서 실제 암호화 아카이브와 프레임/동일 원본 검증 34개를 통과했다. `Tools/SevenZipWorker`의 UInt32 big-endian 길이 + JSON(version 1) list/close 경계로 시작했다. 최초 요청은 archivePath/password, 후속 요청은 session UUID를 사용한다. 목록 반복은 열린 FD를 유지하며 원본 변경은 거부한다. 소스 FD의 부모 전달은 아직 남아 있으며 제품 번들 포함은 후속 348단계에서 구현했다.
 
 [346단계](verification/m7/INCREMENT_346.md)는 같은 session의 extract(index, expectedSize, maximumBytes)를 추가했다. 실행 시 `--output-fd N`으로 전달된 쓰기 전용 파이프에만 파일 데이터를 보내며 아카이브 경로로 출력 파일을 열지 않는다. 단일 파일 한도는 기존 Core 기본 한도와 같은 8,000,000,000바이트다. regular item·선언 크기·상한·원본 변경·SDK 최종 CRC/오류 결과를 검사한다. 응답의 written은 성공 시 정확한 크기이며 실패 시 일부 출력이 존재할 수 있다. 부모는 실패한 stream 전체를 버려야 한다. 346단계의 단독 helper에서 제품의 경로/총량 검증·staging 게시·취소 연결은 후속 사항이었으며 아래 347단계에서 일부를 연결했다. 메모리/권한 격리는 계속 남아 있다.

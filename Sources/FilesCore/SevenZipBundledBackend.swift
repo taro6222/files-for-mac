@@ -9,8 +9,9 @@ public enum SevenZipBundleError: Error, Sendable, Equatable {
 
 extension SevenZipArchiveProvider {
     /// Resolve sealed private code without executing a shell, Python, or code from PATH.
-    public static func bundled(in app: URL = Bundle.main.bundleURL, timeout: TimeInterval = 300) async throws -> Self {
-        guard timeout.isFinite, timeout > 0, timeout <= 86_400 else { throw SevenZipWorkerError.invalidConfiguration }
+    public static func bundled(in app: URL = Bundle.main.bundleURL, timeout: TimeInterval = 300,
+                               maximumPhysicalFootprintBytes: UInt64 = Self.defaultMaximumPhysicalFootprintBytes) async throws -> Self {
+        guard timeout.isFinite, timeout > 0, timeout <= 86_400, maximumPhysicalFootprintBytes > 0 else { throw SevenZipWorkerError.invalidConfiguration }
         let cancellation = SevenZipBundleCancellation()
         return try await withTaskCancellationHandler(operation: {
             try Task.checkCancellation()
@@ -18,7 +19,8 @@ extension SevenZipArchiveProvider {
                 DispatchQueue.global(qos: .userInitiated).async {
                     continuation.resume(with: Result {
                         let locations = try SevenZipBundleVerifier.verify(app, check: cancellation.check)
-                        return Self(verifiedExecutable: locations.worker, library: locations.library, bundle: app, identity: locations.identity, timeout: timeout)
+                        return Self(verifiedExecutable: locations.worker, library: locations.library, bundle: app, identity: locations.identity, timeout: timeout,
+                                    maximumPhysicalFootprintBytes: maximumPhysicalFootprintBytes)
                     })
                 }
             }

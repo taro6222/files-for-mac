@@ -46,6 +46,8 @@ func archiveErrorMessage(_ error: Error) -> String {
         return L("일부 결과가 변경되어 되돌리지 않았습니다. 다음 위치를 확인하세요: ", "Some results changed and were preserved. Inspect: ") + ([staging] + published).map(\.path).joined(separator: " · ")
     case is SevenZipBundleError, SevenZipWorkerError.unavailable:
         return L("압축 구성 요소를 확인할 수 없습니다. 앱을 다시 설치한 뒤 시도하세요.", "The archive components could not be verified. Reinstall the app and try again.")
+    case SevenZipWorkerError.memoryLimitExceeded:
+        return L("압축 작업의 메모리 사용량이 제한을 초과해 중단했습니다. 생성 중이었다면 압축 수준·사전 크기·스레드 수를 줄여 다시 시도하세요.", "The archive operation exceeded its memory budget and was stopped. If creating an archive, try a lower compression level, dictionary size, or thread count.")
     case SevenZipWorkerError.timedOut:
         return L("압축 처리 제한 시간이 지나 중단했습니다. 다른 파일을 선택하거나 다시 시도하세요.", "Archive processing timed out. Choose another file or try again.")
     case is SevenZipWorkerError:

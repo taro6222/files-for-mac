@@ -1,0 +1,774 @@
+{
+  "increment": 358,
+  "status": "parent memory observation and excess-usage termination verified; M7 incomplete",
+  "policy": {
+    "sampleIntervalMilliseconds": 25,
+    "timerLeewayMilliseconds": 5,
+    "defaultBytes": "max(256 MiB, physicalMemory / 2)",
+    "allocationHardLimit": false,
+    "testBudgetBytes": 33554432,
+    "testAllocationBytes": 67108864,
+    "testedOperations": [
+      "list",
+      "extract",
+      "create",
+      "splitCreate"
+    ]
+  },
+  "sourcesSHA256": {
+    "Sources/FilesCore/SevenZipArchiveProvider.swift": "d25ee0bff411253ee3445d9cc720dd795ff4c14a5a1cdf7708a880713f3c24c8",
+    "Sources/FilesCore/SevenZipBundledBackend.swift": "c658238f811c558172be1dcc130499d6f0e0f066e63000b6d272011cc3edfef4",
+    "Sources/FilesMac/ArchiveErrorPresentation.swift": "fcfbd714a786f0a7b4a9d6d0203bc2da7528297e7e42e1c35d8649979e35a4bf",
+    "Tests/FilesCoreTests/SevenZipArchiveProviderTests.swift": "437438d5313935bad8edfc2e92e95d38a6fa1e21c1b5ecd681eef493e2b479ec",
+    "scripts/verify-sevenzip-client.py": "c2f170f790e0e5b54e07f82775d64fd4bbc73e66a7cc61736ca458508de5b5fd"
+  },
+  "packagedClient": {
+    "passed": true,
+    "exitCode": 0,
+    "timedOut": false,
+    "tests": {
+      "sevenZipSDKMemoryBudgetKillsAndReapsWithoutPublishing": true,
+      "sevenZipSDKRejectsZeroMemoryBudgetBeforeLaunching": true,
+      "sevenZipCreationBrokerRejectsInvalidAndTruncatedRequests": true,
+      "sevenZipCreationBrokerKeepsPlannedIdentityAndReadOnlyAccess": true,
+      "sevenZipSDKCreationBrokerManyInputsAndPreflightPreserveSources": true,
+      "sevenZipReadBrokerPinsDirectoryAndRejectsChangedNames": true,
+      "sevenZipSDKReadBrokerHandlesSymlinkAndSearchOnlyDirectory": true,
+      "sevenZipSplitPreferencesPersistAndImportTransactionally": true,
+      "sevenZipSplitHistoryPreservesInvalidAndOfflineRecords": true,
+      "sevenZipSplitFrameValidationAndForeignStagingPreservation": true,
+      "sevenZipSDKSplitCreationAndCommittedJournal": true,
+      "sevenZipSDKSplitConflictsChangesAndCancellationPreserveData": true,
+      "sevenZipSDKSplitProcessRestartRecoveryAndAmbiguousIntent": true,
+      "archiveExtractionPlacementMatchesSmartTopLevelRules": true,
+      "sevenZipVolumeNamesDetectionAndSelectionNormalization": true,
+      "sevenZipSDKSplitVolumesRoundTripFromAnyPartAndAcrossTinyHeaders": true,
+      "sevenZipSDKSplitMissingTruncatedAndLinkedPartsNeverPublish": true,
+      "sevenZipSDKAdvancedOptionsChangeDictionaryAndRestorePayload": true,
+      "sevenZipOptionsAndCreationFormatPersistAndImportTransactionally": true,
+      "sevenZipMemoryEstimateHandlesStoreAndMaximumChoices": true,
+      "sevenZipSDKCreationLevelsPasswordAndIndependentExtraction": true,
+      "sevenZipSDKCreationPlanRejectsLinksAndDuplicatePaths": true,
+      "sevenZipSDKCreationSourceChangeAndDestinationRacePreserveData": true,
+      "sevenZipSDKCreationCancellationBeforePublicationDiscardsOutput": true,
+      "sevenZipSDKFramedClientRejectsMalformedReplies": true,
+      "sevenZipSDKFragmentedReplyAndClose": true,
+      "sevenZipSDKEOFOnDiagnosticPipeIsNotDiagnosticData": true,
+      "sevenZipSDKTimeoutAndCancellationReapOwnedChild": true,
+      "sevenZipSDKValidatesPathsBeforeStaging": true,
+      "sevenZipSDKEncryptedRoundTripAndFailureStaging": true,
+      "sevenZipSDKCorruptionAndLinksNeverPublish": true,
+      "sevenZipSDKPublicationConflictAndForeignStagingPreservation": true,
+      "sevenZipSDKCancellationBeforePublicationDiscardsStaging": true,
+      "sevenZipSDKBundleManifestRejectsUntrustedMetadata": true,
+      "sevenZipSDKBundleRejectsMissingLinksAndNonregularManifest": true,
+      "sevenZipSDKBundleCancellationAndInvalidTimeout": true,
+      "sevenZipSDKBundleDeveloperIDRequirementRejectsInvalidTeam": true,
+      "sevenZipSDKBundleBindsExecutingHostIdentity": true,
+      "sevenZipSDKExistingDirectoryExtractionPreservesUnrelatedItems": true,
+      "sevenZipSDKExistingDirectoryConflictRollsBackOwnedPublication": true,
+      "sevenZipSDKExistingDirectoryChangedPublicationIsPreserved": true,
+      "sevenZipSDKExistingDirectoryCancellationRollsBackPublication": true,
+      "sevenZipSDKBundleResolutionAndUse": true,
+      "sevenZipSDKBundleRejectsResealedHashMismatch": true,
+      "sevenZipSDKBundleRejectsAdhocStableAndWrongIdentity": true,
+      "sevenZipSDKBundleRejectsResealedSourcePinAndExtraFile": true,
+      "sevenZipSDKBundlePinsSelectedRevisionAcrossResigning": true
+    },
+    "sourcesSHA256": {
+      "Sources/FilesCore/SevenZipReadSource.swift": "b306f2ffa3b7573e18252469b172cf4c918a4991cab0f92d870cb1c9086fff81",
+      "Sources/FilesCore/ArchiveSplitSize.swift": "13363971a1fc84c06ac1128ef04bb96d4bc3885694d94e8479f02beb644747ac",
+      "Sources/FilesCore/SevenZipSplitJournalSummary.swift": "12d60fea6fd9bea25e19fa461fcb6d5206148f1323da6c6dd865067bd8354882",
+      "Sources/FilesCore/SevenZipSplitStaging.swift": "0713c19d0eb4336553c64158623dfd1dbea6a1e3877eef36a783d35ab8fc6a48",
+      "Tools/SplitCreationProbe/main.swift": "0ff1b31575aa896885a49d9d485569a6714c82324c3a43211a2e9d51188f0503",
+      "Package.swift": "fa5a1e7b2ca328c06a81cb916b51425004f307ad963829a792851010a16ae68f",
+      "Sources/FilesCore/SevenZipVolumes.swift": "70b36e51a14bea88614b8b3ccc93aaf958f2d585cce4eec9d36c02e90b5a9c40",
+      "Sources/FilesCore/SevenZipCompressionOptions.swift": "617287236bc070657bee6204c2ee82d6f36e97c5edf852f885e37f55d4803858",
+      "Sources/FilesCore/BrowserPreferences.swift": "4ab76756e8b5669195e94b1b1aa7de5bac0107c787473d24b401d8a2592cf7e2",
+      "Sources/FilesCore/SevenZipCreationPlan.swift": "52c5685a6cc9e67ad9bc8e45f63471b64542ca9204f60c2e2ecfd8e53ea2b160",
+      "Sources/FilesCore/SevenZipArchiveProvider.swift": "d25ee0bff411253ee3445d9cc720dd795ff4c14a5a1cdf7708a880713f3c24c8",
+      "Sources/FilesCore/SevenZipBundledBackend.swift": "c658238f811c558172be1dcc130499d6f0e0f066e63000b6d272011cc3edfef4",
+      "Tests/FilesCoreTests/SevenZipArchiveProviderTests.swift": "437438d5313935bad8edfc2e92e95d38a6fa1e21c1b5ecd681eef493e2b479ec",
+      "Tests/FilesCoreTests/SevenZipBundledBackendTests.swift": "592a239960e1d486d2c1c86a63f2a246f0f85d9240e531f05de80eb99f8846ac"
+    },
+    "workerManifest": {
+      "version": 1,
+      "SDKVersion": "26.06",
+      "SDKSourceSHA256": "a4e374c8f864f51df48c2cfd0e1413ec3b2ea030deae852d6a655402ebb61ac4",
+      "architectures": [
+        "arm64"
+      ],
+      "builds": {
+        "arm64": {
+          "fingerprint": "babf3eb47b6272b9eace5205df2882ec4547ff789673de5ec326dc58926d7570",
+          "inputs": {
+            "SDKVersion": "26.06",
+            "SDKSourceSHA256": "a4e374c8f864f51df48c2cfd0e1413ec3b2ea030deae852d6a655402ebb61ac4",
+            "architecture": "arm64",
+            "minimumOS": "14.0",
+            "compiler": "Apple clang version 21.0.0 (clang-2100.4.1.1)\nTarget: arm64-apple-darwin27.2.0\nThread model: posix\nInstalledDir: /Library/Developer/CommandLineTools/usr/bin",
+            "AppleSDK": "27.2",
+            "buildRecipeSHA256": "afe0d0bc6dc0c10236fd21b2b35d5a98d50fa1a53e29aca6af21224dcdc6b7f8",
+            "helperSourcesSHA256": {
+              "ArchiveSDK.h": "ab9e343fb9bda3915cf12d4a2694453e0be8a64ce3415ae49678f6b24ec4ad2e",
+              "ArchiveSDK.cpp": "0976230b1644a2c280d0b3b140a0903d13774a014479f32de19c14b83d263150",
+              "main.mm": "a450042c0e176ec79db7164d361a4b94b7a780d7c0d708f75d7bfa8b6d3aea89"
+            }
+          },
+          "filesSHA256": {
+            "SevenZipWorker": "eaf1ac895fad23957f906d8c463d84d332e597c223e1c236be5db0cddb3841cd",
+            "7z.so": "4873073e0113f41efcac833b7389f171708583335211c6530a8015302968b2e7",
+            "License.txt": "9ac2b4a97ab5d523965534d8b2d5868e511b39096d51fff458ab72c38b80fccc",
+            "build.log": "95dc420ffb4a0e346b871b38b19701ee63d93e59b528235517c2d0d792f990af"
+          }
+        }
+      },
+      "filesSHA256": {
+        "Contents/Helpers/SevenZipWorker": "de8bfa408d9c17011c24868bb3ad7657e9b497a83d5dbb06cee685a870b36ac0",
+        "Contents/Frameworks/7z.so": "24c06bfc782904541c7739ed736252cf8f26a2d5027115e3abeb7d286dd6ab46",
+        "Contents/Resources/ThirdParty/7zip/License.txt": "9ac2b4a97ab5d523965534d8b2d5868e511b39096d51fff458ab72c38b80fccc",
+        "Contents/Resources/ThirdParty/7zip/copying.txt": "1e7e6bae5a5bde32f1ae5a7c37a082d1ab03cf89354f7f936ac40be9e39a6531",
+        "Contents/Resources/ThirdParty/7zip/unRarLicense.txt": "17bd9fa4399092c777536fff045b41df76ec9d2ac4c9b8e7345d3b8b6ccc7976",
+        "Contents/Resources/ThirdParty/7zip/readme.txt": "20ad51b9e8c2bc859baf9c65d3d0fe04efc9cf52da97985991959c0fc6ae64ae",
+        "Contents/Resources/ThirdParty/7zip/7z2606-src.tar.xz": "a4e374c8f864f51df48c2cfd0e1413ec3b2ea030deae852d6a655402ebb61ac4",
+        "Contents/Resources/ThirdParty/7zip/BUILD.md": "4acf19456fa9ffb450099e11d4ad3f09849685a42fcee66f9ccc84344a02b63b",
+        "Contents/Resources/ThirdParty/7zip/Sources/LICENSE.txt": "8d81d3ba53241930c1afa5653701ac8dd9055b0037abd1ed0597bc8f0ad37114",
+        "Contents/Resources/ThirdParty/7zip/Sources/Tools/SevenZipWorker/ArchiveSDK.h": "ab9e343fb9bda3915cf12d4a2694453e0be8a64ce3415ae49678f6b24ec4ad2e",
+        "Contents/Resources/ThirdParty/7zip/Sources/Tools/SevenZipWorker/ArchiveSDK.cpp": "0976230b1644a2c280d0b3b140a0903d13774a014479f32de19c14b83d263150",
+        "Contents/Resources/ThirdParty/7zip/Sources/Tools/SevenZipWorker/main.mm": "a450042c0e176ec79db7164d361a4b94b7a780d7c0d708f75d7bfa8b6d3aea89",
+        "Contents/Resources/ThirdParty/7zip/Sources/scripts/build-sevenzip-worker.py": "afe0d0bc6dc0c10236fd21b2b35d5a98d50fa1a53e29aca6af21224dcdc6b7f8",
+        "Contents/Resources/ThirdParty/7zip/Sources/scripts/sevenzip_reference.py": "21aaed1dccf4a316b39d9e9e8395f21162d0896be9008cf39c8b834d77981597"
+      }
+    },
+    "referenceManifest": {
+      "version": "26.06",
+      "architecture": "arm64",
+      "archiveURL": "https://github.com/ip7z/7zip/releases/download/26.06/7z2606-mac.tar.xz",
+      "archiveSHA256": "b6f17920b4240940461dac8ef4009891881ac44d2a5ead625ede2ec8472185dd",
+      "sourceURL": "https://github.com/ip7z/7zip/releases/download/26.06/7z2606-src.tar.xz",
+      "sourceSHA256": "a4e374c8f864f51df48c2cfd0e1413ec3b2ea030deae852d6a655402ebb61ac4",
+      "filesSHA256": {
+        "7zz": "56cf8eb2fdc6f9c0ac5d7a3cd238505814ac8ed6b88a7c64a7e3256036252c60",
+        "License.txt": "1790374e5352329cedb46ee3808930a88e9ca2f08b82b10fcf5cf605d2c301b1",
+        "readme.txt": "79aa0fedbfb43f32d60858c8f13f42afc025adf19bf3e7ed66a7c55f451eae45"
+      }
+    },
+    "productUIIntegration": false
+  },
+  "evidenceSHA256": {
+    "build/sevenzip-358-resource/debug-final.log": "3cc79ce69abf3b25932b6c4e4a08fc3def8bff593c9b401d762eb5fa62547bf3",
+    "build/sevenzip-358-resource/tests-final-build.log": "222229e0e65780271e8f25f54bb98c7480bf64be65272ba2ce6bda110a183f4d",
+    "build/sevenzip-358-resource/package.log": "7ea07529e636cc74d9509eed46aebf9bc324728c83f53e07f96127de1644b7ba",
+    "build/sevenzip-358-resource/package-final.log": "063a3bd87b617add64fdac27369172bb78f810a16b0d00ca74fa6a5cd0cd6e0d",
+    "build/sevenzip-358-resource/packaged-client/run.log": "1e1e34ee0eb97dbe2162c089d4ce0671cdb6d8cc30ee59b4349fed04a9c31652",
+    "build/sevenzip-358-resource/packaged-client-final/run.log": "8aee2384e4770e2895137aa25e55b0232af5da824ed212180c4442fcca8ebe0d",
+    "build/sevenzip-358-resource/packaged-client-verified/run.log": "a3c9d25f5130e5f0493786be82abed45fcfc2bb657ea89e99bbacb07cf0cff9c",
+    "build/sevenzip-358-resource/packaged-client-verified/stderr.log": "5e9a5c404c53b0d815e221b2323b7516126a0a81e03cc6c89194cb89c5ace922"
+  },
+  "appExecutableSHA256": "b2ee893cbcede6d7c04e8b0760d99fcbf41fd738f8ff702934e1aceb0989ba87",
+  "remote357Observed": {
+    "conclusion": "",
+    "headSha": "89c26e35e97cd564f9836ccafdb33e2ba08452f2",
+    "jobs": [
+      {
+        "completedAt": "0001-01-01T00:00:00Z",
+        "conclusion": "",
+        "databaseId": 139927262938,
+        "name": "macOS 15 (arm64)",
+        "startedAt": "2026-11-26T13:06:51Z",
+        "status": "in_progress",
+        "steps": [
+          {
+            "completedAt": "2026-11-26T13:06:54Z",
+            "conclusion": "success",
+            "name": "Set up job",
+            "number": 1,
+            "startedAt": "2026-11-26T13:06:52Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-11-26T13:06:57Z",
+            "conclusion": "success",
+            "name": "Run actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803",
+            "number": 2,
+            "startedAt": "2026-11-26T13:06:54Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-11-26T13:07:03Z",
+            "conclusion": "success",
+            "name": "Verify runner and toolchain",
+            "number": 3,
+            "startedAt": "2026-11-26T13:06:57Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-11-26T13:07:03Z",
+            "conclusion": "success",
+            "name": "Audit parity inventories",
+            "number": 4,
+            "startedAt": "2026-11-26T13:07:03Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-11-26T13:07:04Z",
+            "conclusion": "success",
+            "name": "Verify Spotlight fixture ownership guards",
+            "number": 5,
+            "startedAt": "2026-11-26T13:07:03Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-11-26T13:07:05Z",
+            "conclusion": "success",
+            "name": "Verify archive reference acquisition guards",
+            "number": 6,
+            "startedAt": "2026-11-26T13:07:04Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-11-26T13:07:06Z",
+            "conclusion": "success",
+            "name": "Verify private SDK bundle guards",
+            "number": 7,
+            "startedAt": "2026-11-26T13:07:05Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-11-26T13:07:06Z",
+            "conclusion": "skipped",
+            "name": "Build and verify the structured 7z SDK worker",
+            "number": 8,
+            "startedAt": "2026-11-26T13:07:06Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-11-26T13:07:06Z",
+            "conclusion": "skipped",
+            "name": "Retain structured archive worker verification",
+            "number": 9,
+            "startedAt": "2026-11-26T13:07:06Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "0001-01-01T00:00:00Z",
+            "conclusion": "",
+            "name": "Build app and test targets",
+            "number": 10,
+            "startedAt": "2026-11-26T13:07:06Z",
+            "status": "in_progress"
+          },
+          {
+            "completedAt": "0001-01-01T00:00:00Z",
+            "conclusion": "",
+            "name": "Run Swift tests",
+            "number": 11,
+            "startedAt": "0001-01-01T00:00:00Z",
+            "status": "pending"
+          },
+          {
+            "completedAt": "0001-01-01T00:00:00Z",
+            "conclusion": "",
+            "name": "Verify Git and directory scheduling with a constrained Swift executor",
+            "number": 12,
+            "startedAt": "0001-01-01T00:00:00Z",
+            "status": "pending"
+          },
+          {
+            "completedAt": "0001-01-01T00:00:00Z",
+            "conclusion": "",
+            "name": "Verify archives with the pinned official 7-Zip reference",
+            "number": 13,
+            "startedAt": "0001-01-01T00:00:00Z",
+            "status": "pending"
+          },
+          {
+            "completedAt": "0001-01-01T00:00:00Z",
+            "conclusion": "",
+            "name": "Retain independent archive verification",
+            "number": 14,
+            "startedAt": "0001-01-01T00:00:00Z",
+            "status": "pending"
+          },
+          {
+            "completedAt": "0001-01-01T00:00:00Z",
+            "conclusion": "",
+            "name": "Verify Swift SDK client and safe directory publication",
+            "number": 15,
+            "startedAt": "0001-01-01T00:00:00Z",
+            "status": "pending"
+          },
+          {
+            "completedAt": "0001-01-01T00:00:00Z",
+            "conclusion": "",
+            "name": "Retain Swift archive client verification",
+            "number": 16,
+            "startedAt": "0001-01-01T00:00:00Z",
+            "status": "pending"
+          },
+          {
+            "completedAt": "0001-01-01T00:00:00Z",
+            "conclusion": "",
+            "name": "Verify unmounted Spotlight image cleanup",
+            "number": 17,
+            "startedAt": "0001-01-01T00:00:00Z",
+            "status": "pending"
+          },
+          {
+            "completedAt": "0001-01-01T00:00:00Z",
+            "conclusion": "",
+            "name": "Retain Git scheduling diagnostics",
+            "number": 18,
+            "startedAt": "0001-01-01T00:00:00Z",
+            "status": "pending"
+          },
+          {
+            "completedAt": "0001-01-01T00:00:00Z",
+            "conclusion": "",
+            "name": "Verify mounted file systems and AppKit file operations",
+            "number": 19,
+            "startedAt": "0001-01-01T00:00:00Z",
+            "status": "pending"
+          },
+          {
+            "completedAt": "0001-01-01T00:00:00Z",
+            "conclusion": "",
+            "name": "Verify AppKit file promise export contracts",
+            "number": 20,
+            "startedAt": "0001-01-01T00:00:00Z",
+            "status": "pending"
+          },
+          {
+            "completedAt": "0001-01-01T00:00:00Z",
+            "conclusion": "",
+            "name": "Retain file promise contract diagnostics",
+            "number": 21,
+            "startedAt": "0001-01-01T00:00:00Z",
+            "status": "pending"
+          },
+          {
+            "completedAt": "0001-01-01T00:00:00Z",
+            "conclusion": "",
+            "name": "Verify interrupted received cleanup in a fresh app process",
+            "number": 22,
+            "startedAt": "0001-01-01T00:00:00Z",
+            "status": "pending"
+          },
+          {
+            "completedAt": "0001-01-01T00:00:00Z",
+            "conclusion": "",
+            "name": "Retain cleanup restart diagnostics",
+            "number": 23,
+            "startedAt": "0001-01-01T00:00:00Z",
+            "status": "pending"
+          },
+          {
+            "completedAt": "0001-01-01T00:00:00Z",
+            "conclusion": "",
+            "name": "Prepare Spotlight for AppKit content search",
+            "number": 24,
+            "startedAt": "0001-01-01T00:00:00Z",
+            "status": "pending"
+          },
+          {
+            "completedAt": "0001-01-01T00:00:00Z",
+            "conclusion": "",
+            "name": "Verify native Spotlight query scopes",
+            "number": 25,
+            "startedAt": "0001-01-01T00:00:00Z",
+            "status": "pending"
+          },
+          {
+            "completedAt": "0001-01-01T00:00:00Z",
+            "conclusion": "",
+            "name": "Verify the complete AppKit suite",
+            "number": 26,
+            "startedAt": "0001-01-01T00:00:00Z",
+            "status": "pending"
+          },
+          {
+            "completedAt": "0001-01-01T00:00:00Z",
+            "conclusion": "",
+            "name": "Retain AppKit reports and window captures",
+            "number": 27,
+            "startedAt": "0001-01-01T00:00:00Z",
+            "status": "pending"
+          },
+          {
+            "completedAt": "0001-01-01T00:00:00Z",
+            "conclusion": "",
+            "name": "Remove the owned Spotlight source fixture",
+            "number": 28,
+            "startedAt": "0001-01-01T00:00:00Z",
+            "status": "pending"
+          },
+          {
+            "completedAt": "0001-01-01T00:00:00Z",
+            "conclusion": "",
+            "name": "Retain Spotlight preparation diagnostics",
+            "number": 29,
+            "startedAt": "0001-01-01T00:00:00Z",
+            "status": "pending"
+          },
+          {
+            "completedAt": "0001-01-01T00:00:00Z",
+            "conclusion": "",
+            "name": "Build and launch the installed developer preview",
+            "number": 30,
+            "startedAt": "0001-01-01T00:00:00Z",
+            "status": "pending"
+          },
+          {
+            "completedAt": "0001-01-01T00:00:00Z",
+            "conclusion": "",
+            "name": "Retain packaged SDK execution reports",
+            "number": 31,
+            "startedAt": "0001-01-01T00:00:00Z",
+            "status": "pending"
+          },
+          {
+            "completedAt": "0001-01-01T00:00:00Z",
+            "conclusion": "",
+            "name": "Check out the previous preview source",
+            "number": 32,
+            "startedAt": "0001-01-01T00:00:00Z",
+            "status": "pending"
+          },
+          {
+            "completedAt": "0001-01-01T00:00:00Z",
+            "conclusion": "",
+            "name": "Verify preview replacement and rollback",
+            "number": 33,
+            "startedAt": "0001-01-01T00:00:00Z",
+            "status": "pending"
+          },
+          {
+            "completedAt": "0001-01-01T00:00:00Z",
+            "conclusion": "",
+            "name": "Post Run actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803",
+            "number": 66,
+            "startedAt": "0001-01-01T00:00:00Z",
+            "status": "pending"
+          }
+        ],
+        "url": "https://github.com/taro6222/files-for-mac/actions/runs/45825145578/job/139927262938"
+      },
+      {
+        "completedAt": "0001-01-01T00:00:00Z",
+        "conclusion": "",
+        "databaseId": 139927263477,
+        "name": "macOS 15 (x86_64)",
+        "startedAt": "2026-11-26T13:01:42Z",
+        "status": "in_progress",
+        "steps": [
+          {
+            "completedAt": "2026-11-26T13:01:45Z",
+            "conclusion": "success",
+            "name": "Set up job",
+            "number": 1,
+            "startedAt": "2026-11-26T13:01:43Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-11-26T13:01:51Z",
+            "conclusion": "success",
+            "name": "Run actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803",
+            "number": 2,
+            "startedAt": "2026-11-26T13:01:45Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-11-26T13:02:22Z",
+            "conclusion": "success",
+            "name": "Verify runner and toolchain",
+            "number": 3,
+            "startedAt": "2026-11-26T13:01:51Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-11-26T13:02:23Z",
+            "conclusion": "success",
+            "name": "Audit parity inventories",
+            "number": 4,
+            "startedAt": "2026-11-26T13:02:22Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-11-26T13:02:24Z",
+            "conclusion": "success",
+            "name": "Verify Spotlight fixture ownership guards",
+            "number": 5,
+            "startedAt": "2026-11-26T13:02:23Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-11-26T13:02:24Z",
+            "conclusion": "success",
+            "name": "Verify archive reference acquisition guards",
+            "number": 6,
+            "startedAt": "2026-11-26T13:02:24Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-11-26T13:02:26Z",
+            "conclusion": "success",
+            "name": "Verify private SDK bundle guards",
+            "number": 7,
+            "startedAt": "2026-11-26T13:02:24Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-11-26T13:02:26Z",
+            "conclusion": "skipped",
+            "name": "Build and verify the structured 7z SDK worker",
+            "number": 8,
+            "startedAt": "2026-11-26T13:02:26Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-11-26T13:02:26Z",
+            "conclusion": "skipped",
+            "name": "Retain structured archive worker verification",
+            "number": 9,
+            "startedAt": "2026-11-26T13:02:26Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "0001-01-01T00:00:00Z",
+            "conclusion": "",
+            "name": "Build app and test targets",
+            "number": 10,
+            "startedAt": "2026-11-26T13:02:26Z",
+            "status": "in_progress"
+          },
+          {
+            "completedAt": "0001-01-01T00:00:00Z",
+            "conclusion": "",
+            "name": "Run Swift tests",
+            "number": 11,
+            "startedAt": "0001-01-01T00:00:00Z",
+            "status": "pending"
+          },
+          {
+            "completedAt": "0001-01-01T00:00:00Z",
+            "conclusion": "",
+            "name": "Verify Git and directory scheduling with a constrained Swift executor",
+            "number": 12,
+            "startedAt": "0001-01-01T00:00:00Z",
+            "status": "pending"
+          },
+          {
+            "completedAt": "0001-01-01T00:00:00Z",
+            "conclusion": "",
+            "name": "Verify archives with the pinned official 7-Zip reference",
+            "number": 13,
+            "startedAt": "0001-01-01T00:00:00Z",
+            "status": "pending"
+          },
+          {
+            "completedAt": "0001-01-01T00:00:00Z",
+            "conclusion": "",
+            "name": "Retain independent archive verification",
+            "number": 14,
+            "startedAt": "0001-01-01T00:00:00Z",
+            "status": "pending"
+          },
+          {
+            "completedAt": "0001-01-01T00:00:00Z",
+            "conclusion": "",
+            "name": "Verify Swift SDK client and safe directory publication",
+            "number": 15,
+            "startedAt": "0001-01-01T00:00:00Z",
+            "status": "pending"
+          },
+          {
+            "completedAt": "0001-01-01T00:00:00Z",
+            "conclusion": "",
+            "name": "Retain Swift archive client verification",
+            "number": 16,
+            "startedAt": "0001-01-01T00:00:00Z",
+            "status": "pending"
+          },
+          {
+            "completedAt": "0001-01-01T00:00:00Z",
+            "conclusion": "",
+            "name": "Verify unmounted Spotlight image cleanup",
+            "number": 17,
+            "startedAt": "0001-01-01T00:00:00Z",
+            "status": "pending"
+          },
+          {
+            "completedAt": "0001-01-01T00:00:00Z",
+            "conclusion": "",
+            "name": "Retain Git scheduling diagnostics",
+            "number": 18,
+            "startedAt": "0001-01-01T00:00:00Z",
+            "status": "pending"
+          },
+          {
+            "completedAt": "0001-01-01T00:00:00Z",
+            "conclusion": "",
+            "name": "Verify mounted file systems and AppKit file operations",
+            "number": 19,
+            "startedAt": "0001-01-01T00:00:00Z",
+            "status": "pending"
+          },
+          {
+            "completedAt": "0001-01-01T00:00:00Z",
+            "conclusion": "",
+            "name": "Verify AppKit file promise export contracts",
+            "number": 20,
+            "startedAt": "0001-01-01T00:00:00Z",
+            "status": "pending"
+          },
+          {
+            "completedAt": "0001-01-01T00:00:00Z",
+            "conclusion": "",
+            "name": "Retain file promise contract diagnostics",
+            "number": 21,
+            "startedAt": "0001-01-01T00:00:00Z",
+            "status": "pending"
+          },
+          {
+            "completedAt": "0001-01-01T00:00:00Z",
+            "conclusion": "",
+            "name": "Verify interrupted received cleanup in a fresh app process",
+            "number": 22,
+            "startedAt": "0001-01-01T00:00:00Z",
+            "status": "pending"
+          },
+          {
+            "completedAt": "0001-01-01T00:00:00Z",
+            "conclusion": "",
+            "name": "Retain cleanup restart diagnostics",
+            "number": 23,
+            "startedAt": "0001-01-01T00:00:00Z",
+            "status": "pending"
+          },
+          {
+            "completedAt": "0001-01-01T00:00:00Z",
+            "conclusion": "",
+            "name": "Prepare Spotlight for AppKit content search",
+            "number": 24,
+            "startedAt": "0001-01-01T00:00:00Z",
+            "status": "pending"
+          },
+          {
+            "completedAt": "0001-01-01T00:00:00Z",
+            "conclusion": "",
+            "name": "Verify native Spotlight query scopes",
+            "number": 25,
+            "startedAt": "0001-01-01T00:00:00Z",
+            "status": "pending"
+          },
+          {
+            "completedAt": "0001-01-01T00:00:00Z",
+            "conclusion": "",
+            "name": "Verify the complete AppKit suite",
+            "number": 26,
+            "startedAt": "0001-01-01T00:00:00Z",
+            "status": "pending"
+          },
+          {
+            "completedAt": "0001-01-01T00:00:00Z",
+            "conclusion": "",
+            "name": "Retain AppKit reports and window captures",
+            "number": 27,
+            "startedAt": "0001-01-01T00:00:00Z",
+            "status": "pending"
+          },
+          {
+            "completedAt": "0001-01-01T00:00:00Z",
+            "conclusion": "",
+            "name": "Remove the owned Spotlight source fixture",
+            "number": 28,
+            "startedAt": "0001-01-01T00:00:00Z",
+            "status": "pending"
+          },
+          {
+            "completedAt": "0001-01-01T00:00:00Z",
+            "conclusion": "",
+            "name": "Retain Spotlight preparation diagnostics",
+            "number": 29,
+            "startedAt": "0001-01-01T00:00:00Z",
+            "status": "pending"
+          },
+          {
+            "completedAt": "0001-01-01T00:00:00Z",
+            "conclusion": "",
+            "name": "Build and launch the installed developer preview",
+            "number": 30,
+            "startedAt": "0001-01-01T00:00:00Z",
+            "status": "pending"
+          },
+          {
+            "completedAt": "0001-01-01T00:00:00Z",
+            "conclusion": "",
+            "name": "Retain packaged SDK execution reports",
+            "number": 31,
+            "startedAt": "0001-01-01T00:00:00Z",
+            "status": "pending"
+          },
+          {
+            "completedAt": "0001-01-01T00:00:00Z",
+            "conclusion": "",
+            "name": "Check out the previous preview source",
+            "number": 32,
+            "startedAt": "0001-01-01T00:00:00Z",
+            "status": "pending"
+          },
+          {
+            "completedAt": "0001-01-01T00:00:00Z",
+            "conclusion": "",
+            "name": "Verify preview replacement and rollback",
+            "number": 33,
+            "startedAt": "0001-01-01T00:00:00Z",
+            "status": "pending"
+          },
+          {
+            "completedAt": "0001-01-01T00:00:00Z",
+            "conclusion": "",
+            "name": "Post Run actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803",
+            "number": 66,
+            "startedAt": "0001-01-01T00:00:00Z",
+            "status": "pending"
+          }
+        ],
+        "url": "https://github.com/taro6222/files-for-mac/actions/runs/45825145578/job/139927263477"
+      },
+      {
+        "completedAt": "2026-11-26T13:01:38Z",
+        "conclusion": "skipped",
+        "databaseId": 139927265451,
+        "name": "Xcode (${{ matrix.architecture }})",
+        "startedAt": "2026-11-26T13:01:39Z",
+        "status": "completed",
+        "steps": [],
+        "url": "https://github.com/taro6222/files-for-mac/actions/runs/45825145578/job/139927265451"
+      },
+      {
+        "completedAt": "2026-11-26T13:01:38Z",
+        "conclusion": "skipped",
+        "databaseId": 139927265499,
+        "name": "Optimized performance (${{ matrix.architecture }})",
+        "startedAt": "2026-11-26T13:01:39Z",
+        "status": "completed",
+        "steps": [],
+        "url": "https://github.com/taro6222/files-for-mac/actions/runs/45825145578/job/139927265499"
+      }
+    ],
+    "status": "in_progress"
+  },
+  "localGUIStarted": false,
+  "longRunStarted": false,
+  "limitations": [
+    "sampling may overshoot; not an allocation hard limit",
+    "filesystem/network sandbox and CPU/process-tree limits pending",
+    "metadata restoration and large creation manifest pending",
+    "latest supported environments, physical input, VoiceOver, original UI parity and Developer ID/notarization pending"
+  ],
+  "initialVerificationNotes": [
+    "initial memory fixture could allocate while compiling before PID evidence; changed allocation size to a runtime value",
+    "47 tests passed in the second run but a SwiftPM stderr warning interleaved with a test name; verifier now records stdout/stderr separately"
+  ]
+}

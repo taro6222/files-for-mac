@@ -10,6 +10,7 @@ import signal
 import subprocess
 
 TESTS = [
+    'sevenZipSDKMemoryBudgetKillsAndReapsWithoutPublishing', 'sevenZipSDKRejectsZeroMemoryBudgetBeforeLaunching',
     'sevenZipCreationBrokerRejectsInvalidAndTruncatedRequests',
     'sevenZipCreationBrokerKeepsPlannedIdentityAndReadOnlyAccess', 'sevenZipSDKCreationBrokerManyInputsAndPreflightPreserveSources',
     'sevenZipReadBrokerPinsDirectoryAndRejectsChangedNames', 'sevenZipSDKReadBrokerHandlesSymlinkAndSearchOnlyDirectory',
@@ -64,9 +65,11 @@ def main():
     requested_tests = TESTS + (BUNDLE_TESTS if args.app else [])
     test_filter = '(' + '|'.join(re.escape(name) for name in requested_tests) + ')'
     timed_out = False
-    with (args.output / 'run.log').open('wb') as log:
+    # SwiftPM warnings may arrive in the middle of a Swift Testing test-name write.
+    # Keep the streams separate so evidence matching does not lose a passed test.
+    with (args.output / 'run.log').open('wb') as log, (args.output / 'stderr.log').open('wb') as diagnostics:
         process = subprocess.Popen(['swift', 'test', '--skip-build', '--disable-xctest', '--no-parallel', '--filter', test_filter],
-                                   env=environment, stdout=log, stderr=log, start_new_session=True)
+                                   env=environment, stdout=log, stderr=diagnostics, start_new_session=True)
         try: process.wait(timeout=120)
         except subprocess.TimeoutExpired:
             timed_out = True

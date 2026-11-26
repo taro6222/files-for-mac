@@ -10,7 +10,8 @@ private func sdkRoot() throws -> URL {
     return root
 }
 
-private func sdkMock(_ body: String, root: URL, timeout: TimeInterval = 2) throws -> SevenZipArchiveProvider {
+private func sdkMock(_ body: String, root: URL, timeout: TimeInterval = 2,
+                     maximumPhysicalFootprintBytes: UInt64 = SevenZipArchiveProvider.defaultMaximumPhysicalFootprintBytes) throws -> SevenZipArchiveProvider {
     // Mock decoders exercise framing, while the real broker still requires real regular inputs.
     for name in ["archive.7z", "a.7z"] where !FileManager.default.fileExists(atPath: root.appendingPathComponent(name).path) {
         try Data("zip".utf8).write(to: root.appendingPathComponent(name))
@@ -26,7 +27,50 @@ private func sdkMock(_ body: String, root: URL, timeout: TimeInterval = 2) throw
     """
     try (prelude + "\n" + body + "\n").write(to: script, atomically: false, encoding: .utf8)
     try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: script.path)
-    return SevenZipArchiveProvider(executable: script, library: root.appendingPathComponent("pid"), timeout: timeout)
+    return SevenZipArchiveProvider(executable: script, library: root.appendingPathComponent("pid"), timeout: timeout,
+                                  maximumPhysicalFootprintBytes: maximumPhysicalFootprintBytes)
+}
+
+@Test func sevenZipSDKMemoryBudgetKillsAndReapsWithoutPublishing() async throws {
+    for operation in ["list", "extract", "create", "split"] {
+        let root = try sdkRoot(); defer { try? FileManager.default.removeItem(at: root) }
+        let source = root.appendingPathComponent("source.txt"), sentinel = root.appendingPathComponent("existing.txt")
+        try Data("source stays".utf8).write(to: source)
+        try Data("existing stays".utf8).write(to: sentinel)
+        let listing = sdkEmptyReply.replacingOccurrences(of: "[]", with: #"[{"index":0,"path":"payload","kind":"regularFile","size":1,"encrypted":false}]"#)
+        let beforeAllocation = operation == "extract" ? "reply('\(listing)'); request();" : ""
+        let provider = try sdkMock("""
+        request(); \(beforeAllocation)
+        open(my $pid,'>',$ARGV[0]) or die; print $pid $$; close($pid);
+        my $megabytes=length($ARGV[0]) ? 64 : 0;
+        my $bytes='x' x ($megabytes*1024*1024); sleep 10;
+        """, root: root, timeout: 3, maximumPhysicalFootprintBytes: 32 << 20)
+        await #expect(throws: SevenZipWorkerError.memoryLimitExceeded) {
+            switch operation {
+            case "list": _ = try await provider.entries(at: root.appendingPathComponent("archive.7z"))
+            case "extract": _ = try await provider.extractToNewDirectory(root.appendingPathComponent("archive.7z"), at: root.appendingPathComponent("result"))
+            case "split": _ = try await provider.createSplit(from: [source], at: root.appendingPathComponent("result.7z"), volumeBytes: 1024,
+                                                              journalDirectory: root.appendingPathComponent("journals"))
+            default: _ = try await provider.create(from: [source], at: root.appendingPathComponent("result.7z"))
+            }
+        }
+        let pid = try #require(Int32(String(contentsOf: root.appendingPathComponent("pid"), encoding: .utf8)))
+        #expect(kill(pid, 0) == -1 && errno == ESRCH)
+        #expect(try Data(contentsOf: source) == Data("source stays".utf8))
+        #expect(try Data(contentsOf: sentinel) == Data("existing stays".utf8))
+        let names = try FileManager.default.contentsOfDirectory(atPath: root.path)
+        #expect(!names.contains { $0 == "result" || $0.hasPrefix("result.7z") || $0.hasPrefix(".files-") })
+    }
+}
+
+@Test func sevenZipSDKRejectsZeroMemoryBudgetBeforeLaunching() async throws {
+    let root = try sdkRoot(); defer { try? FileManager.default.removeItem(at: root) }
+    let provider = try sdkMock("open(my $pid,'>',$ARGV[0]); print $pid $$; close($pid);", root: root,
+                               maximumPhysicalFootprintBytes: 0)
+    await #expect(throws: SevenZipWorkerError.invalidConfiguration) { try await provider.entries(at: root.appendingPathComponent("archive.7z")) }
+    await #expect(throws: SevenZipWorkerError.invalidConfiguration) { try await SevenZipArchiveProvider.bundled(in: root, maximumPhysicalFootprintBytes: 0) }
+    #expect(!FileManager.default.fileExists(atPath: root.appendingPathComponent("pid").path))
+    #expect(SevenZipArchiveProvider.defaultMaximumPhysicalFootprintBytes == max(256 << 20, ProcessInfo.processInfo.physicalMemory / 2))
 }
 
 private let sdkEmptyReply = #"{"version":1,"ok":true,"session":"5BC9424B-FAE6-4A89-9DD5-AC627611EFD3","source":{"device":"1","inode":"2","size":3},"items":[]}"#

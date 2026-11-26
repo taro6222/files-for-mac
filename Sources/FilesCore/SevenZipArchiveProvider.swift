@@ -2,7 +2,7 @@ import Foundation
 import Darwin
 
 public enum SevenZipWorkerError: Error, Sendable, Equatable {
-    case unavailable, invalidConfiguration, invalidResponse, ioFailure, timedOut, unexpectedExit
+    case unavailable, invalidConfiguration, invalidResponse, ioFailure, timedOut, unexpectedExit, memoryLimitExceeded
     case worker(String)
     case stagingPreserved(URL)
     case publicationRecovery(staging: URL, published: [URL])
@@ -12,13 +12,22 @@ public enum SevenZipWorkerError: Error, Sendable, Equatable {
 public struct SevenZipArchiveProvider: Sendable {
     public let executable: URL, library: URL
     public let timeout: TimeInterval
+    /// Parent-observed physical footprint budget; polling can overshoot this value.
+    public let maximumPhysicalFootprintBytes: UInt64
+    public static var defaultMaximumPhysicalFootprintBytes: UInt64 {
+        max(256 << 20, ProcessInfo.processInfo.physicalMemory / 2)
+    }
     private let verifiedBundle: URL?
     private let verifiedIdentity: SevenZipBundleVerifier.Identity?
-    public init(executable: URL, library: URL, timeout: TimeInterval = 300) {
+    public init(executable: URL, library: URL, timeout: TimeInterval = 300,
+                maximumPhysicalFootprintBytes: UInt64 = Self.defaultMaximumPhysicalFootprintBytes) {
         self.executable = executable; self.library = library; self.timeout = timeout; verifiedBundle = nil; verifiedIdentity = nil
+        self.maximumPhysicalFootprintBytes = maximumPhysicalFootprintBytes
     }
-    init(verifiedExecutable: URL, library: URL, bundle: URL, identity: SevenZipBundleVerifier.Identity, timeout: TimeInterval) {
+    init(verifiedExecutable: URL, library: URL, bundle: URL, identity: SevenZipBundleVerifier.Identity, timeout: TimeInterval,
+         maximumPhysicalFootprintBytes: UInt64) {
         executable = verifiedExecutable; self.library = library; self.timeout = timeout; verifiedBundle = bundle; verifiedIdentity = identity
+        self.maximumPhysicalFootprintBytes = maximumPhysicalFootprintBytes
     }
 
     /// Create a 7z archive in a private file and atomically publish without replacement.
@@ -240,10 +249,37 @@ private final class SevenZipProcessControl: @unchecked Sendable {
     private let lock = NSLock()
     private var child: pid_t?
     private var cancelled = false
-    func install(_ pid: pid_t) {
+    private var observationFailure: SevenZipWorkerError?
+    private var memoryMonitor: DispatchSourceTimer?
+    func install(_ pid: pid_t, maximumPhysicalFootprintBytes: UInt64) {
         lock.lock(); defer { lock.unlock() }
         child = pid
         if cancelled { kill(pid, SIGKILL) }
+        let timer = DispatchSource.makeTimerSource(queue: DispatchQueue(label: "files.sevenzip.memory"))
+        timer.schedule(deadline: .now(), repeating: .milliseconds(25), leeway: .milliseconds(5))
+        timer.setEventHandler { [weak self] in self?.observeMemory(maximum: maximumPhysicalFootprintBytes) }
+        memoryMonitor = timer
+        timer.resume()
+    }
+    private func observeMemory(maximum: UInt64) {
+        lock.lock(); defer { lock.unlock() }
+        // The lock also protects reaping: an observed PID cannot have been reused.
+        guard let child, observationFailure == nil, !cancelled else { return }
+        var info = rusage_info_v0()
+        let result = withUnsafeMutablePointer(to: &info) { pointer in
+            pointer.withMemoryRebound(to: rusage_info_t?.self, capacity: 1) {
+                proc_pid_rusage(child, RUSAGE_INFO_V0, $0)
+            }
+        }
+        if result == 0 {
+            guard info.ri_phys_footprint > maximum else { return }
+            observationFailure = .memoryLimitExceeded
+        } else {
+            // A child may already be exiting; its normal waitpid path owns the result.
+            guard errno != ESRCH else { return }
+            observationFailure = .ioFailure
+        }
+        kill(child, SIGKILL)
     }
     func cancel() {
         lock.lock(); defer { lock.unlock() }
@@ -253,17 +289,19 @@ private final class SevenZipProcessControl: @unchecked Sendable {
     func check() throws {
         lock.lock(); defer { lock.unlock() }
         if cancelled { throw CancellationError() }
+        if let observationFailure { throw observationFailure }
     }
     func reap() -> Int32? {
         lock.lock(); defer { lock.unlock() }
         guard let child else { return nil }
         var status: Int32 = 0
         let result = waitpid(child, &status, WNOHANG)
-        if result == child { self.child = nil; return status }
+        if result == child { self.child = nil; memoryMonitor?.cancel(); memoryMonitor = nil; return status }
         return nil
     }
     func stop() {
         lock.lock(); defer { lock.unlock() }
+        memoryMonitor?.cancel(); memoryMonitor = nil
         if let child {
             kill(child, SIGKILL)
             var status: Int32 = 0
@@ -296,7 +334,7 @@ private final class SevenZipSession {
     init(provider: SevenZipArchiveProvider, control: SevenZipProcessControl, outputFD: Int32? = nil, creationStream: Bool = false) throws {
         self.control = control
         let now = DispatchTime.now().uptimeNanoseconds
-        guard provider.timeout <= 86_400 else { throw SevenZipWorkerError.invalidConfiguration }
+        guard provider.timeout <= 86_400, provider.maximumPhysicalFootprintBytes > 0 else { throw SevenZipWorkerError.invalidConfiguration }
         deadline = now + UInt64(provider.timeout * 1_000_000_000)
         // Normalize all originals above stdio/data targets, avoiding dup2 source/target collisions.
         var pipes: [Int32] = []
@@ -354,7 +392,7 @@ private final class SevenZipSession {
         try control.check()
         let result = posix_spawn(&pid, provider.executable.path, &actions, &attributes, &arguments, &environment)
         guard result == 0 else { throw SevenZipWorkerError.unavailable }
-        control.install(pid)
+        control.install(pid, maximumPhysicalFootprintBytes: provider.maximumPhysicalFootprintBytes)
         if let socket = inputPair.first { inputFD = socket; pipes.removeAll { $0 == socket } }
         requestFD = pipes[1]; responseFD = pipes[2]; errorFD = pipes[4]; dataFD = pipes[6]
         pipes.removeAll { [requestFD, responseFD, errorFD, dataFD].contains($0) }
@@ -562,6 +600,7 @@ private final class SevenZipSession {
         while true {
             try check()
             if let status = control.reap() {
+                try control.check()
                 guard status == 0 else { throw SevenZipWorkerError.unexpectedExit }
                 break
             }
