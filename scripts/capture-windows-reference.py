@@ -221,6 +221,27 @@ def bulk_rename_controls(tree, *, enabled, invalid=False):
     return warning if invalid else not warning
 
 
+def archive_creation_controls(tree, *, enabled, invalid=False):
+    visible = [element for element in tree.iter() if element.get("IsOffscreen") == "False"]
+    required = {}
+    for identifier in ("FileNameBox", "FileFormatSelector", "CompressionLevelSelector", "PrimaryButton", "CloseButton"):
+        matches = [element for element in visible if element.get("AutomationId") == identifier]
+        if len(matches) != 1:
+            return False
+        required[identifier] = matches[0]
+    if any(required[key].get("IsEnabled") != "True" for key in
+           ("FileNameBox", "FileFormatSelector", "CompressionLevelSelector", "CloseButton")):
+        return False
+    if (required["PrimaryButton"].get("Name") != "Create"
+            or required["PrimaryButton"].get("IsEnabled") != str(enabled)
+            or required["CloseButton"].get("Name") != "Cancel"):
+        return False
+    warning = any(element.get("ClassName") == "Popup"
+                  and element.get("Name") == "The item name specified is invalid"
+                  for element in visible)
+    return warning if invalid else not warning
+
+
 def transfer_fixture_manifest(root):
     """Hash names, types and file bytes, including empty directories; reject unknown locations and links."""
     if root.is_symlink() or not root.is_dir():
@@ -321,7 +342,8 @@ def capture(output, app_id, window_handle, fixture=None, scope="all"):
 
                 wait_for(f"keyboard focus in {identifier}", focused_editor)
                 request("POST", editor + "/clear", {})
-                request("POST", editor + "/value", {"value": list(value)})
+                if value:
+                    request("POST", editor + "/value", {"value": list(value)})
                 actual = request("GET", editor + "/text")["value"]
                 if actual != value or not focused_editor():
                     raise RuntimeError(f"The {identifier} editor lost focus or did not receive the requested input: {actual!r}")
@@ -476,6 +498,50 @@ def capture(output, app_id, window_handle, fixture=None, scope="all"):
                 row = wait_for(f"the visible row for {file.name}", lambda: element_route(
                     "xpath", f"//*[@AutomationId='ItemName' and (@Name='{file.name}' or @Name='{file.stem}') and @IsOffscreen='False']"))
                 request("POST", row + "/click", {})
+
+            if scope == "archive-create":
+                before = transfer_fixture_manifest(fixture)
+                select_file(fixture / "preview.txt")
+                record["archiveCreation"] = {"state": "selected", "sourceBefore": before}
+                report.write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8")
+                send_control_shift("p")
+                set_editor_text("PART_TextBox", "Create archive")
+                command = wait_for("the visible Create archive command", lambda: element_route(
+                    "xpath", "//*[@AutomationId='PrimaryDisplayBlock' and @Name='Create archive' and @IsOffscreen='False']"))
+                request("POST", command + "/click", {})
+
+                def archive_source(enabled, invalid=False):
+                    tree = read_tree()
+                    return tree if archive_creation_controls(tree, enabled=enabled, invalid=invalid) else None
+
+                tree = wait_for("the populated archive dialog with Create enabled", lambda: archive_source(True))
+                capture_layout(tree, "UI-13-create-normal", "archive")
+                for name, identifier, enabled, invalid in (
+                    ("", "empty", False, False),
+                    ("invalid/name", "invalid", False, True),
+                    ("ReferenceArchive", "valid", True, False),
+                ):
+                    set_editor_text("FileNameBox", name)
+                    tree = wait_for(f"the {identifier} archive name state", lambda: archive_source(enabled, invalid))
+                    if transfer_fixture_manifest(fixture) != before:
+                        raise RuntimeError("Editing an archive name changed the fixture before confirmation")
+                    capture_layout(tree, f"UI-13-create-{identifier}", "archive")
+                request("POST", element_route("accessibility id", "CloseButton") + "/click", {})
+
+                def returned_archive_source():
+                    tree = folder_source()
+                    return tree if tree is not None and not any(element.get("AutomationId") == "FileNameBox"
+                        and element.get("IsOffscreen") == "False" for element in tree.iter()) else None
+
+                tree = wait_for("the unchanged folder after cancelling archive creation", returned_archive_source)
+                after = transfer_fixture_manifest(fixture)
+                if after != before:
+                    raise RuntimeError("Cancelling archive creation changed file names, types or contents")
+                capture_layout(tree, "UI-13-create-cancelled", "archive")
+                record["archiveCreation"].update(state="cancelled", sourceAfter=after, emptyNameDisabled=True,
+                    invalidNameWarning=True, validNameEnabled=True, sourcePreserved=True)
+                report.write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8")
+                return
 
             if scope == "rename":
                 before = transfer_fixture_manifest(fixture)
@@ -883,7 +949,7 @@ if __name__ == "__main__":
     parser.add_argument("--window-handle", required=True)
     parser.add_argument("--fixture", type=Path)
     parser.add_argument("--scope", choices=("all", "tab-drop", "properties", "security", "advanced-security",
-                                            "operation-center", "operation-progress", "rename"), default="all")
+                                            "operation-center", "operation-progress", "rename", "archive-create"), default="all")
     arguments = parser.parse_args()
     if arguments.scope != "all" and arguments.fixture is None:
         parser.error("a specific --scope requires --fixture")

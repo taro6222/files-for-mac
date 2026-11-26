@@ -144,5 +144,54 @@ class EditorFocusEvidenceTests(unittest.TestCase):
         self.assertFalse(capture.editor_has_keyboard_focus(ET.ElementTree(root), 'FileNameBox'))
 
 
+class ArchiveCreationEvidenceTests(unittest.TestCase):
+    def archive_tree(self, enabled=True):
+        root = ET.Element('Window')
+        for identifier in ('FileNameBox', 'FileFormatSelector', 'CompressionLevelSelector', 'PrimaryButton', 'CloseButton'):
+            ET.SubElement(root, 'Control', AutomationId=identifier, IsOffscreen='False',
+                          IsEnabled=str(enabled) if identifier == 'PrimaryButton' else 'True',
+                          Name={'PrimaryButton': 'Create', 'CloseButton': 'Cancel'}.get(identifier, ''))
+        return ET.ElementTree(root)
+
+    def test_valid_and_empty_states_require_the_archive_dialog(self):
+        self.assertTrue(capture.archive_creation_controls(self.archive_tree(), enabled=True))
+        empty = self.archive_tree(False)
+        self.assertTrue(capture.archive_creation_controls(empty, enabled=False))
+        self.assertFalse(capture.archive_creation_controls(empty, enabled=True))
+        empty.find(".//*[@AutomationId='PrimaryButton']").set('Name', 'Rename')
+        self.assertFalse(capture.archive_creation_controls(empty, enabled=False))
+
+    def test_hidden_missing_or_duplicate_format_controls_are_not_archive_evidence(self):
+        for mode in ('hidden', 'missing', 'duplicate'):
+            with self.subTest(mode=mode):
+                result = self.archive_tree()
+                selector = result.find(".//*[@AutomationId='FileFormatSelector']")
+                if mode == 'hidden':
+                    selector.set('IsOffscreen', 'True')
+                elif mode == 'missing':
+                    result.getroot().remove(selector)
+                else:
+                    ET.SubElement(result.getroot(), 'Control', **selector.attrib)
+                self.assertFalse(capture.archive_creation_controls(result, enabled=True))
+
+    def test_invalid_requires_visible_warning_and_disabled_create(self):
+        result = self.archive_tree(False)
+        self.assertFalse(capture.archive_creation_controls(result, enabled=False, invalid=True))
+        warning = ET.SubElement(result.getroot(), 'Window', ClassName='Popup',
+                               Name='The item name specified is invalid', IsOffscreen='True')
+        self.assertFalse(capture.archive_creation_controls(result, enabled=False, invalid=True))
+        warning.set('IsOffscreen', 'False')
+        self.assertTrue(capture.archive_creation_controls(result, enabled=False, invalid=True))
+        self.assertFalse(capture.archive_creation_controls(result, enabled=False))
+        result.find(".//*[@AutomationId='PrimaryButton']").set('IsEnabled', 'True')
+        self.assertFalse(capture.archive_creation_controls(result, enabled=False, invalid=True))
+
+    def test_disabled_cancel_or_editor_cannot_prove_an_interactive_dialog(self):
+        for identifier in ('CloseButton', 'FileNameBox'):
+            result = self.archive_tree()
+            result.find(f".//*[@AutomationId='{identifier}']").set('IsEnabled', 'False')
+            self.assertFalse(capture.archive_creation_controls(result, enabled=True))
+
+
 if __name__ == '__main__':
     unittest.main()

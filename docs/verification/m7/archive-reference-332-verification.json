@@ -1,0 +1,17 @@
+{
+  "sourceBaseSHA": "81524f8f0c0a59ab2bc318d5051ef7bb21b0b2e0",
+  "sourceSHA256": {
+    "scripts/capture-windows-reference.py": "69fb242e5e04880c1df7c1ce101effcef5cc8eedf1d91048dc88545fefbe6958",
+    ".github/workflows/windows-reference.yml": "bde7245506832255c856839f5e52c2ecd003f180c8ea433f0224bbc336031f4c",
+    "Tests/FixtureTests/test_windows_progress_capture.py": "8e0dbc3fb5d65a3b5e8e05e115df4e8860357c43a4c09801ec6a4d4838bec3c2"
+  },
+  "localGuardTests": 16,
+  "testLogSHA256": "ca371516ecd628db5bfda9da88c7a47c0752a45c3f441a1b762ef87ab4dae52d",
+  "pythonSyntaxValid": true,
+  "workflowScopesMatchCLI": 9,
+  "productSourcesUnchanged": true,
+  "windowsExecutionAccepted": false,
+  "ui13Accepted": false,
+  "releaseComplete": false,
+  "pinnedUpstreamSHA": "99951c66928c4da714da8b1dd46039421182cbab"
+}
