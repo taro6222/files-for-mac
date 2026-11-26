@@ -107,8 +107,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     @discardableResult private func makeBrowser(location: URL? = nil, snapshot: TabSnapshot? = nil,
                                                  workspace: SplitTabState? = nil,
                                                  tabbedTo source: BrowserWindow? = nil,
-                                                 selectNewTab: Bool? = nil, showWindow: Bool = true) -> BrowserWindow {
-        let controller = BrowserWindow(initialLocation: location, initialSnapshot: snapshot, initialWorkspace: workspace)
+                                                 selectNewTab: Bool? = nil, showWindow: Bool = true,
+                                                 opensNewTab: Bool = false,
+                                                 preferences: BrowserPreferences = .shared) -> BrowserWindow {
+        let controller = BrowserWindow(preferences: preferences, initialLocation: location,
+                                       initialSnapshot: snapshot, initialWorkspace: workspace)
+        if (opensNewTab || source != nil), workspace == nil, snapshot == nil,
+           preferences.alwaysOpenDualPaneInNewTab {
+            controller.toggleDualPane(nil)
+        }
         windows.append(controller)
         controller.onClose = { [weak self, weak controller] in
             if let controller {
@@ -119,7 +126,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             if self?.lastFocusedBrowser === controller { self?.lastFocusedBrowser = nil }
         }
         if let source {
-            source.attachTab(controller, select: selectNewTab ?? BrowserPreferences.shared.alwaysSwitchToNewlyOpenedTab)
+            source.attachTab(controller, select: selectNewTab ?? preferences.alwaysSwitchToNewlyOpenedTab)
         } else if showWindow { controller.showWindow(nil) }
         return controller
     }
@@ -133,10 +140,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         }
     }
     @objc func newTab(_ sender: Any?) {
-        let controller = makeBrowser(tabbedTo: currentBrowser)
-        if BrowserPreferences.shared.alwaysOpenDualPaneInNewTab { controller.toggleDualPane(nil) }
+        makeBrowser(tabbedTo: currentBrowser, opensNewTab: true)
     }
-    func openFolderInNewTab(_ url: URL) { makeBrowser(location: url, tabbedTo: currentBrowser) }
+    func openFolderInNewTab(_ url: URL) { makeBrowser(location: url, tabbedTo: currentBrowser, opensNewTab: true) }
     func openFolderInNewWindow(_ url: URL) { makeBrowser(location: url) }
     @objc func duplicateTab(_ sender: Any?) {
         guard let current = currentBrowser else { return }
@@ -580,6 +586,47 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         NSApp.mainMenu = menu
     }
 #if DEBUG
+    func qaVerifyNewTabPolicy(location: URL) async throws -> [String: Bool] {
+        let suite = "new-tab-policy-\(UUID())"
+        guard let defaults = UserDefaults(suiteName: suite) else { return [:] }
+        let preferences = BrowserPreferences(defaults: defaults, initialFavorites: [])
+        let oldWindows = Set(windows.map(ObjectIdentifier.init))
+        let oldClosed = closedWorkspaces
+        defer {
+            for browser in windows where !oldWindows.contains(ObjectIdentifier(browser)) { browser.close() }
+            closedWorkspaces = oldClosed
+            defaults.removePersistentDomain(forName: suite)
+        }
+        preferences.setAlwaysOpenDualPaneInNewTab(true)
+        let source = makeBrowser(showWindow: false, preferences: preferences)
+        source.showWindow(nil)
+        let empty = makeBrowser(showWindow: false, opensNewTab: true, preferences: preferences)
+        let folder = makeBrowser(location: location, tabbedTo: source, preferences: preferences)
+        let background = source.tabs.selected === source && folder.window?.isVisible == false
+        let startup = makeBrowser(tabbedTo: source, selectNewTab: true, preferences: preferences)
+        let selected = source.tabs.selected === startup
+        let single = SplitTabState(primary: PaneSnapshot(tab: TabSnapshot(location: nil)))
+        let restored = makeBrowser(workspace: single, tabbedTo: source, preferences: preferences)
+        let snapshot = makeBrowser(snapshot: single.panes[0].tab, tabbedTo: source, preferences: preferences)
+        let split = empty.workspaceSnapshot()
+        preferences.setAlwaysOpenDualPaneInNewTab(false)
+        let preserved = makeBrowser(workspace: split, tabbedTo: source, preferences: preferences)
+        let disabled = makeBrowser(tabbedTo: source, preferences: preferences)
+        let deadline = ContinuousClock.now + .seconds(5)
+        while !preserved.workspaceSnapshot().isSplit && ContinuousClock.now < deadline {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        return [
+            "newTabDualPanePolicyCoversCreationPaths": empty.workspaceSnapshot().isSplit
+                && folder.workspaceSnapshot().isSplit && folder.tabSnapshot().location == location
+                && startup.workspaceSnapshot().isSplit,
+            "newTabPolicyPreservesSelection": background && selected,
+            "newTabPolicyPreservesExplicitState": !restored.workspaceSnapshot().isSplit
+                && !snapshot.workspaceSnapshot().isSplit && preserved.workspaceSnapshot().isSplit,
+            "newTabPolicyKeepsWindowAndDisabledDefaults": !source.workspaceSnapshot().isSplit
+                && !disabled.workspaceSnapshot().isSplit
+        ]
+    }
     var qaShortcutRowCount: Int { shortcutSettingsWindow?.qaRowCount ?? 0 }
     var qaShortcutWindowVisible: Bool { shortcutSettingsWindow?.window?.isVisible == true }
     var qaShortcutContentView: NSView? { shortcutSettingsWindow?.window?.contentView }

@@ -4883,6 +4883,8 @@ extension BrowserWindow {
                 checks.merge(desktopChecks) { _, value in value }
                 let geometryChecks = try await BrowserGeometryRestoration.verify(preferences: preferences)
                 checks.merge(geometryChecks) { _, value in value }
+                let newTabChecks = try await delegate.qaVerifyNewTabPolicy(location: columnFolder)
+                checks.merge(newTabChecks) { _, value in value }
                 let sameTab = BrowserWindow(preferences: preferences, restoresFrame: false, initialSnapshot: primary.tab)
                 sameTab.showWindow(nil)
                 let splitSameTab = sameTab.splitByDroppingTab(from: sameTab, at: .right)

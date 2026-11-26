@@ -1,0 +1,122 @@
+{
+  "sourceBaseSHA": "4a41d12d582c48e15221a778932c53c7041ca5a8",
+  "sourceSHA256": {
+    "Sources/FilesMac/main.swift": "dafc5e79201b0ff580467e9f7b314f2155e5b097b5ea2678146835ea4c83781b",
+    "Sources/FilesMac/BrowserWindow.swift": "591bdb75929ca12fbb834287aa53579a7fe4488c9f3605084192b16f50558114",
+    "scripts/verify-ui.sh": "b129ba29fd5f204f1f56e1fc948844c3ebdaaf203e6b156cba878dd0de0286ff",
+    "docs/reference/SETTINGS.csv": "09ef660f77a3b31f4284190ba2d36a87103d843edcbd2744969d44aab58f0f17"
+  },
+  "tests": {
+    "reported": 389,
+    "passed": 370,
+    "environmentSkipped": 19
+  },
+  "ui": {
+    "ko-light": {
+      "fullChecks": 302,
+      "fullReportSHA256": "5e2f376632fa1c01ee38018b90398d01321db4dcfe2c7d5652525e0aba848763",
+      "boundaryChecks": 18,
+      "boundaryReportSHA256": "5b008d20c14072811f18b76134b1c3416b0e5965e58149ded52f3fba9b860b27",
+      "newTabPolicyChecks": {
+        "newTabDualPanePolicyCoversCreationPaths": true,
+        "newTabPolicyKeepsWindowAndDisabledDefaults": true,
+        "newTabPolicyPreservesExplicitState": true,
+        "newTabPolicyPreservesSelection": true
+      },
+      "failures": []
+    },
+    "ko-dark": {
+      "fullChecks": 302,
+      "fullReportSHA256": "eed9b58eb49d43112e21db2fe1ec52b047a70d1defe6cd8ef4ddf498ef15a5a3",
+      "boundaryChecks": 18,
+      "boundaryReportSHA256": "f9e4644de8b42404017c390334d5bb70e231d287107ede7b437aa36ef7820105",
+      "newTabPolicyChecks": {
+        "newTabDualPanePolicyCoversCreationPaths": true,
+        "newTabPolicyKeepsWindowAndDisabledDefaults": true,
+        "newTabPolicyPreservesExplicitState": true,
+        "newTabPolicyPreservesSelection": true
+      },
+      "failures": []
+    },
+    "en-light": {
+      "fullChecks": 302,
+      "fullReportSHA256": "4d4f0ce7146a6f1508cf3210ac8f2c9f26a89e883011e63948a4d1661a5bdfe1",
+      "boundaryChecks": 18,
+      "boundaryReportSHA256": "8c264c2a29119eb2daf0ea2712c24b4be6ec4fa7c3f0f318ef2bc5a95b7dccc3",
+      "newTabPolicyChecks": {
+        "newTabDualPanePolicyCoversCreationPaths": true,
+        "newTabPolicyKeepsWindowAndDisabledDefaults": true,
+        "newTabPolicyPreservesExplicitState": true,
+        "newTabPolicyPreservesSelection": true
+      },
+      "failures": []
+    },
+    "en-dark": {
+      "fullChecks": 302,
+      "fullReportSHA256": "244063c1fe522c319168de68c68a122fe1569cdeab44374aca65925382c5afa0",
+      "boundaryChecks": 18,
+      "boundaryReportSHA256": "c336c66ffa5615d15ce0ad8170538ddff2d86cefbb915dd613652aef3c4d8698",
+      "newTabPolicyChecks": {
+        "newTabDualPanePolicyCoversCreationPaths": true,
+        "newTabPolicyKeepsWindowAndDisabledDefaults": true,
+        "newTabPolicyPreservesExplicitState": true,
+        "newTabPolicyPreservesSelection": true
+      },
+      "failures": []
+    }
+  },
+  "debugBinarySHA256": "1228af6123ae5587a0e42b5950a5a7d79850ad636319e6c47b55069655e66b05",
+  "releaseBinarySHA256": "d0784c0ea839d82deb3ad3befd84f50e66a87280ad1c1632ad0e01f809563ce8",
+  "qaBinarySHA256": "58b3cf9a87ed7d316adfec0d3fd0e274a5ca755d3aef3aef82f7c785b378093a",
+  "logsSHA256": {
+    "build-verified": "4fb45051487818047c1e9eac56c107bf252261cbd35052b041902a2e4d46e5db",
+    "tests": "ff541adeb88b48cdb7107b49e7b9ad00054fc551ca25fd488de49570eaea7b1e",
+    "ui-final": "601b9335e2257177c9ded3468dbf96d4d419c01335f417d2c4769fc53066ad2e",
+    "release-final": "f414f38823e1a13b903afab10d5d26953ba3c371096e34f903ee0dc0dc013875",
+    "release-qa": "d8bccf74e0754baa1756edea95f2508eb30f2bc429b264c3b9f2beeefa96f607",
+    "parity": "f2e8f311d376fa306990bf6651b074ea8c5cdac5bfc49dd049df9ac2a1b96f01"
+  },
+  "physicalInputAccepted": false,
+  "releaseComplete": false,
+  "remaining": [
+    "latest-source remote and 8-hour acceptance",
+    "Intel Git-window acceptance",
+    "physical input/VoiceOver and supported environments",
+    "full original UI state comparison",
+    "external services and Intel reference performance",
+    "Developer ID and notarization"
+  ],
+  "previousSourceCI": {
+    "headSha": "4a41d12d582c48e15221a778932c53c7041ca5a8",
+    "url": "https://github.com/taro6222/files-for-mac/actions/runs/45750985375",
+    "status": "in_progress",
+    "conclusion": "",
+    "jobs": [
+      {
+        "name": "macOS 15 (x86_64)",
+        "status": "in_progress",
+        "conclusion": ""
+      },
+      {
+        "name": "Xcode (arm64)",
+        "status": "completed",
+        "conclusion": "success"
+      },
+      {
+        "name": "macOS 15 (arm64)",
+        "status": "in_progress",
+        "conclusion": ""
+      },
+      {
+        "name": "Xcode (x86_64)",
+        "status": "completed",
+        "conclusion": "success"
+      },
+      {
+        "name": "Optimized performance (${{ matrix.architecture }})",
+        "status": "completed",
+        "conclusion": "skipped"
+      }
+    ]
+  }
+}
