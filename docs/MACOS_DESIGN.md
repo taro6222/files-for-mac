@@ -271,6 +271,8 @@ ArchiveProvider는 browse/extract/create/update/password capabilities를 포맷�
 
 추출은 절대 경로, `..`, 링크를 통한 대상 이탈을 차단한다. 압축 폭탄 방지를 위해 파일 수·총 해제 크기·공간 한도를 사전/실행 중 검사한다. 압축 내부 수정은 지원 포맷에서 새 임시 아카이브를 만들어 교체한다. 사용자의 원본 아카이브를 스트리밍 중 직접 훼손하지 않는다.
 
+현재 제품의 압축 내부 추가·폴더 생성·이름 변경·삭제는 미구현이며 F23을 완료로 판정하지 않는다. 고정 원본 provider와 현재 SDK의 ZIP/7z writer 인터페이스를 확인한 [압축 내부 편집 구현 계획](ARCHIVE_EDITING_PLAN.md)에 FD 기반 수정·원본/metadata/암호 보존·검증 후 백업 교체·복구/Undo·UI 수용을 구체화했다.
+
 ### Git
 
 상태·브랜치·추적 상태·커밋 메타데이터·init/clone/fetch/pull/push/sync를 제공한다. 실제 backend는 libgit2 또는 인자 배열 기반 Git 프로세스 후보를 M0에서 비교한다. 저장소 hooks·인증·submodule·LFS 지원 경계를 문서화한다. 네트워크 작업과 브랜치 변경은 사용자가 실행한 명령에만 반응한다. 충돌을 자동 reset/clean으로 해결하지 않는다.

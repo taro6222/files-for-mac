@@ -1,0 +1,92 @@
+{
+  "increment": 369,
+  "status": "explicit archive editing gap verified against pinned source; implementation planned, not complete; both refactored remote builds succeeded; full UI pending",
+  "sourceSHA": "99951c66928c4da714da8b1dd46039421182cbab",
+  "originalSources": [
+    {
+      "path": "src/Files.App/Utils/Storage/StorageItems/ZipStorageFile.cs",
+      "returnedTextSHA256": "30a556fd4feff302bd86d75d8328bc13029ef7f54a2c2e32718bedac7aeb6da5"
+    },
+    {
+      "path": "src/Files.App/Utils/Storage/StorageItems/ZipStorageFolder.cs",
+      "returnedTextSHA256": "d57a0c4915612107eb168e464a6a7b0c839448700574d144f76ffe385713807b"
+    }
+  ],
+  "localSourceSHA256": {
+    "Sources/FilesCore/ArchiveCapabilities.swift": "2acec55f7b7ef5e565dd21b7574d1446a77645a0352a5ab47fcdace637dead40",
+    "Sources/FilesCore/ZipArchiveProvider.swift": "5aadb8cf3d8df9f1df1e71bea2f4c6418af5b4b63f2e9f90c23c52880178e333",
+    "Sources/FilesCore/SevenZipArchiveProvider.swift": "32145521242e9e584709598add0bc52958c42172c7bc95ad8f7a6c6899e26513",
+    "Sources/FilesMac/ArchiveWindow.swift": "865b26706cd8eb9f51984f4756ab57efa66e172d8bff3f5e9a826e975c257c56"
+  },
+  "archiveEditingImplemented": false,
+  "editCapabilityEnabled": false,
+  "sdkInterfaceFeasibility": {
+    "checks": {
+      "zip": {
+        "readerCreated": true,
+        "sameInstanceExposesIOutArchive": true,
+        "queryStatus": 0
+      },
+      "sevenZip": {
+        "readerCreated": true,
+        "sameInstanceExposesIOutArchive": true,
+        "queryStatus": 0
+      }
+    },
+    "librarySHA256": "24c06bfc782904541c7739ed736252cf8f26a2d5027115e3abeb7d286dd6ab46",
+    "archiveModified": false,
+    "actualUpdateImplemented": false,
+    "guiStarted": false
+  },
+  "compilerRunComparison": {
+    "arm64": {
+      "newRun": 45847539460,
+      "newElapsedSeconds": 213.87871174999998,
+      "priorRun": 45842537324,
+      "priorElapsedSeconds": 638.620252458,
+      "sameCommand": true,
+      "newReportSHA256": "b09eb916af919e6eec96b6244456bcda0c298408323b031abf546ce3de9bd232",
+      "priorReportSHA256": "885f308af7d10a143c102f46942ca6bda536bdd748c5ec68a9976c95a0158e01",
+      "statisticallyEstablished": false
+    },
+    "x86_64": {
+      "newRun": 45847539460,
+      "newElapsedSeconds": 405.438739291,
+      "priorRun": 45842537324,
+      "priorElapsedSeconds": 1073.0928592399998,
+      "sameCommand": true,
+      "newReportSHA256": "c1a02dab4e0fc244998c18745f0dd86d520bb4c8e6c8426b7855a4477e93313b",
+      "priorReportSHA256": "cf857bf5c612990907189cbc3138b77c6f6b0ff7e1552b4fa67c0e74569e6f97",
+      "statisticallyEstablished": false
+    }
+  },
+  "planSHA256": "1ec35f603eaa680ee7e532b2d0653c1f4d464275785a9f714c4774bc229894da",
+  "evidenceSHA256": {
+    "build/acceptance-369/original-archive-sources.json": "f4b8ed38fcf495cd6e8c2e5193b2fa5e7ae4624abbd94df2ff8a8a6b55f6819e",
+    "build/acceptance-369/probe-update-interfaces.py": "58c57bbe3064dc188dcc022179a2db80ae6671c1d6b2d5821d141af9b332ffde",
+    "build/acceptance-369/update-interfaces.json": "acb8ddb075c4b609f1d59909d713bb9f30fe97e48a26502696d513fe2da7204f",
+    "build/acceptance-369/inventory-audit.log": "f2e8f311d376fa306990bf6651b074ea8c5cdac5bfc49dd049df9ac2a1b96f01",
+    "build/acceptance-369/full-run-builds.json": "52257919804870b00a3055d26b813409cac35b3c380b49af4668626ce182a90f",
+    "build/acceptance-369/full-run-final.json": "596d79ec5578872d1a36de9942fbced01351b62aeb38de4b8fcbb0adb39f25fa",
+    "build/acceptance-369/full-run-current.json": "2d48eb478541548cdddff31004b0d6badd9e9097f52ccba1acf35df9a6571118",
+    "build/acceptance-369/prior-run-final.json": "cf64dc7a397590a0d99b523f4f4f125e6b1ab72e05b01f7dd975431b1f8b18b6",
+    "build/acceptance-369/full-run-before-record.json": "c493f7febb35b92707aa71fa7e2fc6b01e471715e3faf5ee8ba350860c4543ac"
+  },
+  "localGUIStarted": false,
+  "longRunningTestsRestarted": false,
+  "productCodeChanged": false,
+  "remoteFullRun": 45847539460,
+  "remoteFullRunRestarted": false,
+  "remaining": [
+    "F23 ZIP/7z entry add/folder create/rename/delete implementation and acceptance",
+    "new full UI execution and source state comparisons",
+    "remaining resource/metadata and external/support environment gates",
+    "physical input/VoiceOver and stopped long-run acceptance",
+    "Developer ID/notarization and signed install/update"
+  ],
+  "remoteBeforeRecord": {
+    "conclusion": "",
+    "headSha": "4a6c79dda1106bbbbb823863daf39db6241cdb82",
+    "status": "in_progress"
+  }
+}
