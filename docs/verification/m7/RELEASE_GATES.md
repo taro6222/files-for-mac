@@ -289,3 +289,7 @@
 ### Increment 347: Swift SDK 클라이언트와 새 폴더 게시
 
 [Swift 7z 클라이언트와 안전한 새 폴더 게시](INCREMENT_347.md)는 private 파이프 통신·기한·취소 후 PID 회수와 Core 경로/총량 검증을 연결했다. 모든 추출/종료 검증 뒤 RENAME_EXCL로 게시하고, 충돌·외부 항목이 있는 staging을 보존한다. 신규 8개·참조/SDK 활성화 Core 성공 385개·환경 건너뜀 19개와 Debug/Release가 통과했다. 직전 SDK 목록/추출 59개는 macOS 15 ARM·Intel native 모두 통과했다. 제품 UI/패키징·여기/스마트 배치·메타데이터·메모리 격리·최신 Intel Swift 클라이언트 수용은 남아 있다. 정식 출시는 진행 중이다.
+
+### Increment 348: SDK 포함 패키지와 진단 EOF
+
+[7z SDK 포함 패키지와 진단 EOF 수정](INCREMENT_348.md)은 helper/라이브러리의 안쪽부터 서명, 원본 고지·대응 소스·재빌드 자료, 정확한 번들 검증과 기존 출력 보존을 연결했다. 빈 stderr EOF를 진단으로 오인하는 오류를 수정 전 재현하고 고쳤다. 새 유니버설 DMG의 읽기 전용 마운트에서 ARM SDK 조건 59개·Swift 검사 9개가 통과했고 정상 detach했다. Core 성공 386개·환경 건너뜀 19개, 보호 검사 13개와 두 CPU Release 빌드/메타데이터/서명이 통과했다. ad-hoc 검증 후보이며 새 이미지의 앱 설치 동선·UI 연결·최신 원격/지원 환경·정식 서명/공증은 남아 있다.

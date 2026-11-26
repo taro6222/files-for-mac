@@ -19,3 +19,5 @@
 압축 수준의 로컬 실행 근거는 [340단계](../verification/m7/INCREMENT_340.md)에 기록한다. 원본과 libarchive의 동일 이름 수준은 동일 알고리즘·출력 바이트·속도를 의미하지 않는다.
 
 [344단계](../verification/m7/INCREMENT_344.md)에서 공식 도구의 한글 암호 7z·헤더 암호화·분할·64KiB 사전·워드/스레드 옵션 조합을 실행하고 실제 원문 복원을 확인했다. 제품의 SDK/게시·복구·UI 연결은 [7z 백엔드 계약](../SEVENZIP_BACKEND.md)에 따라 구현하며 위 미완료 항목은 유지한다. 같은 단계의 독립 AES ZIP 왕복은 로컬 ARM에서 확인했으며 다른 OS와 새 두 CPU 수용은 별도 진행한다.
+
+[348단계](../verification/m7/INCREMENT_348.md)에서 SDK와 Swift 목록/추출 서비스를 ad-hoc 앱에 포함하고 실제 DMG 내부에서 실행했다. UI 선택·암호 7z 생성·분할·세부 옵션과 최신 지원 환경 수용은 남아 있으므로 위 capability/미완료 판정은 유지한다.

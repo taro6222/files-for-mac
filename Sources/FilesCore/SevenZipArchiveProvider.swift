@@ -149,6 +149,7 @@ private final class SevenZipSession {
     private let control: SevenZipProcessControl, deadline: UInt64
     private var requestFD: Int32 = -1, responseFD: Int32 = -1, dataFD: Int32 = -1, errorFD: Int32 = -1
     private var token: String?
+    private var diagnosticsEnded = false
     init(provider: SevenZipArchiveProvider, control: SevenZipProcessControl) throws {
         self.control = control
         let now = DispatchTime.now().uptimeNanoseconds
@@ -237,9 +238,16 @@ private final class SevenZipSession {
         while result == nil || received < (expectedBytes ?? 0) {
             var descriptors = [pollfd(fd: responseFD, events: Int16(POLLIN), revents: 0),
                                pollfd(fd: dataFD, events: Int16(POLLIN), revents: 0),
-                               pollfd(fd: errorFD, events: Int16(POLLIN), revents: 0)]
+                               pollfd(fd: diagnosticsEnded ? -1 : errorFD, events: Int16(POLLIN), revents: 0)]
             try wait(&descriptors)
-            if descriptors[2].revents & Int16(POLLIN) != 0 { throw SevenZipWorkerError.invalidResponse }
+            if descriptors[2].revents & Int16(POLLIN | POLLHUP) != 0 {
+                // Darwin reports POLLIN at EOF too. A readiness flag alone is not diagnostic data.
+                var byte: UInt8 = 0
+                let count = Darwin.read(errorFD, &byte, 1)
+                if count > 0 { throw SevenZipWorkerError.invalidResponse }
+                if count == 0 { diagnosticsEnded = true }
+                else if errno != EAGAIN && errno != EINTR { throw SevenZipWorkerError.ioFailure }
+            }
             if descriptors[1].revents & Int16(POLLIN) != 0 {
                 let count = Darwin.read(dataFD, &buffer, buffer.count)
                 if count > 0 {
@@ -313,7 +321,9 @@ private final class SevenZipSession {
         // Successful completion must not leave unconsumed bytes in any output channel.
         for fd in [responseFD, dataFD, errorFD] {
             var byte: UInt8 = 0
-            guard Darwin.read(fd, &byte, 1) == 0 else { throw SevenZipWorkerError.invalidResponse }
+            var count: Int
+            repeat { count = Darwin.read(fd, &byte, 1) } while count < 0 && errno == EINTR
+            guard count == 0 else { throw SevenZipWorkerError.invalidResponse }
         }
         self.token = nil
     }

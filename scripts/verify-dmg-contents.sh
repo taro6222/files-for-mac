@@ -31,16 +31,19 @@ cmp -s "$license" "$repo_dir/LICENSE" && cmp -s "$root/LICENSE.txt" "$license" |
 cmp -s "$root/Release Notes.txt" "$repo_dir/docs/RELEASE_NOTES.md" ||
   fail "Release notes must match the source used to verify this image."
 
-# The packaged app currently has only its executable, plist, signature and license.
+# Private SDK code and corresponding sources are mandatory in the current package.
 bundle_entries=("$app"/*)
 contents=("$app/Contents"/*)
 executables=("$app/Contents/MacOS"/*)
 resources=("$app/Contents/Resources"/*)
-[[ ${#bundle_entries[@]} -eq 1 && ${#contents[@]} -eq 4 && ${#executables[@]} -eq 1 && ${#resources[@]} -eq 1 ]] ||
+[[ ${#bundle_entries[@]} -eq 1 && ${#contents[@]} -eq 6 && ${#executables[@]} -eq 1 && ${#resources[@]} -eq 2 ]] ||
   fail "Unexpected files in the app bundle."
-for directory in Contents Contents/MacOS Contents/Resources Contents/_CodeSignature; do
+for directory in Contents Contents/MacOS Contents/Resources Contents/_CodeSignature Contents/Helpers Contents/Frameworks Contents/Resources/ThirdParty; do
   [[ -d "$app/$directory" && ! -L "$app/$directory" ]] || fail "Invalid bundle directory: $directory."
 done
+third_party=("$app/Contents/Resources/ThirdParty"/*)
+[[ ${#third_party[@]} -eq 1 && -d "$app/Contents/Resources/ThirdParty/7zip" ]] || fail "Unexpected third-party resources."
+PYTHONDONTWRITEBYTECODE=1 python3 "$script_dir/sevenzip_bundle.py" verify --app "$app"
 
 plist="$app/Contents/Info.plist"
 binary="$app/Contents/MacOS/FilesMac"

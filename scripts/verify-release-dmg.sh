@@ -42,6 +42,13 @@ fi
 
 /usr/bin/hdiutil verify "$image"
 developer_id='anchor apple generic and certificate 1[field.1.2.840.113635.100.6.2.6] exists and certificate leaf[field.1.2.840.113635.100.6.1.13] exists'
+verify_private_code() {
+  local bundle=$1
+  PYTHONDONTWRITEBYTECODE=1 python3 "$script_dir/sevenzip_bundle.py" verify --app "$bundle"
+  for component in Contents/Helpers/SevenZipWorker Contents/Frameworks/7z.so; do
+    /usr/bin/codesign --verify --all-architectures --strict -R "=$developer_id" "$bundle/$component"
+  done
+}
 if [[ -n "$release_team" ]]; then
   developer_id+=" and certificate leaf[subject.OU] = \"$release_team\""
 fi
@@ -82,12 +89,14 @@ if [[ -z "$release_team" ]]; then
   /usr/bin/codesign --verify --strict -R "=$developer_id" "$image"
 fi
 /usr/bin/codesign --verify --all-architectures --strict -R "=$developer_id" "$app"
+verify_private_code "$app"
 /usr/bin/syspolicy_check distribution "$app"
 installation="$verify_dir/installation"
 mkdir "$installation"
 installed_app="$installation/Files macOS.app"
 /usr/bin/ditto "$app" "$installed_app"
 /usr/bin/codesign --verify --all-architectures --strict -R "=$developer_id" "$installed_app"
+verify_private_code "$installed_app"
 /usr/bin/syspolicy_check distribution "$installed_app"
 printf 'Release image, mounted app, and copied app passed verification: %s\n' "$image"
 if [[ -n "$finder_app" ]]; then
@@ -96,6 +105,7 @@ if [[ -n "$finder_app" ]]; then
     exit 65
   fi
   /usr/bin/codesign --verify --all-architectures --strict -R "=$developer_id" "$finder_app"
+  verify_private_code "$finder_app"
   /usr/bin/syspolicy_check distribution "$finder_app"
   cdhash() {
     /usr/bin/codesign --display --arch "$1" --verbose=4 -- "$2" 2>&1 | awk -F= '$1 == "CDHash" { print $2 }'

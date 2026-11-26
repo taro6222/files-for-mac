@@ -9,7 +9,11 @@ case "$mode" in
   *) echo "Usage: $0 [--universal]" >&2; exit 64 ;;
 esac
 
-APP="build/Files macOS.app"
+APP=${FILES_APP_OUTPUT:-build/Files macOS.app}
+if [[ -e "$APP" || -L "$APP" ]]; then
+  echo "App output already exists; choose a new FILES_APP_OUTPUT path." >&2
+  exit 73
+fi
 mkdir -p "$APP/Contents/MacOS"
 mkdir -p "$APP/Contents/Resources"
 cp LICENSE "$APP/Contents/Resources/LICENSE.txt"
@@ -38,11 +42,17 @@ cat > "$APP/Contents/Info.plist" <<'PLIST'
 <key>CFBundleShortVersionString</key><string>0.1.0</string>
 <key>CFBundleVersion</key><string>1</string>
 <key>FilesReleaseChannel</key><string>preview</string>
+<key>FilesArchiveSDKVersion</key><string>26.06</string>
 <key>LSMinimumSystemVersion</key><string>14.0</string>
 <key>NSHighResolutionCapable</key><true/>
 </dict></plist>
 PLIST
-codesign --force --sign - "$APP"
+if [[ -n "${FILES_SEVENZIP_SOURCE_ARCHIVE:-}" ]]; then
+  PYTHONDONTWRITEBYTECODE=1 python3 scripts/sevenzip_bundle.py install --app "$APP" --source-archive "$FILES_SEVENZIP_SOURCE_ARCHIVE"
+else
+  PYTHONDONTWRITEBYTECODE=1 python3 scripts/sevenzip_bundle.py install --app "$APP"
+fi
+bash scripts/sign-app.sh "$APP" -
 if [[ "$mode" == --universal ]]; then
   bash scripts/verify-universal-app.sh "$APP"
 fi

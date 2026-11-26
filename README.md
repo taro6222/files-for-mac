@@ -17,6 +17,10 @@ open 'build/Files macOS.app'
 
 Apple Silicon·Intel 유니버설 로컬 프리뷰 설치 이미지와 SHA-256 파일은 `./scripts/build-dmg.sh --preview`로 생성합니다.
 
+기존 앱·이미지 출력은 덮어쓰지 않습니다. 다시 빌드할 때는 새 `FILES_APP_OUTPUT`(앱 경로) 또는 `FILES_DMG_OUTPUT_DIR`(이미지 폴더)을 지정합니다. 예를 들어 `FILES_DMG_OUTPUT_DIR="$PWD/build/new-preview" ./scripts/build-dmg.sh --preview`를 사용합니다.
+
+패키지에는 고정 7-Zip SDK helper와 공유 라이브러리, 원본 고지·대응 소스·재빌드 자료가 포함됩니다. 자료 위치는 앱의 `Contents/Resources/ThirdParty/7zip`이며 [연결 범위와 남은 기능](docs/SEVENZIP_BACKEND.md)을 별도로 추적합니다. SDK 포함이 7z 고급 기능의 UI 수용 완료를 의미하지는 않습니다.
+
 [0.1.0 설치 안내 및 지원 범위](docs/RELEASE_NOTES.md)
 
 또는 `FilesMac.xcodeproj`를 Xcode에서 열고 `Files macOS` scheme을 실행합니다. SwiftPM에서는 `Package.swift`로 코어 테스트와 앱을 빌드합니다.

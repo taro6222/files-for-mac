@@ -31,4 +31,5 @@ for architecture in arm64 x86_64; do
   fi
 done
 codesign --verify --all-architectures --strict "$app"
+PYTHONDONTWRITEBYTECODE=1 python3 "$(dirname "$0")/sevenzip_bundle.py" verify --app "$app"
 printf 'Verified arm64 and x86_64 for macOS %s: %s\n' "$minimum" "$app"

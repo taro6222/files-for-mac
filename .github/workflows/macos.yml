@@ -104,6 +104,8 @@ jobs:
         run: PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s Tests/FixtureTests -p 'test_spotlight_volume_fixture.py'
       - name: Verify archive reference acquisition guards
         run: PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s Tests/FixtureTests -p 'test_sevenzip_reference.py'
+      - name: Verify private SDK bundle guards
+        run: PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s Tests/FixtureTests -p 'test_sevenzip_bundle.py'
       - name: Build and verify the structured 7z SDK worker
         if: github.event_name == 'workflow_dispatch' && inputs.verify_full_appkit
         timeout-minutes: 8
@@ -270,10 +272,18 @@ jobs:
         timeout-minutes: 15
         env:
           EXPECTED_ARCH: ${{ matrix.architecture }}
+          FILES_VERIFY_SEVENZIP_PACKAGE: ${{ inputs.verify_full_appkit && '1' || '0' }}
         run: |
           bash scripts/build-dmg.sh --preview
           python3 scripts/verify-preview-install.py build/Files-macOS-preview.dmg \
             --startup --launch-services --expect-architecture "$EXPECTED_ARCH"
+      - name: Retain packaged SDK execution reports
+        if: always() && github.event_name == 'workflow_dispatch' && inputs.verify_full_appkit
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: files-archive-package-${{ matrix.architecture }}
+          path: build/sevenzip-package-verification/
+          if-no-files-found: ignore
       - name: Check out the previous preview source
         if: github.event_name == 'workflow_dispatch' && inputs.verify_upgrade
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6

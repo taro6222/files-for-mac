@@ -55,6 +55,15 @@ private let sdkEmptyReply = #"{"version":1,"ok":true,"session":"5BC9424B-FAE6-4A
     #expect(try await provider.entries(at: root.appendingPathComponent("archive.7z")).isEmpty)
 }
 
+@Test func sevenZipSDKEOFOnDiagnosticPipeIsNotDiagnosticData() async throws {
+    let root = try sdkRoot(); defer { try? FileManager.default.removeItem(at: root) }
+    let provider = try sdkMock("""
+    request(); close STDERR; select(undef,undef,undef,0.05); reply('\(sdkEmptyReply)');
+    request(); reply('{"version":1,"ok":true,"closed":true}');
+    """, root: root)
+    #expect(try await provider.entries(at: root.appendingPathComponent("archive.7z")).isEmpty)
+}
+
 @Test func sevenZipSDKTimeoutAndCancellationReapOwnedChild() async throws {
     let root = try sdkRoot(); defer { try? FileManager.default.removeItem(at: root) }
     let body = #"open(my $pid,'>',$ARGV[0].'.tmp') or die; print $pid $$; close($pid); rename($ARGV[0].'.tmp',$ARGV[0]) or die; request(); sleep 60;"#
@@ -119,8 +128,10 @@ private func sdkFixture(root: URL, password: String? = nil, link: Bool = false) 
 }
 
 private func sdkRealProvider() throws -> SevenZipArchiveProvider {
-    let binary = URL(fileURLWithPath: try #require(ProcessInfo.processInfo.environment["FILES_TEST_SEVENZIP_WORKER"]))
-    return SevenZipArchiveProvider(executable: binary, library: binary.deletingLastPathComponent().appendingPathComponent("7z.so"), timeout: 20)
+    let environment = ProcessInfo.processInfo.environment
+    let binary = URL(fileURLWithPath: try #require(environment["FILES_TEST_SEVENZIP_WORKER"]))
+    let library = environment["FILES_TEST_SEVENZIP_LIBRARY"].map { URL(fileURLWithPath: $0) } ?? binary.deletingLastPathComponent().appendingPathComponent("7z.so")
+    return SevenZipArchiveProvider(executable: binary, library: library, timeout: 20)
 }
 
 @Test(.enabled(if: hasIntegrationFixture("FILES_TEST_SEVENZIP_REFERENCE", "FILES_TEST_SEVENZIP_WORKER"), "Requires the pinned native SDK worker and reference"))

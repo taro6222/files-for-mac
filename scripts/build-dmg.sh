@@ -25,20 +25,28 @@ case "$mode" in
   *) echo "Usage: $0 --preview | --release" >&2; exit 64 ;;
 esac
 
-scripts/build-app.sh --universal
-stage=$(mktemp -d "$PWD/build/.files-dmg.XXXXXX")
+output_dir=${FILES_DMG_OUTPUT_DIR:-"$PWD/build"}
+mkdir -p "$output_dir"
+if [[ -e "$output_dir/$file_name" || -L "$output_dir/$file_name" || -e "$output_dir/$file_name.sha256" || -L "$output_dir/$file_name.sha256" ]]; then
+  echo "DMG output already exists; choose a new FILES_DMG_OUTPUT_DIR." >&2
+  exit 73
+fi
+stage=$(mktemp -d "$output_dir/.files-dmg.XXXXXX")
 trap 'rm -rf -- "$stage"' EXIT
 app="$stage/contents/Files macOS.app"
 mkdir -p "$stage/contents"
-ditto "build/Files macOS.app" "$app"
+FILES_APP_OUTPUT="$app" scripts/build-app.sh --universal
 ln -s /Applications "$stage/contents/Applications"
 cp LICENSE "$stage/contents/LICENSE.txt"
 cp docs/RELEASE_NOTES.md "$stage/contents/Release Notes.txt"
 if [[ "$mode" == --release ]]; then
   /usr/libexec/PlistBuddy -c 'Set :FilesReleaseChannel stable' "$app/Contents/Info.plist"
-  codesign --force --options runtime --timestamp --sign "$FILES_SIGNING_IDENTITY" "$app"
+  bash scripts/sign-app.sh "$app" "$FILES_SIGNING_IDENTITY"
 fi
 scripts/verify-dmg-contents.sh "$stage/contents"
+if [[ "${FILES_VERIFY_SEVENZIP_PACKAGE:-0}" == 1 ]]; then
+  bash scripts/verify-sevenzip-package.sh "$app" "${FILES_SEVENZIP_PACKAGE_REPORT_DIR:-$output_dir/sevenzip-package-verification}"
+fi
 
 image="$stage/$file_name"
 /usr/bin/hdiutil create -volname "Files macOS" -srcfolder "$stage/contents" -format UDZO "$image"
@@ -67,6 +75,7 @@ else
   /usr/bin/hdiutil verify "$image"
 fi
 
-mv -f -- "$image" "build/$file_name"
-mv -f -- "$stage/$file_name.sha256" "build/$file_name.sha256"
-printf 'Built %s\n' "$PWD/build/$file_name"
+# Stage and destination share a filesystem. Exclusive links preserve any concurrent output.
+ln "$stage/$file_name.sha256" "$output_dir/$file_name.sha256"
+ln "$image" "$output_dir/$file_name"
+printf 'Built %s\n' "$output_dir/$file_name"

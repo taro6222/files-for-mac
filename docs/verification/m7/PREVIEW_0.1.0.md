@@ -1,6 +1,14 @@
 # Files for Mac 0.1.0 개발 프리뷰
 
-## 최신 설치 이미지
+## SDK 포함 검증 후보 — 348단계
+
+- 로컬 경로 `build/sevenzip-348-final-preview/Files-macOS-preview.dmg`와 `.sha256`.
+- SHA-256 `5b0d23164fc219d8b3c72ac64f72110eb0def633ac07123fb676fb53a2068b2f`.
+- 앱·helper·SDK 라이브러리의 arm64/x86_64 구성·14.0 배포 메타데이터와 ad-hoc 서명, SDK 원본 고지·대응 소스·재빌드 자료를 확인했다.
+- macOS 27.2.1 arm64의 읽기 전용 DMG에서 SDK 조건 59개·Swift 클라이언트 9개를 실행하고 정상 detach했다. [소스/검증 범위](INCREMENT_348.md).
+- 앱 설치·교체·복원/전체 UI 동선, Intel/최소 OS 실행, Developer ID·공증은 아직 수용하지 않은 후보이며 아래 설치 검증 결과를 승계하지 않는다. SDK의 제품 UI 선택도 아직 연결 전이다.
+
+## 설치 동선을 확인한 이전 이미지
 
 - 앱 소스 `a07c80c63356097bae3f00790d5147f29956c3b6`, Apple Silicon·Intel 슬라이스.
 - 로컬 경로 `build/preview-a07c80c/Files-macOS-preview.dmg`; 옆의 `.sha256`으로 확인한다.

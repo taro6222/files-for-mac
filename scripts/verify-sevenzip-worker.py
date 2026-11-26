@@ -12,6 +12,7 @@ import subprocess
 import tempfile
 import time
 import threading
+import platform
 
 
 def frame(value):
@@ -20,8 +21,8 @@ def frame(value):
 
 
 class Worker:
-    def __init__(self, executable, output=False, output_fd=None):
-        arguments = [str(executable), str(executable.parent / '7z.so')]
+    def __init__(self, executable, output=False, output_fd=None, library=None):
+        arguments = [str(executable), str(library or executable.parent / '7z.so')]
         self.output = bytearray(); self.reader = None; inherited = ()
         if output:
             read_fd, write_fd = os.pipe(); inherited = (write_fd,)
@@ -75,7 +76,7 @@ class Worker:
         if status != expected or trailing or diagnostic: raise RuntimeError('Unexpected worker termination/output')
 
 
-def verify(executable, reference, root):
+def verify(executable, reference, root, library=None):
     checks = {}
     def check(name, condition):
         checks[name] = bool(condition)
@@ -98,12 +99,12 @@ def verify(executable, reference, root):
     originals = {p: hashlib.sha256(p.read_bytes()).hexdigest() for p in [plain, encrypted]}
     def initial(path, **extra): return dict(version=1, operation='list', archivePath=str(path), **extra)
     for label, secret, error in [('missingPassword', None, 'password-required'), ('wrongPassword', 'wrong', 'password-or-corrupt')]:
-        worker = Worker(executable)
+        worker = Worker(executable, library=library)
         response = worker.request(initial(encrypted, password=secret))
         check(label, not response['ok'] and response['error']['code'] == error)
         check(label + 'SecretAbsent', password not in json.dumps(response, ensure_ascii=False))
         worker.finish(1)
-    worker = Worker(executable)
+    worker = Worker(executable, library=library)
     response = worker.request(initial(encrypted, password=password))
     check('correctPassword', response['ok'] and response['headerPasswordRequested'])
     items = {i['path']: i for i in response['items']}
@@ -118,27 +119,27 @@ def verify(executable, reference, root):
     repeated = worker.request(dict(version=1, operation='list', session=token))
     check('sameSessionList', repeated['items'] == response['items'] and repeated['source'] == response['source'])
     check('close', worker.request(dict(version=1, operation='close', session=token))['closed']); worker.finish()
-    worker = Worker(executable)
+    worker = Worker(executable, library=library)
     limited = worker.request(initial(plain, maxEntries=1))
     check('entryLimit', not limited['ok'] and limited['error']['code'] == 'limit' and bool(limited['session']))
     check('limitRetrySameSession', worker.request(dict(version=1, operation='list', session=limited['session']))['ok'])
     worker.finish()
-    worker = Worker(executable); opened = worker.request(initial(plain))
+    worker = Worker(executable, library=library); opened = worker.request(initial(plain))
     check('wrongSession', worker.request(dict(version=1, operation='list', session='wrong'))['error']['code'] == 'invalid-request'); worker.finish(1)
     mutable = root / 'mutable.7z'; shutil.copyfile(plain, mutable)
-    worker = Worker(executable); opened = worker.request(initial(mutable))
+    worker = Worker(executable, library=library); opened = worker.request(initial(mutable))
     with mutable.open('ab') as stream: stream.write(b'changed')
     changed = worker.request(dict(version=1, operation='list', session=opened['session']))
     check('sourceMutationRejected', changed['error']['code'] == 'source-changed'); worker.finish()
     replacement = root / 'replacement.7z'; shutil.copyfile(plain, replacement)
-    worker = Worker(executable); opened = worker.request(initial(replacement))
+    worker = Worker(executable, library=library); opened = worker.request(initial(replacement))
     replacement.rename(root / 'held.7z'); replacement.write_bytes(b'not an archive')
     after = worker.request(dict(version=1, operation='list', session=opened['session']))
     check('pathReplacementNeverFollowed', (after['ok'] and after['source'] == opened['source'] and after['items'] == opened['items']) or
           (not after['ok'] and after['error']['code'] == 'source-changed')); worker.finish()
     fifo = root / 'fifo'; os.mkfifo(fifo)
     for name, path in [('fifoRejected', fifo), ('directoryRejected', fixture)]:
-        worker = Worker(executable); result = worker.request(initial(path))
+        worker = Worker(executable, library=library); result = worker.request(initial(path))
         check(name, result['error']['code'] == 'source-open'); worker.finish(1)
     bad_requests = [('booleanVersion', dict(version=True, operation='list', archivePath=str(plain)), 'invalid-request'),
                     ('unknownKey', initial(plain, surprise=1), 'invalid-request'),
@@ -146,12 +147,12 @@ def verify(executable, reference, root):
                     ('unknownOperation', dict(version=1, operation='extract'), 'unsupported-operation'),
                     ('nulPassword', initial(plain, password='a\0b'), 'invalid-request')]
     for name, request, code in bad_requests:
-        worker = Worker(executable); check(name, worker.request(request)['error']['code'] == code); worker.finish(1)
+        worker = Worker(executable, library=library); check(name, worker.request(request)['error']['code'] == code); worker.finish(1)
     for name, data, code in [('oversizedFrame', struct.pack('!I', 1024 * 1024 + 1), 'frame-limit'),
                              ('zeroFrame', b'\0\0\0\0', 'frame-limit'),
                              ('truncatedFrame', struct.pack('!I', 10) + b'{}', 'truncated-frame'),
                              ('invalidUTF8', struct.pack('!I', 1) + b'\xff', 'invalid-request')]:
-        worker = Worker(executable); worker.process.stdin.write(data); worker.process.stdin.flush()
+        worker = Worker(executable, library=library); worker.process.stdin.write(data); worker.process.stdin.flush()
         if name == 'truncatedFrame': worker.process.stdin.close()
         check(name, worker.read()['error']['code'] == code)
         if name == 'truncatedFrame':
@@ -165,7 +166,7 @@ def verify(executable, reference, root):
         request = dict(version=1, operation='extract', session=opened['session'], index=item['index'],
                        expectedSize=item['size'], maximumBytes=8000000000)
         request.update(extra); return worker.request(request)
-    worker = Worker(executable, output=True); opened = worker.request(initial(encrypted, password=password))
+    worker = Worker(executable, output=True, library=library); opened = worker.request(initial(encrypted, password=password))
     listed = {i['path']: i for i in opened['items']}; expected = b''
     for name, data in payloads.items():
         result = extract(worker, opened, listed[name]); expected += data
@@ -180,7 +181,7 @@ def verify(executable, reference, root):
     check('listAfterExtractSameSource', worker.request(dict(version=1, operation='list', session=opened['session']))['source'] == opened['source'])
     check('extractBooleanIndex', extract(worker, opened, selected, index=True)['error']['code'] == 'invalid-request')
     worker.finish(1); check('extractExactBytesNoRejectedOutput', worker.output == expected)
-    worker = Worker(executable); opened = worker.request(initial(plain))
+    worker = Worker(executable, library=library); opened = worker.request(initial(plain))
     check('extractRequiresOutputPipe', extract(worker, opened, opened['items'][-1])['error']['code'] == 'output-descriptor'); worker.finish(1)
     # A non-header-encrypted archive can list without credentials; extraction must request them.
     data_archive = root / 'data-encrypted.7z'
@@ -188,7 +189,7 @@ def verify(executable, reference, root):
                             cwd=fixture, input=((password + '\n') * 2).encode(), stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=30)
     check('dataEncryptedFixture', result.returncode == 0)
     for name, secret, error in [('extractMissingPassword', None, 'password-required'), ('extractWrongPassword', 'wrong', 'password-or-corrupt')]:
-        worker = Worker(executable, output=True); opened = worker.request(initial(data_archive, password=secret))
+        worker = Worker(executable, output=True, library=library); opened = worker.request(initial(data_archive, password=secret))
         check(name + 'List', opened['ok'])
         result = extract(worker, opened, opened['items'][0]); check(name, not result['ok'] and result['error']['code'] == error); worker.finish()
     # Output exceeds pipe capacity; a concurrent reader proves streaming without stdout mixing.
@@ -197,29 +198,29 @@ def verify(executable, reference, root):
     result = subprocess.run([str(reference), 'a', '-t7z', '-mhc=off', '-ms=off', '-y', str(stream_archive), stream_source.name],
                             cwd=fixture, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=30)
     check('streamFixture', result.returncode == 0)
-    worker = Worker(executable, output=True); opened = worker.request(initial(stream_archive))
+    worker = Worker(executable, output=True, library=library); opened = worker.request(initial(stream_archive))
     result = extract(worker, opened, opened['items'][0]); worker.finish()
     check('streamBeyondPipeCapacity', result['ok'] and result['written'] == len(stream_bytes) and worker.output == stream_bytes)
     # A closed consumer pipe is a write failure, never an apparent successful extraction.
     read_fd, write_fd = os.pipe(); os.close(read_fd)
-    worker = Worker(executable, output_fd=write_fd)
+    worker = Worker(executable, output_fd=write_fd, library=library)
     os.close(write_fd)
     opened = worker.request(initial(stream_archive)); result = extract(worker, opened, opened['items'][0]); worker.finish()
     check('closedOutputPipeRejected', not result['ok'] and result['error']['code'] == 'output-write')
     output_path = root / 'not-a-pipe'; output_path.write_bytes(b'preserve')
     with output_path.open('ab') as stream:
-        worker = Worker(executable, output_fd=stream.fileno())
+        worker = Worker(executable, output_fd=stream.fileno(), library=library)
         check('regularOutputDescriptorRejected', worker.read()['error']['code'] == 'output-descriptor'); worker.finish(1)
     check('regularOutputDescriptorPreserved', output_path.read_bytes() == b'preserve')
     corrupt = bytearray(stream_archive.read_bytes()); corrupt[32] ^= 0x80
     corrupt_archive = root / 'corrupt.7z'; corrupt_archive.write_bytes(corrupt)
-    worker = Worker(executable, output=True); opened = worker.request(initial(corrupt_archive))
+    worker = Worker(executable, output=True, library=library); opened = worker.request(initial(corrupt_archive))
     check('corruptFixtureLists', opened['ok'])
     result = extract(worker, opened, opened['items'][0]); worker.finish()
     check('corruptDataNeverSuccess', not result['ok'] and result['error']['code'] == 'corrupt-data')
     # The caller must discard output on any failure, including a source changed after listing.
     changed_archive = root / 'extract-changed.7z'; shutil.copyfile(stream_archive, changed_archive)
-    worker = Worker(executable, output=True); opened = worker.request(initial(changed_archive))
+    worker = Worker(executable, output=True, library=library); opened = worker.request(initial(changed_archive))
     with changed_archive.open('ab') as stream: stream.write(b'changed')
     result = extract(worker, opened, opened['items'][0]); worker.finish()
     check('extractSourceChangeBeforeOutput', not result['ok'] and result['error']['code'] == 'source-changed' and not worker.output)
@@ -230,15 +231,22 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--worker', type=Path, required=True)
     parser.add_argument('--reference', type=Path, required=True)
+    parser.add_argument('--library', type=Path)
+    parser.add_argument('--bundle-manifest', type=Path)
     parser.add_argument('--output', type=Path, required=True)
     args = parser.parse_args(); args.output.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix='sevenzip-worker-') as directory:
-        checks = verify(args.worker.resolve(), args.reference.resolve(), Path(directory))
-    manifest = json.loads((args.worker.parent / 'manifest.json').read_text())
-    result = dict(passed=True, checks=checks, workerFingerprint=manifest['fingerprint'],
-                  architecture=manifest['inputs']['architecture'], productIntegration=False)
+        checks = verify(args.worker.resolve(), args.reference.resolve(), Path(directory), args.library)
+    manifest_path = args.bundle_manifest or args.worker.parent / 'manifest.json'
+    manifest = json.loads(manifest_path.read_text())
+    native = manifest['builds'][platform.machine()] if args.bundle_manifest else manifest
+    library = args.library or args.worker.parent / '7z.so'
+    result = dict(passed=True, checks=checks, workerFingerprint=native['fingerprint'],
+                  workerSHA256=hashlib.sha256(args.worker.read_bytes()).hexdigest(),
+                  librarySHA256=hashlib.sha256(library.read_bytes()).hexdigest(),
+                  architecture=native['inputs']['architecture'], productIntegration=False)
     (args.output / 'result.json').write_text(json.dumps(result, indent=2) + '\n')
-    shutil.copyfile(args.worker.parent / 'manifest.json', args.output / 'manifest.json')
+    shutil.copyfile(manifest_path, args.output / 'manifest.json')
     print(json.dumps(result, indent=2))
 
 
