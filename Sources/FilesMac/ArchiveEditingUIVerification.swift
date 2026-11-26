@@ -41,6 +41,31 @@ func verifyArchiveEditingUI(_ controller: ArchiveWindow, root: URL, capture: (St
     checks["archiveEditingUndoDelete"] = controller.qaEntryPaths.contains("renamed-folder/" + added.lastPathComponent)
     controller.qaUndoEdit(); controller.qaConfirm(true); try await idle()
     checks["archiveEditingUndoAdd"] = controller.qaEntryPaths.contains("renamed-folder") && !controller.qaEntryPaths.contains("renamed-folder/" + added.lastPathComponent)
+    checks["archiveEditingRedoAvailable"] = controller.qaCanRedoEdit
+    controller.qaRedoEdit(); controller.qaConfirm(true); try await idle()
+    checks["archiveEditingRedoAdd"] = controller.qaEntryPaths.contains("renamed-folder/" + added.lastPathComponent)
+    controller.qaUndoEdit(); controller.qaConfirm(true); try await idle()
+    checks["archiveEditingUndoRedoRoundTrip"] = !controller.qaEntryPaths.contains("renamed-folder/" + added.lastPathComponent)
+    ArchiveEditRecoveryWindow.present(journalDirectory: root.appendingPathComponent("archive-edit-journals"))
+    guard let history = ArchiveEditRecoveryWindow.qaLatest else { throw ArchiveEditError.invalidState }
+    func historyIdle() async throws {
+        let start = ContinuousClock.now
+        while (history.qaBusy || history.window?.attachedSheet != nil) && start.duration(to: .now) < .seconds(10) { try await Task.sleep(for: .milliseconds(10)) }
+        guard !history.qaBusy, history.window?.attachedSheet == nil else { throw SevenZipWorkerError.timedOut }
+    }
+    try await historyIdle()
+    checks["archiveHistoryListsRecords"] = !history.qaRecords.isEmpty
+    guard let row = history.qaRecords.firstIndex(where: { $0.journal == controller.qaRedoJournal }) else { throw ArchiveEditError.invalidJournal }
+    history.qaSelect(row)
+    checks["archiveHistoryRequiresVerification"] = !history.qaCanUndo && !history.qaCanRedo
+    history.qaVerify(); try await historyIdle()
+    checks["archiveHistoryVerifiesRedoCandidate"] = history.qaCanRedo && !history.qaCanUndo
+    guard let currentArchive = controller.qaArchiveURL else { throw ArchiveEditError.invalidState }
+    let beforeRecoveryCancel = try Data(contentsOf: currentArchive)
+    history.qaRedo(); history.qaConfirm(false); try await historyIdle()
+    checks["archiveHistoryCancelPreservesFiles"] = (try Data(contentsOf: currentArchive)) == beforeRecoveryCancel
+    try capture("archive-edit-history", history.window?.contentView)
+    history.close(); controller.window?.makeKeyAndOrderFront(nil)
     try capture("archive-edit-actions", controller.window?.contentView)
 
     let archive = root.appendingPathComponent("archive-edit-encrypted.zip"), password = "UI-375-한글-🔑"

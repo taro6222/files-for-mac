@@ -182,11 +182,23 @@ public struct SevenZipArchiveProvider: Sendable {
     }
     public static func recoverArchiveEdit(journal: URL, journalDirectory: URL, undo: Bool = false,
                                           progress: ArchiveProgressHandler? = nil) async throws -> ArchiveEditRecoveryOutcome {
+        try await recoverArchiveEdit(journal: journal, journalDirectory: journalDirectory, action: undo ? .undo : .inspect, progress: progress)
+    }
+
+    public static func archiveEditHistory(journalDirectory: URL) async throws -> [ArchiveEditHistoryItem] {
+        let cancellation = CopyCancellation()
+        return try await withTaskCancellationHandler(operation: {
+            try Task.checkCancellation()
+            return try await Task.detached(priority: .utility) { try ArchiveEditTransaction.history(directory: journalDirectory, check: cancellation.check) }.value
+        }, onCancel: { cancellation.cancel() })
+    }
+    public static func recoverArchiveEdit(journal: URL, journalDirectory: URL, action: ArchiveEditRecoveryAction,
+                                          progress: ArchiveProgressHandler? = nil) async throws -> ArchiveEditRecoveryOutcome {
         let cancellation = CopyCancellation()
         return try await withTaskCancellationHandler(operation: {
             try Task.checkCancellation()
             return try await Task.detached(priority: .userInitiated) {
-                try ArchiveEditTransaction.recover(journal: journal, directory: journalDirectory, undo: undo, check: cancellation.check, progress: progress)
+                try ArchiveEditTransaction.recover(journal: journal, directory: journalDirectory, undo: action == .undo, redo: action == .redo, check: cancellation.check, progress: progress)
             }.value
         }, onCancel: { cancellation.cancel() })
     }

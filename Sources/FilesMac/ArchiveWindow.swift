@@ -183,10 +183,10 @@ final class ArchiveWindow: NSWindowController, NSTableViewDataSource, NSTableVie
     private var pendingClose = false
     private let table = ArchiveEditingTable(), status = NSTextField(labelWithString: ""), progress = NSProgressIndicator()
     private let extractButton = NSButton(), cancelButton = NSButton()
-    private let addButton = NSButton(), folderButton = NSButton(), renameButton = NSButton(), deleteButton = NSButton(), undoButton = NSButton(), recoveryButton = NSButton()
+    private let addButton = NSButton(), folderButton = NSButton(), renameButton = NSButton(), deleteButton = NSButton(), undoButton = NSButton(), redoButton = NSButton(), recoveryButton = NSButton()
     private var editor: SevenZipArchiveProvider?, sourceVersion: ArchiveEditSourceVersion?
     private var isRunning = false, hasLoaded = false, cancelRequested = false, editingOperation = false
-    private var undoReports: [ArchiveEditReport] = [], recoveryLocations: [URL] = []
+    private var undoReports: [ArchiveEditReport] = [], redoReports: [ArchiveEditReport] = [], recoveryLocations: [URL] = []
     private var nameAlert: NSAlert?, nameInput: ArchiveNameInput?
     private var storedConfirmation: NSAlert?
     #if DEBUG
@@ -214,11 +214,11 @@ final class ArchiveWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         let actions = NSStackView(); actions.orientation = .horizontal; actions.spacing = 6
         for (button, title, action) in [(addButton, L("파일 추가…", "Add Files…"), #selector(addFiles(_:))),
             (folderButton, L("새 폴더…", "New Folder…"), #selector(createFolder(_:))), (renameButton, L("이름 변경…", "Rename…"), #selector(renameSelection(_:))),
-            (deleteButton, L("압축에서 삭제…", "Delete from Archive…"), #selector(deleteSelection(_:))), (undoButton, L("실행 취소…", "Undo…"), #selector(undoLastFileTransfer(_:)))] {
+            (deleteButton, L("압축에서 삭제…", "Delete from Archive…"), #selector(deleteSelection(_:))), (undoButton, L("실행 취소…", "Undo…"), #selector(undoLastFileTransfer(_:))), (redoButton, L("다시 실행…", "Redo…"), #selector(redoLastMove(_:)))] {
             button.title = title; button.target = self; button.action = action; configureFooterButton(button); button.setAccessibilityLabel(title); actions.addArrangedSubview(button)
         }
         let menu = NSMenu()
-        for button in [addButton, folderButton, renameButton, deleteButton, undoButton] { let item = NSMenuItem(title: button.title, action: button.action, keyEquivalent: ""); item.target = self; menu.addItem(item) }
+        for button in [addButton, folderButton, renameButton, deleteButton, undoButton, redoButton] { let item = NSMenuItem(title: button.title, action: button.action, keyEquivalent: ""); item.target = self; menu.addItem(item) }
         table.menu = menu; stack.addArrangedSubview(actions)
         let scroll = NSScrollView(); scroll.documentView = table; scroll.hasVerticalScroller = true; stack.addArrangedSubview(scroll)
         let footer = NSStackView(); footer.orientation = .horizontal; footer.spacing = 8
@@ -227,7 +227,7 @@ final class ArchiveWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         cancelButton.title = L("중단", "Stop"); configureFooterButton(cancelButton); cancelButton.target = self; cancelButton.action = #selector(cancel(_:)); footer.addArrangedSubview(cancelButton)
         extractButton.title = L("추출…", "Extract…"); configureFooterButton(extractButton); extractButton.target = self; extractButton.action = #selector(chooseDestination(_:)); footer.addArrangedSubview(extractButton)
         stack.addArrangedSubview(footer)
-        recoveryButton.title = L("보존된 파일 보기…", "Show Preserved Files…"); recoveryButton.target = self; recoveryButton.action = #selector(showRecovery(_:)); recoveryButton.isHidden = true; stack.addArrangedSubview(recoveryButton)
+        recoveryButton.title = L("편집 기록 및 보존 파일…", "Edit History and Retained Files…"); recoveryButton.target = self; recoveryButton.action = #selector(showRecovery(_:)); recoveryButton.isHidden = true; stack.addArrangedSubview(recoveryButton)
         render()
     }
 
@@ -241,7 +241,7 @@ final class ArchiveWindow: NSWindowController, NSTableViewDataSource, NSTableVie
     func present(archiveURL: URL, onRead: (() -> Void)? = nil) {
         if isRunning { pendingPresentation = (archiveURL, onRead); task?.cancel(); return }
         if let sheet = window?.attachedSheet { pendingPresentation = (archiveURL, onRead); window?.endSheet(sheet, returnCode: sheet is NSOpenPanel ? .cancel : .alertSecondButtonReturn); return }
-        if self.archiveURL?.standardizedFileURL != archiveURL.standardizedFileURL { undoReports = [] }
+        if self.archiveURL?.standardizedFileURL != archiveURL.standardizedFileURL { undoReports = []; redoReports = [] }
         task?.cancel(); pendingClose = false; operationID = UUID(); let currentID = operationID
         sourceVersion = nil; hasLoaded = false; editor = nil; recoveryLocations = []; recoveryButton.isHidden = true
         self.archiveURL = archiveURL; entries = []; table.reloadData()
@@ -321,6 +321,7 @@ final class ArchiveWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         renameButton.isEnabled = canEdit && selectedEntries.count == 1
         deleteButton.isEnabled = canEdit && !selectedEntries.isEmpty
         undoButton.isEnabled = canEdit && !undoReports.isEmpty
+        redoButton.isEnabled = canEdit && !redoReports.isEmpty
     }
     func tableViewSelectionDidChange(_ notification: Notification) { renderEditActions() }
     func validateMenuItem(_ item: NSMenuItem) -> Bool {
@@ -328,6 +329,7 @@ final class ArchiveWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         case #selector(addFiles(_:)), #selector(createFolder(_:)): return canEdit
         case #selector(renameSelection(_:)): return canEdit && selectedEntries.count == 1
         case #selector(deleteSelection(_:)): item.title = L("압축에서 삭제…", "Delete from Archive…"); return canEdit && !selectedEntries.isEmpty
+        case #selector(redoLastMove(_:)): item.title = L("마지막 압축 편집 다시 실행…", "Redo Last Archive Edit…"); return canEdit && !redoReports.isEmpty
         case #selector(undoLastFileTransfer(_:)): item.title = L("마지막 압축 편집 실행 취소…", "Undo Last Archive Edit…"); return canEdit && !undoReports.isEmpty
         default: return false
         }
@@ -421,7 +423,7 @@ final class ArchiveWindow: NSWindowController, NSTableViewDataSource, NSTableVie
                     }
                 }
                 guard let report else { throw SevenZipWorkerError.invalidResponse }
-                saved = true; self.undoReports.append(report); self.archiveURL = report.archive; self.sourceVersion = nil
+                saved = true; self.undoReports.append(report); self.redoReports = []; self.archiveURL = report.archive; self.sourceVersion = nil
                 try await self.reloadAfterEdit(password: password, selecting: paths)
                 guard self.operationID == currentID else { return }
                 self.status.stringValue = L("저장했습니다 · \(self.entries.count)개 항목", "Saved · \(self.entries.count) items")
@@ -457,29 +459,35 @@ final class ArchiveWindow: NSWindowController, NSTableViewDataSource, NSTableVie
     }
     @objc func undoLastFileTransfer(_ sender: Any?) {
         guard canEdit, let report = undoReports.last else { return }
-        confirm(title: L("마지막 압축 편집 실행 취소", "Undo Last Archive Edit"), message: L("이전 원본을 복원합니다. 수정본도 별도로 보존합니다.", "Restore the previous archive and retain the edited version."), button: L("실행 취소", "Undo")) { [weak self] in self?.performUndo(report) }
+        confirm(title: L("마지막 압축 편집 실행 취소", "Undo Last Archive Edit"), message: L("이전 원본을 복원합니다. 수정본도 별도로 보존합니다.", "Restore the previous archive and retain the edited version."), button: L("실행 취소", "Undo")) { [weak self] in self?.performRestore(report, redo: false) }
     }
-    private func performUndo(_ report: ArchiveEditReport) {
+    @objc func redoLastMove(_ sender: Any?) {
+        guard canEdit, let report = redoReports.last else { return }
+        confirm(title: L("마지막 압축 편집 다시 실행", "Redo Last Archive Edit"), message: L("보존한 수정본을 다시 적용합니다. 현재 원본도 보존합니다.", "Reapply the retained edited version and preserve the current original."), button: L("다시 실행", "Redo")) { [weak self] in self?.performRestore(report, redo: true) }
+    }
+    private func performRestore(_ report: ArchiveEditReport, redo: Bool) {
         guard canEdit else { return }; operationID = UUID(); let currentID = operationID; editingOperation = true
-        status.stringValue = L("이전 원본을 복원하는 중…", "Restoring the previous archive…"); setRunning(true)
+        status.stringValue = redo ? L("압축 편집을 다시 적용하는 중…", "Reapplying the archive edit…") : L("이전 원본을 복원하는 중…", "Restoring the previous archive…"); setRunning(true)
         task = Task { [weak self] in
             guard let self else { return }; var restored = false
             do {
-                guard case .undone = try await SevenZipArchiveProvider.recoverArchiveEdit(journal: report.journal, journalDirectory: self.editJournalDirectory, undo: true) else { throw ArchiveEditError.invalidState }
-                restored = true; _ = self.undoReports.popLast(); self.sourceVersion = nil
+                let result = try await SevenZipArchiveProvider.recoverArchiveEdit(journal: report.journal, journalDirectory: self.editJournalDirectory, action: redo ? .redo : .undo)
+                if redo { guard case .committed = result else { throw ArchiveEditError.invalidState }; _ = self.redoReports.popLast(); self.undoReports.append(report) }
+                else { guard case .undone = result else { throw ArchiveEditError.invalidState }; _ = self.undoReports.popLast(); self.redoReports.append(report) }
+                restored = true; self.sourceVersion = nil
                 // Reopening an encrypted-header listing may require a password again.
                 let loaded = Task { @MainActor in
                     guard let window = self.window else { throw CancellationError() }
                     let result = try await self.backend.readWithPassword(report.archive, window: window)
                     try await self.reloadAfterEdit(password: result.password, selecting: [])
                 }
-                try await withTaskCancellationHandler(operation: { try await loaded.value }, onCancel: { loaded.cancel() }); self.status.stringValue = L("압축 편집을 실행 취소했습니다.", "Archive edit undone.")
+                try await withTaskCancellationHandler(operation: { try await loaded.value }, onCancel: { loaded.cancel() }); self.status.stringValue = redo ? L("압축 편집을 다시 실행했습니다.", "Archive edit reapplied.") : L("압축 편집을 실행 취소했습니다.", "Archive edit undone.")
             } catch { self.status.stringValue = restored ? L("복원했습니다. 목록을 다시 열어 확인하세요.", "Restored. Reopen the archive to refresh its listing.") : archiveEditErrorMessage(error) }
             guard self.operationID == currentID else { return }; self.editingOperation = false; self.setRunning(false)
             NSAccessibility.post(element: self.status, notification: .valueChanged)
         }
     }
-    @objc private func showRecovery(_ sender: Any?) { guard !recoveryLocations.isEmpty else { return }; NSWorkspace.shared.activateFileViewerSelecting(recoveryLocations) }
+    @objc private func showRecovery(_ sender: Any?) { ArchiveEditRecoveryWindow.present(journalDirectory: editJournalDirectory) }
     private func render() { setRunning(false); status.stringValue = L("압축 파일을 여세요.", "Open an archive.") }
     func numberOfRows(in tableView: NSTableView) -> Int { entries.count }
     func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
@@ -492,6 +500,10 @@ final class ArchiveWindow: NSWindowController, NSTableViewDataSource, NSTableVie
     var qaEditReady: Bool { canEdit }
     var qaEntryPaths: [String] { entries.map { cleanPath($0.path) } }
     var qaCanUndoEdit: Bool { undoButton.isEnabled }
+    var qaCanRedoEdit: Bool { redoButton.isEnabled }
+    var qaRedoJournal: URL? { redoReports.last?.journal }
+    var qaArchiveURL: URL? { archiveURL }
+    func qaRedoEdit() { redoLastMove(nil) }
     func qaSelectPaths(_ paths: [String]) { let selected = Set(paths); table.selectRowIndexes(IndexSet(entries.indices.filter { selected.contains(cleanPath(entries[$0].path)) }), byExtendingSelection: false) }
     func qaCreateFolder() { createFolder(nil) }
     func qaRename() { renameSelection(nil) }

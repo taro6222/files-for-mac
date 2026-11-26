@@ -1809,3 +1809,57 @@ func archiveEditPreservesEmptyEncrypted7zHeaderAndRejectsStaleSelection() async 
     _ = try await SevenZipArchiveProvider.recoverArchiveEdit(journal: empty.journal, journalDirectory: journals, undo: true)
     #expect(try Data(contentsOf: archive) == original)
 }
+
+@Test(.enabled(if: hasIntegrationFixture("FILES_TEST_SEVENZIP_REFERENCE") && hasIntegrationFixture("FILES_TEST_SEVENZIP_WORKER"), "Requires native SDK and reference"))
+func archiveEditHistoryAndRedoRequireVerifiedFilesAndKeepUnreadableRecords() async throws {
+    let root = try sdkRoot(); defer { try? FileManager.default.removeItem(at: root) }
+    let fixture = try await sdkFixture(root: root), provider = try sdkRealProvider(), journals = root.appendingPathComponent("journals")
+    #expect(try await SevenZipArchiveProvider.archiveEditHistory(journalDirectory: journals).isEmpty)
+    let original = try Data(contentsOf: fixture.archive)
+    let saved = try await provider.edit(fixture.archive, operations: [.createDirectory(path: "new")], encryptNewData: false, journalDirectory: journals)
+    let edited = try Data(contentsOf: fixture.archive)
+    let history = try await SevenZipArchiveProvider.archiveEditHistory(journalDirectory: journals)
+    #expect(history.count == 1 && history[0].readable && history[0].recordedState == "committed" && history[0].journal == saved.journal)
+    _ = try await SevenZipArchiveProvider.recoverArchiveEdit(journal: saved.journal, journalDirectory: journals, action: .undo)
+    #expect(try Data(contentsOf: fixture.archive) == original)
+    if case .committed = try await SevenZipArchiveProvider.recoverArchiveEdit(journal: saved.journal, journalDirectory: journals, action: .redo) {} else { Issue.record("Expected redo") }
+    #expect(try Data(contentsOf: fixture.archive) == edited)
+    _ = try await SevenZipArchiveProvider.recoverArchiveEdit(journal: saved.journal, journalDirectory: journals, action: .redo)
+    #expect(try Data(contentsOf: fixture.archive) == edited)
+    _ = try await SevenZipArchiveProvider.recoverArchiveEdit(journal: saved.journal, journalDirectory: journals, action: .undo)
+    try Data("external original change".utf8).write(to: fixture.archive)
+    let backup = try Data(contentsOf: saved.backup)
+    await #expect(throws: (any Error).self) { try await SevenZipArchiveProvider.recoverArchiveEdit(journal: saved.journal, journalDirectory: journals, action: .redo) }
+    #expect(try Data(contentsOf: fixture.archive) == Data("external original change".utf8))
+    #expect(try Data(contentsOf: saved.backup) == backup)
+    let invalid = try sevenZipCanonicalDirectory(journals).appendingPathComponent("archive-edits").appendingPathComponent(UUID().uuidString, isDirectory: true)
+    try FileManager.default.createDirectory(at: invalid, withIntermediateDirectories: false, attributes: [.posixPermissions: 0o700])
+    let broken = invalid.appendingPathComponent("00000000.json")
+    try Data("broken".utf8).write(to: broken); try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: broken.path)
+    let updated = try await SevenZipArchiveProvider.archiveEditHistory(journalDirectory: journals)
+    #expect(updated.count == 2 && updated.first { $0.journal.path == invalid.path }?.readable == false, "expected: \(invalid.path); actual: \(updated.map { "\($0.journal.path) readable=\($0.readable)" })")
+    #expect(updated.first { $0.journal == saved.journal }?.recordedState == "undone")
+    #expect(try Data(contentsOf: broken) == Data("broken".utf8))
+}
+
+@Test(.enabled(if: hasIntegrationFixture("FILES_TEST_SEVENZIP_REFERENCE") && hasIntegrationFixture("FILES_TEST_SEVENZIP_WORKER") && hasIntegrationFixture("FILES_TEST_SPLIT_PROBE"), "Requires native SDK and process restart probe"))
+func archiveEditRedoRecoversBothProcessInterruptionBoundaries() async throws {
+    let root = try sdkRoot(); defer { try? FileManager.default.removeItem(at: root) }
+    let fixture = try await sdkFixture(root: root), provider = try sdkRealProvider(), original = try Data(contentsOf: fixture.archive)
+    for mode in ["edit-redo-crash-prepared", "edit-redo-crash-published"] {
+        let folder = root.appendingPathComponent(mode); try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: false)
+        let archive = folder.appendingPathComponent("archive.7z"), journals = folder.appendingPathComponent("journals")
+        try FileManager.default.copyItem(at: fixture.archive, to: archive)
+        let saved = try await provider.edit(archive, operations: [.createDirectory(path: "new")], encryptNewData: false, journalDirectory: journals)
+        let edited = try Data(contentsOf: archive)
+        _ = try await SevenZipArchiveProvider.recoverArchiveEdit(journal: saved.journal, journalDirectory: journals, action: .undo)
+        let stopped = try await sdkRunSplitProbe(["mode": mode, "journal": saved.journal.path, "journalDirectory": journals.path], root: folder, name: "stop")
+        #expect(stopped.0 == 75, "Redo boundary not reached: \(stopped.1)")
+        let recovered = try await sdkRunSplitProbe(["mode": "edit-recover", "journal": saved.journal.path, "journalDirectory": journals.path], root: folder, name: "recover")
+        #expect(recovered.0 == 0 && recovered.1.contains(mode.hasSuffix("prepared") ? "undone" : "committed"))
+        #expect(try Data(contentsOf: archive) == (mode.hasSuffix("prepared") ? original : edited))
+        let redone = try await sdkRunSplitProbe(["mode": "edit-redo", "journal": saved.journal.path, "journalDirectory": journals.path], root: folder, name: "redo")
+        #expect(redone.0 == 0 && redone.1.contains("committed"))
+        #expect(try Data(contentsOf: archive) == edited)
+    }
+}

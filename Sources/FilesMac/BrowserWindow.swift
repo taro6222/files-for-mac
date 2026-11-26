@@ -4026,7 +4026,7 @@ extension BrowserWindow {
         case #selector(toggleCompactOverlay(_:)):
             menuItem.state = compactOverlayState != nil ? .on : .off; return true
         case #selector(closeSecondaryPane(_:)), #selector(closeActivePane(_:)): return secondaryPane != nil
-        case #selector(redoLastMove(_:)): return availableMoveRedo != nil
+        case #selector(redoLastMove(_:)): menuItem.title = L("이동 다시 실행…", "Redo Move…"); return availableMoveRedo != nil
         case #selector(undoLastFileTransfer(_:)):
             menuItem.title = L("마지막 파일 전송 실행 취소…", "Undo Last File Transfer…")
             return !fileOperationIsRunning && window?.attachedSheet == nil &&

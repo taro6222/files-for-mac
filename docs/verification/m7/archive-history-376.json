@@ -1,0 +1,67 @@
+{
+  "increment": 376,
+  "status": "history and redo implemented; current GUI acceptance pending; F23/M7 incomplete",
+  "baseCommit": "6d0e40d003007c2c706eb157a958f3cc4712ac96",
+  "sourcesSHA256": {
+    "FilesMac.xcodeproj/project.pbxproj": "dbe28290cf28a2c8e8048a15ffdb4b07d5fef3adc79aef3cd3dc0d37b92d420b",
+    "Sources/FilesCore/ArchiveEditTransaction.swift": "00dde811abbf632ef570d80a8427dbaba02bbbe14142d2cc593cf2b7c9bcdf2b",
+    "Sources/FilesCore/SevenZipArchiveProvider.swift": "e0346bb0ad31a544e50f528373caf6c2f47eded27bee891221706e01609d3b89",
+    "Sources/FilesMac/ArchiveEditingUIVerification.swift": "ede20c7f51bf0f68adae3b559b532efaba33c0f7a2ea38a26f03aee80d543d7b",
+    "Sources/FilesMac/ArchiveWindow.swift": "2b8f50fcc8deef1a8a2bc10e7c63b91deb6ffaf6e1239ff2389df60c780c699f",
+    "Sources/FilesMac/BrowserWindow.swift": "8db6d508f9ee62d56be7e597755a7f5b52b4b2dc8f49a79f3775362078c22048",
+    "Sources/FilesMac/main.swift": "8f8e9e8bc285fed95638c5fceaccccd6456fec812ed8b10af042647751e56443",
+    "Tests/FilesCoreTests/SevenZipArchiveProviderTests.swift": "c057c1b04c11fd6494e01434faf321f902895dba2d2672fd85deacad23adc333",
+    "Tools/SplitCreationProbe/main.swift": "3b129bb0f5c036318e06c4d62fd4491aa6b5f90701ea714c3cb3c7b4a382ddde",
+    "scripts/verify-build-diagnostics.py": "2317606fda303e1f355ceb85252f7abf2c62af4d2dc2a32dc9212e5acf9e82bc",
+    "scripts/verify-sevenzip-client.py": "786ea035d4c2c5e02e138e7bae066f25a2ec267c53306298f99154170bacdb68",
+    "scripts/verify-ui.sh": "cb550f3510241d59ae8ba7ede299130007a54f115dd9066bee909db1342d2373",
+    "Sources/FilesMac/ArchiveEditRecoveryWindow.swift": "dc83363557c327e9ac8afbb271baa7886f074d365e6582e1113e6fd1250b6e2a"
+  },
+  "localGUIStarted": false,
+  "debugBuildSeconds": 12.5,
+  "releaseBuildSeconds": 38.2,
+  "packageReports": {
+    "diagnostic-worker": {
+      "passed": true,
+      "count": 205,
+      "sha256": "f639b4d206d7ade43ae8e4491bfaa34050c26715e29f45825eefabdccca45a0d"
+    },
+    "worker": {
+      "passed": true,
+      "count": 113,
+      "sha256": "0b48607091a97c76aaf188337f4be7b533216dc07b07865b5e71a0b7e309b863"
+    },
+    "authority": {
+      "passed": true,
+      "count": 15,
+      "sha256": "734e37962181feb336257105511a346c0d4d176bbec65882a39080fa263f828f"
+    },
+    "client": {
+      "passed": true,
+      "count": 73,
+      "sha256": "0d8f2c15cf592dd46ebe80cd83384e56080d031bbd63a6f29e70cc0822a8234f"
+    },
+    "edit-sdk": {
+      "passed": true,
+      "count": 85,
+      "sha256": "40601201ba456914919dddac66ef28bf16f6f7c185d10a26c67ad434ad83ac8e"
+    }
+  },
+  "buildMonitorChecks": 30,
+  "uiChecksDefined": 360,
+  "uiChecksPassedForThisSource": null,
+  "priorUIRun": {
+    "id": 45871502282,
+    "source": "6d0e40d",
+    "intel": "failed before UI at build monitor sample",
+    "arm64": "queued at observation"
+  },
+  "limitations": [
+    "current remote UI acceptance",
+    "non-swap filesystem publication",
+    "compressed storage metadata",
+    "empty ZIP encryption policy",
+    "physical input and VoiceOver",
+    "latest supported environments and release signing/notarization"
+  ]
+}

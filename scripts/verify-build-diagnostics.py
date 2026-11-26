@@ -29,12 +29,22 @@ def verify(output):
             raise RuntimeError('Failed: ' + name)
 
     detached_marker = output.resolve() / 'detached-child.pid'
-    child_code = 'import time; time.sleep(4)'
+    observation_release = output.resolve() / 'observation-release'
+    detached_release = output.resolve() / 'detached-observation-release'
+    def held_fixture(release, message=''):
+        # Keep the subject alive until sampling has completed, not an assumed
+        # machine-specific launch delay. The fixture still has a finite lifetime.
+        return ('import time; from pathlib import Path; start=time.monotonic(); '
+                + 'print(' + repr(message) + ',flush=True); '
+                + 'release=Path(' + repr(str(release)) + '); '
+                + '\nwhile (not release.exists() or time.monotonic()-start<2) and time.monotonic()-start<8: time.sleep(.01)'
+                + '\nassert release.exists(), "observer did not finish"')
+    child_code = held_fixture(detached_release)
     detached_code = 'import subprocess,sys; from pathlib import Path; child=subprocess.Popen([sys.executable,"-c",' + repr(child_code) + '],start_new_session=True); Path(' + repr(str(detached_marker)) + ').write_text(str(child.pid)); child.wait()'
     for name, code, expected, observe in [
         ('success', 'print("compiler output preserved", flush=True)', 0, False),
         ('failure', 'import sys; sys.exit(23)', 23, False),
-        ('observation', 'import time; print("one build", flush=True); time.sleep(2)', 0, True),
+        ('observation', held_fixture(observation_release, 'one build'), 0, True),
         ('detached-observation', detached_code, 0, True),
     ]:
         folder = output / name
@@ -48,7 +58,21 @@ def verify(output):
             if name == 'detached-observation':
                 unrelated = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(30)'],
                                              stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-            result = subprocess.run(command, capture_output=True, text=True, timeout=12)
+            if observe:
+                release = detached_release if name == 'detached-observation' else observation_release
+                started = time.monotonic()
+                with subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True) as live:
+                    try:
+                        while live.poll() is None and not (folder / 'observation-01/processes.json').is_file():
+                            if time.monotonic() - started >= 10: raise subprocess.TimeoutExpired(command, 10)
+                            time.sleep(.01)
+                        release.write_text('sampling completed')
+                        stdout, stderr = live.communicate(timeout=max(.1, 12 - (time.monotonic() - started)))
+                        result = subprocess.CompletedProcess(command, live.returncode, stdout, stderr)
+                    except BaseException:
+                        live.kill(); live.wait(); raise
+            else:
+                result = subprocess.run(command, capture_output=True, text=True, timeout=12)
             unrelated_was_live = unrelated is not None and unrelated.poll() is None
         finally:
             if unrelated is not None:
@@ -65,6 +89,7 @@ def verify(output):
             prefix = 'Detached' if name == 'detached-observation' else ''
             check(prefix + 'ObservationDidNotStopBuild', len(observations) == 1 and report['elapsedSeconds'] >= 2)
             samples = observations[0]['samples']
+            check(prefix + 'SubjectReleasedAfterSampling', release.is_file() and report['returnCode'] == 0)
             check(prefix + 'ActualOwnedProcessSample', samples and all(s.get('returnCode') == 0 for s in samples))
             check(prefix + 'SampleToolsReaped', all(terminal(s['observerPID']) for s in samples))
             if prefix:

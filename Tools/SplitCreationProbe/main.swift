@@ -19,10 +19,10 @@ private struct Configuration: Decodable {
                 let boundary: ArchiveProgressHandler = { update in
                     if update.phase == .publishing && (mode.hasSuffix("prepared") ? update.currentPath == nil : update.currentPath != nil) { _exit(75) }
                 }
-                if mode == "edit-recover" || mode == "edit-undo" || mode.hasPrefix("edit-undo-crash-") {
+                if mode == "edit-recover" || mode == "edit-undo" || mode == "edit-redo" || mode.hasPrefix("edit-undo-crash-") || mode.hasPrefix("edit-redo-crash-") {
                     guard let journal = config.journal else { throw ArchiveEditError.invalidJournal }
                     let result = try await SevenZipArchiveProvider.recoverArchiveEdit(journal: URL(fileURLWithPath: journal), journalDirectory: directory,
-                        undo: mode != "edit-recover", progress: mode.contains("crash") ? boundary : nil)
+                        action: mode.hasPrefix("edit-redo") ? .redo : mode == "edit-recover" ? .inspect : .undo, progress: mode.contains("crash") ? boundary : nil)
                     switch result { case .unpublished: print("unpublished"); case .committed: print("committed"); case .undone: print("undone") }
                 } else {
                     guard ["edit-crash-prepared", "edit-crash-published"].contains(mode), let source = config.source,

@@ -7,6 +7,12 @@ public enum ArchiveEditError: Error, Sendable, Equatable {
     case metadataMismatch(String)
     case recoveryRequired(journal: URL, archive: URL, retainedFile: URL)
 }
+public enum ArchiveEditRecoveryAction: Sendable, Equatable { case inspect, undo, redo }
+public struct ArchiveEditHistoryItem: Sendable, Identifiable {
+    public var id: URL { journal }
+    public let journal: URL, archive: URL?, retainedFile: URL?, recordedState: String?, recordedAt: Date?
+    public var readable: Bool { recordedState != nil }
+}
 public struct ArchiveEditReport: Sendable {
     public let archive: URL, backup: URL, journal: URL
 }
@@ -326,28 +332,65 @@ final class ArchiveEditTransaction: @unchecked Sendable {
             guard originalPosition || editedPosition else { throw review }
             record.state = originalPosition ? "undone" : "committed"; try save()
             return originalPosition ? .undone(report) : .committed(report)
+        case "redoIntent":
+            guard originalPosition || editedPosition else { throw review }
+            record.state = editedPosition ? "committed" : "undone"; try save()
+            return editedPosition ? .committed(report) : .undone(report)
         case "undone": guard originalPosition else { throw review }; return .undone(report)
         default: throw ArchiveEditError.invalidJournal
         }
     }
-    static func recover(journal: URL, directory: URL, undo: Bool, check: () throws -> Void, progress: ArchiveProgressHandler? = nil) throws -> ArchiveEditRecoveryOutcome {
+    static func history(directory: URL, check: () throws -> Void) throws -> [ArchiveEditHistoryItem] {
+        let registry = try Self.registry(directory)
+        let fd = open(registry.path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
+        guard fd >= 0 else { throw ArchiveEditError.invalidJournal }; defer { Darwin.close(fd) }
+        let names = try FileManager.default.contentsOfDirectory(atPath: registry.path).filter { UUID(uuidString: $0) != nil }
+        guard names.count <= 10000 else { throw ArchiveEditError.invalidJournal }
+        var items: [ArchiveEditHistoryItem] = []
+        for name in names {
+            try check(); let journal = registry.appendingPathComponent(name, isDirectory: true)
+            do {
+                let child = openat(fd, name, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
+                guard child >= 0 else { throw ArchiveEditError.invalidJournal }; defer { Darwin.close(child) }
+                let proof = try ArchiveEditDirectoryProof.read(child)
+                guard proof.owner == geteuid(), proof.mode & 0o077 == 0 else { throw ArchiveEditError.invalidJournal }
+                let (event, _, _) = try Self.load(child); let value = event.record
+                guard value.version == 1, value.id == UUID(uuidString: name), value.parent.isFileURL, value.parent.path.hasPrefix("/"), value.parent.host == nil || value.parent.host == "" || value.parent.host == "localhost",
+                      ["zip", "7z"].contains(URL(fileURLWithPath: value.base).pathExtension.lowercased()), value.staging == value.parent.appendingPathComponent(".files-archive-edit-" + name, isDirectory: true),
+                      ["building", "prepared", "swapIntent", "committed", "undoIntent", "undone", "redoIntent"].contains(value.state) else { throw ArchiveEditError.invalidJournal }
+                try EntryOperations.validateName(value.base)
+                var info = stat(); guard fstat(child, &info) == 0 else { throw ArchiveEditError.invalidJournal }
+                items.append(.init(journal: journal, archive: value.parent.appendingPathComponent(value.base), retainedFile: value.staging.appendingPathComponent("candidate." + URL(fileURLWithPath: value.base).pathExtension.lowercased()), recordedState: value.state, recordedAt: Date(timeIntervalSince1970: Double(info.st_mtimespec.tv_sec) + Double(info.st_mtimespec.tv_nsec) / 1e9)))
+            } catch is CancellationError { throw CancellationError() }
+            catch { items.append(.init(journal: journal, archive: nil, retainedFile: nil, recordedState: nil, recordedAt: nil)) }
+        }
+        return items.sorted { if $0.recordedAt != $1.recordedAt { return ($0.recordedAt ?? .distantPast) > ($1.recordedAt ?? .distantPast) }; return $0.journal.path < $1.journal.path }
+    }
+    static func recover(journal: URL, directory: URL, undo: Bool, redo: Bool = false, check: () throws -> Void, progress: ArchiveProgressHandler? = nil) throws -> ArchiveEditRecoveryOutcome {
+        guard !(undo && redo) else { throw ArchiveEditError.invalidState }
         let transaction = try Self(journal: journal, directory: directory)
         let result = try transaction.reconcile(check: check)
-        guard undo else { return result }
-        if case .undone = result { return result }
-        guard case .committed = result, let proof = transaction.record.candidate, let metadata = transaction.record.candidateMetadata else { throw ArchiveEditError.invalidState }
-        transaction.record.state = "undoIntent"; try transaction.save()
-        progress?(.init(phase: .publishing, completedEntries: 0, totalEntries: 1, completedBytes: 0, totalBytes: proof.size, currentPath: nil))
+        guard undo || redo else { return result }
+        if undo, case .undone = result { return result }
+        if redo, case .committed = result { return result }
+        guard let proof = transaction.record.candidate, let metadata = transaction.record.candidateMetadata else { throw ArchiveEditError.invalidState }
+        if undo { guard case .committed = result else { throw ArchiveEditError.invalidState } }
+        else { guard case .undone = result else { throw ArchiveEditError.invalidState } }
+        let before = undo ? (proof, metadata) : (transaction.record.source, transaction.record.sourceMetadata)
+        let after = undo ? (transaction.record.source, transaction.record.sourceMetadata) : (proof, metadata)
+        transaction.record.state = undo ? "undoIntent" : "redoIntent"; try transaction.save()
+        progress?(.init(phase: .publishing, completedEntries: 0, totalEntries: 1, completedBytes: 0, totalBytes: after.0.size, currentPath: nil))
         try check(); try transaction.bound()
-        guard transaction.matches(try transaction.file(transaction.parentFD, transaction.record.base, check: check), proof, metadata),
-              transaction.matches(try transaction.file(transaction.rootFD, transaction.candidateName, check: check), transaction.record.source, transaction.record.sourceMetadata) else { throw transaction.review }
+        guard transaction.matches(try transaction.file(transaction.parentFD, transaction.record.base, check: check), before.0, before.1),
+              transaction.matches(try transaction.file(transaction.rootFD, transaction.candidateName, check: check), after.0, after.1) else { throw transaction.review }
         guard renameatx_np(transaction.rootFD, transaction.candidateName, transaction.parentFD, transaction.record.base, UInt32(RENAME_SWAP)) == 0 else { throw transaction.review }
         do {
             try sync(transaction.parentFD); try sync(transaction.rootFD)
-            guard transaction.matches(try transaction.file(transaction.parentFD, transaction.record.base, check: {}), transaction.record.source, transaction.record.sourceMetadata),
-                  transaction.matches(try transaction.file(transaction.rootFD, transaction.candidateName, check: {}), proof, metadata) else { throw transaction.review }
-            progress?(.init(phase: .publishing, completedEntries: 1, totalEntries: 1, completedBytes: proof.size, totalBytes: proof.size, currentPath: transaction.record.base))
-            transaction.record.state = "undone"; try transaction.save(); return .undone(transaction.report)
+            guard transaction.matches(try transaction.file(transaction.parentFD, transaction.record.base, check: {}), after.0, after.1),
+                  transaction.matches(try transaction.file(transaction.rootFD, transaction.candidateName, check: {}), before.0, before.1) else { throw transaction.review }
+            progress?(.init(phase: .publishing, completedEntries: 1, totalEntries: 1, completedBytes: after.0.size, totalBytes: after.0.size, currentPath: transaction.record.base))
+            transaction.record.state = undo ? "undone" : "committed"; try transaction.save()
+            return undo ? .undone(transaction.report) : .committed(transaction.report)
         } catch { throw transaction.review }
     }
 }

@@ -95,6 +95,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         }
         NSApp.activate(ignoringOtherApps: true)
         ArchiveSplitRecoveryWindow.checkForUnfinished()
+        ArchiveEditRecoveryWindow.checkForUnfinished()
     }
     private var currentBrowser: BrowserWindow? {
         (NSApp.keyWindow?.windowController as? BrowserWindow) ?? (NSApp.mainWindow?.windowController as? BrowserWindow)
@@ -212,6 +213,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         if generalSettingsWindow == nil { generalSettingsWindow = GeneralSettingsWindow(preferences: .shared) }
         generalSettingsWindow?.present()
     }
+    @objc func showArchiveEditRecovery(_ sender: Any?) { ArchiveEditRecoveryWindow.present() }
     @objc func showSplitArchiveRecovery(_ sender: Any?) { ArchiveSplitRecoveryWindow.present() }
     @objc func showArchiveCapabilities(_ sender: Any?) {
         if archiveCapabilitiesWindow == nil { archiveCapabilitiesWindow = ArchiveCapabilitiesWindow() }
@@ -363,6 +365,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         let advanced = appMenu.addItem(withTitle: L("고급 설정…", "Advanced Settings…"), action: #selector(showAdvancedSettings(_:)), keyEquivalent: ""); advanced.target = self
         let archiveSupport = appMenu.addItem(withTitle: L("압축 포맷 지원…", "Archive Format Support…"), action: #selector(showArchiveCapabilities(_:)), keyEquivalent: "")
         archiveSupport.target = self
+        let editHistory = appMenu.addItem(withTitle: L("압축 편집 기록 및 복구…", "Archive Edit History and Recovery…"), action: #selector(showArchiveEditRecovery(_:)), keyEquivalent: "")
+        editHistory.target = self; editHistory.identifier = NSUserInterfaceItemIdentifier("archive-edit-history")
         let archiveRecovery = appMenu.addItem(withTitle: L("분할 압축 생성 복구…", "Split Archive Creation Recovery…"), action: #selector(showSplitArchiveRecovery(_:)), keyEquivalent: "")
         archiveRecovery.target = self
         let remoteConnections = appMenu.addItem(withTitle: L("원격 연결…", "Remote Connections…"), action: #selector(showRemoteConnections(_:)), keyEquivalent: "")

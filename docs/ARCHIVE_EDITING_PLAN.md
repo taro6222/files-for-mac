@@ -1,8 +1,10 @@
 # F23 압축 내부 편집 — 구현 및 수용 기준
 
+[376 구현 기록](verification/m7/INCREMENT_376.md): 압축 편집 기록 화면과 Undo/Redo를 연결했다. 실제 파일 확인 전 복원을 비활성화하고 교체 직전 다시 검증하며 손상 기록·두 버전을 보존한다. Debug/Release, 실제 번들 Swift 73개·격리 helper 113개·진단 205개·native 85개·권한 15개와 빌드 진단 30개가 통과했다. 새 UI 정의는 360개이며 실제 UI 수용은 미완료다. F23/M7은 진행 중이고 로컬 GUI/장시간 앱은 실행하지 않았다.
+
 현재 상태: **부분 구현·제품 연결 중·출시 전 해결 필요**. [375 구현 기록](verification/m7/INCREMENT_375.md)에서 ArchiveWindow의 추가/이름 변경/삭제/Undo를 연결하고 ZIP/7z update를 true로 전환했다. runtime SDK와 source version으로 실제 활성 조건을 확인하며 원격 UI 및 전체 지원 환경 수용은 대기 중이다. 기존 MACOS_DESIGN의 임시 아카이브 교체 정책과 FEATURE_PARITY_AND_PLAN의 F23 수정 검증을 구체화한다. 새 범위를 추가하거나 기존 요구를 다음 버전으로 미루는 문서가 아니다.
 
-[370단계](verification/m7/INCREMENT_370.md)에서 FD 기반 네이티브 ZIP/7z API를 부분 구현하고 실제 대응 소스/라이브러리로 83개를 통과했다. [371 구현 기록](verification/m7/INCREMENT_371.md)에서 실제 격리 helper IPC·공통 계획·Swift candidate 생성을 연결했다. [372 구현 기록](verification/m7/INCREMENT_372.md)에서 전체 내용·보존 속성·항목·암호화 및 source/output 변경 검증을 별도 읽기 전용 세션에 연결했다. [373 구현 기록](verification/m7/INCREMENT_373.md)에서 로컬 APFS 교체/백업·Undo·재시작 복구 API를 연결했다. [374 구현 기록](verification/m7/INCREMENT_374.md)에서 수정한 SDK의 UTF-8 AES 경로로 Unicode 새 암호 데이터 추가와 실제 저장/Undo를 확인했다. 375에서 UI와 source version을 연결하고 빈 암호 7z의 header를 유지한다. 다른 게시 방식/압축 저장 metadata·Redo·기록 화면·실제 UI 및 빈 ZIP 정책 등 전체 수용은 남아 있다. 기존 Core AES ZIP과 수정 SDK의 Unicode 암호 새 데이터 왕복을 통과했다. SDK 원본 archive와 변경 recipe/hash를 번들에 포함하며 ASCII 암호만 허용하는 제품으로 축소하지 않는다. 남은 UI와 경계 수용을 완료하기 전 전체 완료로 표시하지 않는다.
+[370단계](verification/m7/INCREMENT_370.md)에서 FD 기반 네이티브 ZIP/7z API를 부분 구현하고 실제 대응 소스/라이브러리로 83개를 통과했다. [371 구현 기록](verification/m7/INCREMENT_371.md)에서 실제 격리 helper IPC·공통 계획·Swift candidate 생성을 연결했다. [372 구현 기록](verification/m7/INCREMENT_372.md)에서 전체 내용·보존 속성·항목·암호화 및 source/output 변경 검증을 별도 읽기 전용 세션에 연결했다. [373 구현 기록](verification/m7/INCREMENT_373.md)에서 로컬 APFS 교체/백업·Undo·재시작 복구 API를 연결했다. [374 구현 기록](verification/m7/INCREMENT_374.md)에서 수정한 SDK의 UTF-8 AES 경로로 Unicode 새 암호 데이터 추가와 실제 저장/Undo를 확인했다. 375에서 UI와 source version을 연결하고 빈 암호 7z의 header를 유지한다. 376에서 Redo와 명시적 파일 검증 후 복원하는 기록 화면을 연결했다. 다른 게시 방식/압축 저장 metadata·실제 UI 및 빈 ZIP 정책 등 전체 수용은 남아 있다. 기존 Core AES ZIP과 수정 SDK의 Unicode 암호 새 데이터 왕복을 통과했다. SDK 원본 archive와 변경 recipe/hash를 번들에 포함하며 ASCII 암호만 허용하는 제품으로 축소하지 않는다. 남은 UI와 경계 수용을 완료하기 전 전체 완료로 표시하지 않는다.
 
 ## 고정 원본과 현재 차이
 
@@ -10,12 +12,12 @@
 
 | 동작 | 원본 근거 | macOS 현재 |
 |---|---|---|
-| 내부 파일 추가 | [ZipStorageFolder.CreateFileAsync(Stream), 826행 이후](https://github.com/files-community/Files/blob/99951c66928c4da714da8b1dd46039421182cbab/src/Files.App/Utils/Storage/StorageItems/ZipStorageFolder.cs#L826) | 네이티브 부분 구현·제품 미연결 |
-| 내부 폴더 생성 | [CreateFolderAsync, 489행 이후](https://github.com/files-community/Files/blob/99951c66928c4da714da8b1dd46039421182cbab/src/Files.App/Utils/Storage/StorageItems/ZipStorageFolder.cs#L489) | 네이티브 부분 구현·제품 미연결 |
-| 파일 이름 변경 | [ZipStorageFile.RenameAsync, 518행 이후](https://github.com/files-community/Files/blob/99951c66928c4da714da8b1dd46039421182cbab/src/Files.App/Utils/Storage/StorageItems/ZipStorageFile.cs#L518) | 네이티브 부분 구현·제품 미연결 |
-| 폴더와 하위 경로 이름 변경 | [ZipStorageFolder.RenameAsync, 537행 이후](https://github.com/files-community/Files/blob/99951c66928c4da714da8b1dd46039421182cbab/src/Files.App/Utils/Storage/StorageItems/ZipStorageFolder.cs#L537) | 네이티브 부분 구현·제품 미연결 |
-| 내부 파일 삭제 | [ZipStorageFile.DeleteAsync, 569행 이후](https://github.com/files-community/Files/blob/99951c66928c4da714da8b1dd46039421182cbab/src/Files.App/Utils/Storage/StorageItems/ZipStorageFile.cs#L569) | 네이티브 부분 구현·제품 미연결 |
-| 폴더와 하위 항목 삭제 | [ZipStorageFolder.DeleteAsync, 591행 이후](https://github.com/files-community/Files/blob/99951c66928c4da714da8b1dd46039421182cbab/src/Files.App/Utils/Storage/StorageItems/ZipStorageFolder.cs#L591) | 네이티브 부분 구현·제품 미연결 |
+| 내부 파일 추가 | [ZipStorageFolder.CreateFileAsync(Stream), 826행 이후](https://github.com/files-community/Files/blob/99951c66928c4da714da8b1dd46039421182cbab/src/Files.App/Utils/Storage/StorageItems/ZipStorageFolder.cs#L826) | 저장 API·제품 UI 연결, 실제 UI 수용 대기 |
+| 내부 폴더 생성 | [CreateFolderAsync, 489행 이후](https://github.com/files-community/Files/blob/99951c66928c4da714da8b1dd46039421182cbab/src/Files.App/Utils/Storage/StorageItems/ZipStorageFolder.cs#L489) | 저장 API·제품 UI 연결, 실제 UI 수용 대기 |
+| 파일 이름 변경 | [ZipStorageFile.RenameAsync, 518행 이후](https://github.com/files-community/Files/blob/99951c66928c4da714da8b1dd46039421182cbab/src/Files.App/Utils/Storage/StorageItems/ZipStorageFile.cs#L518) | 저장 API·제품 UI 연결, 실제 UI 수용 대기 |
+| 폴더와 하위 경로 이름 변경 | [ZipStorageFolder.RenameAsync, 537행 이후](https://github.com/files-community/Files/blob/99951c66928c4da714da8b1dd46039421182cbab/src/Files.App/Utils/Storage/StorageItems/ZipStorageFolder.cs#L537) | 저장 API·제품 UI 연결, 실제 UI 수용 대기 |
+| 내부 파일 삭제 | [ZipStorageFile.DeleteAsync, 569행 이후](https://github.com/files-community/Files/blob/99951c66928c4da714da8b1dd46039421182cbab/src/Files.App/Utils/Storage/StorageItems/ZipStorageFile.cs#L569) | 저장 API·제품 UI 연결, 실제 UI 수용 대기 |
+| 폴더와 하위 항목 삭제 | [ZipStorageFolder.DeleteAsync, 591행 이후](https://github.com/files-community/Files/blob/99951c66928c4da714da8b1dd46039421182cbab/src/Files.App/Utils/Storage/StorageItems/ZipStorageFolder.cs#L591) | 저장 API·제품 UI 연결, 실제 UI 수용 대기 |
 
 일반 파일 시스템의 Rename/Delete/Copy 명령이 implemented로 분류됐어도 압축 내부 문맥까지 구현됐다는 증거가 아니다. 202개 명령/143개 설정/33개 화면 인벤토리의 구조 감사와 이 동작 수용을 구분한다.
 
