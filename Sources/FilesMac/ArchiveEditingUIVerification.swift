@@ -3,7 +3,7 @@ import AppKit
 import FilesCore
 
 @MainActor
-func verifyArchiveEditingUI(_ controller: ArchiveWindow, root: URL, capture: (String, NSView?) throws -> Void) async throws -> [String: Bool] {
+func verifyArchiveEditingUI(_ controller: ArchiveWindow, root: URL, progress: (String) -> Void = { _ in }, capture: (String, NSView?) throws -> Void) async throws -> [String: Bool] {
     var checks: [String: Bool] = [:]
     let fm = FileManager.default
     controller.qaJournalDirectory = root.appendingPathComponent("archive-edit-journals")
@@ -15,6 +15,7 @@ func verifyArchiveEditingUI(_ controller: ArchiveWindow, root: URL, capture: (St
     // Editing keeps recovery versions beside the archive. Keep those retained files
     // outside the separate 10,001-row browser fixture used later in this suite.
     guard let sourceArchive = controller.qaArchiveURL else { throw ArchiveEditError.invalidState }
+    progress("plain-copy")
     let workingArchive = root.appendingPathComponent("archive-edit-working.zip")
     try fm.copyItem(at: sourceArchive, to: workingArchive)
     controller.present(archiveURL: workingArchive); try await idle()
@@ -75,6 +76,7 @@ func verifyArchiveEditingUI(_ controller: ArchiveWindow, root: URL, capture: (St
     history.close(); controller.window?.makeKeyAndOrderFront(nil)
     try capture("archive-edit-actions", controller.window?.contentView)
 
+    progress("encrypted-zip-create")
     let archive = root.appendingPathComponent("archive-edit-encrypted.zip"), password = "UI-375-한글-🔑"
     _ = try await ZipArchiveProvider().create(from: [added], at: archive, password: password)
     controller.present(archiveURL: archive); try await idle()
@@ -83,12 +85,14 @@ func verifyArchiveEditingUI(_ controller: ArchiveWindow, root: URL, capture: (St
     checks["archiveEditingPasswordPrompt"] = first.qaRejectsEmpty
     let original = try Data(contentsOf: archive); first.qaSubmit("incorrect")
     guard let retry = await ArchivePasswordPrompt.qaWait(for: window) else { throw SevenZipWorkerError.timedOut }
-    checks["archiveEditingWrongPasswordPreservesArchive"] = (try Data(contentsOf: archive)) == original
+    let afterWrongPassword = try Data(contentsOf: archive)
+    checks["archiveEditingWrongPasswordPreservesArchive"] = afterWrongPassword == original && first !== retry
     retry.qaSubmit(password); try await idle()
     checks["archiveEditingPasswordRetry"] = controller.qaEntryPaths == ["renamed-secure.txt"]
     controller.qaAdd([added], directory: "")
     guard let addPassword = await ArchivePasswordPrompt.qaWait(for: window) else { throw SevenZipWorkerError.timedOut }
     addPassword.qaSubmit(password); try await idle()
+    progress("encrypted-zip-verify")
     let extracted = root.appendingPathComponent("archive-edit-encrypted-restored")
     try fm.createDirectory(at: extracted, withIntermediateDirectories: true)
     _ = try await ZipArchiveProvider().extract(archive, to: extracted, password: password)
@@ -104,6 +108,7 @@ func verifyArchiveEditingUI(_ controller: ArchiveWindow, root: URL, capture: (St
     controller.qaCreateFolder(); controller.qaSubmitName("stale-selection"); try await idle()
     checks["archiveEditingStaleSelectionPreserved"] = (try Data(contentsOf: archive)) == foreign
     checks["archiveEditingStaleSelectionNeedsReload"] = !controller.qaEditReady
+    progress("empty-zip-policy")
     let policyArchive = root.appendingPathComponent("archive-empty-zip-policy.zip"), policyPassword = "UI-379-한글-🔑"
     _ = try await ZipArchiveProvider().create(from: [added], at: policyArchive, password: password)
     controller.present(archiveURL: policyArchive); try await idle()
@@ -134,9 +139,13 @@ func verifyArchiveEditingUI(_ controller: ArchiveWindow, root: URL, capture: (St
     controller.qaAdd([added], directory: "", encryptNewData: plainOptions.encryptNewData); try await idle()
     let plainAdditionEntries = try ZipArchiveProvider().entries(at: policyArchive)
     checks["archiveEmptyZIPExplicitPlaintextAddition"] = controller.qaEntryPaths == [added.lastPathComponent] && plainAdditionEntries.first?.isEncrypted == false
+    progress("empty-7z-provider")
     let emptySevenZip = root.appendingPathComponent("archive-empty-header-policy.7z"), sdk = try await ArchiveReadBackend.editingProvider()
+    progress("empty-7z-create")
     _ = try await sdk.create(from: [added], at: emptySevenZip, password: policyPassword)
+    progress("empty-7z-delete-last")
     _ = try await sdk.edit(emptySevenZip, operations: [.delete(paths: [added.lastPathComponent])], password: policyPassword, encryptNewData: true, journalDirectory: root.appendingPathComponent("archive-edit-journals"))
+    progress("empty-7z-open")
     controller.present(archiveURL: emptySevenZip)
     guard let headerPassword = await ArchivePasswordPrompt.qaWait(for: window) else { throw SevenZipWorkerError.timedOut }
     headerPassword.qaSubmit(policyPassword); try await idle()

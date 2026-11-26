@@ -109,10 +109,15 @@ final class ArchivePasswordPrompt {
         let prompt = ArchivePasswordPrompt(name: archiveName, reading: reading, editing: editing)
 #if DEBUG
         qaLatest = prompt
+        prompt.qaWindowID = ObjectIdentifier(window)
+        qaActive[ObjectIdentifier(window)] = WeakPrompt(prompt)
 #endif
         return await withTaskCancellationHandler {
             await withCheckedContinuation { continuation in
                 prompt.alert.beginSheetModal(for: window) { response in
+#if DEBUG
+                    prompt.qaRetire()
+#endif
                     let password = response == .alertFirstButtonReturn ? prompt.input.value : nil
                     prompt.alert.window.orderOut(nil); prompt.input.clear(); continuation.resume(returning: password)
                 }
@@ -122,20 +127,32 @@ final class ArchivePasswordPrompt {
         } onCancel: { Task { @MainActor in prompt.cancel() } }
     }
     private func cancel() {
+#if DEBUG
+        qaRetire()
+#endif
         if let parent = alert.window.sheetParent { parent.endSheet(alert.window, returnCode: .alertSecondButtonReturn) }
     }
 #if DEBUG
     private(set) static weak var qaLatest: ArchivePasswordPrompt?
+    private final class WeakPrompt {
+        weak var value: ArchivePasswordPrompt?
+        init(_ value: ArchivePasswordPrompt) { self.value = value }
+    }
+    private static var qaActive: [ObjectIdentifier: WeakPrompt] = [:]
+    private var qaWindowID: ObjectIdentifier?
+    private func qaRetire() {
+        if let key = qaWindowID, Self.qaActive[key]?.value === self { Self.qaActive.removeValue(forKey: key) }
+    }
     var qaRejectsEmpty: Bool { !alert.buttons[0].isEnabled }
     func qaSubmit(_ password: String?) {
         guard let password else { cancel(); return }
         input.value = password
-        if alert.buttons[0].isEnabled { alert.buttons[0].performClick(nil) }
+        if alert.buttons[0].isEnabled { qaRetire(); alert.buttons[0].performClick(nil) }
     }
     static func qaWait(for window: NSWindow) async -> ArchivePasswordPrompt? {
         let start = ContinuousClock.now
         while start.duration(to: .now) < .seconds(5) {
-            if let prompt = qaLatest, prompt.alert.window.sheetParent === window { return prompt }
+            if let prompt = qaActive[ObjectIdentifier(window)]?.value, prompt.alert.window.sheetParent === window { return prompt }
             try? await Task.sleep(for: .milliseconds(10))
         }
         return nil

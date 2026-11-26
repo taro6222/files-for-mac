@@ -1,0 +1,211 @@
+{
+  "increment": 385,
+  "status": "extraction close/cancellation and prompt lookup corrected; actual GUI acceptance pending",
+  "sourcesSHA256": {
+    "Sources/FilesMac/ArchiveExtractionWindow.swift": "ef88155779e6530794d3f9b304aa95a4c65bfa8cfd9b23437b294d031f6becd9",
+    "Sources/FilesMac/ArchiveWindow.swift": "3f4b2e33136e809b9c53296929de996f57b9a7145b39a68cbcbd7c1600eb3751",
+    "Sources/FilesMac/ArchiveEditingUIVerification.swift": "c3cbc2e7aa191012e5a75dc653ebb1c00803f490f385d42b6c24cb49d3cfe852",
+    "Sources/FilesMac/BrowserWindow.swift": "4498ff5d660ea245d63bd7dedb3fa0834fabef0105376f782fd059efe8ebd9e6",
+    "scripts/verify-ui.sh": "0dbcf1b1879d8fe8ed8d6e6adac7666fe1c355c2ee0e00a403db9e04f3de7f6b"
+  },
+  "builds": {
+    "debug": {
+      "passed": true,
+      "seconds": 34.72,
+      "sha256": "b4fc339ce01a22690fd85f4c8c7a2312656c0a63e20e2c2895ef42d621f04f6f"
+    },
+    "release": {
+      "passed": true,
+      "seconds": 16.8,
+      "sha256": "18ef73aa42e718d5b6f26ac447ce23681e78c0652f31ca2bd0ccdd9aa6a34479"
+    }
+  },
+  "existingChecksRemoved": false,
+  "newUICheck": "archiveExtractionCloseCancels",
+  "fullUIChecksDefined": 370,
+  "operationDeadlinesChanged": false,
+  "oldRun": 45882828053,
+  "oldSource": "7e31fc6f246b5c677b46b80daf4b42b67c435f17",
+  "oldARMProgress": [
+    {
+      "profile": "en-dark",
+      "state": "failed",
+      "phase": "error",
+      "elapsedSeconds": 77.8171405,
+      "failedChecks": [],
+      "error": "The operation couldn\u2019t be completed. (FilesCore.SevenZipWorkerError error 8.)",
+      "gitCloneFixture": {
+        "actualCommit": "1b2050e9af4a4352db41242089e89c87ce034752",
+        "expectedCommit": "1b2050e9af4a4352db41242089e89c87ce034752",
+        "expectedFileCount": 35,
+        "filesMatch": true
+      },
+      "sevenZipBatchPlacement": null,
+      "sha256": "48743282a204d3ece0ec67d465b4c14764d510f857970b458860f2ab7082f27f"
+    },
+    {
+      "profile": "en-light",
+      "state": "running",
+      "phase": "capture:permission-error",
+      "elapsedSeconds": 163.805031042,
+      "failedChecks": [
+        "sevenZipBatchPlacement",
+        "sevenZipChildCollision",
+        "sevenZipHeaderCancellation",
+        "sevenZipSplitBatchAndMissingVolume"
+      ],
+      "error": null,
+      "gitCloneFixture": {
+        "actualCommit": "1b2050e9af4a4352db41242089e89c87ce034752",
+        "expectedCommit": "1b2050e9af4a4352db41242089e89c87ce034752",
+        "expectedFileCount": 35,
+        "filesMatch": true
+      },
+      "sevenZipBatchPlacement": [
+        {
+          "children": [
+            "\u1112\u1161\u11ab\u1100\u1173\u11af-\ud83d\udd11.txt",
+            "nested"
+          ],
+          "output": "/Users/runner/work/_temp/files-ui-verification.HbP5YJ/en-light/sdk-placement-here",
+          "passwordCleared": true,
+          "payloadMatches": true,
+          "placement": "here",
+          "running": false,
+          "status": "Extracted 1 archives.",
+          "succeeded": true
+        },
+        {
+          "children": [
+            "sdk-encrypted"
+          ],
+          "output": "/Users/runner/work/_temp/files-ui-verification.HbP5YJ/en-light/sdk-placement-smart/sdk-encrypted",
+          "passwordCleared": true,
+          "payloadMatches": true,
+          "placement": "smart",
+          "running": false,
+          "status": "Extracted 1 archives.",
+          "succeeded": true
+        },
+        {
+          "placement": "child",
+          "promptMissing": true
+        }
+      ],
+      "sha256": "55f49458ae23ac4c1daa19e857cf24f18fbe0569e66d310023e9c8d37b5c1ab9"
+    },
+    {
+      "profile": "ko-dark",
+      "state": "passed",
+      "phase": "finished",
+      "elapsedSeconds": 96.33247775,
+      "failedChecks": [],
+      "error": null,
+      "gitCloneFixture": {
+        "actualCommit": "1b2050e9af4a4352db41242089e89c87ce034752",
+        "expectedCommit": "1b2050e9af4a4352db41242089e89c87ce034752",
+        "expectedFileCount": 35,
+        "filesMatch": true
+      },
+      "sevenZipBatchPlacement": [
+        {
+          "children": [
+            "\u1112\u1161\u11ab\u1100\u1173\u11af-\ud83d\udd11.txt",
+            "nested"
+          ],
+          "output": "/Users/runner/work/_temp/files-ui-verification.HbP5YJ/ko-dark/sdk-placement-here",
+          "passwordCleared": true,
+          "payloadMatches": true,
+          "placement": "here",
+          "running": false,
+          "status": "1\uac1c \uc555\ucd95 \ud30c\uc77c\uc744 \ucd94\ucd9c\ud588\uc2b5\ub2c8\ub2e4.",
+          "succeeded": true
+        },
+        {
+          "children": [
+            "sdk-encrypted"
+          ],
+          "output": "/Users/runner/work/_temp/files-ui-verification.HbP5YJ/ko-dark/sdk-placement-smart/sdk-encrypted",
+          "passwordCleared": true,
+          "payloadMatches": true,
+          "placement": "smart",
+          "running": false,
+          "status": "1\uac1c \uc555\ucd95 \ud30c\uc77c\uc744 \ucd94\ucd9c\ud588\uc2b5\ub2c8\ub2e4.",
+          "succeeded": true
+        },
+        {
+          "children": [
+            "sdk-encrypted 2",
+            "sdk-encrypted"
+          ],
+          "output": "/Users/runner/work/_temp/files-ui-verification.HbP5YJ/ko-dark/sdk-placement-child/sdk-encrypted 2",
+          "passwordCleared": true,
+          "payloadMatches": true,
+          "placement": "child",
+          "running": false,
+          "status": "1\uac1c \uc555\ucd95 \ud30c\uc77c\uc744 \ucd94\ucd9c\ud588\uc2b5\ub2c8\ub2e4.",
+          "succeeded": true
+        }
+      ],
+      "sha256": "52c7fada222f6de86ff61f589691dd194a44e1129646adbfe9fb656df7f89ce6"
+    },
+    {
+      "profile": "ko-light",
+      "state": "passed",
+      "phase": "finished",
+      "elapsedSeconds": 108.514968208,
+      "failedChecks": [],
+      "error": null,
+      "gitCloneFixture": {
+        "actualCommit": "1b2050e9af4a4352db41242089e89c87ce034752",
+        "expectedCommit": "1b2050e9af4a4352db41242089e89c87ce034752",
+        "expectedFileCount": 35,
+        "filesMatch": true
+      },
+      "sevenZipBatchPlacement": [
+        {
+          "children": [
+            "\u1112\u1161\u11ab\u1100\u1173\u11af-\ud83d\udd11.txt",
+            "nested"
+          ],
+          "output": "/Users/runner/work/_temp/files-ui-verification.HbP5YJ/ko-light/sdk-placement-here",
+          "passwordCleared": true,
+          "payloadMatches": true,
+          "placement": "here",
+          "running": false,
+          "status": "1\uac1c \uc555\ucd95 \ud30c\uc77c\uc744 \ucd94\ucd9c\ud588\uc2b5\ub2c8\ub2e4.",
+          "succeeded": true
+        },
+        {
+          "children": [
+            "sdk-encrypted"
+          ],
+          "output": "/Users/runner/work/_temp/files-ui-verification.HbP5YJ/ko-light/sdk-placement-smart/sdk-encrypted",
+          "passwordCleared": true,
+          "payloadMatches": true,
+          "placement": "smart",
+          "running": false,
+          "status": "1\uac1c \uc555\ucd95 \ud30c\uc77c\uc744 \ucd94\ucd9c\ud588\uc2b5\ub2c8\ub2e4.",
+          "succeeded": true
+        },
+        {
+          "children": [
+            "sdk-encrypted 2",
+            "sdk-encrypted"
+          ],
+          "output": "/Users/runner/work/_temp/files-ui-verification.HbP5YJ/ko-light/sdk-placement-child/sdk-encrypted 2",
+          "passwordCleared": true,
+          "payloadMatches": true,
+          "placement": "child",
+          "running": false,
+          "status": "1\uac1c \uc555\ucd95 \ud30c\uc77c\uc744 \ucd94\ucd9c\ud588\uc2b5\ub2c8\ub2e4.",
+          "succeeded": true
+        }
+      ],
+      "sha256": "1390249ce8a4f762e2c55079d4bb1193ee9f648890de44435d9ca190d1438406"
+    }
+  ],
+  "localGUIStarted": false,
+  "preview383ContainsFix": false,
+  "overallM7Complete": false
+}

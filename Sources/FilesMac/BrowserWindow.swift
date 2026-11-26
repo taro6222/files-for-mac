@@ -4258,7 +4258,9 @@ extension BrowserWindow {
         let verificationStarted = ContinuousClock.now
         var metrics: [String: Double] = [:]
         var diagnostics: [String: Any] = [:]
+        var activePhase = "starting"
         func checkpoint(_ values: [String: Bool], phase: String, state: String = "running") {
+            activePhase = phase
             let duration = verificationStarted.duration(to: .now).components
             let elapsed = Double(duration.seconds) + Double(duration.attoseconds) / 1e18
             let progress: [String: Any] = ["state": state, "phase": phase, "elapsedSeconds": elapsed,
@@ -5549,11 +5551,22 @@ extension BrowserWindow {
                 try capture("archive", view: controller.archiveWindow?.window?.contentView)
                 if let archiveWindow = controller.archiveWindow {
                     checkpoint(checks, phase: "archive-editing")
-                    let editing = try await verifyArchiveEditingUI(archiveWindow, root: destination) { name, view in try capture(name, view: view, backingColor: .windowBackgroundColor) }
+                    let editing = try await verifyArchiveEditingUI(archiveWindow, root: destination, progress: { phase in checkpoint(checks, phase: "archive-editing:" + phase) }) { name, view in try capture(name, view: view, backingColor: .windowBackgroundColor) }
                     checks.merge(editing, uniquingKeysWith: { _, new in new })
                     checkpoint(checks, phase: "archive-editing-complete")
                 }
                 controller.archiveWindow?.close(); window.makeKeyAndOrderFront(nil)
+                let closedTarget = destination.appendingPathComponent("archive-closed-before-start")
+                try fm.createDirectory(at: closedTarget, withIntermediateDirectories: false)
+                var closedExtractionCompleted = false
+                let closingExtraction = ArchiveExtractionWindow.qaStart(archives: [archiveFixture], parent: closedTarget, placement: .here) { closedExtractionCompleted = true }
+                closingExtraction?.close()
+                let closeDeadline = ContinuousClock.now + .seconds(5)
+                while closingExtraction?.qaRunning == true && ContinuousClock.now < closeDeadline { try await Task.sleep(for: .milliseconds(10)) }
+                let closedOutputEmpty = (try? fm.contentsOfDirectory(atPath: closedTarget.path))?.isEmpty == true
+                checks["archiveExtractionCloseCancels"] = closingExtraction != nil && closingExtraction?.qaRunning == false
+                    && closingExtraction?.qaSucceeded == false && !closedExtractionCompleted && closedOutputEmpty && !ArchiveExtractionWindow.isRunning
+                if let closingExtraction { diagnostics["archiveClosedExtractionCleanup"] = try await closingExtraction.qaCancelAndWait() }
                 let placementSources = destination.appendingPathComponent("archive-placement-sources", isDirectory: true)
                 let singleRoot = placementSources.appendingPathComponent("single-root", isDirectory: true)
                 try fm.createDirectory(at: singleRoot, withIntermediateDirectories: true)
@@ -5842,8 +5855,8 @@ extension BrowserWindow {
                         let target = destination.appendingPathComponent("sdk-placement-" + name)
                         try fm.createDirectory(at: target, withIntermediateDirectories: false)
                         if placement == .childFolder { try fm.createDirectory(at: target.appendingPathComponent("sdk-encrypted"), withIntermediateDirectories: false) }
-                        ArchiveExtractionWindow.start(archives: [archive], parent: target, placement: placement) {}
-                        if let operation = ArchiveExtractionWindow.qaLatest, let prompt = await ArchivePasswordPrompt.qaWait(for: operation.window!) {
+                        let operation = ArchiveExtractionWindow.qaStart(archives: [archive], parent: target, placement: placement)
+                        if let operation, let prompt = await ArchivePasswordPrompt.qaWait(for: operation.window!) {
                             prompt.qaSubmit(password)
                             let start = ContinuousClock.now
                             while operation.qaRunning && start.duration(to: .now) < .seconds(10) { try await Task.sleep(for: .milliseconds(10)) }
@@ -5855,8 +5868,19 @@ extension BrowserWindow {
                                                          "children": (try? fm.contentsOfDirectory(atPath: target.path)) ?? []])
                             placementsOK = placementsOK && operation.qaSucceeded && prompt.input.value.isEmpty && payloadMatches
                             if placement == .childFolder { collisionOK = (try? fm.contentsOfDirectory(atPath: target.appendingPathComponent("sdk-encrypted").path))?.isEmpty == true }
-                            operation.close()
-                        } else { placementsOK = false; placementDiagnostics.append(["placement": name, "promptMissing": true]) }
+                        } else {
+                            placementsOK = false
+                            placementDiagnostics.append(["placement": name, "promptMissing": true, "newOperation": operation != nil,
+                                                         "running": operation?.qaRunning ?? false, "status": operation?.qaMessage ?? "No new operation",
+                                                         "failureCase": operation?.qaFailureCase ?? ""])
+                        }
+                        if let operation {
+                            let settled = try await operation.qaCancelAndWait(); operation.close()
+                            placementDiagnostics.append(["placement": name, "cleanupSettled": settled])
+                            if !settled { diagnostics["sevenZipBatchPlacement"] = placementDiagnostics; throw SevenZipWorkerError.timedOut }
+                        } else {
+                            diagnostics["archiveResidualCleanupSettled"] = try await ArchiveExtractionWindow.qaCancelAllAndWait()
+                        }
                     }
                     diagnostics["sevenZipBatchPlacement"] = placementDiagnostics
                     checks[sevenZipKeys[2]] = placementsOK; checks[sevenZipKeys[3]] = collisionOK
@@ -6882,6 +6906,9 @@ extension BrowserWindow {
             DispatchQueue.main.async { exit(checks.values.allSatisfy { $0 } ? 0 : 1) }
         } catch {
             diagnostics["error"] = error.localizedDescription
+            diagnostics["phaseAtFailure"] = activePhase
+            if let worker = error as? SevenZipWorkerError { diagnostics["sevenZipFailureCase"] = String(describing: worker) }
+            diagnostics["archiveCleanupSettled"] = (try? await ArchiveExtractionWindow.qaCancelAllAndWait()) == true
             checkpoint(checks, phase: "error", state: "failed")
             fputs("UI verification failed: \(error)\n", stderr)
             DispatchQueue.main.async { exit(1) }

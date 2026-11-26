@@ -9,7 +9,10 @@ final class ArchiveExtractionWindow: NSWindowController, NSWindowDelegate {
     private let label = NSTextField(wrappingLabelWithString: "")
     private let progress = NSProgressIndicator(), details = NSTextView(), cancelButton = NSButton()
     private var task: Task<Void, Never>?, running = true, succeeded = false
-    private var encryptedArchive = false
+    private var encryptedArchive = false, closed = false
+#if DEBUG
+    private(set) var qaFailureCase: String?
+#endif
 
     static func start(archives: [URL], parent: URL, placement: ArchiveExtractionPlacement,
                       completion: @escaping @MainActor () -> Void) {
@@ -25,8 +28,10 @@ final class ArchiveExtractionWindow: NSWindowController, NSWindowDelegate {
                     try Task<Never, Never>.checkCancellation()
                     controller.encryptedArchive = false
                     let backend = try await ArchiveReadBackend.resolve(for: archive)
+                    try Task<Never, Never>.checkCancellation()
                     guard let window = controller.window else { throw CancellationError() }
                     let loaded = try await backend.readWithPassword(archive, window: window)
+                    try Task<Never, Never>.checkCancellation()
                     let entries = loaded.entries
                     controller.encryptedArchive = entries.contains(where: \.isEncrypted)
                     var password = loaded.password
@@ -51,7 +56,12 @@ final class ArchiveExtractionWindow: NSWindowController, NSWindowDelegate {
                 }
                 controller.finish(success: true, message: L("\(completed)개 압축 파일을 추출했습니다.", "Extracted \(completed) archives.")); completion()
             } catch is CancellationError { controller.finish(success: false, message: L("추출을 중단했습니다.", "Extraction stopped.")) }
-            catch { controller.finish(success: false, message: archiveExtractionErrorMessage(error, encrypted: controller.encryptedArchive)) }
+            catch {
+#if DEBUG
+                controller.qaFailureCase = (error as? SevenZipWorkerError).map { String(describing: $0) } ?? String(describing: type(of: error))
+#endif
+                controller.finish(success: false, message: archiveExtractionErrorMessage(error, encrypted: controller.encryptedArchive))
+            }
         }
     }
 
@@ -101,11 +111,31 @@ final class ArchiveExtractionWindow: NSWindowController, NSWindowDelegate {
         progress.doubleValue = max(byteFraction, entryFraction)
         label.stringValue = "\(index + 1)/\(total) · \(archive.lastPathComponent) · \(update.completedEntries)/\(update.totalEntries)"
     }
-    private func finish(success: Bool, message: String) { running = false; succeeded = success; progress.stopAnimation(nil); progress.isIndeterminate = false; progress.doubleValue = success ? 1 : 0; label.stringValue = message; cancelButton.title = L("닫기", "Close"); cancelButton.isEnabled = true }
+    private func finish(success: Bool, message: String) { running = false; task = nil; succeeded = success; progress.stopAnimation(nil); progress.isIndeterminate = false; progress.doubleValue = success ? 1 : 0; label.stringValue = message; cancelButton.title = L("닫기", "Close"); cancelButton.isEnabled = true; if closed { Self.operations.removeAll { $0 === self } } }
     func windowShouldClose(_ sender: NSWindow) -> Bool { if running { NSSound.beep(); return false }; return true }
-    func windowWillClose(_ notification: Notification) { Self.operations.removeAll { $0 === self } }
+    func windowWillClose(_ notification: Notification) { closed = true; task?.cancel(); if !running { Self.operations.removeAll { $0 === self } } }
 #if DEBUG
     static var qaLatest: ArchiveExtractionWindow? { operations.last }
+    static func qaStart(archives: [URL], parent: URL, placement: ArchiveExtractionPlacement, completion: @escaping @MainActor () -> Void = {}) -> ArchiveExtractionWindow? {
+        let previous = operations.last
+        start(archives: archives, parent: parent, placement: placement, completion: completion)
+        return operations.last === previous ? nil : operations.last
+    }
+    func qaCancelAndWait() async throws -> Bool {
+        task?.cancel()
+        let deadline = ContinuousClock.now + .seconds(5)
+        while running && ContinuousClock.now < deadline { try await Task.sleep(for: .milliseconds(10)) }
+        return !running && task == nil
+    }
+    static func qaCancelAllAndWait() async throws -> Bool {
+        let owned = operations
+        for operation in owned { operation.task?.cancel() }
+        let deadline = ContinuousClock.now + .seconds(5)
+        while owned.contains(where: { $0.running }) && ContinuousClock.now < deadline { try await Task.sleep(for: .milliseconds(10)) }
+        let settled = owned.allSatisfy { !$0.running && $0.task == nil }
+        for operation in owned { operation.close() }
+        return settled
+    }
     var qaRunning: Bool { running }
     var qaSucceeded: Bool { succeeded }
     var qaMessage: String { label.stringValue }
