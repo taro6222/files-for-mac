@@ -14,6 +14,7 @@ struct ArchiveEditPlan: Sendable {
         let descriptor: ArchiveEntryDescriptor
         let input: SevenZipCreationPlan.Item?
         let syntheticDirectory: Bool
+        var syntheticModifiedSeconds: Int64 = Int64(Date().timeIntervalSince1970)
         var request: [String: Any] {
             if let oldIndex { return ["oldIndex": oldIndex, "path": descriptor.path] }
             if let input {
@@ -21,8 +22,8 @@ struct ArchiveEditPlan: Sendable {
                 return ["addition": value, "syntheticDirectory": false]
             }
             return ["addition": ["path": descriptor.path, "device": "0", "inode": "0", "size": 0,
-                "mode": UInt32(0o40755), "directory": 1, "modifiedSeconds": 0, "modifiedNanos": 0,
-                "changedSeconds": 0, "changedNanos": 0], "syntheticDirectory": true]
+                "mode": UInt32(0o40755), "directory": 1, "modifiedSeconds": syntheticModifiedSeconds, "modifiedNanos": 0,
+                "changedSeconds": syntheticModifiedSeconds, "changedNanos": 0], "syntheticDirectory": true]
         }
     }
     let records: [Record]
@@ -56,7 +57,7 @@ struct ArchiveEditPlan: Sendable {
                     guard old == target || (directory && old.hasPrefix(target + "/")) else { return record }
                     let renamed = replacement + String(old.dropFirst(target.count))
                     let descriptor = ArchiveEntryDescriptor(path: renamed, kind: record.descriptor.kind, uncompressedSize: record.descriptor.uncompressedSize, isEncrypted: record.descriptor.isEncrypted)
-                    return Record(oldIndex: record.oldIndex, descriptor: descriptor, input: record.input, syntheticDirectory: record.syntheticDirectory)
+                    return Record(oldIndex: record.oldIndex, descriptor: descriptor, input: record.input, syntheticDirectory: record.syntheticDirectory, syntheticModifiedSeconds: record.syntheticModifiedSeconds)
                 }
             case .delete(let paths):
                 guard !paths.isEmpty else { throw SevenZipWorkerError.invalidConfiguration }

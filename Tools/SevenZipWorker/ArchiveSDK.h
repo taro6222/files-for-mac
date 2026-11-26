@@ -30,6 +30,11 @@ int SevenZipListPage(void *session, uint32_t maximumEntries, uint32_t offset, ui
 typedef int (*SevenZipWriteCallback)(void *, const void *, size_t);
 int SevenZipExtract(void *session, uint32_t index, uint64_t expectedSize, uint64_t maximumBytes,
                     void *context, SevenZipWriteCallback callback, uint64_t *written);
+// Hashes decoded streams without creating host files. Cached pages remain source-snapshot bound.
+// Digests are SHA-256; properties exclude name, packing details and encryption, which callers compare separately.
+typedef int (*SevenZipAuditCallback)(void *, uint32_t, const unsigned char *, const unsigned char *);
+int SevenZipAuditPage(void *session, uint32_t offset, uint32_t pageSize, uint64_t maximumBytes,
+                     void *context, SevenZipAuditCallback callback, uint32_t *total, unsigned char *archiveProperties);
 SevenZipSourceIdentity SevenZipIdentity(void *session);
 int SevenZipHeaderPasswordRequested(void *session);
 void SevenZipClose(void *session);

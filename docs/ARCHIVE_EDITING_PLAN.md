@@ -2,7 +2,7 @@
 
 현재 상태: **부분 구현·제품 연결 중·출시 전 해결 필요**. ArchiveCapabilityMatrix의 모든 update 값은 false이고 ArchiveWindow에는 내부 항목 추가/이름 변경/삭제 작업이 없다. 기존 MACOS_DESIGN의 임시 아카이브 교체 정책과 FEATURE_PARITY_AND_PLAN의 F23 수정 검증을 구체화한다. 새 범위를 추가하거나 기존 요구를 다음 버전으로 미루는 문서가 아니다.
 
-[370단계](verification/m7/INCREMENT_370.md)에서 FD 기반 네이티브 ZIP/7z API를 부분 구현하고 실제 대응 소스/라이브러리로 83개를 통과했다. [371 구현 기록](verification/m7/INCREMENT_371.md)에서 실제 격리 helper IPC·공통 계획·Swift candidate 생성을 연결했다. 출력 전체 검증/안전한 교체/복구·UI는 미연결이며 첫 개발 단위도 진행 중이다. 기존 Unicode AES ZIP의 metadata 편집은 통과했지만 새 암호 데이터 추가는 SDK 제한으로 미지원이다. 기존 Core AES writer 등을 이용한 브리지를 구현하기 전 update를 활성화하거나 기존 Unicode 암호 지원을 줄이지 않는다.
+[370단계](verification/m7/INCREMENT_370.md)에서 FD 기반 네이티브 ZIP/7z API를 부분 구현하고 실제 대응 소스/라이브러리로 83개를 통과했다. [371 구현 기록](verification/m7/INCREMENT_371.md)에서 실제 격리 helper IPC·공통 계획·Swift candidate 생성을 연결했다. [372 구현 기록](verification/m7/INCREMENT_372.md)에서 전체 내용·보존 속성·항목·암호화 및 source/output 변경 검증을 별도 읽기 전용 세션에 연결했다. 안전한 교체/복구·UI는 미연결이며 첫 개발 단위도 진행 중이다. 기존 Unicode AES ZIP의 metadata 편집은 통과했지만 새 암호 데이터 추가는 SDK 제한으로 미지원이다. 기존 Core AES writer 등을 이용한 브리지를 구현하기 전 update를 활성화하거나 기존 Unicode 암호 지원을 줄이지 않는다.
 
 ## 고정 원본과 현재 차이
 

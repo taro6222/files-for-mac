@@ -1,9 +1,11 @@
 import Foundation
 import Darwin
+import CryptoKit
 
 public enum SevenZipWorkerError: Error, Sendable, Equatable {
     case unavailable, invalidConfiguration, invalidResponse, ioFailure, timedOut, unexpectedExit, memoryLimitExceeded, metadataRestoreFailed
     case worker(String)
+    case editVerificationFailed(String)
     case stagingPreserved(URL)
     case publicationRecovery(staging: URL, published: [URL])
 }
@@ -103,6 +105,65 @@ public struct SevenZipArchiveProvider: Sendable {
                 return .init(path: item.path, kind: item.kind, uncompressedSize: item.uncompressedSize,
                              isEncrypted: record.oldIndex == nil && item.kind == .regularFile ? encryptNewData : item.isEncrypted)
             }
+        }
+    }
+
+    /// Verifies every decoded stream and preserved property in a separate read-only helper.
+    /// Publication, backup and recovery remain the caller's responsibility.
+    func writeVerifiedEditCandidate(_ archive: URL, candidate: URL, outputFD: Int32, operations: [ArchiveEditOperation], password: String?, encryptNewData: Bool) async throws -> ArchiveEditCandidate {
+        guard archive.isFileURL, candidate.isFileURL, ["zip", "7z"].contains(archive.pathExtension.lowercased()),
+              password == nil || (password?.isEmpty == false && password?.utf8.contains(0) == false) else { throw SevenZipWorkerError.invalidConfiguration }
+        let format = archive.pathExtension.lowercased() == "zip" ? 1 : 7
+        let prepared = try await perform(outputFD: outputFD, editing: true) { session in
+            let sourceProof = try ArchiveEditFileProof.capture(archive, check: session.check)
+            let items = try session.open(archive, password: password, editFormat: format)
+            guard try ArchiveEditFileProof.capture(archive, check: session.check) == sourceProof else { throw SevenZipWorkerError.worker("source-changed") }
+            let baseline = try session.audit(count: items.count)
+            let plan = try ArchiveEditPlan(entries: items.map(\.descriptor), operations: operations, archive: archive, check: session.check)
+            var inputHashes: [Int: String] = [:]
+            for (index, input) in plan.inputs where !input.directory {
+                try input.withDescriptor { fd in inputHashes[index] = try ArchiveEditFileProof.capture(fd, check: session.check).sha256 }
+                try input.verify()
+            }
+            let header = session.headerPasswordRequested
+            try session.edit(plan, encryptNewData: encryptNewData)
+            guard try ArchiveEditFileProof.capture(archive, check: session.check) == sourceProof else { throw SevenZipWorkerError.worker("source-changed") }
+            return (sourceProof, items, baseline, plan, inputHashes, header)
+        }
+        return try await perform(inspection: true) { session in
+            let (sourceProof, original, baseline, plan, inputHashes, header) = prepared
+            var held = stat(), named = stat()
+            guard fstat(outputFD, &held) == 0, lstat(candidate.path, &named) == 0, held.st_dev == named.st_dev, held.st_ino == named.st_ino,
+                  held.st_mode & S_IFMT == S_IFREG, held.st_nlink == 1 else { throw SevenZipWorkerError.worker("source-changed") }
+            let outputProof = try ArchiveEditFileProof.capture(candidate, check: session.check)
+            let items = try session.open(candidate, password: password, editFormat: format)
+            let audit = try session.audit(count: items.count)
+            guard items.count == plan.records.count, Set(items.map(\.path)).count == items.count else { throw SevenZipWorkerError.editVerificationFailed("entry-set") }
+            guard session.headerPasswordRequested == header else { throw SevenZipWorkerError.editVerificationFailed("header-encryption") }
+            guard audit.archivePropertiesSHA256 == baseline.archivePropertiesSHA256 else { throw SevenZipWorkerError.editVerificationFailed("archive-properties") }
+            // The 7z writer may reorder directories and files; match exact paths, not output indices.
+            let byPath = Dictionary(uniqueKeysWithValues: items.map { ($0.path, $0) })
+            let emptyHash = SHA256.hash(data: Data()).map { String(format: "%02x", $0) }.joined()
+            for (index, record) in plan.records.enumerated() {
+                try session.check()
+                guard let actual = byPath[record.descriptor.path], actual.kind == record.descriptor.kind.rawValue,
+                      actual.size == record.descriptor.uncompressedSize else { throw SevenZipWorkerError.editVerificationFailed("entry-shape") }
+                let digest = audit.items[Int(actual.index)]
+                if let oldIndex = record.oldIndex {
+                    guard actual.encrypted == original[Int(oldIndex)].encrypted, digest.dataSHA256 == baseline.items[Int(oldIndex)].dataSHA256 else { throw SevenZipWorkerError.editVerificationFailed("retained-content") }
+                    guard digest.propertiesSHA256 == baseline.items[Int(oldIndex)].propertiesSHA256 else { throw SevenZipWorkerError.editVerificationFailed("retained-properties") }
+                } else {
+                    guard actual.encrypted == (actual.kind == "regularFile" && encryptNewData),
+                          digest.dataSHA256 == (inputHashes[index] ?? emptyHash), let metadata = actual.metadata else { throw SevenZipWorkerError.editVerificationFailed("new-entry-content") }
+                    guard metadata.permissions == UInt16(record.input.map { $0.snapshot.st_mode & 0o777 } ?? 0o755) else { throw SevenZipWorkerError.editVerificationFailed("new-entry-permissions") }
+                    guard metadata.modifiedSeconds == (record.input.map({ Int64($0.snapshot.st_mtimespec.tv_sec) }) ?? record.syntheticModifiedSeconds),
+                          metadata.modifiedNanos == (record.input.map({ Int($0.snapshot.st_mtimespec.tv_nsec / 100 * 100) }) ?? 0) else { throw SevenZipWorkerError.editVerificationFailed("new-entry-modified-time") }
+                }
+            }
+            try plan.verify(check: session.check); try session.close()
+            guard try ArchiveEditFileProof.capture(archive, check: session.check) == sourceProof,
+                  try ArchiveEditFileProof.capture(candidate, check: session.check) == outputProof else { throw SevenZipWorkerError.worker("source-changed") }
+            return ArchiveEditCandidate(source: sourceProof, candidate: outputProof, entries: items.map(\.descriptor))
         }
     }
 
@@ -240,7 +301,7 @@ public struct SevenZipArchiveProvider: Sendable {
         }
     }
 
-    private func perform<T: Sendable>(outputFD: Int32? = nil, creationStream: Bool = false, editing: Bool = false, _ body: @escaping @Sendable (SevenZipSession) throws -> T) async throws -> T {
+    private func perform<T: Sendable>(outputFD: Int32? = nil, creationStream: Bool = false, editing: Bool = false, inspection: Bool = false, _ body: @escaping @Sendable (SevenZipSession) throws -> T) async throws -> T {
         let control = SevenZipProcessControl()
         return try await withTaskCancellationHandler(operation: {
             try Task.checkCancellation()
@@ -254,7 +315,7 @@ public struct SevenZipArchiveProvider: Sendable {
                             let locations = try SevenZipBundleVerifier.verify(verifiedBundle, check: control.check)
                             guard locations.worker == executable, locations.library == library, locations.identity == verifiedIdentity else { throw SevenZipBundleError.changedBundle }
                         }
-                        let session = try SevenZipSession(provider: self, control: control, outputFD: outputFD, creationStream: creationStream, editing: editing)
+                        let session = try SevenZipSession(provider: self, control: control, outputFD: outputFD, creationStream: creationStream, editing: editing, inspection: inspection)
                         defer { session.stop() }
                         return try body(session)
                     })
@@ -330,7 +391,7 @@ private final class SevenZipProcessControl: @unchecked Sendable {
     }
 }
 
-private struct SevenZipEntryMetadata: Decodable {
+private struct SevenZipEntryMetadata: Decodable, Sendable {
     let permissions: UInt16?
     let modifiedSeconds: Int64?
     let modifiedNanos: Int?
@@ -343,12 +404,18 @@ private struct SevenZipEntryMetadata: Decodable {
         return true
     }
 }
-private struct SevenZipItem: Decodable {
+private struct SevenZipItem: Decodable, Sendable {
     let index: UInt32, path: String, kind: String, size: Int64, encrypted: Bool
     let metadata: SevenZipEntryMetadata?
     var descriptor: ArchiveEntryDescriptor {
         .init(path: path, kind: ArchiveEntryKind(rawValue: kind)!, uncompressedSize: size, isEncrypted: encrypted)
     }
+}
+private struct SevenZipAuditItem: Decodable, Sendable {
+    let index: UInt32, dataSHA256: String, propertiesSHA256: String
+}
+private struct SevenZipAudit: Sendable {
+    let items: [SevenZipAuditItem], archivePropertiesSHA256: String
 }
 private struct SevenZipReply: Decodable {
     struct Failure: Decodable { let code: String }
@@ -357,16 +424,18 @@ private struct SevenZipReply: Decodable {
     let session: String?, source: Source?, items: [SevenZipItem]?, error: Failure?, written: UInt64?, closed: Bool?
     let upload: String?, accepted: Int?
     let offset: Int?, total: Int?
+    let audits: [SevenZipAuditItem]?, archivePropertiesSHA256: String?, headerPasswordRequested: Bool?
 }
 
 private final class SevenZipSession {
     private let control: SevenZipProcessControl, deadline: UInt64
     private var requestFD: Int32 = -1, responseFD: Int32 = -1, dataFD: Int32 = -1, errorFD: Int32 = -1
     private var token: String?
+    private(set) var headerPasswordRequested = false
     private var diagnosticsEnded = false
     private var inputFD: Int32 = -1
     private var readSource: SevenZipReadSource?
-    init(provider: SevenZipArchiveProvider, control: SevenZipProcessControl, outputFD: Int32? = nil, creationStream: Bool = false, editing: Bool = false) throws {
+    init(provider: SevenZipArchiveProvider, control: SevenZipProcessControl, outputFD: Int32? = nil, creationStream: Bool = false, editing: Bool = false, inspection: Bool = false) throws {
         self.control = control
         let now = DispatchTime.now().uptimeNanoseconds
         guard provider.timeout <= 86_400, provider.maximumPhysicalFootprintBytes > 0 else { throw SevenZipWorkerError.invalidConfiguration }
@@ -418,7 +487,7 @@ private final class SevenZipSession {
             guard posix_spawn_file_actions_addclose(&actions, fd) == 0 else { throw SevenZipWorkerError.ioFailure }
         }
         guard posix_spawnattr_setflags(&attributes, Int16(POSIX_SPAWN_CLOEXEC_DEFAULT)) == 0 else { throw SevenZipWorkerError.ioFailure }
-        var argumentStrings = [provider.executable.path, provider.library.path, editing ? "--edit-output-fd" : (creationStream ? "--create-stream-fd" : (outputFD == nil ? "--output-fd" : "--create-output-fd")), "3"]
+        var argumentStrings = [provider.executable.path, provider.library.path, editing ? "--edit-output-fd" : (inspection ? "--inspect-output-fd" : (creationStream ? "--create-stream-fd" : (outputFD == nil ? "--output-fd" : "--create-output-fd"))), "3"]
         if !inputPair.isEmpty { argumentStrings += ["--input-fd", "4"] }
         var arguments: [UnsafeMutablePointer<CChar>?] = argumentStrings.map { $0.withCString { strdup($0) } } + [nil]
         var environment: [UnsafeMutablePointer<CChar>?] = ["LANG=en_US.UTF-8", "LC_ALL=en_US.UTF-8", "PATH=/usr/bin:/bin"].map { $0.withCString { strdup($0) } } + [nil]
@@ -612,6 +681,8 @@ private final class SevenZipSession {
         readSource = source
         guard let token = response.session, UUID(uuidString: token) != nil,
               let identity = response.source, UInt64(identity.device) != nil, UInt64(identity.inode) != nil else { throw SevenZipWorkerError.invalidResponse }
+        if editFormat != nil, response.headerPasswordRequested == nil { throw SevenZipWorkerError.invalidResponse }
+        headerPasswordRequested = response.headerPasswordRequested ?? false
         let total = response.total
         let paged = response.offset != nil || total != nil
         if paged { guard let total, total >= 0, total <= maximumEntries else { throw SevenZipWorkerError.invalidResponse } }
@@ -687,6 +758,27 @@ private final class SevenZipSession {
         try flush()
         guard sent == plan.items.count else { throw SevenZipWorkerError.invalidResponse }
         try send(["version": 1, "operation": "create-commit", "upload": upload])
+    }
+    func audit(count: Int) throws -> SevenZipAudit {
+        guard let token, (0...100_000).contains(count) else { throw SevenZipWorkerError.invalidConfiguration }
+        var items: [SevenZipAuditItem] = [], properties: String?
+        func digest(_ value: String) -> Bool { value.utf8.count == 64 && value.utf8.allSatisfy { (48...57).contains($0) || (97...102).contains($0) } }
+        repeat {
+            try verifySource()
+            try send(["version": 1, "operation": "audit", "session": token, "offset": items.count, "pageSize": 256, "maximumBytes": 20_000_000_000])
+            let response = try receive()
+            guard response.session == token, response.offset == items.count, response.total == count,
+                  let page = response.audits, page.count <= 256, items.count + page.count <= count,
+                  !page.isEmpty || count == 0, let archive = response.archivePropertiesSHA256, digest(archive),
+                  properties == nil || properties == archive else { throw SevenZipWorkerError.invalidResponse }
+            properties = archive
+            for item in page {
+                guard item.index == UInt32(items.count), digest(item.dataSHA256), digest(item.propertiesSHA256) else { throw SevenZipWorkerError.invalidResponse }
+                items.append(item)
+            }
+            try verifySource()
+        } while items.count < count
+        return SevenZipAudit(items: items, archivePropertiesSHA256: properties!)
     }
     func edit(_ plan: ArchiveEditPlan, encryptNewData: Bool) throws {
         guard let token else { throw SevenZipWorkerError.invalidConfiguration }

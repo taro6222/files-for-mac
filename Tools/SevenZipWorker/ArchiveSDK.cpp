@@ -23,6 +23,8 @@
 #include <CoreFoundation/CoreFoundation.h>
 #include <xlocale.h>
 #include <sys/resource.h>
+#include <CommonCrypto/CommonDigest.h>
+#include <array>
 
 Z7_DEFINE_GUID(CLSID_SevenZip, 0x23170f69, 0x40c1, 0x278a, 0x10, 0, 0, 1, 0x10, 7, 0, 0);
 Z7_DEFINE_GUID(CLSID_Zip, 0x23170f69, 0x40c1, 0x278a, 0x10, 0, 0, 1, 0x10, 1, 0, 0);
@@ -161,7 +163,14 @@ Z7_COM7F_IMF(OpenCallback::CryptoGetTextPassword(BSTR *value)) {
     return StringToBstr(password, value);
 }
 
+struct AuditDigest {
+    std::array<unsigned char, CC_SHA256_DIGEST_LENGTH> data = {}, properties = {};
+};
 struct Session {
+    bool audited = false;
+    uint64_t auditBytes = 0;
+    std::vector<AuditDigest> audit;
+    std::array<unsigned char, CC_SHA256_DIGEST_LENGTH> archiveProperties = {};
     uint32_t editFormat = 0;
     void *library = nullptr;
     CMyComPtr<IInArchive> archive;
@@ -406,6 +415,137 @@ extern "C" int SevenZipExtract(void *handle, uint32_t index, uint64_t expectedSi
     } catch (...) { return 8; }
 }
 
+
+// Each output is an in-memory digest sink. It has no filesystem authority and never
+// interprets archive paths or link targets as host names.
+class AuditOutput final: public ISequentialOutStream, public CMyUnknownImp {
+    Z7_COM_UNKNOWN_IMP_1(ISequentialOutStream)
+    CC_SHA256_CTX hash;
+public:
+    UInt64 count = 0, maximum;
+    bool failed = false;
+    explicit AuditOutput(UInt64 size): maximum(size) { CC_SHA256_Init(&hash); }
+    std::array<unsigned char, CC_SHA256_DIGEST_LENGTH> digest() const {
+        auto copy = hash; std::array<unsigned char, CC_SHA256_DIGEST_LENGTH> value;
+        CC_SHA256_Final(value.data(), &copy); return value;
+    }
+    Z7_COM7F_IMF(Write(const void *data, UInt32 size, UInt32 *processed)) override {
+        if (processed) *processed = 0;
+        if (size > maximum - count) { failed = true; return E_ABORT; }
+        CC_SHA256_Update(&hash, data, size); count += size;
+        if (processed) *processed = size;
+        return S_OK;
+    }
+};
+class AuditCallback final: public IArchiveExtractCallback, public ICryptoGetTextPassword, public CMyUnknownImp {
+    Z7_IFACES_IMP_UNK_2(IArchiveExtractCallback, ICryptoGetTextPassword)
+    Z7_IFACE_COM7_IMP(IProgress)
+public:
+    OpenCallback *credentials;
+    std::vector<UInt64> sizes;
+    std::vector<CMyComPtr<ISequentialOutStream>> streams;
+    std::vector<AuditOutput *> outputs;
+    std::vector<bool> completed;
+    uint32_t current = UINT32_MAX;
+    uint64_t maximum;
+    bool failed = false, limit = false, passwordRequested = false;
+};
+Z7_COM7F_IMF(AuditCallback::SetTotal(UInt64 size)) { if (size > maximum) { limit = true; return E_ABORT; } return S_OK; }
+Z7_COM7F_IMF(AuditCallback::SetCompleted(const UInt64 *size)) { return size ? SetTotal(*size) : S_OK; }
+Z7_COM7F_IMF(AuditCallback::GetStream(UInt32 index, ISequentialOutStream **stream, Int32 mode)) {
+    *stream = nullptr;
+    if (mode != NArchive::NExtract::NAskMode::kExtract || index >= sizes.size() || outputs[index]) { failed = true; return E_ABORT; }
+    auto output = new AuditOutput(sizes[index]); streams[index] = output; outputs[index] = output;
+    *stream = output; (*stream)->AddRef(); current = index; return S_OK;
+}
+Z7_COM7F_IMF(AuditCallback::PrepareOperation(Int32 mode)) {
+    if (mode != NArchive::NExtract::NAskMode::kExtract || current >= sizes.size()) { failed = true; return E_ABORT; }
+    return S_OK;
+}
+Z7_COM7F_IMF(AuditCallback::SetOperationResult(Int32 result)) {
+    if (current >= sizes.size() || completed[current] || result != NArchive::NExtract::NOperationResult::kOK) { failed = true; return E_ABORT; }
+    completed[current] = true; return S_OK;
+}
+Z7_COM7F_IMF(AuditCallback::CryptoGetTextPassword(BSTR *value)) {
+    passwordRequested = true;
+    return credentials->defined ? StringToBstr(credentials->password, value) : E_ABORT;
+}
+static bool auditProperty(CC_SHA256_CTX &hash, PROPID id, const PROPVARIANT &value, uint64_t &propertyBytes) {
+    // A ZIP NTFS timestamp extra stores all three time slots. The SDK writes zero
+    // for an unspecified creation/access time, then reads that sentinel as FILETIME
+    // rather than VT_EMPTY. Compare their logical "not set" meaning, preserving
+    // every nonzero time value and retaining modification-time precision.
+    const bool missingTime = (id == kpidCTime || id == kpidATime) && value.vt == VT_FILETIME &&
+        !value.filetime.dwHighDateTime && !value.filetime.dwLowDateTime;
+    const VARTYPE type = missingTime ? VT_EMPTY : value.vt;
+    CC_SHA256_Update(&hash, &id, sizeof(id)); CC_SHA256_Update(&hash, &type, sizeof(type));
+    const void *bytes = nullptr; size_t length = 0;
+    switch (type) {
+        case VT_EMPTY: break;
+        case VT_BOOL: bytes = &value.boolVal; length = sizeof(value.boolVal); break;
+        case VT_UI4: bytes = &value.ulVal; length = sizeof(value.ulVal); break;
+        case VT_UI8: bytes = &value.uhVal; length = sizeof(value.uhVal); break;
+        case VT_FILETIME: bytes = &value.filetime; length = sizeof(value.filetime); break;
+        case VT_BSTR: bytes = value.bstrVal; length = value.bstrVal ? (size_t)SysStringLen(value.bstrVal) * sizeof(*value.bstrVal) : 0; break;
+        default: return false;
+    }
+    if (length > 1048576 || length > 268435456ULL - propertyBytes) return false;
+    propertyBytes += length;
+    uint64_t size = length; CC_SHA256_Update(&hash, &size, sizeof(size));
+    if (length) CC_SHA256_Update(&hash, bytes, (CC_LONG)length);
+    return true;
+}
+extern "C" int SevenZipAuditPage(void *handle, uint32_t offset, uint32_t pageSize, uint64_t maximumBytes,
+                                 void *context, SevenZipAuditCallback callback, uint32_t *total, unsigned char *archiveProperties) {
+    auto session = (Session *)handle;
+    if (!session || !session->editFormat || !callback || !total || !archiveProperties || !pageSize || pageSize > 256 || !maximumBytes || maximumBytes > 20000000000ULL) return 6;
+    try {
+        EditLocale locale(session->editFormat == 1); if (!locale.valid()) return 8;
+        if (!session->stream->unchanged()) return 9;
+        UInt32 count = 0;
+        if (session->archive->GetNumberOfItems(&count) != S_OK) return 6;
+        if (count > 100000 || session->stream->total > 8000000000ULL || (session->audited && session->auditBytes > maximumBytes)) return 7;
+        if (offset > count) return 6;
+        if (!session->audited) {
+            auto audit = new AuditCallback(); CMyComPtr<IArchiveExtractCallback> owner(audit);
+            audit->credentials = session->openCallback; audit->maximum = maximumBytes + session->stream->total;
+            audit->sizes.resize(count); audit->streams.resize(count); audit->outputs.resize(count, nullptr); audit->completed.resize(count, false);
+            std::vector<AuditDigest> digests(count); uint64_t bytes = 0, propertyBytes = 0;
+            for (UInt32 index = 0; index < count; ++index) {
+                AString path; UInt64 size = 0; int kind = 0; bool encrypted = false;
+                int error = metadata(session->archive, index, path, size, kind, encrypted); if (error) return error;
+                if (size > 8000000000ULL || size > maximumBytes - bytes) return 7;
+                audit->sizes[index] = size; bytes += size;
+                CC_SHA256_CTX hash; CC_SHA256_Init(&hash);
+                for (PROPID id: {kpidCTime, kpidATime, kpidMTime, kpidAttrib, kpidPosixAttrib, kpidComment, kpidSymLink, kpidHardLink}) {
+                    NWindows::NCOM::CPropVariant value;
+                    if (!property(session->archive, index, id, value) || !auditProperty(hash, id, value, propertyBytes)) return 6;
+                }
+                CC_SHA256_Final(digests[index].properties.data(), &hash);
+            }
+            CC_SHA256_CTX hash; CC_SHA256_Init(&hash); NWindows::NCOM::CPropVariant comment;
+            if (session->archive->GetArchiveProperty(kpidComment, &comment) != S_OK || !auditProperty(hash, kpidComment, comment, propertyBytes)) return 6;
+            std::array<unsigned char, CC_SHA256_DIGEST_LENGTH> archiveDigest; CC_SHA256_Final(archiveDigest.data(), &hash);
+            HRESULT result = count ? session->archive->Extract(nullptr, (UInt32)-1, false, owner) : S_OK;
+            if (!session->stream->unchanged()) return 9;
+            if (audit->limit) return 7;
+            if (result != S_OK || audit->failed) return audit->passwordRequested ? (session->openCallback->defined ? 4 : 3) : 12;
+            for (UInt32 index = 0; index < count; ++index) {
+                auto output = audit->outputs[index];
+                if (!audit->completed[index] || !output || output->failed || output->count != audit->sizes[index]) return 12;
+                digests[index].data = output->digest();
+            }
+            session->audit = std::move(digests); session->auditBytes = bytes; session->archiveProperties = archiveDigest; session->audited = true;
+        }
+        *total = count; memcpy(archiveProperties, session->archiveProperties.data(), CC_SHA256_DIGEST_LENGTH);
+        uint32_t end = std::min(count, offset + pageSize);
+        for (uint32_t index = offset; index < end; ++index) {
+            const auto &digest = session->audit[index];
+            if (!callback(context, index, digest.data.data(), digest.properties.data())) return 6;
+        }
+        return session->stream->unchanged() ? 0 : 9;
+    } catch (...) { return 8; }
+}
 
 // Creation reads only planned regular files/directories, without following any path symlinks.
 static int openSource(const char *path) {

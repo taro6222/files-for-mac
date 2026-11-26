@@ -1,0 +1,76 @@
+{
+  "increment": 372,
+  "status": "F23 in progress; full candidate verification connected, source publication and product editing unavailable",
+  "sourcesSHA256": {
+    "Sources/FilesCore/ArchiveEditCandidate.swift": "b1240289aba1d9e61c7a56a4a77224f8073a0131c448b233338400f4d9804134",
+    "Sources/FilesCore/ArchiveEditPlan.swift": "2cc89c8d53f3b99ce3dd6f4600916af8eb122b9a2f2070db3c3e8752718f2c5b",
+    "Sources/FilesCore/SevenZipArchiveProvider.swift": "c3c35b7e72efbb064f4cdfb2e72e7a0b24996598de75f659f68f4c2ad5c64da4",
+    "Tests/FilesCoreTests/SevenZipArchiveProviderTests.swift": "cfe9f45b4972e2ac82c1605f3664d290f51942a2e06d01a6ef7d81eca7e5c135",
+    "Tools/SevenZipWorker/ArchiveSDK.h": "12a6f6304aa4fff45ac426dfffd3bde436175384b461606e1b4a5f6d93f6aa17",
+    "Tools/SevenZipWorker/ArchiveSDK.cpp": "a5a5f108545201f71054e11e2eb8ed0ac4bef88d0bcadff153d6be36ae58ad1e",
+    "Tools/SevenZipWorker/main.mm": "4ce2baea55051b5af530f9c1104845b216d568fd7ed4aaa21c948a67fd23b7ed",
+    "scripts/verify-sevenzip-client.py": "42c037eb36dc71650ae86d4bf1b0c6c2657fe240fc7031c71b764f7982af39a9",
+    "scripts/verify-sevenzip-worker.py": "fae41744524c3380a3fdebdaa80a4b1dda1174863106ef5fef2392e2639fd397"
+  },
+  "bundleManifestSHA256": "283ac55b5a817c9f0a326fcdd79953407dcc90e4cfedd70ea8247e218790c056",
+  "reports": {
+    "diagnostic-worker": {
+      "path": "build/edit-372-current-report/diagnostic-worker/result.json",
+      "sha256": "099b359e78eb904fdad86efd62fd43ba5a2f987a1ff3c525b5a5a46be0c2d673",
+      "passed": true,
+      "count": 205
+    },
+    "worker": {
+      "path": "build/edit-372-current-report/worker/result.json",
+      "sha256": "72ac0147c1cc2635ffe4eaecd8e71d43615e958540f63beb599ebd79cd46a5b6",
+      "passed": true,
+      "count": 113
+    },
+    "client": {
+      "path": "build/edit-372-current-report/client/result.json",
+      "sha256": "05feb22d137f014a72b78b69808de9baeb9afa3917894c28d85e556bbfc7a914",
+      "passed": true,
+      "count": 62
+    },
+    "authority": {
+      "path": "build/edit-372-current-report/authority/result.json",
+      "sha256": "f40da7f2b4d22ff93687763d46b2972c2697a4c29510763d3297b23c6e5f2213",
+      "passed": true,
+      "count": 15
+    },
+    "edit-sdk": {
+      "path": "build/edit-372-current-report/edit-sdk/result.json",
+      "sha256": "e8baea3b81889c76259346060e8f846510b76de5e2fe55aa9eb2a53085e69e07",
+      "passed": true,
+      "count": 83
+    }
+  },
+  "debugBuild": {
+    "log": "build/edit-372-debug-final.log",
+    "sha256": "1879cbc7fb69a27c3d2fd0469af93a178715de91ea19b856fb8d66dc81c35a1b",
+    "seconds": 8.15
+  },
+  "releaseBuild": {
+    "log": "build/edit-372-release-final.log",
+    "sha256": "eb225ba0165ce08751821a0bd4432d52492a5b2bd9bb94eb8d1f18d102aa0751",
+    "seconds": 34.0
+  },
+  "candidateContentAndPropertyVerificationImplemented": true,
+  "sourceReplacementImplemented": false,
+  "recoveryUndoImplemented": false,
+  "editingUIImplemented": false,
+  "editingCapabilityEnabled": false,
+  "unicodeZIPEncryptedAdditionsSupported": false,
+  "localGUIStarted": false,
+  "codec": "same pinned 7-Zip SDK in separate sessions; official 7zz used for fixture restoration",
+  "propertySentinelDiagnosis": {
+    "build/edit-372-property-probe/old.zip.txt": "a1f4ed9a62edc3c8e014e1b3a0dd635b7cbbc732f97b7a5267115bc112f68147",
+    "build/edit-372-property-probe/new.zip.txt": "1c6992184c8413def66d7403082360d69962b7b400f8d9054714a48e98e51bb7"
+  },
+  "priorRemote": {
+    "id": 45860713694,
+    "source": "4e1ed1d9742980972aafaaa742504547aa2ea738",
+    "observedIntel": "in_progress",
+    "observedARM": "queued"
+  }
+}

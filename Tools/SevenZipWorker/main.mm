@@ -90,6 +90,14 @@ static int item(void *context, uint32_t index, const char *bytes, size_t length,
     [collector.items addObject:record];
     return 1;
 }
+static NSString *hexDigest(const unsigned char *bytes) {
+    char value[65]; for (int i = 0; i < 32; ++i) snprintf(value + i * 2, 3, "%02x", bytes[i]);
+    return [NSString stringWithUTF8String:value];
+}
+static int auditItem(void *context, uint32_t index, const unsigned char *data, const unsigned char *properties) {
+    NSMutableArray *items = (__bridge NSMutableArray *)context;
+    [items addObject:@{ @"index": @(index), @"dataSHA256": hexDigest(data), @"propertiesSHA256": hexDigest(properties) }]; return 1;
+}
 static int outputBytes(void *context, const void *bytes, size_t length) {
     int descriptor = *(int *)context;
     size_t total = 0;
@@ -310,7 +318,7 @@ int main(int argc, const char *argv[]) {
     @autoreleasepool {
         signal(SIGPIPE, SIG_IGN);
         int outputDescriptor = -1, inputDescriptor = -1;
-        bool creation = false, framedCreation = false, editing = false;
+        bool creation = false, framedCreation = false, editing = false, inspection = false;
         if (argc != 2 && argc != 4 && argc != 6) { reply(failure(@"arguments")); return 1; }
         for (int i = 2; i < argc; i += 2) {
             char *end = nullptr; long value = strtol(argv[i + 1], &end, 10);
@@ -325,7 +333,8 @@ int main(int argc, const char *argv[]) {
             creation = strcmp(argv[i], "--create-output-fd") == 0 || strcmp(argv[i], "--create-stream-fd") == 0;
             framedCreation = strcmp(argv[i], "--create-stream-fd") == 0;
             editing = strcmp(argv[i], "--edit-output-fd") == 0;
-            if (!creation && !editing && strcmp(argv[i], "--output-fd") != 0) { reply(failure(@"arguments")); return 1; }
+            inspection = strcmp(argv[i], "--inspect-output-fd") == 0;
+            if (!creation && !editing && !inspection && strcmp(argv[i], "--output-fd") != 0) { reply(failure(@"arguments")); return 1; }
             struct stat info;
             if (fstat((int)value, &info) != 0 ||
                 ((creation || editing) && !framedCreation ? (!S_ISREG(info.st_mode) || info.st_size != 0 || info.st_nlink != 1 || (fcntl((int)value, F_GETFL) & O_APPEND) || lseek((int)value, 0, SEEK_CUR) != 0)
@@ -334,7 +343,7 @@ int main(int argc, const char *argv[]) {
             }
             outputDescriptor = (int)value;
         }
-        if ((editing && inputDescriptor < 0) || (inputDescriptor >= 0 && inputDescriptor == outputDescriptor)) { reply(failure(@"input-descriptor")); return 1; }
+        if (((editing || inspection) && inputDescriptor < 0) || (inputDescriptor >= 0 && inputDescriptor == outputDescriptor)) { reply(failure(@"input-descriptor")); return 1; }
         const bool descriptorInput = inputDescriptor >= 0;
         void *session = nullptr;
         NSString *token = nil;
@@ -350,7 +359,7 @@ int main(int argc, const char *argv[]) {
             @autoreleasepool {
                 uint32_t header = 0;
                 ssize_t received = readExact(&header, sizeof(header));
-                if (received == 0 && session && !editing) break;
+                if (received == 0 && session && !editing && !inspection) break;
                 if (received != sizeof(header)) { reply(failure(@"truncated-frame")); result = 1; break; }
                 size_t length = ntohl(header);
                 if (length == 0 || length > RequestLimit) { reply(failure(@"frame-limit")); result = 1; break; }
@@ -360,7 +369,7 @@ int main(int argc, const char *argv[]) {
                 if (![request isKindOfClass:[NSDictionary class]] || !integer(request[@"version"], 1, 1) || !text(request[@"operation"], false)) {
                     reply(failure(@"invalid-request")); result = 1; break;
                 }
-                if (editing) {
+                if (editing || inspection) {
                     NSString *operation = request[@"operation"];
                     NSSet *keys = [NSSet setWithArray:[request allKeys]];
                     if (!session) {
@@ -390,6 +399,19 @@ int main(int argc, const char *argv[]) {
                         SevenZipClose(session); session = nullptr; close(inputDescriptor); inputDescriptor = -1;
                         reply(@{ @"version": @1, @"ok": @YES, @"closed": @YES }); break;
                     }
+                    if ([operation isEqual:@"audit"]) {
+                        if (editRequest || ![keys isEqualToSet:[NSSet setWithArray:@[@"version", @"operation", @"session", @"offset", @"pageSize", @"maximumBytes"]]] ||
+                            ![token isEqual:request[@"session"]] || !integer(request[@"offset"], 0, 100000) || !integer(request[@"pageSize"], 1, 256) || !integer(request[@"maximumBytes"], 1, 20000000000LL)) {
+                            reply(failure(@"invalid-request")); result = 1; break;
+                        }
+                        NSMutableArray *items = [NSMutableArray array]; uint32_t total = 0; unsigned char properties[32];
+                        int error = SevenZipAuditPage(session, [request[@"offset"] unsignedIntValue], [request[@"pageSize"] unsignedIntValue], [request[@"maximumBytes"] unsignedLongLongValue],
+                            (__bridge void *)items, auditItem, &total, properties);
+                        if (!reply(error ? failure(sdkError(error)) : @{ @"version": @1, @"ok": @YES, @"session": token, @"offset": request[@"offset"], @"total": @(total),
+                            @"audits": items, @"archivePropertiesSHA256": hexDigest(properties) })) { result = 1; break; }
+                        continue;
+                    }
+                    if (inspection && ![operation isEqual:@"list"]) { reply(failure(@"unsupported-operation")); result = 1; break; }
                     if ([operation isEqual:@"edit-begin"]) {
                         id encrypt = request[@"encryptNewData"];
                         if (editRequest || ![keys isEqualToSet:[NSSet setWithArray:@[@"version", @"operation", @"session", @"itemCount", @"encryptNewData", @"maximumUnpackedBytes"]]] ||

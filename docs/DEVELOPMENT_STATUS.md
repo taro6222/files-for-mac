@@ -1,6 +1,6 @@
 # 개발 현황
 
-[371 구현 기록](verification/m7/INCREMENT_371.md): 압축 편집 계획과 Swift→실제 격리 helper 통신을 연결했다. 별도 ZIP/7z 편집본의 공식 도구 복원과 원본 보존을 확인했으며 Swift 60개·격리 helper 87개·진단 179개·native 83개·권한 15개가 통과했다. 전체 출력 검증·원본 교체/복구/Undo·Unicode AES ZIP 추가·UI는 진행 중이고 update는 false다. 이전 370 Intel의 Git 복제 정리 검사는 실패했으며 원격 전체 통과로 집계하지 않는다. 로컬 GUI/장시간 앱은 시작하지 않았다.
+[372 구현 기록](verification/m7/INCREMENT_372.md): Swift 편집본을 새 읽기 전용 격리 세션에서 전체 디코딩해 내용·보존 속성·항목 목록·암호화와 원본/출력 변경을 검사한다. 최종 Swift 62개·격리 helper 113개·진단 205개·native 83개·권한 15개 및 Debug/Release가 통과했다. 원본 교체·백업/복구/Undo·Unicode AES ZIP 새 암호 payload·편집 UI는 남아 있어 F23/M7은 진행 중이고 update는 false다. 로컬 GUI/장시간 앱은 실행하지 않았다.
 
 [369단계](verification/m7/INCREMENT_369.md)에서 F23 압축 내부 추가/폴더 생성/이름 변경/삭제가 실제 미구현임을 고정 원본과 제품 API로 확인했다. [구현·수용 계획](ARCHIVE_EDITING_PLAN.md)을 기존 요구에 연결했으며 출시 전 해결 항목이다. 분리한 4a6c79d의 원격 빌드는 ARM 213.879초·Intel 405.439초로 모두 성공했고 전체 AppKit은 진행 중이다. 제품 코드를 바꾸거나 로컬 GUI/장시간 시험을 실행하지 않았다.
 

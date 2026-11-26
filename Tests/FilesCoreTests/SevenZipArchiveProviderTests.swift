@@ -1441,9 +1441,12 @@ func archiveEditCandidateUsesSandboxedClientAndPreservesOriginal() async throws 
             let fd = Darwin.open(output.path, O_WRONLY | O_CREAT | O_EXCL | O_CLOEXEC, 0o600)
             guard fd >= 0 else { throw SevenZipWorkerError.ioFailure }
             defer { Darwin.close(fd) }
-            let entries = try await provider.writeEditCandidate(archive, outputFD: fd, operations: [
+            let verified = try await provider.writeVerifiedEditCandidate(archive, candidate: output, outputFD: fd, operations: [
                 .rename(path: "folder", newName: "renamed"), .delete(paths: ["renamed/remove.txt"]),
                 .add(sources: [added], directory: "renamed"), .createDirectory(path: "empty")], password: password, encryptNewData: encrypted)
+            let entries = verified.entries
+            #expect(verified.source.sha256 == SHA256.hash(data: original).map { String(format: "%02x", $0) }.joined())
+            #expect(verified.candidate == (try ArchiveEditFileProof.capture(output, check: {})))
             #expect(Set(entries.map(\.path)) == ["renamed", "renamed/keep.txt", "renamed/added.txt", "empty"])
             #expect(entries.filter { $0.kind == .regularFile }.allSatisfy { $0.isEncrypted == encrypted })
             #expect(try Data(contentsOf: archive) == original)
@@ -1480,5 +1483,67 @@ func archiveEditCandidateRejectsLinksAndUnsafePlansWithoutChangingSource() async
         await #expect(throws: (any Error).self) { try await provider.writeEditCandidate(archive, outputFD: fd, operations: [.createDirectory(path: "../escape")], password: nil, encryptNewData: false) }
         var info = stat(); #expect(fstat(fd, &info) == 0 && info.st_size == 0)
         #expect(try Data(contentsOf: fixture.archive) == original)
+    }
+}
+
+@Test(.enabled(if: hasIntegrationFixture("FILES_TEST_SEVENZIP_REFERENCE") && hasIntegrationFixture("FILES_TEST_SEVENZIP_WORKER"), "Requires native SDK and reference"))
+func archiveEditVerificationRejectsChangedCandidateAndSource() async throws {
+    for changeSource in [false, true] {
+        let root = try sdkRoot(); defer { try? FileManager.default.removeItem(at: root) }
+        let fixture = try await sdkFixture(root: root), real = try sdkRealProvider()
+        let original = try Data(contentsOf: fixture.archive)
+        let unrelated = root.appendingPathComponent("unrelated.txt"), foreign = root.appendingPathComponent("foreign.7z")
+        try Data("independent replacement".utf8).write(to: unrelated)
+        _ = try await real.create(from: [unrelated], at: foreign)
+        let replacement = try Data(contentsOf: foreign), candidate = root.appendingPathComponent("candidate.7z")
+        let target = changeSource ? fixture.archive : candidate
+        let payload = try JSONSerialization.data(withJSONObject: [real.executable.path, target.path, foreign.path]).base64EncodedString()
+        let wrapper = root.appendingPathComponent("wrapper.pl")
+        let body = """
+        #!/usr/bin/perl
+        use strict; use warnings; use JSON::PP; use MIME::Base64;
+        my ($worker,$target,$foreign)=@{decode_json(decode_base64('\(payload)'))};
+        if (grep { $_ eq '--inspect-output-fd' } @ARGV) {
+          open(my $in,'<',$foreign) or die; binmode $in; local $/; my $data=<$in>; close($in);
+          open(my $out,'>',$target) or die; binmode $out; print $out $data; close($out) or die;
+        }
+        exec {$worker} $worker, @ARGV; die;
+        """
+        try body.write(to: wrapper, atomically: false, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: wrapper.path)
+        let provider = SevenZipArchiveProvider(executable: wrapper, library: real.library, timeout: 20)
+        let fd = Darwin.open(candidate.path, O_WRONLY | O_CREAT | O_EXCL | O_CLOEXEC, 0o600)
+        guard fd >= 0 else { throw SevenZipWorkerError.ioFailure }; defer { Darwin.close(fd) }
+        await #expect(throws: (any Error).self) {
+            try await provider.writeVerifiedEditCandidate(fixture.archive, candidate: candidate, outputFD: fd,
+                operations: [.createDirectory(path: "empty")], password: nil, encryptNewData: false)
+        }
+        #expect(try Data(contentsOf: fixture.archive) == (changeSource ? replacement : original))
+        #expect(try Data(contentsOf: foreign) == replacement)
+        if !changeSource { #expect(try Data(contentsOf: candidate) == replacement) }
+    }
+}
+
+@Test(.enabled(if: hasIntegrationFixture("FILES_TEST_SEVENZIP_REFERENCE") && hasIntegrationFixture("FILES_TEST_SEVENZIP_WORKER"), "Requires native SDK and reference"))
+func archiveEditVerificationKeepsUnicodeZIPMetadataAndRejectsUnsupportedAddition() async throws {
+    let root = try sdkRoot(); defer { try? FileManager.default.removeItem(at: root) }
+    let source = root.appendingPathComponent("한글.txt"), archive = root.appendingPathComponent("unicode.zip"), password = "암호-🔑"
+    let bytes = Data("Unicode encrypted data".utf8); try bytes.write(to: source)
+    _ = try await ZipArchiveProvider().create(from: [source], at: archive, password: password)
+    let original = try Data(contentsOf: archive), provider = try sdkRealProvider()
+    for (index, secret) in [password, "wrong", password].enumerated() {
+        let candidate = root.appendingPathComponent("candidate-\(index).zip")
+        let fd = Darwin.open(candidate.path, O_WRONLY | O_CREAT | O_EXCL | O_CLOEXEC, 0o600)
+        guard fd >= 0 else { throw SevenZipWorkerError.ioFailure }; defer { Darwin.close(fd) }
+        let operations: [ArchiveEditOperation] = index == 2 ? [.add(sources: [source], directory: "nested")] : [.rename(path: source.lastPathComponent, newName: "renamed.txt")]
+        if index == 0 {
+            let receipt = try await provider.writeVerifiedEditCandidate(archive, candidate: candidate, outputFD: fd, operations: operations, password: secret, encryptNewData: true)
+            #expect(receipt.entries.count == 1 && receipt.entries[0].path == "renamed.txt" && receipt.entries[0].isEncrypted)
+        } else {
+            let expected = SevenZipWorkerError.worker(index == 1 ? "password-or-corrupt" : "unsupported-item")
+            await #expect(throws: expected) { try await provider.writeVerifiedEditCandidate(archive, candidate: candidate, outputFD: fd, operations: operations, password: secret, encryptNewData: true) }
+            var info = stat(); #expect(fstat(fd, &info) == 0 && info.st_size == 0)
+        }
+        #expect(try Data(contentsOf: archive) == original)
     }
 }

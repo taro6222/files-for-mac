@@ -17,6 +17,7 @@ import tempfile
 import time
 import threading
 import platform
+import zipfile
 from sevenzip_fixture import empty_files
 
 
@@ -26,12 +27,12 @@ def frame(value):
 
 
 class Worker:
-    def __init__(self, executable, output=False, output_fd=None, library=None, create_output=False, creation_stream=False, descriptor_input=False, input_fd=None, child_fd_limit=None, edit_output=False):
+    def __init__(self, executable, output=False, output_fd=None, library=None, create_output=False, creation_stream=False, descriptor_input=False, input_fd=None, child_fd_limit=None, edit_output=False, inspection=False):
         arguments = [str(executable), str(library or executable.parent / '7z.so')]
         self.output = bytearray(); self.reader = None; inherited = ()
         if output:
             read_fd, write_fd = os.pipe(); inherited = (write_fd,)
-            arguments += ['--create-stream-fd' if creation_stream else '--output-fd', str(write_fd)]
+            arguments += ['--inspect-output-fd' if inspection else ('--create-stream-fd' if creation_stream else '--output-fd'), str(write_fd)]
         elif output_fd is not None:
             inherited = (output_fd,); arguments += ['--create-stream-fd' if creation_stream else ('--edit-output-fd' if edit_output else ('--create-output-fd' if create_output else '--output-fd')), str(output_fd)]
         self.input_socket = None; child_socket = None
@@ -410,6 +411,7 @@ def verify_descriptors(executable, reference, root, library, plain, payloads, ch
                     modifiedSeconds=value.st_mtime_ns // 1_000_000_000, modifiedNanos=value.st_mtime_ns % 1_000_000_000,
                     changedSeconds=value.st_ctime_ns // 1_000_000_000, changedNanos=value.st_ctime_ns % 1_000_000_000)
     verify_edits(executable, reference, root, library, check, input_spec)
+    verify_audit_boundaries(executable, root, library, check, input_spec)
     large = root / 'large-list.7z'
     empty_files(large, ('entry-' + str(index) + '-' + 'a' * 80 for index in range(35000)))
     validated = subprocess.run([str(reference), 't', str(large)], stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=10)
@@ -602,6 +604,8 @@ def verify_edits(executable, reference, root, library, check, spec):
             listing = worker.request(dict(version=1, operation='list', session=session, offset=0, pageSize=256))
             check('edit' + label + 'List', listing.get('ok') and len(listing['items']) == 2)
             keep = next(item['index'] for item in listing['items'] if item['path'] == 'old.txt')
+            audit = worker.request(dict(version=1, operation='audit', session=session, offset=0, pageSize=256, maximumBytes=8000000000))
+            check('audit' + label + 'Source', audit.get('total') == 2 and audit['audits'][keep]['dataSHA256'] == hashlib.sha256(b'preserved-content').hexdigest())
             metadata = spec(new_input.fileno()); metadata.update(path='추가.txt', directory=0)
             directory = dict(metadata, path='empty-folder', device='0', inode='0', size=0, mode=0o40755, directory=1)
             items = [dict(oldIndex=keep, path='renamed.txt'), dict(addition=metadata, syntheticDirectory=False), dict(addition=directory, syntheticDirectory=True)]
@@ -612,6 +616,17 @@ def verify_edits(executable, reference, root, library, check, spec):
             response, calls = worker.broker_create(dict(version=1, operation='edit-commit', upload=upload), lambda index: os.dup(new_input.fileno()) if index == 1 else (_ for _ in ()).throw(RuntimeError('Unexpected addition index')))
             worker.finish()
             check('edit' + label + 'Commit', response.get('closed') is True and calls and set(calls) == {1})
+        inspected = Worker(executable, output=True, inspection=True, descriptor_input=True, library=library)
+        with output_path.open('rb') as stream: opened_copy = inspected.edit_open(stream.fileno(), spec(stream.fileno()), number, password)
+        inspected_session = opened_copy['session']
+        verified = inspected.request(dict(version=1, operation='audit', session=inspected_session, offset=0, pageSize=256, maximumBytes=8000000000))
+        candidate_listing = inspected.request(dict(version=1, operation='list', session=inspected_session, offset=0, pageSize=256))
+        by_path = {item['path']: verified['audits'][item['index']] for item in candidate_listing['items']}
+        check('audit' + label + 'Candidate', verified.get('total') == 3 and by_path['renamed.txt']['dataSHA256'] == audit['audits'][keep]['dataSHA256'] and by_path['renamed.txt']['propertiesSHA256'] == audit['audits'][keep]['propertiesSHA256'] and by_path['추가.txt']['dataSHA256'] == hashlib.sha256(b'new-content').hexdigest() and verified['archivePropertiesSHA256'] == audit['archivePropertiesSHA256'])
+        check('audit' + label + 'CachedLimit', inspected.request(dict(version=1, operation='audit', session=inspected_session, offset=0, pageSize=1, maximumBytes=1)).get('error', {}).get('code') == 'limit')
+        check('audit' + label + 'PagedCache', inspected.request(dict(version=1, operation='audit', session=inspected_session, offset=1, pageSize=1, maximumBytes=8000000000)).get('audits') == verified['audits'][1:2])
+        inspected.request(dict(version=1, operation='close', session=inspected_session)); inspected.finish()
+        check('audit' + label + 'NoHostOutput', not inspected.output)
         destination = root / ('restored-' + label)
         result = subprocess.run([str(reference), 'x', str(output_path), '-o' + str(destination), '-y'], input=((password + '\n') * 3).encode() if password else b'', stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=20)
         check('edit' + label + 'OfficialRestore', result.returncode == 0 and (destination / 'renamed.txt').read_bytes() == b'preserved-content' and (destination / '추가.txt').read_bytes() == b'new-content' and (destination / 'empty-folder').is_dir() and not (destination / 'remove.txt').exists())
@@ -645,6 +660,38 @@ def verify_edits(executable, reference, root, library, check, spec):
                                 response, calls = worker.broker_create(dict(version=1, operation='edit-commit', upload=upload), lambda index: os.open(addition, os.O_RDONLY))
                     worker.finish(1); valid = response.get('ok') is False
                 check('editReject' + case, valid and os.fstat(output.fileno()).st_size == 0 and archive.read_bytes() == original)
+
+
+def verify_audit_boundaries(executable, root, library, check, spec):
+    archive = root / 'audit-many.zip'
+    with zipfile.ZipFile(archive, 'w', compression=zipfile.ZIP_STORED) as output:
+        for index in range(300): output.writestr('item-' + str(index), b'audit-payload')
+        info = zipfile.ZipInfo('opaque-link'); info.create_system = 3; info.external_attr = 0o120777 << 16
+        output.writestr(info, b'../../../unselected-target')
+    original = archive.read_bytes()
+    def inspector(path):
+        worker = Worker(executable, output=True, inspection=True, descriptor_input=True, library=library)
+        with path.open('rb') as stream: opened = worker.edit_open(stream.fileno(), spec(stream.fileno()), 1)
+        return worker, opened['session']
+    worker, session = inspector(archive)
+    first = worker.request(dict(version=1, operation='audit', session=session, offset=0, pageSize=256, maximumBytes=8000000000))
+    second = worker.request(dict(version=1, operation='audit', session=session, offset=256, pageSize=256, maximumBytes=8000000000))
+    check('auditPagedWholeArchive', first.get('total') == 301 and len(first['audits']) == 256 and len(second['audits']) == 45 and [item['index'] for item in first['audits'] + second['audits']] == list(range(301)))
+    check('auditOpaqueLinkPayloadWithoutFollowing', second['audits'][-1]['dataSHA256'] == hashlib.sha256(b'../../../unselected-target').hexdigest())
+    with archive.open('r+b') as stream: stream.seek(original.index(b'audit-payload')); stream.write(b'X')
+    changed = worker.request(dict(version=1, operation='audit', session=session, offset=256, pageSize=256, maximumBytes=8000000000))
+    check('auditCachedSourceChangeRejected', changed.get('error', {}).get('code') == 'source-changed')
+    worker.request(dict(version=1, operation='close', session=session)); worker.finish()
+    worker, session = inspector(archive)
+    corrupt = worker.request(dict(version=1, operation='audit', session=session, offset=0, pageSize=256, maximumBytes=8000000000))
+    check('auditCorruptStreamRejected', corrupt.get('error', {}).get('code') == 'corrupt-data')
+    worker.request(dict(version=1, operation='close', session=session)); worker.finish()
+    check('auditNeverWritesHostPayload', not worker.output)
+    archive.write_bytes(original)
+    worker, session = inspector(archive)
+    response = worker.request(dict(version=1, operation='edit-begin', session=session, itemCount=0, encryptNewData=False, maximumUnpackedBytes=8000000000))
+    worker.finish(1)
+    check('auditInspectionModeRejectsWriting', response.get('error', {}).get('code') == 'unsupported-operation' and not worker.output and archive.read_bytes() == original)
 
 
 def verify_brokered(executable, reference, root, library):

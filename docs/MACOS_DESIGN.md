@@ -1,6 +1,6 @@
 # Files macOS 제품·UI·기술 설계
 
-[371 구현 기록](verification/m7/INCREMENT_371.md): 압축 편집 계획과 Swift→실제 격리 helper 통신을 연결했다. 별도 ZIP/7z 편집본의 공식 도구 복원과 원본 보존을 확인했으며 Swift 60개·격리 helper 87개·진단 179개·native 83개·권한 15개가 통과했다. 전체 출력 검증·원본 교체/복구/Undo·Unicode AES ZIP 추가·UI는 진행 중이고 update는 false다. 이전 370 Intel의 Git 복제 정리 검사는 실패했으며 원격 전체 통과로 집계하지 않는다. 로컬 GUI/장시간 앱은 시작하지 않았다.
+[372 구현 기록](verification/m7/INCREMENT_372.md): Swift 편집본을 새 읽기 전용 격리 세션에서 전체 디코딩해 내용·보존 속성·항목 목록·암호화와 원본/출력 변경을 검사한다. 최종 Swift 62개·격리 helper 113개·진단 205개·native 83개·권한 15개 및 Debug/Release가 통과했다. 원본 교체·백업/복구/Undo·Unicode AES ZIP 새 암호 payload·편집 UI는 남아 있어 F23/M7은 진행 중이고 update는 false다. 로컬 GUI/장시간 앱은 실행하지 않았다.
 
 [367단계](verification/m7/INCREMENT_367.md)는 큰 UI 검증 본문을 세 개의 MainActor 비동기 구간으로 나눴다. 함수 경계/들여쓰기를 되돌리면 기존 소스와 바이트 단위로 같으며 검사 삭제는 없다. Debug 34.13초·Release 16.87초 빌드가 통과했다. 원격 컴파일 시간 개선·전체 UI 수용은 아직 진행 중이며 로컬 GUI/장시간 시험은 실행하지 않았다.
 
