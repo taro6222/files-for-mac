@@ -1,0 +1,113 @@
+{
+  "build": {
+    "sourceCommit": "a07c80c63356097bae3f00790d5147f29956c3b6",
+    "archiveSHA256": "e821e03f8a7e1f346c3faa250dbc07bf2145c2c961e3ff4f54937d16849df727",
+    "sourceDirectory": "/Users/changhun/Desktop/Workspace/Files/build/preview-a07c80c/source",
+    "state": "built",
+    "previousImage": "/Users/changhun/Desktop/Workspace/Files/build/Files-macOS-preview.dmg",
+    "previousImageSHA256": "9179564d9b9cf227d6d43626cbe8ee0a5c859d3f4998698139025289a0f6c103",
+    "image": "/Users/changhun/Desktop/Workspace/Files/build/preview-a07c80c/Files-macOS-preview.dmg",
+    "imageSHA256": "2e8fd69f6d98021e058147080331bfabfb9b84ad51402bd5ea7b67894a77509f",
+    "binarySHA256": "b310aa5db472ec417754c1462b8eb20ced17f1af7584237387d3043ed7266e93",
+    "buildLogSHA256": "2858afd6e2bc6bcccf210297e09bf9d82411f846ec477ecd87d4fe646deeef0d",
+    "architectures": [
+      "x86_64",
+      "arm64"
+    ],
+    "machO": {
+      "arm64": "/Users/changhun/Desktop/Workspace/Files/build/preview-a07c80c/source/build/Files macOS.app/Contents/MacOS/FilesMac (architecture arm64):\nLoad command 11\n      cmd LC_BUILD_VERSION\n  cmdsize 32\n platform MACOS\n    minos 14.0\n      sdk 14.0\n   ntools 1\n     tool LD\n  version 27106.1\n",
+      "x86_64": "/Users/changhun/Desktop/Workspace/Files/build/preview-a07c80c/source/build/Files macOS.app/Contents/MacOS/FilesMac (architecture x86_64):\nLoad command 11\n      cmd LC_BUILD_VERSION\n  cmdsize 32\n platform MACOS\n    minos 14.0\n      sdk 14.0\n   ntools 1\n     tool LD\n  version 27106.1\n"
+    }
+  },
+  "installation": {
+    "previousImageSHA256": "9179564d9b9cf227d6d43626cbe8ee0a5c859d3f4998698139025289a0f6c103",
+    "candidateImageSHA256": "2e8fd69f6d98021e058147080331bfabfb9b84ad51402bd5ea7b67894a77509f",
+    "previousVersion": [
+      "0.1.0",
+      "1"
+    ],
+    "candidateVersion": [
+      "0.1.0",
+      "1"
+    ],
+    "previousTestExecutableSHA256": "61377212aeb764ec9602539e0e1c70f55d40ee2a27605d69404d14bcd82dba22",
+    "candidateTestExecutableSHA256": "6c4641d62fea5e01569162cd27710642c7e8268af96eb13481c93982f29248fd",
+    "macOS": "27.2.1",
+    "macOSBuild": "26B131",
+    "architecture": "arm64",
+    "preservedUserState": {
+      "preferenceKeys": [
+        "startupLocationPath",
+        "continueLastSession",
+        "favorites",
+        "showExtensions"
+      ],
+      "verifiedStages": [
+        "firstInstall",
+        "afterStagedSignatureFailure",
+        "afterReplacement",
+        "afterRollback"
+      ],
+      "restoredSessionFormats": [
+        "tabSession",
+        "workspaceSessionV2"
+      ]
+    },
+    "windowVisibleSeconds": {
+      "firstInstall": 0.546,
+      "afterStagedSignatureFailure": 0.157,
+      "afterReplacement": 0.563,
+      "afterRollback": 0.191
+    },
+    "verifiedAppArchitecture": "arm64"
+  },
+  "installReportSHA256": "7c5f77cdc616df11d4da33b04b860b48d01c6ad8f52cf5cadff38e8ba08e9169",
+  "installLogSHA256": "2917fed9c79aec74f7f760bc4c6d0a489579ee7476dd7d3c762d8ca89483c625",
+  "signature": "ad-hoc",
+  "notarized": false,
+  "physicalInputAccepted": false,
+  "releaseComplete": false,
+  "limits": [
+    "Mach-O minos and sdk are 14.0 as emitted by this SwiftPM build; they are not proof of execution on macOS 14.",
+    "Only arm64 installation was exercised on this Mac; x86_64 slice presence and signature were verified statically.",
+    "Window visibility and fixture state checks do not replace keyboard, mouse or VoiceOver acceptance."
+  ],
+  "startup": {
+    "macOS": "27.2.1",
+    "macOSBuild": "26B131",
+    "architecture": "arm64",
+    "imageSHA256": "2e8fd69f6d98021e058147080331bfabfb9b84ad51402bd5ea7b67894a77509f",
+    "appVersion": [
+      "0.1.0",
+      "1"
+    ],
+    "metric": "Launch Services request to the first matching AppKit window in the WindowServer list",
+    "cacheCondition": "Fresh processes; shared OS caches, no cache purge",
+    "seconds": [
+      0.985,
+      0.245,
+      0.269,
+      0.211,
+      0.221,
+      0.227,
+      0.227,
+      0.273,
+      0.268,
+      0.203,
+      0.198,
+      0.209,
+      0.271,
+      0.232,
+      0.275,
+      0.278,
+      0.22,
+      0.224,
+      0.232,
+      0.232
+    ],
+    "p95Seconds": 0.278,
+    "maximumSeconds": 0.985,
+    "verifiedAppArchitecture": "arm64"
+  },
+  "startupReportSHA256": "859cadfd28718dd2e40d4d36c33620d14a70740e3d50cc6637d41f7d2ca26550"
+}

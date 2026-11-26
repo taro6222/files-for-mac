@@ -1,6 +1,15 @@
 # Files for Mac 0.1.0 개발 프리뷰
 
-## 설치 이미지
+## 최신 설치 이미지
+
+- 앱 소스 `a07c80c63356097bae3f00790d5147f29956c3b6`, Apple Silicon·Intel 슬라이스.
+- 로컬 경로 `build/preview-a07c80c/Files-macOS-preview.dmg`; 옆의 `.sha256`으로 확인한다.
+- SHA-256 `2e8fd69f6d98021e058147080331bfabfb9b84ad51402bd5ea7b67894a77509f`.
+- macOS 27.2.1(26B131) arm64에서 격리 설치·손상 staging 거부·교체·복원, 설정/두 세션 형식과 fixture 보존을 확인했다. Launch Services 20회 첫 창 표시 p95 278ms, 최대 985ms였다. 공유 OS 캐시 조건이며 실제 입력 수용과 구분한다.
+- 창별 탭 순서·선택·프레임·패널 선호 너비 복원, 앱에서 관리하는 탐색 탭과 최신 파일 작업 변경을 포함한다. [실행 및 해시 기록](INCREMENT_336.md)
+- ad-hoc 개발 프리뷰다. Developer ID 서명·공증, 새 이미지의 Intel 및 최소 OS 설치·전체 수동 UI 수용은 미완료다. Mach-O의 minos/SDK 14.0 기록은 해당 OS의 실행 증거가 아니다.
+
+## 이전 설치 이미지
 
 - 앱 소스 `40ffc39d4059f09be35e9d7efa6fcb8bd33b559c`, Apple Silicon·Intel 슬라이스, macOS 14.0 배포 대상.
 - 로컬 경로 `build/Files-macOS-preview.dmg`. SHA-256 `9179564d9b9cf227d6d43626cbe8ee0a5c859d3f4998698139025289a0f6c103`.

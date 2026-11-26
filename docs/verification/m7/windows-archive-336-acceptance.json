@@ -1,0 +1,121 @@
+{
+  "runURL": "https://github.com/taro6222/files-for-mac/actions/runs/45756562666",
+  "driverSourceCommit": "55c1bee4a9f5fefb3ff473e9f91d000ea85bd00a",
+  "capture": {
+    "upstreamSHA": "99951c66928c4da714da8b1dd46039421182cbab",
+    "packageSHA256": "42b7f45d54a25279f2928cb2ca16ba3c6a487c1d626e9c0117ca4d0b713b727d",
+    "appID": "FilesDev_ykqwq8d6ps0ag!App",
+    "windows": "10.0.26100",
+    "architecture": "AMD64",
+    "scope": "archive-create",
+    "screen": "UI-01 Home, initial runner defaults",
+    "screenshotSHA256": "394cdf8d96bf9a705a781e9d2cdd699fff0206e46cb9990b747fa61655b269e4",
+    "folder": {
+      "screens": [
+        "UI-02",
+        "UI-03"
+      ],
+      "entries": [
+        "Alpha",
+        "Workshop",
+        "notes.txt",
+        "preview.txt",
+        "readme.md"
+      ],
+      "visibleEntryNames": [
+        "Alpha",
+        "Workshop",
+        "notes.txt",
+        "preview.txt",
+        "readme.md"
+      ],
+      "detailColumnNames": [
+        "Date modified",
+        "Name",
+        "Size",
+        "Type"
+      ],
+      "screenshotSHA256": "fd1cea5d7940fa21853ed9f7358665a65fb6254730b24039f0a6c860c04c9363"
+    },
+    "archiveCreation": {
+      "state": "cancelled",
+      "sourceBefore": {
+        "files": 4,
+        "directories": 2,
+        "bytes": 96,
+        "sha256": "7e7d09e2029f64a7fadd563aa44340410927ec8df7fb75a987df92ecaaad65ae"
+      },
+      "sourceAfter": {
+        "files": 4,
+        "directories": 2,
+        "bytes": 96,
+        "sha256": "7e7d09e2029f64a7fadd563aa44340410927ec8df7fb75a987df92ecaaad65ae"
+      },
+      "emptyNameDisabled": true,
+      "invalidNameWarning": true,
+      "validNameEnabled": true,
+      "sourcePreserved": true
+    },
+    "layouts": {
+      "UI-13-create-normal": {
+        "mode": "archive",
+        "screenshotSHA256": "d83d93e0e3abc58a735ebf15a41e789afdeb7fdccbafdfd5bbb8d043c9cf4985"
+      },
+      "UI-13-create-empty": {
+        "mode": "archive",
+        "screenshotSHA256": "7ddbb6af5c8f2d3582f8fbffc2f422516c8b4e92cb3034a2b3ecd1280cb22587"
+      },
+      "UI-13-create-invalid": {
+        "mode": "archive",
+        "screenshotSHA256": "e019d690f74acd7e73144ecbbd7f20fbe95879151e500f59e3f5bdbd82af8d28"
+      },
+      "UI-13-create-valid": {
+        "mode": "archive",
+        "screenshotSHA256": "577affdd25f43f89791902691090c57338ca77b630906f820994d6be863f9f35"
+      },
+      "UI-13-create-cancelled": {
+        "mode": "archive",
+        "screenshotSHA256": "58808e21b1dfd0ec82624b1875423b10955dc636f8bdc72ab3d5ee04879915ae"
+      }
+    }
+  },
+  "captureReportSHA256": "8d73976c6027d9fec99ef0f9d480b01f198ca26a5d357e2abf69f7ba9b8978a9",
+  "states": {
+    "normal": {
+      "png": "UI-13_create-normal_light_en_1920x1032_scale-unrecorded.png",
+      "pngSHA256": "d83d93e0e3abc58a735ebf15a41e789afdeb7fdccbafdfd5bbb8d043c9cf4985",
+      "treeSHA256": "5235a86b00fe249b30007992e3bd3d606f0cda9b24fb99c26bdb6d5f2832c4b1"
+    },
+    "empty": {
+      "png": "UI-13_create-empty_light_en_1920x1032_scale-unrecorded.png",
+      "pngSHA256": "7ddbb6af5c8f2d3582f8fbffc2f422516c8b4e92cb3034a2b3ecd1280cb22587",
+      "treeSHA256": "3c83c6a21e4aad17a626813994be4cde67fcb0ebac09f62b3359e5e0e978e266"
+    },
+    "invalid": {
+      "png": "UI-13_create-invalid_light_en_1920x1032_scale-unrecorded.png",
+      "pngSHA256": "e019d690f74acd7e73144ecbbd7f20fbe95879151e500f59e3f5bdbd82af8d28",
+      "treeSHA256": "ddc3183382ece1ca058358922d7992dc714b21a59cd7dd842fd7411599e2ded2"
+    },
+    "valid": {
+      "png": "UI-13_create-valid_light_en_1920x1032_scale-unrecorded.png",
+      "pngSHA256": "577affdd25f43f89791902691090c57338ca77b630906f820994d6be863f9f35",
+      "treeSHA256": "5235a86b00fe249b30007992e3bd3d606f0cda9b24fb99c26bdb6d5f2832c4b1"
+    },
+    "cancelled": {
+      "png": "UI-13_create-cancelled_light_en_1920x1032_scale-unrecorded.png",
+      "pngSHA256": "58808e21b1dfd0ec82624b1875423b10955dc636f8bdc72ab3d5ee04879915ae",
+      "treeSHA256": "bb070f76bfe078a930789ce440b51ac3a480f1ae90f2b4937a78d70503219101"
+    }
+  },
+  "imagePixels": [
+    1920,
+    1032
+  ],
+  "dpiScaleRecorded": false,
+  "visualReview": "All five states reviewed; empty/invalid Create disabled, invalid warning visible, valid Create enabled, cancelled folder restored.",
+  "limits": [
+    "Creation was not confirmed; this does not prove archive contents, extraction or encryption/splitting.",
+    "macOS matching input states and the complete UI-13 acceptance remain open.",
+    "DPI scale was not recorded; no cross-platform pixel match is claimed."
+  ]
+}
