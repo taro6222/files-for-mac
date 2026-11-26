@@ -14,3 +14,5 @@
 원본 보고서·로그·heap·harness 결과는 기존 각 build 폴더와 `build/soak-user-stop-20261126T090414Z`에 보존했다. raw report의 마지막 running 상태를 성공으로 고치지 않고 user-stop.json으로 사용자 중단을 별도 기록했다. 이 실행들을 8시간 완료·성공으로 집계하지 않는다. 장시간 시험은 자동 재시작하지 않는다.
 
 개발은 계속한다. 종료 시점에 350단계의 기존 폴더 추출/게시 처리는 작성 중이었으며 검증과 UI 연결은 미완료였다. 불필요한 장시간 시험 반복 대신 남은 기능 구현과 필요한 범위의 짧은 검증에 집중한다.
+
+추가 확인: 사용자의 장기간 실행 지적 후 남아 있던 `build/acl-rule-state-candidate/FilesMac`(PID 90456)을 확인했다. `build/user-stop-followup-20261126/process-before.txt`에 실행 정보를 보존한 뒤 SIGTERM으로 종료하고 해당 PID가 사라졌음을 확인했다. 이 실행도 완료 성공으로 집계하지 않으며 자동 재시작하지 않는다.

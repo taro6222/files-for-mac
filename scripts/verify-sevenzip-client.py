@@ -10,6 +10,9 @@ import signal
 import subprocess
 
 TESTS = [
+    'sevenZipSplitFrameValidationAndForeignStagingPreservation',
+    'sevenZipSDKSplitCreationAndCommittedJournal', 'sevenZipSDKSplitConflictsChangesAndCancellationPreserveData',
+    'sevenZipSDKSplitProcessRestartRecoveryAndAmbiguousIntent',
     'archiveExtractionPlacementMatchesSmartTopLevelRules',
     'sevenZipVolumeNamesDetectionAndSelectionNormalization', 'sevenZipSDKSplitVolumesRoundTripFromAnyPartAndAcrossTinyHeaders',
     'sevenZipSDKSplitMissingTruncatedAndLinkedPartsNeverPublish',
@@ -41,6 +44,7 @@ def main():
     parser.add_argument('--library', type=Path)
     parser.add_argument('--bundle-manifest', type=Path)
     parser.add_argument('--app', type=Path, help='Also require signed app resolution and tampering tests')
+    parser.add_argument('--probe', type=Path)
     parser.add_argument('--output', type=Path, required=True)
     args = parser.parse_args()
     args.output.mkdir(parents=True, exist_ok=True)
@@ -50,6 +54,9 @@ def main():
     else: environment.pop('FILES_TEST_SEVENZIP_LIBRARY', None)
     if args.app: environment['FILES_TEST_SEVENZIP_APP_BUNDLE'] = str(args.app.resolve())
     else: environment.pop('FILES_TEST_SEVENZIP_APP_BUNDLE', None)
+    probe = args.probe or Path(subprocess.check_output(['swift', 'build', '--show-bin-path'], text=True).strip()) / 'FilesSplitProbe'
+    if not probe.is_file(): raise RuntimeError('Missing process-restart probe; build test products first')
+    environment['FILES_TEST_SPLIT_PROBE'] = str(probe.resolve())
     requested_tests = TESTS + (BUNDLE_TESTS if args.app else [])
     test_filter = '(' + '|'.join(re.escape(name) for name in requested_tests) + ')'
     timed_out = False
@@ -67,7 +74,7 @@ def main():
     observed = {name: bool(re.search(r'Test ' + re.escape(name) + r'\(\) passed after', text)) for name in requested_tests}
     passed = process.returncode == 0 and not timed_out and all(observed.values()) and 'skipped' not in text.lower()
     repo = Path(__file__).resolve().parent.parent
-    sources = ['Sources/FilesCore/SevenZipVolumes.swift', 'Sources/FilesCore/SevenZipCompressionOptions.swift', 'Sources/FilesCore/BrowserPreferences.swift', 'Sources/FilesCore/SevenZipCreationPlan.swift', 'Sources/FilesCore/SevenZipArchiveProvider.swift', 'Sources/FilesCore/SevenZipBundledBackend.swift',
+    sources = ['Sources/FilesCore/SevenZipSplitStaging.swift', 'Tools/SplitCreationProbe/main.swift', 'Package.swift', 'Sources/FilesCore/SevenZipVolumes.swift', 'Sources/FilesCore/SevenZipCompressionOptions.swift', 'Sources/FilesCore/BrowserPreferences.swift', 'Sources/FilesCore/SevenZipCreationPlan.swift', 'Sources/FilesCore/SevenZipArchiveProvider.swift', 'Sources/FilesCore/SevenZipBundledBackend.swift',
                'Tests/FilesCoreTests/SevenZipArchiveProviderTests.swift', 'Tests/FilesCoreTests/SevenZipBundledBackendTests.swift']
     result = dict(passed=passed, exitCode=process.returncode, timedOut=timed_out, tests=observed,
                   sourcesSHA256={name: hashlib.sha256((repo / name).read_bytes()).hexdigest() for name in sources},

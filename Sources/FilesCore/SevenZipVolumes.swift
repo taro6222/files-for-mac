@@ -9,6 +9,7 @@ public enum SevenZipVolumeError: Error, Sendable, Equatable {
 public enum SevenZipVolumes {
     public static let maximumParts = 1024
     public static let maximumBytes: Int64 = 8_000_000_000
+    public static let maximumSplitVolumeBytes: Int64 = 23_040 * 1_048_576
     public static func index(of url: URL) -> Int? {
         let suffix = url.pathExtension
         guard url.deletingPathExtension().pathExtension.lowercased() == "7z", suffix.count >= 3,

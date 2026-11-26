@@ -1,6 +1,6 @@
 # 7z 고급 기능 백엔드 연결 계약
 
-상태: 353단계에서 분할 7z의 볼륨 탐색·목록/추출과 UI 연결을 추가했다. 로컬 검증은 [353단계](verification/m7/INCREMENT_353.md)를 따른다. 분할 생성·게시 저널/재기동 복구·새 UI 원격 수용·메타데이터/자원 격리·정식 출시는 미완료다.
+상태: 354단계에서 분할 생성·게시 저널/재시작 복구 API를 구현했다. [354단계 검증](verification/m7/INCREMENT_354.md)을 따른다. 생성 화면의 분할 크기 선택·복구 안내 연결·새 UI 원격 수용·메타데이터/자원 격리·정식 출시는 미완료다.
 
 [345단계](verification/m7/INCREMENT_345.md)는 고정 SDK에서 두 CPU helper를 빌드하고 ARM에서 실제 암호화 아카이브와 프레임/동일 원본 검증 34개를 통과했다. `Tools/SevenZipWorker`의 UInt32 big-endian 길이 + JSON(version 1) list/close 경계로 시작했다. 최초 요청은 archivePath/password, 후속 요청은 session UUID를 사용한다. 목록 반복은 열린 FD를 유지하며 원본 변경은 거부한다. 소스 FD의 부모 전달은 아직 남아 있으며 제품 번들 포함은 후속 348단계에서 구현했다.
 
@@ -46,3 +46,7 @@ worker의 입출력은 버전과 길이가 있는 프레임으로 정의한다. 
 [352단계](verification/m7/INCREMENT_352.md)는 dictionarySize/wordSize/threads를 추가하고 양쪽 범위 검증 및 SDK 0=LZMA2/0d/0fb/mt 속성에 연결했다. 자동 사전은 고정 원본 Files의 수준별 기본값을 명시적으로 전달한다. 옵션과 형식을 저장/복원하며 예상 메모리는 원본 근사식, 사용 가능 메모리는 현재 free+inactive 페이지로 표시한다. 실제 스레드/RSS와 자원 격리·분할·새 UI 수용은 미완료다.
 
 [353단계](verification/m7/INCREMENT_353.md)는 최초 list의 archivePaths 배열(최대 1,024개·8 GB)과 같은 FD를 유지하는 seekable 연결 스트림을 추가했다. 기존 archivePath와 동시 지정은 거부한다. source.size는 전체 바이트 수다. 중간 누락은 부모가 검사하고 유효 start header의 CRC/선언 길이와 SDK physical size로 마지막 누락/잘림·불필요한 후속 데이터를 거부한다. missing-volume 오류를 추가했다. helper의 FD soft limit만 필요 시 조정하고 부모 제한은 바꾸지 않는다. 원본 FD의 부모 전달·분할 생성/저널·자원 격리·최신 두 CPU/실제 UI 수용은 남아 있다.
+
+[분할 7z 생성과 재시작 복구](verification/m7/INCREMENT_354.md)는 전체 임시 아카이브 없이 위치 지정 출력 스트림을 part로 나누고, private 저널·identity/해시·게시 의도와 충돌/취소 rollback을 구현했다. 생성·복구 API의 headless 검증을 마쳤으며 생성 화면의 분할 크기 선택·복구 안내 연결과 최신 원격/지원 환경·정식 출시는 미완료다. 로컬 GUI/장시간 시험은 재시작하지 않았다.
+
+분할 출력은 `--create-stream-fd` 전용 쓰기 파이프의 17바이트 위치 지정 프레임(write/truncate/end)을 사용한다. 일반 생성의 빈 regular FD 계약은 유지한다. 부모가 같은 대상 폴더의 private staging에 직접 part를 만들고, 최종 7z 헤더/길이·각 part의 SHA-256·identity를 확인한 뒤 RENAME_EXCL로 게시한다. private `archive-splits` 저널은 게시 의도를 rename 전에 fsync하고, 재시작 시 확인 가능한 부분 게시만 되돌린다. 모호한 의도·변경 파일·손상 저널은 보존한다. 전체 게시가 하나의 원자적 연산이라는 보장은 없으며 실제 전원 장애/외부 파일 시스템 수용은 별도다. 분할 크기 설정은 16바이트~23,040 MiB, 실제 출력은 합계 8,000,000,000바이트·1,024 part 한도를 유지한다.

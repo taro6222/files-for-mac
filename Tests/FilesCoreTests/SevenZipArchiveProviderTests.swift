@@ -1,5 +1,6 @@
 import Foundation
 import Testing
+import CryptoKit
 import Darwin
 @testable import FilesCore
 
@@ -713,4 +714,173 @@ func sevenZipSDKSplitMissingTruncatedAndLinkedPartsNeverPublish() async throws {
     await #expect(throws: ZipArchiveError.invalidSource(invalidCreation.path)) { try await ZipArchiveProvider().create(from: [source], at: invalidCreation) }
     #expect(!FileManager.default.fileExists(atPath: invalidCreation.path))
     #expect(try Data(contentsOf: source) == fixture.bytes)
+}
+
+private func sdkSplitCreationInput(_ root: URL) throws -> (URL, Data) {
+    let url = root.appendingPathComponent("원본-🔑\nsource.bin"), bytes = Data((0..<163840).map { UInt8($0 % 251) })
+    try bytes.write(to: url); return (url, bytes)
+}
+
+@Test(.enabled(if: hasIntegrationFixture("FILES_TEST_SEVENZIP_REFERENCE") && hasIntegrationFixture("FILES_TEST_SEVENZIP_WORKER"), "Requires native SDK and reference"))
+func sevenZipSDKSplitCreationAndCommittedJournal() async throws {
+    let root = try sdkRoot(); defer { try? FileManager.default.removeItem(at: root) }
+    let (source, bytes) = try sdkSplitCreationInput(root), provider = try sdkRealProvider()
+    for index in 0..<2 {
+        let target = root.appendingPathComponent("created-\(index).7z"), journals = root.appendingPathComponent("journals-\(index)")
+        let password: String? = index == 0 ? nil : "QA-354-한글-🔑"
+        let report = try await provider.createSplit(from: [source], at: target, volumeBytes: index == 0 ? 65536 : SevenZipVolumes.maximumSplitVolumeBytes, journalDirectory: journals, compressionLevel: .store, password: password)
+        #expect(report.publishedURLs.count == (index == 0 ? 3 : 1) && report.retainedStaging == nil)
+        #expect(!FileManager.default.fileExists(atPath: target.path))
+        let destination = root.appendingPathComponent("restored-\(index)")
+        _ = try await provider.extractToNewDirectory(report.publishedURLs.last!, at: destination, password: password)
+        #expect(try Data(contentsOf: destination.appendingPathComponent(source.lastPathComponent)) == bytes)
+        let official = root.appendingPathComponent("official-\(index)"), reference = Process(), input = Pipe()
+        reference.executableURL = URL(fileURLWithPath: try #require(ProcessInfo.processInfo.environment["FILES_TEST_SEVENZIP_REFERENCE"]))
+        reference.arguments = ["x", "-y", "-o" + official.path, report.publishedURLs[0].path]
+        reference.standardInput = input; reference.standardOutput = FileHandle.nullDevice; reference.standardError = FileHandle.nullDevice
+        try reference.run(); defer { if reference.isRunning { kill(reference.processIdentifier, SIGKILL); reference.waitUntilExit() } }
+        if let password { try input.fileHandleForWriting.write(contentsOf: Data((password + "\n" + password + "\n").utf8)) }
+        try input.fileHandleForWriting.close()
+        let deadline = ContinuousClock.now + .seconds(15)
+        while reference.isRunning && ContinuousClock.now < deadline { try await Task.sleep(for: .milliseconds(5)) }
+        guard !reference.isRunning else { throw SevenZipWorkerError.timedOut }
+        #expect(reference.terminationStatus == 0)
+        #expect(try Data(contentsOf: official.appendingPathComponent(source.lastPathComponent)) == bytes)
+        let envelope = try #require(JSONSerialization.jsonObject(with: Data(contentsOf: report.journal)) as? [String: Any])
+        let encodedPayload = try #require(envelope["payload"] as? String)
+        let payload = try #require(Data(base64Encoded: encodedPayload))
+        let saved = try #require(JSONSerialization.jsonObject(with: payload) as? [String: Any])
+        #expect(saved["state"] as? String == "committed" && saved["stagingRemoved"] as? Bool == true)
+        if let password { #expect(!String(decoding: payload, as: UTF8.self).contains(password)) }
+        #expect(try Data(contentsOf: source) == bytes)
+        // Completed history must never undo later user changes to an archive.
+        try Data("user change after success".utf8).write(to: report.publishedURLs[0])
+        guard case .committed = try await SevenZipArchiveProvider.recoverSplitCreation(journal: report.journal, journalDirectory: journals) else { Issue.record("Committed operation was rolled back"); return }
+        #expect(try String(contentsOf: report.publishedURLs[0], encoding: .utf8) == "user change after success")
+    }
+    #expect(!(try FileManager.default.contentsOfDirectory(atPath: root.path)).contains { $0.hasPrefix(".files-split-") })
+}
+
+private final class SDKSplitMutation: @unchecked Sendable {
+    let parent: URL, base: String, changeFirst: Bool, renameFirst: Bool
+    private let lock = NSLock(); private var done = false
+    init(parent: URL, base: String, changeFirst: Bool, renameFirst: Bool = false) { self.parent = parent; self.base = base; self.changeFirst = changeFirst; self.renameFirst = renameFirst }
+    func apply(_ progress: ArchiveProgress) {
+        guard progress.phase == .publishing, let name = progress.currentPath else { return }
+        lock.lock(); defer { lock.unlock() }; guard !done else { return }; done = true
+        if renameFirst { try? FileManager.default.moveItem(at: parent.appendingPathComponent(name), to: parent.appendingPathComponent(name.uppercased())) }
+        else { try? Data("foreign preserved".utf8).write(to: parent.appendingPathComponent(changeFirst ? name : base + ".002")) }
+    }
+}
+
+@Test(.enabled(if: hasIntegrationFixture("FILES_TEST_SEVENZIP_REFERENCE") && hasIntegrationFixture("FILES_TEST_SEVENZIP_WORKER"), "Requires native SDK and reference"))
+func sevenZipSDKSplitConflictsChangesAndCancellationPreserveData() async throws {
+    let root = try sdkRoot(); defer { try? FileManager.default.removeItem(at: root) }
+    let (source, bytes) = try sdkSplitCreationInput(root), provider = try sdkRealProvider(), journals = root.appendingPathComponent("journals")
+    let target = root.appendingPathComponent("conflict.7z"), mutation = SDKSplitMutation(parent: root, base: "conflict.7z", changeFirst: false)
+    await #expect(throws: ZipArchiveError.destinationConflict("conflict.7z.002")) {
+        try await provider.createSplit(from: [source], at: target, volumeBytes: 65536, journalDirectory: journals, compressionLevel: .store, progress: mutation.apply)
+    }
+    #expect(!FileManager.default.fileExists(atPath: root.appendingPathComponent("conflict.7z.001").path))
+    #expect(try String(contentsOf: root.appendingPathComponent("conflict.7z.002"), encoding: .utf8) == "foreign preserved")
+    let gate = SDKPublicationGate(afterItem: true), cancelled = root.appendingPathComponent("cancelled.7z")
+    let task = Task { try await provider.createSplit(from: [source], at: cancelled, volumeBytes: 65536, journalDirectory: journals, compressionLevel: .store, progress: gate.pause) }
+    let deadline = ContinuousClock.now + .seconds(8)
+    while !gate.reached && ContinuousClock.now < deadline { try await Task.sleep(for: .milliseconds(5)) }
+    #expect(gate.reached); task.cancel(); gate.release.signal()
+    await #expect(throws: CancellationError.self) { try await task.value }
+    #expect(!(try FileManager.default.contentsOfDirectory(atPath: root.path)).contains { $0.hasPrefix("cancelled.7z.") || $0.hasPrefix(".files-split-") })
+    let changed = root.appendingPathComponent("changed.7z"), change = SDKSplitMutation(parent: root, base: "changed.7z", changeFirst: true)
+    do {
+        _ = try await provider.createSplit(from: [source], at: changed, volumeBytes: 65536, journalDirectory: journals, compressionLevel: .store, progress: change.apply)
+        Issue.record("Changed published volume was accepted")
+    } catch SevenZipSplitError.recoveryRequired(let journal, let staging, let outputs) {
+        #expect(FileManager.default.fileExists(atPath: staging.path) && !outputs.isEmpty)
+        await #expect(throws: (any Error).self) { try await SevenZipArchiveProvider.recoverSplitCreation(journal: journal, journalDirectory: journals) }
+    }
+    #expect(try String(contentsOf: root.appendingPathComponent("changed.7z.001"), encoding: .utf8) == "foreign preserved")
+    let renamed = SDKSplitMutation(parent: root, base: "rename-case.7z", changeFirst: false, renameFirst: true)
+    await #expect(throws: (any Error).self) {
+        try await provider.createSplit(from: [source], at: root.appendingPathComponent("rename-case.7z"), volumeBytes: 65536, journalDirectory: journals, compressionLevel: .store, progress: renamed.apply)
+    }
+    #expect((try FileManager.default.contentsOfDirectory(atPath: root.path)).contains("RENAME-CASE.7Z.001"))
+    #expect(try Data(contentsOf: source) == bytes)
+}
+
+private func sdkRunSplitProbe(_ config: [String: Any], root: URL, name: String) async throws -> (Int32, String) {
+    let binary = URL(fileURLWithPath: try #require(ProcessInfo.processInfo.environment["FILES_TEST_SPLIT_PROBE"]))
+    let process = Process(), pipe = Pipe(), log = root.appendingPathComponent(name + ".log")
+    FileManager.default.createFile(atPath: log.path, contents: nil)
+    let handle = try FileHandle(forWritingTo: log); defer { try? handle.close() }
+    process.executableURL = binary; process.standardInput = pipe; process.standardOutput = handle; process.standardError = handle
+    try process.run(); defer { if process.isRunning { kill(process.processIdentifier, SIGKILL); process.waitUntilExit() } }
+    try pipe.fileHandleForWriting.write(contentsOf: JSONSerialization.data(withJSONObject: config)); try pipe.fileHandleForWriting.close()
+    let deadline = ContinuousClock.now + .seconds(15)
+    while process.isRunning && ContinuousClock.now < deadline { try await Task.sleep(for: .milliseconds(5)) }
+    guard !process.isRunning else { throw SevenZipWorkerError.timedOut }
+    return (process.terminationStatus, try String(contentsOf: log, encoding: .utf8))
+}
+
+@Test(.enabled(if: hasIntegrationFixture("FILES_TEST_SEVENZIP_WORKER") && hasIntegrationFixture("FILES_TEST_SPLIT_PROBE"), "Requires the native SDK and process-restart probe"))
+func sevenZipSDKSplitProcessRestartRecoveryAndAmbiguousIntent() async throws {
+    let root = try sdkRoot(); defer { try? FileManager.default.removeItem(at: root) }
+    let (source, bytes) = try sdkSplitCreationInput(root), provider = try sdkRealProvider()
+    for mode in ["crash-prepared", "crash-published", "ambiguous", "corrupt"] {
+        let folder = root.appendingPathComponent(mode); try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: false)
+        let target = folder.appendingPathComponent("archive.7z"), journals = folder.appendingPathComponent("journals")
+        let config: [String: Any] = ["mode": mode == "crash-prepared" ? mode : "crash-published", "source": source.path, "destination": target.path,
+                                     "journalDirectory": journals.path, "worker": provider.executable.path, "library": provider.library.path]
+        let crashed = try await sdkRunSplitProbe(config, root: folder, name: "crash")
+        #expect(crashed.0 == 75, "Probe did not reach crash boundary: \(crashed.1)")
+        let registry = try sevenZipCanonicalDirectory(journals.appendingPathComponent("archive-splits"))
+        let journal = try #require(FileManager.default.contentsOfDirectory(at: registry, includingPropertiesForKeys: nil).first { $0.pathExtension == "json" })
+        if mode == "ambiguous" || mode == "corrupt" {
+            var envelope = try #require(JSONSerialization.jsonObject(with: Data(contentsOf: journal)) as? [String: Any])
+            let encodedPayload = try #require(envelope["payload"] as? String)
+            let data = try #require(Data(base64Encoded: encodedPayload))
+            var state = try #require(JSONSerialization.jsonObject(with: data) as? [String: Any]); state["intent"] = 1
+            let updated = try JSONSerialization.data(withJSONObject: state, options: [.sortedKeys]); envelope["payload"] = updated.base64EncodedString()
+            if mode == "ambiguous" { envelope["checksum"] = SHA256.hash(data: updated).map { String(format: "%02x", $0) }.joined() }
+            try JSONSerialization.data(withJSONObject: envelope).write(to: journal, options: .atomic)
+            try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: journal.path)
+        }
+        let recovered = try await sdkRunSplitProbe(["mode": "recover", "journalDirectory": journals.path, "journal": journal.path], root: folder, name: "recover")
+        if mode == "ambiguous" || mode == "corrupt" {
+            #expect(recovered.0 == 1)
+            #expect(FileManager.default.fileExists(atPath: target.appendingPathExtension("001").path))
+            #expect((try FileManager.default.contentsOfDirectory(atPath: folder.path)).contains { $0.hasPrefix(".files-split-") })
+        } else {
+            #expect(recovered.0 == 0 && recovered.1.contains("rolledBack"), "Recovery failed: \(recovered.1)")
+            #expect(!(try FileManager.default.contentsOfDirectory(atPath: folder.path)).contains { $0.hasPrefix(".files-split-") || $0.hasPrefix("archive.7z.") })
+        }
+    }
+    #expect(try Data(contentsOf: source) == bytes)
+}
+
+private func splitWire(_ type: UInt8, _ offset: UInt64, _ data: Data = Data(), count: UInt64? = nil) -> Data {
+    var result = Data([type]), offset = offset.bigEndian, size = (count ?? UInt64(data.count)).bigEndian
+    withUnsafeBytes(of: &offset) { result.append(contentsOf: $0) }; withUnsafeBytes(of: &size) { result.append(contentsOf: $0) }
+    result.append(data); return result
+}
+@Test func sevenZipSplitFrameValidationAndForeignStagingPreservation() throws {
+    let root = try sdkRoot(); defer { try? FileManager.default.removeItem(at: root) }
+    let registry = root.appendingPathComponent("journals")
+    for (index, packet) in [splitWire(0, 8_000_000_001, Data([1])), splitWire(0, 0, count: 65537), splitWire(3, 0), splitWire(2, 32)].enumerated() {
+        let stage = try SevenZipSplitStaging(destination: root.appendingPathComponent("bad-\(index).7z"), volumeBytes: 65536, journalDirectory: registry)
+        #expect(throws: SevenZipWorkerError.invalidResponse) { try stage.consume(packet, check: {}) }
+        try stage.rollback()
+        #expect(!FileManager.default.fileExists(atPath: stage.staging.path))
+    }
+    let fixture = try Data(contentsOf: Bundle.module.resourceURL!.appendingPathComponent("Fixtures/libarchive-empty.7z"))
+    let stage = try SevenZipSplitStaging(destination: root.appendingPathComponent("fragmented.7z"), volumeBytes: 16, journalDirectory: registry)
+    for byte in splitWire(0, 0, fixture) + splitWire(2, UInt64(fixture.count)) { try stage.consume(Data([byte]), check: {}) }
+    #expect(stage.ended); try stage.prepare(check: {})
+    let foreign = stage.staging.appendingPathComponent("foreign.txt"); try Data("foreign preserved".utf8).write(to: foreign)
+    #expect(throws: (any Error).self) { try stage.rollback() }
+    #expect(try String(contentsOf: foreign, encoding: .utf8) == "foreign preserved")
+    let occupied = root.appendingPathComponent("occupied.7z.005"); try Data("existing last volume".utf8).write(to: occupied)
+    #expect(throws: ZipArchiveError.destinationConflict("occupied.7z.005")) {
+        try SevenZipSplitStaging(destination: root.appendingPathComponent("occupied.7z"), volumeBytes: 65536, journalDirectory: registry)
+    }
+    #expect(try String(contentsOf: occupied, encoding: .utf8) == "existing last volume")
 }

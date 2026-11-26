@@ -96,7 +96,7 @@ static bool unsignedText(id value, uint64_t *number) {
     if (errno || *end) return false;
     *number = result; return true;
 }
-static int createArchive(const char *library, int output, NSDictionary *request) {
+static int createArchive(const char *library, int output, NSDictionary *request, bool framedOutput) {
     NSSet *allowed = [NSSet setWithArray:@[@"version", @"operation", @"items", @"password", @"level", @"encryptHeader", @"dictionarySize", @"wordSize", @"threads"]];
     id password = request[@"password"], level = request[@"level"], header = request[@"encryptHeader"], items = request[@"items"];
     if (![[NSSet setWithArray:request.allKeys] isSubsetOfSet:allowed] ||
@@ -149,19 +149,20 @@ static int createArchive(const char *library, int output, NSDictionary *request)
         entries.push_back(entry); [paths addObject:item[@"path"]];
     }
     return SevenZipCreate(library, output, entries.data(), (uint32_t)entries.size(),
-        [password isKindOfClass:[NSString class]] ? [password UTF8String] : nullptr, [level intValue], [header boolValue], dictionarySize, wordSize, [threads unsignedIntValue]);
+        [password isKindOfClass:[NSString class]] ? [password UTF8String] : nullptr, [level intValue], [header boolValue], dictionarySize, wordSize, [threads unsignedIntValue], framedOutput ? 1 : 0);
 }
 
 int main(int argc, const char *argv[]) {
     @autoreleasepool {
         signal(SIGPIPE, SIG_IGN);
         int outputDescriptor = -1;
-        bool creation = argc == 4 && strcmp(argv[2], "--create-output-fd") == 0;
+        bool framedCreation = argc == 4 && strcmp(argv[2], "--create-stream-fd") == 0;
+        bool creation = framedCreation || (argc == 4 && strcmp(argv[2], "--create-output-fd") == 0);
         if (argc == 4 && (creation || strcmp(argv[2], "--output-fd") == 0)) {
             char *end = nullptr; long value = strtol(argv[3], &end, 10);
             struct stat info;
             if (!*argv[3] || *end || value < 3 || value > INT_MAX || fstat((int)value, &info) != 0 ||
-                (creation ? (!S_ISREG(info.st_mode) || info.st_size != 0 || info.st_nlink != 1 || lseek((int)value, 0, SEEK_CUR) != 0)
+                (creation && !framedCreation ? (!S_ISREG(info.st_mode) || info.st_size != 0 || info.st_nlink != 1 || (fcntl((int)value, F_GETFL) & O_APPEND) || lseek((int)value, 0, SEEK_CUR) != 0)
                           : !S_ISFIFO(info.st_mode)) || (fcntl((int)value, F_GETFL) & O_ACCMODE) != O_WRONLY) {
                 reply(failure(@"output-descriptor")); return 1;
             }
@@ -186,7 +187,7 @@ int main(int argc, const char *argv[]) {
                 }
                 if (creation) {
                     if (![request[@"operation"] isEqual:@"create"]) { reply(failure(@"unsupported-operation")); result = 1; break; }
-                    int error = createArchive(argv[1], outputDescriptor, request);
+                    int error = createArchive(argv[1], outputDescriptor, request, framedCreation);
                     reply(error ? failure(sdkError(error)) : @{ @"version": @1, @"ok": @YES, @"closed": @YES });
                     result = error ? 1 : 0; break;
                 }

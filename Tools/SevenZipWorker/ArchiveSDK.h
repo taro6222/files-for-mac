@@ -23,9 +23,10 @@ typedef struct {
     uint32_t modifiedNanos, changedNanos, mode;
     int directory;
 } SevenZipCreateItem;
-// Output is an already-created, caller-owned seekable file. No output paths are opened.
+// Output is a caller-owned seekable file, or a positional-record pipe when framedOutput is set.
+// The SDK never opens an output path.
 int SevenZipCreate(const char *library, int output, const SevenZipCreateItem *items, uint32_t count,
-                   const char *password, int level, int encryptHeader, uint32_t dictionarySize, uint32_t wordSize, uint32_t threads);
+                   const char *password, int level, int encryptHeader, uint32_t dictionarySize, uint32_t wordSize, uint32_t threads, int framedOutput);
 
 #ifdef __cplusplus
 }

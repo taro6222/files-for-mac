@@ -18,6 +18,7 @@
 #include <string.h>
 #include <vector>
 #include <algorithm>
+#include <mutex>
 #include <sys/resource.h>
 
 Z7_DEFINE_GUID(CLSID_SevenZip, 0x23170f69, 0x40c1, 0x278a, 0x10, 0, 0, 1, 0x10, 7, 0, 0);
@@ -369,32 +370,57 @@ public:
 class CreateOutput final: public IOutStream, public CMyUnknownImp {
     Z7_COM_UNKNOWN_IMP_2(IOutStream, ISequentialOutStream)
     int fd;
-public:
-    explicit CreateOutput(int descriptor): fd(descriptor) {}
-    Z7_COM7F_IMF(Write(const void *data, UInt32 size, UInt32 *processed)) override {
-        if (processed) *processed = 0;
-        off_t position = lseek(fd, 0, SEEK_CUR);
-        if (position < 0 || (uint64_t)position + size > 8000000000ULL) return E_FAIL;
-        UInt32 total = 0;
+    bool framed;
+    std::mutex mutex;
+    uint64_t position = 0, length = 0;
+    bool bytes(const void *data, size_t size) {
+        size_t total = 0;
         while (total < size) {
             ssize_t count = write(fd, (const char *)data + total, size - total);
             if (count < 0 && errno == EINTR) continue;
-            if (count <= 0) return E_FAIL;
-            total += (UInt32)count;
+            if (count <= 0) return false;
+            total += (size_t)count;
+        }
+        return true;
+    }
+    bool record(unsigned char type, uint64_t offset, uint64_t size, const void *data) {
+        unsigned char header[17]; header[0] = type;
+        for (unsigned i = 0; i < 8; ++i) { header[1 + i] = (unsigned char)(offset >> (56 - i * 8)); header[9 + i] = (unsigned char)(size >> (56 - i * 8)); }
+        return bytes(header, sizeof(header)) && (!size || bytes(data, (size_t)size));
+    }
+public:
+    CreateOutput(int descriptor, bool useFrames): fd(descriptor), framed(useFrames) {}
+    Z7_COM7F_IMF(Write(const void *data, UInt32 size, UInt32 *processed)) override {
+        std::lock_guard<std::mutex> guard(mutex);
+        if (processed) *processed = 0;
+        if (size > 8000000000ULL - position) return E_FAIL;
+        UInt32 total = 0;
+        while (total < size) {
+            UInt32 count = std::min((UInt32)65536, size - total);
+            const char *chunk = (const char *)data + total;
+            if (!(framed ? record(0, position, count, chunk) : bytes(chunk, count))) return E_FAIL;
+            total += count; position += count; length = std::max(length, position);
         }
         if (processed) *processed = total;
         return S_OK;
     }
-    Z7_COM7F_IMF(Seek(Int64 offset, UInt32 origin, UInt64 *position)) override {
+    Z7_COM7F_IMF(Seek(Int64 offset, UInt32 origin, UInt64 *result)) override {
+        std::lock_guard<std::mutex> guard(mutex);
         if (origin > 2) return E_INVALIDARG;
-        off_t result = lseek(fd, offset, origin == 0 ? SEEK_SET : (origin == 1 ? SEEK_CUR : SEEK_END));
-        if (result < 0 || (uint64_t)result > 8000000000ULL) return E_FAIL;
-        if (position) *position = result;
+        int64_t base = origin == 0 ? 0 : (int64_t)(origin == 1 ? position : length);
+        if (offset == INT64_MIN || (offset < 0 && base < -offset) || (offset > 0 && base > INT64_MAX - offset)) return E_INVALIDARG;
+        uint64_t target = (uint64_t)(base + offset);
+        if (target > 8000000000ULL || (!framed && lseek(fd, (off_t)target, SEEK_SET) < 0)) return E_FAIL;
+        position = target;
+        if (result) *result = position;
         return S_OK;
     }
     Z7_COM7F_IMF(SetSize(UInt64 size)) override {
-        return size <= 8000000000ULL && ftruncate(fd, size) == 0 ? S_OK : E_FAIL;
+        std::lock_guard<std::mutex> guard(mutex);
+        if (size > 8000000000ULL || !(framed ? record(1, size, 0, nullptr) : ftruncate(fd, size) == 0)) return E_FAIL;
+        length = size; return S_OK;
     }
+    bool finish() { std::lock_guard<std::mutex> guard(mutex); return framed ? record(2, length, 0, nullptr) : fsync(fd) == 0; }
 };
 class CreateCallback final: public IArchiveUpdateCallback, public ICryptoGetTextPassword2, public CMyUnknownImp {
     Z7_IFACES_IMP_UNK_2(IArchiveUpdateCallback, ICryptoGetTextPassword2)
@@ -457,7 +483,7 @@ Z7_COM7F_IMF(CreateCallback::CryptoGetTextPassword2(Int32 *isDefined, BSTR *valu
     return StringToBstr(password, value);
 }
 extern "C" int SevenZipCreate(const char *library, int outputFD, const SevenZipCreateItem *items, uint32_t count,
-                              const char *password, int level, int encryptHeader, uint32_t dictionarySize, uint32_t wordSize, uint32_t threads) {
+                              const char *password, int level, int encryptHeader, uint32_t dictionarySize, uint32_t wordSize, uint32_t threads, int framedOutput) {
     // The library stays loaded until all COM objects have been released, including exceptions.
     struct Library { void *handle; ~Library() { if (handle) dlclose(handle); } } loaded{dlopen(library, RTLD_NOW | RTLD_LOCAL)};
     if (!loaded.handle) return 1;
@@ -481,7 +507,8 @@ extern "C" int SevenZipCreate(const char *library, int outputFD, const SevenZipC
         CMyComPtr<IArchiveUpdateCallback> callbackHolder = callback;
         callback->items = items; callback->count = count; callback->defined = password != nullptr;
         if (password && !ConvertUTF8ToUnicode(AString(password), callback->password)) return 6;
-        CMyComPtr<ISequentialOutStream> output = new CreateOutput(outputFD);
+        auto stream = new CreateOutput(outputFD, framedOutput != 0);
+        CMyComPtr<ISequentialOutStream> output = stream;
         HRESULT status = archive->UpdateItems(output, count, callbackHolder);
         if (callback->changed) return 9;
         if (status != S_OK || callback->failed) return 10;
@@ -491,6 +518,6 @@ extern "C" int SevenZipCreate(const char *library, int outputFD, const SevenZipC
             bool matches = matchesCreateItem(items[i], fd); close(fd);
             if (!matches) return 9;
         }
-        return fsync(outputFD) == 0 ? 0 : 10;
+        return stream->finish() ? 0 : 10;
     } catch (...) { return 8; }
 }

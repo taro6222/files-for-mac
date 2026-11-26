@@ -21,14 +21,14 @@ def frame(value):
 
 
 class Worker:
-    def __init__(self, executable, output=False, output_fd=None, library=None, create_output=False):
+    def __init__(self, executable, output=False, output_fd=None, library=None, create_output=False, creation_stream=False):
         arguments = [str(executable), str(library or executable.parent / '7z.so')]
         self.output = bytearray(); self.reader = None; inherited = ()
         if output:
             read_fd, write_fd = os.pipe(); inherited = (write_fd,)
-            arguments += ['--output-fd', str(write_fd)]
+            arguments += ['--create-stream-fd' if creation_stream else '--output-fd', str(write_fd)]
         elif output_fd is not None:
-            inherited = (output_fd,); arguments += ['--create-output-fd' if create_output else '--output-fd', str(output_fd)]
+            inherited = (output_fd,); arguments += ['--create-stream-fd' if creation_stream else ('--create-output-fd' if create_output else '--output-fd'), str(output_fd)]
         self.process = subprocess.Popen(arguments, pass_fds=inherited,
                                         stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         if output:
@@ -284,6 +284,40 @@ def verify(executable, reference, root, library=None):
             reply = worker.request(dict(request, **{key: value})); worker.finish(1)
         check('createRejects' + label, not reply['ok'] and reply['error']['code'] == 'invalid-metadata' and not output.read_bytes())
     check('createInvalidOptionsPreserveSource', source.read_bytes() == b'keep source')
+    worker = Worker(executable, output=True, library=library, creation_stream=True)
+    response = worker.request(dict(request, level=0)); worker.finish()
+    check('createStreamMetadataSuccess', response['ok'] and response.get('closed') is True)
+    wire = worker.output; position = 0; image = bytearray(); ended = False; writes = 0
+    while position < len(wire):
+        if ended or len(wire) - position < 17: raise RuntimeError('Invalid create stream header')
+        kind = wire[position]; offset, size = struct.unpack('!QQ', wire[position + 1:position + 17]); position += 17
+        if offset > 8000000000 or size > 65536 or kind > 2: raise RuntimeError('Invalid create stream limits')
+        if kind == 0:
+            if not size or position + size > len(wire): raise RuntimeError('Truncated create stream data')
+            if offset + size > len(image): image.extend(b'\0' * (offset + size - len(image)))
+            image[offset:offset + size] = wire[position:position + size]; position += size; writes += 1
+        elif kind == 1:
+            if size: raise RuntimeError('Invalid truncate record')
+            if offset < len(image): del image[offset:]
+            else: image.extend(b'\0' * (offset - len(image)))
+        else:
+            if size or offset != len(image): raise RuntimeError('Invalid end record')
+            ended = True
+    check('createStreamPositionalFramesAndEnd', ended and writes >= 2 and image.startswith(b'7z\xbc\xaf\x27\x1c'))
+    streamed = root / 'stream-created.7z'; streamed.write_bytes(image)
+    destination = root / 'stream-created-out'
+    decoded = subprocess.run([str(reference), 'x', '-y', '-o' + str(destination), str(streamed)], stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=15)
+    check('createStreamIndependentExtraction', decoded.returncode == 0 and (destination / source.name).read_bytes() == source.read_bytes())
+    append = root / 'append-output'
+    with append.open('ab') as stream:
+        worker = Worker(executable, output_fd=stream.fileno(), library=library, create_output=True)
+        response = worker.read(); worker.finish(1)
+    check('createRejectsAppendDescriptor', response['error']['code'] == 'output-descriptor' and not append.read_bytes())
+    regular = root / 'stream-regular-output'
+    with regular.open('wb') as stream:
+        worker = Worker(executable, output_fd=stream.fileno(), library=library, creation_stream=True)
+        response = worker.read(); worker.finish(1)
+    check('createStreamRejectsRegularDescriptor', response['error']['code'] == 'output-descriptor' and not regular.read_bytes())
     return checks
 
 
