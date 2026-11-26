@@ -8,6 +8,15 @@ typedef int (*SevenZipItemCallback)(void *, uint32_t, const char *, size_t, int,
 typedef struct { uint64_t device, inode, size; } SevenZipSourceIdentity;
 void *SevenZipOpen(const char *library, const char *archive, const char *password, int *error);
 void *SevenZipOpenVolumes(const char *library, const char *const *archives, uint32_t count, const char *password, int *error);
+typedef struct {
+    uint64_t device, inode, size;
+    int64_t modifiedSeconds, changedSeconds;
+    uint32_t modifiedNanos, changedNanos, mode;
+} SevenZipInputSource;
+// Adopts received read-only descriptors, setting adopted slots to -1. Caller closes remaining slots.
+// The SDK never opens source paths in this mode.
+void *SevenZipOpenDescriptors(const char *library, int *descriptors, const SevenZipInputSource *sources,
+                             uint32_t count, int split, const char *password, int *error);
 int SevenZipList(void *session, uint32_t maximumEntries, void *context, SevenZipItemCallback callback);
 // Writes only one regular item's bytes to the caller-owned stream callback.
 typedef int (*SevenZipWriteCallback)(void *, const void *, size_t);

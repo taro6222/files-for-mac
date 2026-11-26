@@ -52,6 +52,23 @@ public:
         total += (uint64_t)info.st_size;
         return 0;
     }
+    int appendDescriptor(int &source, const SevenZipInputSource &expected, bool split) {
+        int fd = source; source = -1;
+        if (fd < 0) return 2;
+        struct stat info;
+        if ((fcntl(fd, F_GETFL) & O_ACCMODE) != O_RDONLY || fstat(fd, &info) != 0 || !S_ISREG(info.st_mode) || info.st_size < 0) { close(fd); return 2; }
+        if ((uint64_t)info.st_dev != expected.device || (uint64_t)info.st_ino != expected.inode || (uint64_t)info.st_size != expected.size ||
+            (uint32_t)info.st_mode != expected.mode || info.st_mtimespec.tv_sec != expected.modifiedSeconds ||
+            info.st_mtimespec.tv_nsec != expected.modifiedNanos || info.st_ctimespec.tv_sec != expected.changedSeconds || info.st_ctimespec.tv_nsec != expected.changedNanos) { close(fd); return 9; }
+        uint64_t maximum = split ? 8000000000ULL : INT64_MAX;
+        if ((uint64_t)info.st_size > maximum - total) { close(fd); return 7; }
+        if (split && (info.st_size == 0 || (!parts.empty() && info.st_size > initial.st_size) ||
+            (parts.size() > 1 && parts.back().info.st_size != initial.st_size))) { close(fd); return 6; }
+        try { parts.push_back({fd, info, total, "", false}); } catch (...) { close(fd); throw; }
+        if (parts.size() == 1) initial = info;
+        total += (uint64_t)info.st_size;
+        return 0;
+    }
     bool unchanged() const {
         for (const auto &part: parts) {
             struct stat now, named;
@@ -137,7 +154,8 @@ struct Session {
     }
 };
 
-static void *openArchives(const char *library, const char *const *paths, uint32_t count, bool split, const char *password, int *error) {
+static void *openArchives(const char *library, const char *const *paths, uint32_t count, bool split, const char *password, int *error,
+                          int *descriptors = nullptr, const SevenZipInputSource *sources = nullptr) {
     *error = 8;
     try {
         std::unique_ptr<Session> session(new Session());
@@ -146,19 +164,20 @@ static void *openArchives(const char *library, const char *const *paths, uint32_
         typedef HRESULT (*Create)(const GUID *, const GUID *, void **);
         auto create = (Create)dlsym(session->library, "CreateObject");
         if (!create || create(&CLSID_SevenZip, &IID_IInArchive, (void **)&session->archive) != S_OK) { *error = 1; return nullptr; }
-        if (!paths || !count || count > 1024) { *error = 7; return nullptr; }
-        if (split) {
+        if ((!paths && (!descriptors || !sources)) || !count || count > 1024 || (!split && count != 1)) { *error = 7; return nullptr; }
+        if (split || descriptors) {
+            const uint32_t needed = count + 64U;
             // Only this short-lived helper's soft limit changes; the host/system limit is untouched.
             struct rlimit limit;
-            if (getrlimit(RLIMIT_NOFILE, &limit) == 0 && limit.rlim_cur < count + 64U) {
-                limit.rlim_cur = std::min(limit.rlim_max, (rlim_t)count + 64U);
-                if (limit.rlim_cur < count + 64U || setrlimit(RLIMIT_NOFILE, &limit) != 0) { *error = 7; return nullptr; }
+            if (getrlimit(RLIMIT_NOFILE, &limit) == 0 && limit.rlim_cur < needed) {
+                limit.rlim_cur = std::min(limit.rlim_max, (rlim_t)needed);
+                if (limit.rlim_cur < needed || setrlimit(RLIMIT_NOFILE, &limit) != 0) { *error = 7; return nullptr; }
             }
         }
         session->stream = new SourceStream(); session->source = session->stream;
         for (uint32_t i = 0; i < count; ++i) {
-            if (!paths[i]) { *error = 6; return nullptr; }
-            int failure = session->stream->append(paths[i], split);
+            if (paths && !paths[i]) { *error = 6; return nullptr; }
+            int failure = descriptors ? session->stream->appendDescriptor(descriptors[i], sources[i], split) : session->stream->append(paths[i], split);
             if (failure) { *error = failure; return nullptr; }
         }
         session->openCallback = new OpenCallback(); session->callback = session->openCallback;
@@ -193,6 +212,11 @@ extern "C" void *SevenZipOpen(const char *library, const char *path, const char 
 }
 extern "C" void *SevenZipOpenVolumes(const char *library, const char *const *paths, uint32_t count, const char *password, int *error) {
     return openArchives(library, paths, count, true, password, error);
+}
+
+extern "C" void *SevenZipOpenDescriptors(const char *library, int *descriptors, const SevenZipInputSource *sources,
+                                         uint32_t count, int split, const char *password, int *error) {
+    return openArchives(library, nullptr, count, split != 0, password, error, descriptors, sources);
 }
 
 static bool property(IInArchive *archive, UInt32 index, PROPID id, NWindows::NCOM::CPropVariant &value) {

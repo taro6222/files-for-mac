@@ -7,6 +7,8 @@
 #include <math.h>
 #include <fcntl.h>
 #include <sys/stat.h>
+#include <sys/socket.h>
+#include <sys/resource.h>
 #include <vector>
 
 static const size_t RequestLimit = 1024 * 1024, ResponseLimit = 8 * 1024 * 1024;
@@ -152,22 +154,92 @@ static int createArchive(const char *library, int output, NSDictionary *request,
         [password isKindOfClass:[NSString class]] ? [password UTF8String] : nullptr, [level intValue], [header boolValue], dictionarySize, wordSize, [threads unsignedIntValue], framedOutput ? 1 : 0);
 }
 
+struct ReceivedDescriptors {
+    std::vector<int> values;
+    ~ReceivedDescriptors() { for (int fd: values) if (fd >= 0) close(fd); }
+};
+static bool signedInteger(id value) {
+    return [value isKindOfClass:[NSNumber class]] && CFGetTypeID((__bridge CFTypeRef)value) != CFBooleanGetTypeID() &&
+        isfinite([value doubleValue]) && [value doubleValue] == floor([value doubleValue]) &&
+        [value compare:@(INT64_MIN)] != NSOrderedAscending && [value compare:@(INT64_MAX)] != NSOrderedDescending;
+}
+static int receiveSources(int socket, id specs, id split, ReceivedDescriptors &received, std::vector<SevenZipInputSource> &sources) {
+    if (![specs isKindOfClass:[NSArray class]] || [specs count] == 0 || [specs count] > 1024 ||
+        ![split isKindOfClass:[NSNumber class]] || CFGetTypeID((__bridge CFTypeRef)split) != CFBooleanGetTypeID() ||
+        (![split boolValue] && [specs count] != 1)) return 6;
+    NSSet *keys = [NSSet setWithArray:@[@"device", @"inode", @"size", @"mode", @"modifiedSeconds", @"modifiedNanos", @"changedSeconds", @"changedNanos"]];
+    for (id item in specs) {
+        if (![item isKindOfClass:[NSDictionary class]] || ![[NSSet setWithArray:[item allKeys]] isEqualToSet:keys] ||
+            !integer(item[@"size"], 0, INT64_MAX) || !integer(item[@"mode"], 0, UINT32_MAX) ||
+            !signedInteger(item[@"modifiedSeconds"]) || !signedInteger(item[@"changedSeconds"]) ||
+            !integer(item[@"modifiedNanos"], 0, 999999999) || !integer(item[@"changedNanos"], 0, 999999999)) return 6;
+        SevenZipInputSource source = {};
+        if (!unsignedText(item[@"device"], &source.device) || !unsignedText(item[@"inode"], &source.inode)) return 6;
+        source.size = [item[@"size"] unsignedLongLongValue]; source.mode = [item[@"mode"] unsignedIntValue];
+        source.modifiedSeconds = [item[@"modifiedSeconds"] longLongValue]; source.modifiedNanos = [item[@"modifiedNanos"] unsignedIntValue];
+        source.changedSeconds = [item[@"changedSeconds"] longLongValue]; source.changedNanos = [item[@"changedNanos"] unsignedIntValue];
+        sources.push_back(source);
+    }
+    struct rlimit limit; rlim_t needed = (rlim_t)sources.size() + 64;
+    if (getrlimit(RLIMIT_NOFILE, &limit) != 0 || limit.rlim_max < needed) return 7;
+    if (limit.rlim_cur < needed) { limit.rlim_cur = needed; if (setrlimit(RLIMIT_NOFILE, &limit) != 0) return 7; }
+    for (size_t i = 0; i < sources.size(); ++i) {
+        unsigned char marker = 0;
+        struct iovec vector = { &marker, 1 };
+        union { struct cmsghdr alignment; unsigned char bytes[CMSG_SPACE(sizeof(int))]; } control = {};
+        struct msghdr message = {}; message.msg_iov = &vector; message.msg_iovlen = 1;
+        message.msg_control = control.bytes; message.msg_controllen = sizeof(control.bytes);
+        ssize_t count;
+        do { count = recvmsg(socket, &message, 0); } while (count < 0 && errno == EINTR);
+        bool shape = count == 1 && marker == 0x46 && !(message.msg_flags & (MSG_CTRUNC | MSG_TRUNC));
+        size_t before = received.values.size();
+        for (struct cmsghdr *header = CMSG_FIRSTHDR(&message); header; header = CMSG_NXTHDR(&message, header)) {
+            if (header->cmsg_level != SOL_SOCKET || header->cmsg_type != SCM_RIGHTS || header->cmsg_len < CMSG_LEN(0)) { shape = false; continue; }
+            size_t bytes = header->cmsg_len - CMSG_LEN(0);
+            if (bytes % sizeof(int)) shape = false;
+            for (size_t j = 0; j + sizeof(int) <= bytes; j += sizeof(int)) {
+                int fd; memcpy(&fd, CMSG_DATA(header) + j, sizeof(fd)); received.values.push_back(fd);
+            }
+        }
+        if (!shape || received.values.size() != before + 1) return 6;
+        int fd = received.values.back(); struct stat info;
+        if (fcntl(fd, F_SETFD, FD_CLOEXEC) != 0 || (fcntl(fd, F_GETFL) & O_ACCMODE) != O_RDONLY ||
+            fstat(fd, &info) != 0 || !S_ISREG(info.st_mode)) return 2;
+    }
+    unsigned char extra = 0; ssize_t count;
+    do { count = read(socket, &extra, 1); } while (count < 0 && errno == EINTR);
+    return count == 0 ? 0 : 6;
+}
+
 int main(int argc, const char *argv[]) {
     @autoreleasepool {
         signal(SIGPIPE, SIG_IGN);
-        int outputDescriptor = -1;
-        bool framedCreation = argc == 4 && strcmp(argv[2], "--create-stream-fd") == 0;
-        bool creation = framedCreation || (argc == 4 && strcmp(argv[2], "--create-output-fd") == 0);
-        if (argc == 4 && (creation || strcmp(argv[2], "--output-fd") == 0)) {
-            char *end = nullptr; long value = strtol(argv[3], &end, 10);
+        int outputDescriptor = -1, inputDescriptor = -1;
+        bool creation = false, framedCreation = false;
+        if (argc != 2 && argc != 4 && argc != 6) { reply(failure(@"arguments")); return 1; }
+        for (int i = 2; i < argc; i += 2) {
+            char *end = nullptr; long value = strtol(argv[i + 1], &end, 10);
+            if (!*argv[i + 1] || !end || *end || value < 3 || value > INT_MAX) { reply(failure(@"output-descriptor")); return 1; }
+            if (strcmp(argv[i], "--input-fd") == 0) {
+                int type = 0; socklen_t length = sizeof(type); struct sockaddr_storage address = {}; socklen_t addressLength = sizeof(address);
+                if (inputDescriptor >= 0 || getsockopt((int)value, SOL_SOCKET, SO_TYPE, &type, &length) != 0 || type != SOCK_STREAM ||
+                    getsockname((int)value, (struct sockaddr *)&address, &addressLength) != 0 || address.ss_family != AF_UNIX) { reply(failure(@"input-descriptor")); return 1; }
+                inputDescriptor = (int)value; continue;
+            }
+            if (outputDescriptor >= 0) { reply(failure(@"arguments")); return 1; }
+            creation = strcmp(argv[i], "--create-output-fd") == 0 || strcmp(argv[i], "--create-stream-fd") == 0;
+            framedCreation = strcmp(argv[i], "--create-stream-fd") == 0;
+            if (!creation && strcmp(argv[i], "--output-fd") != 0) { reply(failure(@"arguments")); return 1; }
             struct stat info;
-            if (!*argv[3] || *end || value < 3 || value > INT_MAX || fstat((int)value, &info) != 0 ||
+            if (fstat((int)value, &info) != 0 ||
                 (creation && !framedCreation ? (!S_ISREG(info.st_mode) || info.st_size != 0 || info.st_nlink != 1 || (fcntl((int)value, F_GETFL) & O_APPEND) || lseek((int)value, 0, SEEK_CUR) != 0)
                           : !S_ISFIFO(info.st_mode)) || (fcntl((int)value, F_GETFL) & O_ACCMODE) != O_WRONLY) {
                 reply(failure(@"output-descriptor")); return 1;
             }
             outputDescriptor = (int)value;
-        } else if (argc != 2) { reply(failure(@"arguments")); return 1; }
+        }
+        if (inputDescriptor >= 0 && (creation || inputDescriptor == outputDescriptor)) { reply(failure(@"input-descriptor")); return 1; }
+        const bool descriptorInput = inputDescriptor >= 0;
         void *session = nullptr;
         NSString *token = nil;
         int result = 0;
@@ -192,7 +264,8 @@ int main(int argc, const char *argv[]) {
                     result = error ? 1 : 0; break;
                 }
                 NSSet *allowed = session ? [NSSet setWithArray:@[@"version", @"operation", @"session", @"maxEntries"]]
-                                         : [NSSet setWithArray:@[@"version", @"operation", @"archivePath", @"archivePaths", @"password", @"maxEntries"]];
+                                         : (descriptorInput ? [NSSet setWithArray:@[@"version", @"operation", @"sourceFDs", @"splitVolumes", @"password", @"maxEntries"]]
+                                                            : [NSSet setWithArray:@[@"version", @"operation", @"archivePath", @"archivePaths", @"password", @"maxEntries"]]);
                 if (session && [request[@"operation"] isEqual:@"extract"]) {
                     allowed = [NSSet setWithArray:@[@"version", @"operation", @"session", @"index", @"expectedSize", @"maximumBytes"]];
                 }
@@ -220,23 +293,32 @@ int main(int argc, const char *argv[]) {
                 }
                 if (![request[@"operation"] isEqual:@"list"]) { reply(failure(@"unsupported-operation")); result = 1; break; }
                 if (!session) {
-                    id path = request[@"archivePath"], paths = request[@"archivePaths"], password = request[@"password"];
-                    bool multi = paths != nil;
-                    bool validPaths = multi ? (!path && [paths isKindOfClass:[NSArray class]] && [paths count] > 0 && [paths count] <= 1024) : text(path, false);
-                    std::vector<const char *> sourcePaths;
-                    if (validPaths && multi) {
-                        for (id value in paths) {
-                            if (!text(value, false)) { validPaths = false; break; }
-                            sourcePaths.push_back([value UTF8String]);
-                        }
-                    }
-                    if (!validPaths || (password && password != [NSNull null] && !text(password, true))) {
-                        reply(failure(@"invalid-request")); result = 1; break;
-                    }
+                    id password = request[@"password"];
+                    if (password && password != [NSNull null] && !text(password, true)) { reply(failure(@"invalid-request")); result = 1; break; }
                     int error = 0;
                     const char *secret = [password isKindOfClass:[NSString class]] ? [password UTF8String] : nullptr;
-                    session = multi ? SevenZipOpenVolumes(argv[1], sourcePaths.data(), (uint32_t)sourcePaths.size(), secret, &error)
-                                    : SevenZipOpen(argv[1], [path UTF8String], secret, &error);
+                    if (descriptorInput) {
+                        ReceivedDescriptors received; std::vector<SevenZipInputSource> sources;
+                        error = receiveSources(inputDescriptor, request[@"sourceFDs"], request[@"splitVolumes"], received, sources);
+                        close(inputDescriptor); inputDescriptor = -1;
+                        if (!error) session = SevenZipOpenDescriptors(argv[1], received.values.data(), sources.data(), (uint32_t)sources.size(), [request[@"splitVolumes"] boolValue], secret, &error);
+                    } else {
+                        id path = request[@"archivePath"], paths = request[@"archivePaths"];
+                        bool multi = paths != nil;
+                        bool validPaths = multi ? (!path && [paths isKindOfClass:[NSArray class]] && [paths count] > 0 && [paths count] <= 1024) : text(path, false);
+                        std::vector<const char *> sourcePaths;
+                        if (validPaths && multi) {
+                            for (id value in paths) {
+                                if (!text(value, false)) { validPaths = false; break; }
+                                sourcePaths.push_back([value UTF8String]);
+                            }
+                        }
+                        if (!validPaths || (password && password != [NSNull null] && !text(password, true))) {
+                            reply(failure(@"invalid-request")); result = 1; break;
+                        }
+                        session = multi ? SevenZipOpenVolumes(argv[1], sourcePaths.data(), (uint32_t)sourcePaths.size(), secret, &error)
+                                        : SevenZipOpen(argv[1], [path UTF8String], secret, &error);
+                    }
                     if (!session) { reply(failure(sdkError(error))); result = 1; break; }
                     token = [[NSUUID UUID] UUIDString];
                 }

@@ -186,6 +186,7 @@ public struct SevenZipArchiveProvider: Sendable {
                 progress?(.init(phase: .publishing, completedEntries: validated.count, totalEntries: validated.count,
                                 completedBytes: completed, totalBytes: total, currentPath: nil))
                 try session.check()
+                try session.verifySource()
                 let published = try tree.publish(intoExisting: intoExisting, check: session.check) { name in
                     progress?(.init(phase: .publishing, completedEntries: validated.count, totalEntries: validated.count,
                                     completedBytes: completed, totalBytes: total, currentPath: name))
@@ -278,6 +279,8 @@ private final class SevenZipSession {
     private var requestFD: Int32 = -1, responseFD: Int32 = -1, dataFD: Int32 = -1, errorFD: Int32 = -1
     private var token: String?
     private var diagnosticsEnded = false
+    private var inputFD: Int32 = -1
+    private var readSource: SevenZipReadSource?
     init(provider: SevenZipArchiveProvider, control: SevenZipProcessControl, outputFD: Int32? = nil, creationStream: Bool = false) throws {
         self.control = control
         let now = DispatchTime.now().uptimeNanoseconds
@@ -297,6 +300,18 @@ private final class SevenZipSession {
             }
             pipes.append(contentsOf: normalized)
         }
+        var inputPair: [Int32] = []
+        if outputFD == nil && !creationStream {
+            var pair: [Int32] = [-1, -1]
+            guard socketpair(AF_UNIX, SOCK_STREAM, 0, &pair) == 0 else { throw SevenZipWorkerError.ioFailure }
+            inputPair = pair.map { fcntl($0, F_DUPFD_CLOEXEC, 10) }
+            for fd in pair { Darwin.close(fd) }
+            guard inputPair.allSatisfy({ $0 >= 10 }) else {
+                for fd in inputPair where fd >= 10 { Darwin.close(fd) }
+                throw SevenZipWorkerError.ioFailure
+            }
+            pipes.append(contentsOf: inputPair)
+        }
         var outputDuplicate: Int32?
         if let outputFD {
             let duplicate = fcntl(outputFD, F_DUPFD_CLOEXEC, 10)
@@ -311,11 +326,16 @@ private final class SevenZipSession {
         for (source, target) in [(pipes[0], Int32(0)), (pipes[3], 1), (pipes[5], 2), (outputDuplicate ?? pipes[7], 3)] {
             guard posix_spawn_file_actions_adddup2(&actions, source, target) == 0 else { throw SevenZipWorkerError.ioFailure }
         }
+        if let socket = inputPair.last {
+            guard posix_spawn_file_actions_adddup2(&actions, socket, 4) == 0 else { throw SevenZipWorkerError.ioFailure }
+        }
         for fd in pipes {
             guard posix_spawn_file_actions_addclose(&actions, fd) == 0 else { throw SevenZipWorkerError.ioFailure }
         }
         guard posix_spawnattr_setflags(&attributes, Int16(POSIX_SPAWN_CLOEXEC_DEFAULT)) == 0 else { throw SevenZipWorkerError.ioFailure }
-        var arguments: [UnsafeMutablePointer<CChar>?] = [provider.executable.path, provider.library.path, creationStream ? "--create-stream-fd" : (outputFD == nil ? "--output-fd" : "--create-output-fd"), "3"].map { $0.withCString { strdup($0) } } + [nil]
+        var argumentStrings = [provider.executable.path, provider.library.path, creationStream ? "--create-stream-fd" : (outputFD == nil ? "--output-fd" : "--create-output-fd"), "3"]
+        if !inputPair.isEmpty { argumentStrings += ["--input-fd", "4"] }
+        var arguments: [UnsafeMutablePointer<CChar>?] = argumentStrings.map { $0.withCString { strdup($0) } } + [nil]
         var environment: [UnsafeMutablePointer<CChar>?] = ["LANG=en_US.UTF-8", "LC_ALL=en_US.UTF-8", "PATH=/usr/bin:/bin"].map { $0.withCString { strdup($0) } } + [nil]
         defer { for item in arguments + environment { free(item) } }
         var pid: pid_t = 0
@@ -323,9 +343,10 @@ private final class SevenZipSession {
         let result = posix_spawn(&pid, provider.executable.path, &actions, &attributes, &arguments, &environment)
         guard result == 0 else { throw SevenZipWorkerError.unavailable }
         control.install(pid)
+        if let socket = inputPair.first { inputFD = socket; pipes.removeAll { $0 == socket } }
         requestFD = pipes[1]; responseFD = pipes[2]; errorFD = pipes[4]; dataFD = pipes[6]
         pipes.removeAll { [requestFD, responseFD, errorFD, dataFD].contains($0) }
-        for fd in [requestFD, responseFD, errorFD, dataFD] {
+        for fd in [requestFD, responseFD, errorFD, dataFD, inputFD] where fd >= 0 {
             if fcntl(fd, F_SETFL, fcntl(fd, F_GETFL) | O_NONBLOCK) < 0 { stop(); throw SevenZipWorkerError.ioFailure }
         }
         if fcntl(requestFD, F_SETNOSIGPIPE, 1) < 0 { stop(); throw SevenZipWorkerError.ioFailure }
@@ -333,8 +354,8 @@ private final class SevenZipSession {
     deinit { stop() }
     func stop() {
         control.stop()
-        for fd in [requestFD, responseFD, errorFD, dataFD] where fd >= 0 { Darwin.close(fd) }
-        requestFD = -1; responseFD = -1; errorFD = -1; dataFD = -1
+        for fd in [requestFD, responseFD, errorFD, dataFD, inputFD] where fd >= 0 { Darwin.close(fd) }
+        requestFD = -1; responseFD = -1; errorFD = -1; dataFD = -1; inputFD = -1
     }
     func check() throws {
         try control.check()
@@ -425,14 +446,45 @@ private final class SevenZipSession {
         }
         return result!
     }
+    private func sendDescriptor(_ fd: Int32) throws {
+        // Darwin CMSG_SPACE/CMSG_LEN align to 32 bits on both supported CPUs.
+        let headerSize = (MemoryLayout<cmsghdr>.size + 3) & ~3
+        let size = headerSize + MemoryLayout<Int32>.size
+        var controlBytes = [UInt8](repeating: 0, count: size), marker: UInt8 = 0x46
+        while true {
+            try check()
+            let count = controlBytes.withUnsafeMutableBytes { bytes in
+                bytes.baseAddress!.storeBytes(of: cmsghdr(cmsg_len: socklen_t(size), cmsg_level: SOL_SOCKET, cmsg_type: SCM_RIGHTS), as: cmsghdr.self)
+                bytes.baseAddress!.advanced(by: headerSize).storeBytes(of: fd, as: Int32.self)
+                return withUnsafeMutablePointer(to: &marker) { pointer in
+                    var vector = iovec(iov_base: UnsafeMutableRawPointer(pointer), iov_len: 1)
+                    return withUnsafeMutablePointer(to: &vector) { vectors in
+                        var message = msghdr(msg_name: nil, msg_namelen: 0, msg_iov: vectors, msg_iovlen: 1,
+                                             msg_control: bytes.baseAddress, msg_controllen: socklen_t(size), msg_flags: 0)
+                        return sendmsg(inputFD, &message, MSG_NOSIGNAL | MSG_DONTWAIT)
+                    }
+                }
+            }
+            if count == 1 { return }
+            if count < 0 && errno == EINTR { continue }
+            guard count < 0 && (errno == EAGAIN || errno == EWOULDBLOCK) else { throw SevenZipWorkerError.unexpectedExit }
+            var descriptors = [pollfd(fd: inputFD, events: Int16(POLLOUT), revents: 0)]
+            try wait(&descriptors)
+        }
+    }
     func open(_ archive: URL, password: String?, maximumEntries: Int = 100_000) throws -> [SevenZipItem] {
         guard archive.isFileURL, maximumEntries > 0, maximumEntries <= 100_000,
               password?.utf8.contains(0) != true else { throw SevenZipWorkerError.invalidConfiguration }
         var request: [String: Any] = ["version": 1, "operation": "list", "password": password as Any? ?? NSNull(), "maxEntries": maximumEntries]
-        if let parts = try SevenZipVolumes.paths(for: archive, check: check) { request["archivePaths"] = parts.map(\.path) }
-        else { request["archivePath"] = archive.path }
+        let source = try SevenZipReadSource(archive: archive, check: check)
+        request["sourceFDs"] = source.records.map(\.request); request["splitVolumes"] = source.split
+        try source.verify(check: check)
         try send(request)
+        for index in source.records.indices { try source.withDescriptor(index) { try sendDescriptor($0) } }
+        Darwin.close(inputFD); inputFD = -1
         let response = try receive()
+        try source.verify(check: check)
+        readSource = source
         guard let items = response.items, items.count <= maximumEntries, let token = response.session, UUID(uuidString: token) != nil,
               let source = response.source, UInt64(source.device) != nil, UInt64(source.inode) != nil else { throw SevenZipWorkerError.invalidResponse }
         for (index, item) in items.enumerated() {
@@ -449,12 +501,14 @@ private final class SevenZipSession {
         let response = try receive(expectedBytes: UInt64(item.size), sink: sink)
         guard response.session == token, response.written == UInt64(item.size) else { throw SevenZipWorkerError.invalidResponse }
     }
+    func verifySource() throws { try check(); try readSource?.verify(check: check) }
     func close() throws {
         guard let token else { throw SevenZipWorkerError.invalidResponse }
         try send(["version": 1, "operation": "close", "session": token])
         let response = try receive()
         guard response.closed == true else { throw SevenZipWorkerError.invalidResponse }
         try waitForExit()
+        try readSource?.verify(check: check)
         self.token = nil
     }
     func create(_ plan: SevenZipCreationPlan, level: ArchiveCompressionLevel, password: String?, encryptHeader: Bool, options: SevenZipCompressionOptions) throws {

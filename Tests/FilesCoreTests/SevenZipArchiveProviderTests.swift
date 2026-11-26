@@ -11,6 +11,10 @@ private func sdkRoot() throws -> URL {
 }
 
 private func sdkMock(_ body: String, root: URL, timeout: TimeInterval = 2) throws -> SevenZipArchiveProvider {
+    // Mock decoders exercise framing, while the real broker still requires real regular inputs.
+    for name in ["archive.7z", "a.7z"] where !FileManager.default.fileExists(atPath: root.appendingPathComponent(name).path) {
+        try Data("zip".utf8).write(to: root.appendingPathComponent(name))
+    }
     let script = root.appendingPathComponent("worker.pl")
     let prelude = """
     #!/usr/bin/perl
@@ -948,4 +952,43 @@ private func splitWire(_ type: UInt8, _ offset: UInt64, _ data: Data = Data(), c
     #expect(unsafe.count == 3 && unsafe.filter { $0.phase == "unreadable" && $0.isUnfinished && !$0.canAttemptRecovery && $0.destination == nil }.count == 2)
     #expect(try Data(contentsOf: foreign) == secret)
     #expect(try Data(contentsOf: corrupt) == Data("{}".utf8))
+}
+
+@Test func sevenZipReadBrokerPinsDirectoryAndRejectsChangedNames() throws {
+    let root = try sdkRoot(); defer { try? FileManager.default.removeItem(at: root) }
+    let parent = root.appendingPathComponent("selected"), moved = root.appendingPathComponent("moved")
+    try FileManager.default.createDirectory(at: parent, withIntermediateDirectories: false)
+    let source = parent.appendingPathComponent("input.7z"), bytes = Data("approved archive bytes".utf8)
+    try bytes.write(to: source)
+    let broker = try SevenZipReadSource(archive: source, check: {})
+    try broker.verify(check: {})
+    try FileManager.default.moveItem(at: parent, to: moved)
+    try FileManager.default.createDirectory(at: parent, withIntermediateDirectories: false)
+    try Data("replacement must not be read".utf8).write(to: source)
+    try broker.withDescriptor(0) { fd in
+        #expect(fcntl(fd, F_GETFL) & O_ACCMODE == O_RDONLY)
+        var data = Data(count: bytes.count)
+        let count = data.withUnsafeMutableBytes { pread(fd, $0.baseAddress, $0.count, 0) }
+        #expect(count == bytes.count && data == bytes)
+    }
+    #expect(throws: SevenZipWorkerError.worker("source-changed")) { try broker.verify(check: {}) }
+    #expect(try Data(contentsOf: source) == Data("replacement must not be read".utf8))
+    var negativeDevice = stat(); negativeDevice.st_dev = -1
+    #expect(SevenZipReadSource.Record(name: "input.7z", proof: negativeDevice).request["device"] as? String == String(UInt64.max))
+}
+
+@Test(.enabled(if: hasIntegrationFixture("FILES_TEST_SEVENZIP_REFERENCE") && hasIntegrationFixture("FILES_TEST_SEVENZIP_WORKER"), "Requires native SDK and reference"))
+func sevenZipSDKReadBrokerHandlesSymlinkAndSearchOnlyDirectory() async throws {
+    let root = try sdkRoot(); defer { try? FileManager.default.removeItem(at: root) }
+    let fixture = try await sdkFixture(root: root, password: "QA-347-한글-🔑"), provider = try sdkRealProvider()
+    let alias = root.appendingPathComponent("alias.7z")
+    try FileManager.default.createSymbolicLink(at: alias, withDestinationURL: fixture.archive)
+    #expect(try await provider.entries(at: alias, password: "QA-347-한글-🔑").count == 3)
+    let directory = root.appendingPathComponent("search-only")
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: false)
+    let target = directory.appendingPathComponent("archive.7z")
+    try FileManager.default.copyItem(at: fixture.archive, to: target)
+    guard chmod(directory.path, 0o100) == 0 else { throw SevenZipWorkerError.ioFailure }
+    defer { _ = chmod(directory.path, 0o700) }
+    #expect(try await provider.entries(at: target, password: "QA-347-한글-🔑").count == 3)
 }

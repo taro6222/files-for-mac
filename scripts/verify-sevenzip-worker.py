@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
 """Exercise the native SDK helper's framed listing boundary with real archives."""
 import argparse
+import array
+import socket
+import resource
+import errno
 import hashlib
 import json
 import os
@@ -21,7 +25,7 @@ def frame(value):
 
 
 class Worker:
-    def __init__(self, executable, output=False, output_fd=None, library=None, create_output=False, creation_stream=False):
+    def __init__(self, executable, output=False, output_fd=None, library=None, create_output=False, creation_stream=False, descriptor_input=False, input_fd=None, child_fd_limit=None):
         arguments = [str(executable), str(library or executable.parent / '7z.so')]
         self.output = bytearray(); self.reader = None; inherited = ()
         if output:
@@ -29,8 +33,16 @@ class Worker:
             arguments += ['--create-stream-fd' if creation_stream else '--output-fd', str(write_fd)]
         elif output_fd is not None:
             inherited = (output_fd,); arguments += ['--create-stream-fd' if creation_stream else ('--create-output-fd' if create_output else '--output-fd'), str(output_fd)]
+        self.input_socket = None; child_socket = None
+        if descriptor_input:
+            self.input_socket, child_socket = socket.socketpair()
+            input_fd = child_socket.fileno()
+        if input_fd is not None:
+            inherited += (input_fd,); arguments += ['--input-fd', str(input_fd)]
         self.process = subprocess.Popen(arguments, pass_fds=inherited,
-                                        stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                                        stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                        preexec_fn=(lambda: resource.setrlimit(resource.RLIMIT_NOFILE, (child_fd_limit, child_fd_limit))) if child_fd_limit else None)
+        if child_socket: child_socket.close()
         if output:
             os.close(write_fd)
             def drain():
@@ -63,7 +75,22 @@ class Worker:
         self.process.stdin.write(frame(value)); self.process.stdin.flush()
         return self.read()
 
+    def descriptors(self, specs, descriptors, split=False, password=None, marker=b'F', together=False, trailing=b''):
+        self.process.stdin.write(frame(dict(version=1, operation='list', sourceFDs=specs, splitVolumes=split, password=password, maxEntries=100)))
+        self.process.stdin.flush()
+        try:
+            groups = [descriptors] if together else [[fd] for fd in descriptors]
+            for group in groups:
+                self.input_socket.sendmsg([marker], [(socket.SOL_SOCKET, socket.SCM_RIGHTS, array.array('i', group))])
+            if trailing: self.input_socket.sendall(trailing)
+            self.input_socket.shutdown(socket.SHUT_WR)
+        except OSError as error:
+            if error.errno not in [errno.EPIPE, errno.ECONNRESET, errno.ENOTCONN]: raise
+        finally: self.input_socket.close(); self.input_socket = None
+        return self.read()
+
     def finish(self, expected=0):
+        if self.input_socket: self.input_socket.close(); self.input_socket = None
         self.process.stdin.close()
         try: status = self.process.wait(timeout=10)
         except subprocess.TimeoutExpired:
@@ -318,6 +345,58 @@ def verify(executable, reference, root, library=None):
         worker = Worker(executable, output_fd=stream.fileno(), library=library, creation_stream=True)
         response = worker.read(); worker.finish(1)
     check('createStreamRejectsRegularDescriptor', response['error']['code'] == 'output-descriptor' and not regular.read_bytes())
+    def input_spec(fd):
+        value = os.fstat(fd)
+        return dict(device=str(value.st_dev & ((1 << 64) - 1)), inode=str(value.st_ino), size=value.st_size, mode=value.st_mode,
+                    modifiedSeconds=value.st_mtime_ns // 1_000_000_000, modifiedNanos=value.st_mtime_ns % 1_000_000_000,
+                    changedSeconds=value.st_ctime_ns // 1_000_000_000, changedNanos=value.st_ctime_ns % 1_000_000_000)
+    broker_archive = root / 'descriptor-unlinked.7z'; shutil.copyfile(plain, broker_archive)
+    with broker_archive.open('rb') as stream:
+        broker_archive.unlink()
+        worker = Worker(executable, output=True, library=library, descriptor_input=True)
+        opened = worker.descriptors([input_spec(stream.fileno())], [stream.fileno()])
+        check('descriptorUnlinkedSourceLists', opened.get('ok') and any(i['path'] == 'emoji-🔑.txt' for i in opened['items']))
+        entry = next(i for i in opened['items'] if i['path'] == 'emoji-🔑.txt')
+        extracted = worker.request(dict(version=1, operation='extract', session=opened['session'], index=entry['index'], expectedSize=entry['size'], maximumBytes=100))
+        check('descriptorUnlinkedSourceExtracts', extracted.get('ok'))
+        worker.request(dict(version=1, operation='close', session=opened['session'])); worker.finish()
+        check('descriptorUnlinkedPayloadMatches', bytes(worker.output) == payloads['emoji-🔑.txt'])
+    with plain.open('rb') as stream:
+        spec = input_spec(stream.fileno())
+        for name, changed, marker, together, trailing, fds, code in [
+            ('descriptorBooleanSizeRejected', dict(spec, size=True), b'F', False, b'', [stream.fileno()], 'invalid-metadata'),
+            ('descriptorStaleIdentityRejected', dict(spec, inode='0'), b'F', False, b'', [stream.fileno()], 'source-changed'),
+            ('descriptorMarkerRejected', spec, b'X', False, b'', [stream.fileno()], 'invalid-metadata'),
+            ('descriptorMultipleRightsRejected', spec, b'F', True, b'', [stream.fileno(), stream.fileno()], 'invalid-metadata'),
+            ('descriptorTrailingDataRejected', spec, b'F', False, b'X', [stream.fileno()], 'invalid-metadata'),
+            ('descriptorMissingRightsRejected', spec, b'F', False, b'', [], 'invalid-metadata'),
+        ]:
+            worker = Worker(executable, library=library, descriptor_input=True)
+            failed = worker.descriptors([changed], fds, marker=marker, together=together, trailing=trailing)
+            check(name, failed.get('error', {}).get('code') == code); worker.finish(1)
+        worker = Worker(executable, library=library, input_fd=stream.fileno())
+        check('descriptorChannelRejectsRegularFile', worker.read().get('error', {}).get('code') == 'input-descriptor'); worker.finish(1)
+        worker = Worker(executable, library=library, descriptor_input=True)
+        check('descriptorModeRejectsArchivePath', worker.request(initial(plain)).get('error', {}).get('code') == 'invalid-request'); worker.finish(1)
+    with plain.open('r+b') as stream:
+        worker = Worker(executable, library=library, descriptor_input=True)
+        check('descriptorWritableSourceRejected', worker.descriptors([input_spec(stream.fileno())], [stream.fileno()]).get('error', {}).get('code') == 'source-open'); worker.finish(1)
+    budget_input = root / 'fd-budget.bin'; budget_bytes = bytes(i % 251 for i in range(6000)); budget_input.write_bytes(budget_bytes)
+    subprocess.run([str(reference), 'a', '-t7z', '-mx=0', '-v128b', str(root / 'fd-budget.7z'), str(budget_input)], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    budget_parts = sorted(root.glob('fd-budget.7z.*'))
+    check('descriptorBudgetManyParts', 32 < len(budget_parts) <= 64)
+    budget_fds = [os.open(path, os.O_RDONLY) for path in budget_parts]
+    try:
+        worker = Worker(executable, output=True, library=library, descriptor_input=True, child_fd_limit=128)
+        opened = worker.descriptors([input_spec(fd) for fd in budget_fds], budget_fds, split=True)
+        check('descriptorBudgetListsWithinHardLimit', opened.get('ok') and len(opened['items']) == 1)
+        entry = opened['items'][0]
+        extracted = worker.request(dict(version=1, operation='extract', session=opened['session'], index=entry['index'], expectedSize=entry['size'], maximumBytes=10000))
+        check('descriptorBudgetExtractsWithinHardLimit', extracted.get('ok'))
+        worker.request(dict(version=1, operation='close', session=opened['session'])); worker.finish()
+        check('descriptorBudgetPayloadMatches', bytes(worker.output) == budget_bytes)
+    finally:
+        for fd in budget_fds: os.close(fd)
     return checks
 
 
