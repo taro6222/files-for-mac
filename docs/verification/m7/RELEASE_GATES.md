@@ -285,3 +285,7 @@
 ### Increment 346: 선택 항목 추출 stream
 
 [7z 선택 항목 추출 stream](INCREMENT_346.md)은 같은 원본 FD에서 일반 파일을 전용 출력 파이프로 추출하고 크기·상한·링크·원본 변경·SDK 최종 오류를 검사한다. ARM 목록/추출 조건 총 59개가 통과했고 Intel 교차 빌드도 통과했다. 직전 345 목록 helper는 macOS 15 ARM·Intel native 보고서 각각 34개 통과를 확인했다. 앱의 안전한 staging/게시·취소·자원 격리·생성 연결과 최신 두 CPU 추출 수용은 남아 있다. M7 정식 출시는 진행 중이다.
+
+### Increment 347: Swift SDK 클라이언트와 새 폴더 게시
+
+[Swift 7z 클라이언트와 안전한 새 폴더 게시](INCREMENT_347.md)는 private 파이프 통신·기한·취소 후 PID 회수와 Core 경로/총량 검증을 연결했다. 모든 추출/종료 검증 뒤 RENAME_EXCL로 게시하고, 충돌·외부 항목이 있는 staging을 보존한다. 신규 8개·참조/SDK 활성화 Core 성공 385개·환경 건너뜀 19개와 Debug/Release가 통과했다. 직전 SDK 목록/추출 59개는 macOS 15 ARM·Intel native 모두 통과했다. 제품 UI/패키징·여기/스마트 배치·메타데이터·메모리 격리·최신 Intel Swift 클라이언트 수용은 남아 있다. 정식 출시는 진행 중이다.

@@ -1,10 +1,12 @@
 # 7z 고급 기능 백엔드 연결 계약
 
-상태: 공식 도구 획득·독립 호환성/옵션 검증 및 SDK helper의 구조화된 목록·선택 항목 추출 경계 구현 완료. 앱 연결·생성은 진행 예정이며 현재 제품의 7z 암호·분할 capability는 미지원이다.
+상태: 공식 도구 획득·독립 호환성/옵션 검증, SDK helper의 목록·선택 항목 추출, Swift 클라이언트의 새 폴더 게시 경계 구현 완료. 앱 UI·생성·배포 연결은 진행 예정이며 현재 제품의 7z 암호·분할 capability는 미지원이다.
 
-[345단계](verification/m7/INCREMENT_345.md)는 고정 SDK에서 두 CPU helper를 빌드하고 ARM에서 실제 암호화 아카이브와 프레임/동일 원본 검증 34개를 통과했다. `Tools/SevenZipWorker`는 UInt32 big-endian 길이 + JSON(version 1)의 list/close만 구현한다. 최초 요청은 archivePath/password, 후속 요청은 session UUID를 사용한다. 목록 반복은 열린 FD를 유지하며 원본 변경은 거부한다. 현재는 private stdin 경계이며 앱의 descriptor 전달·추출 출력 stream·취소·자원 격리 계약은 아직 구현하지 않았다. 제품 번들에 포함하지 않았다.
+[345단계](verification/m7/INCREMENT_345.md)는 고정 SDK에서 두 CPU helper를 빌드하고 ARM에서 실제 암호화 아카이브와 프레임/동일 원본 검증 34개를 통과했다. `Tools/SevenZipWorker`의 UInt32 big-endian 길이 + JSON(version 1) list/close 경계로 시작했다. 최초 요청은 archivePath/password, 후속 요청은 session UUID를 사용한다. 목록 반복은 열린 FD를 유지하며 원본 변경은 거부한다. 소스 FD의 부모 전달과 제품 번들 포함은 아직 남아 있다.
 
-[346단계](verification/m7/INCREMENT_346.md)는 같은 session의 extract(index, expectedSize, maximumBytes)를 추가했다. 실행 시 `--output-fd N`으로 전달된 쓰기 전용 파이프에만 파일 데이터를 보내며 아카이브 경로로 출력 파일을 열지 않는다. 단일 파일 한도는 기존 Core 기본 한도와 같은 8,000,000,000바이트다. regular item·선언 크기·상한·원본 변경·SDK 최종 CRC/오류 결과를 검사한다. 응답의 written은 성공 시 정확한 크기이며 실패 시 일부 출력이 존재할 수 있다. 부모는 실패한 stream 전체를 버려야 한다. 제품의 전체 경로/총량 검증·staging 게시·취소·시간/메모리 격리 연결은 아직 남아 있다.
+[346단계](verification/m7/INCREMENT_346.md)는 같은 session의 extract(index, expectedSize, maximumBytes)를 추가했다. 실행 시 `--output-fd N`으로 전달된 쓰기 전용 파이프에만 파일 데이터를 보내며 아카이브 경로로 출력 파일을 열지 않는다. 단일 파일 한도는 기존 Core 기본 한도와 같은 8,000,000,000바이트다. regular item·선언 크기·상한·원본 변경·SDK 최종 CRC/오류 결과를 검사한다. 응답의 written은 성공 시 정확한 크기이며 실패 시 일부 출력이 존재할 수 있다. 부모는 실패한 stream 전체를 버려야 한다. 346단계의 단독 helper에서 제품의 경로/총량 검증·staging 게시·취소 연결은 후속 사항이었으며 아래 347단계에서 일부를 연결했다. 메모리/권한 격리는 계속 남아 있다.
+
+[347단계](verification/m7/INCREMENT_347.md)의 SevenZipArchiveProvider는 private 파이프·버전/길이/형식·수명·IPC 기한·취소 후 PID 회수와 Core 경로/총량 검증을 연결했다. descriptor 기준으로 staging을 만들고 모든 파일·최종 helper 종료를 확인한 뒤 하나의 새 폴더를 RENAME_EXCL로 게시한다. 충돌은 보존하고 다른 항목이 끼어든 staging은 삭제하지 않으며 stagingPreserved(URL)로 위치를 반환한다. 여기/스마트 병합 게시·UI 암호 흐름·기존 메타데이터 복원·helper의 메모리/권한 격리·서명된 패키징은 후속 단계다. helper와 소스 FD는 session 동안 유지하며 sourcePath를 다시 열어 추출하지 않는다.
 
 근거는 [344단계](verification/m7/INCREMENT_344.md)의 실행 결과와 [원본 옵션 대응표](reference/ARCHIVE_OPTIONS_PARITY.md)다. 공식 7-Zip 26.06의 macOS ARM·Intel 자산, 대응 소스와 SHA-256을 고정한다. [공식 다운로드](https://www.7-zip.org/download.html)에서 연결되는 ip7z/7zip 릴리스를 사용한다. 획득 코드는 [sevenzip_reference.py](../scripts/sevenzip_reference.py)에 있으며 전역 설치 없이 build 아래에 저장한다. 현재 실행 파일은 검증 도구이며 앱 번들에는 연결하지 않았다.
 

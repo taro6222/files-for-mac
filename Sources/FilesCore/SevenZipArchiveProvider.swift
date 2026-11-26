@@ -1,0 +1,448 @@
+import Foundation
+import Darwin
+
+public enum SevenZipWorkerError: Error, Sendable, Equatable {
+    case unavailable, invalidConfiguration, invalidResponse, ioFailure, timedOut, unexpectedExit
+    case worker(String)
+    case stagingPreserved(URL)
+}
+
+/// Explicit locations only. Production bundle discovery/signature checks are handled by packaging.
+public struct SevenZipArchiveProvider: Sendable {
+    public let executable: URL, library: URL
+    public let timeout: TimeInterval
+    public init(executable: URL, library: URL, timeout: TimeInterval = 300) {
+        self.executable = executable; self.library = library; self.timeout = timeout
+    }
+
+    public func entries(at archive: URL, password: String? = nil) async throws -> [ArchiveEntryDescriptor] {
+        try await perform { session in
+            let listed = try session.open(archive, password: password)
+            try session.close()
+            return listed.map(\.descriptor)
+        }
+    }
+
+    /// Publish one new directory only after all entries and the worker's final exit succeed.
+    /// Existing-folder merge and the UI placement adapter are separate operations.
+    public func extractToNewDirectory(_ archive: URL, at destination: URL, password: String? = nil,
+                                     limits: ArchiveExtractionLimits = .init(),
+                                     progress: ArchiveProgressHandler? = nil) async throws -> ArchiveExtractionReport {
+        try await perform { session in
+            let listed = try session.open(archive, password: password, maximumEntries: limits.maximumEntries)
+            let validated = try ArchiveExtractionValidator.validate(listed.map(\.descriptor), limits: limits)
+            let tree = try SevenZipStagingTree(destination: destination)
+            do {
+                let total = validated.reduce(Int64(0)) { $0 + $1.uncompressedSize }
+                var completed: Int64 = 0
+                for (index, entry) in validated.enumerated() {
+                    try session.check()
+                    if entry.kind == .directory { try tree.directory(entry.relativePath) }
+                    else {
+                        let fd = try tree.file(entry.relativePath)
+                        defer { Darwin.close(fd) }
+                        try session.extract(listed[index], maximum: limits.maximumSingleFileBytes) { data in
+                            var offset = 0
+                            try data.withUnsafeBytes { bytes in
+                                while offset < bytes.count {
+                                    let count = Darwin.write(fd, bytes.baseAddress!.advanced(by: offset), bytes.count - offset)
+                                    if count < 0 && errno == EINTR { continue }
+                                    guard count > 0 else { throw SevenZipWorkerError.ioFailure }
+                                    offset += count
+                                }
+                            }
+                            completed += Int64(data.count)
+                            guard completed <= limits.maximumTotalBytes else { throw ArchiveValidationError.totalSizeLimit }
+                            progress?(.init(phase: .reading, completedEntries: index, totalEntries: validated.count,
+                                            completedBytes: completed, totalBytes: total, currentPath: entry.relativePath))
+                        }
+                        try tree.completedFile(entry.relativePath, fd: fd, size: entry.uncompressedSize)
+                    }
+                    progress?(.init(phase: .reading, completedEntries: index + 1, totalEntries: validated.count,
+                                    completedBytes: completed, totalBytes: total, currentPath: entry.relativePath))
+                }
+                try session.close()
+                try session.check()
+                progress?(.init(phase: .publishing, completedEntries: validated.count, totalEntries: validated.count,
+                                completedBytes: completed, totalBytes: total, currentPath: nil))
+                try session.check()
+                try tree.publish()
+                return ArchiveExtractionReport(entries: validated.count, extractedBytes: completed, publishedURLs: [destination])
+            } catch {
+                guard tree.clean() else { throw SevenZipWorkerError.stagingPreserved(tree.staging) }
+                throw error
+            }
+        }
+    }
+
+    private func perform<T: Sendable>(_ body: @escaping @Sendable (SevenZipSession) throws -> T) async throws -> T {
+        let control = SevenZipProcessControl()
+        return try await withTaskCancellationHandler(operation: {
+            try Task.checkCancellation()
+            return try await withCheckedThrowingContinuation { continuation in
+                DispatchQueue.global(qos: .userInitiated).async {
+                    continuation.resume(with: Result {
+                        guard timeout.isFinite, timeout > 0, executable.isFileURL, library.isFileURL else {
+                            throw SevenZipWorkerError.invalidConfiguration
+                        }
+                        let session = try SevenZipSession(provider: self, control: control)
+                        defer { session.stop() }
+                        return try body(session)
+                    })
+                }
+            }
+        }, onCancel: { control.cancel() })
+    }
+}
+
+private final class SevenZipProcessControl: @unchecked Sendable {
+    private let lock = NSLock()
+    private var child: pid_t?
+    private var cancelled = false
+    func install(_ pid: pid_t) {
+        lock.lock(); defer { lock.unlock() }
+        child = pid
+        if cancelled { kill(pid, SIGKILL) }
+    }
+    func cancel() {
+        lock.lock(); defer { lock.unlock() }
+        cancelled = true
+        if let child { kill(child, SIGKILL) }
+    }
+    func check() throws {
+        lock.lock(); defer { lock.unlock() }
+        if cancelled { throw CancellationError() }
+    }
+    func reap() -> Int32? {
+        lock.lock(); defer { lock.unlock() }
+        guard let child else { return nil }
+        var status: Int32 = 0
+        let result = waitpid(child, &status, WNOHANG)
+        if result == child { self.child = nil; return status }
+        return nil
+    }
+    func stop() {
+        lock.lock(); defer { lock.unlock() }
+        if let child {
+            kill(child, SIGKILL)
+            var status: Int32 = 0
+            while waitpid(child, &status, 0) < 0 && errno == EINTR {}
+            self.child = nil
+        }
+    }
+}
+
+private struct SevenZipItem: Decodable {
+    let index: UInt32, path: String, kind: String, size: Int64, encrypted: Bool
+    var descriptor: ArchiveEntryDescriptor {
+        .init(path: path, kind: ArchiveEntryKind(rawValue: kind)!, uncompressedSize: size, isEncrypted: encrypted)
+    }
+}
+private struct SevenZipReply: Decodable {
+    struct Failure: Decodable { let code: String }
+    struct Source: Decodable, Equatable { let device: String, inode: String, size: UInt64 }
+    let version: Int, ok: Bool
+    let session: String?, source: Source?, items: [SevenZipItem]?, error: Failure?, written: UInt64?, closed: Bool?
+}
+
+private final class SevenZipSession {
+    private let control: SevenZipProcessControl, deadline: UInt64
+    private var requestFD: Int32 = -1, responseFD: Int32 = -1, dataFD: Int32 = -1, errorFD: Int32 = -1
+    private var token: String?
+    init(provider: SevenZipArchiveProvider, control: SevenZipProcessControl) throws {
+        self.control = control
+        let now = DispatchTime.now().uptimeNanoseconds
+        guard provider.timeout <= 86_400 else { throw SevenZipWorkerError.invalidConfiguration }
+        deadline = now + UInt64(provider.timeout * 1_000_000_000)
+        // Normalize all originals above stdio/data targets, avoiding dup2 source/target collisions.
+        var pipes: [Int32] = []
+        defer { for fd in pipes { Darwin.close(fd) } }
+        for _ in 0..<4 {
+            var pair: [Int32] = [0, 0]
+            guard pipe(&pair) == 0 else { throw SevenZipWorkerError.ioFailure }
+            let normalized = pair.map { fcntl($0, F_DUPFD_CLOEXEC, 10) }
+            for fd in pair { Darwin.close(fd) }
+            if normalized.contains(where: { $0 < 10 }) {
+                for fd in normalized where fd >= 10 { Darwin.close(fd) }
+                throw SevenZipWorkerError.ioFailure
+            }
+            pipes.append(contentsOf: normalized)
+        }
+        var actions: posix_spawn_file_actions_t?, attributes: posix_spawnattr_t?
+        guard posix_spawn_file_actions_init(&actions) == 0 else { throw SevenZipWorkerError.ioFailure }
+        defer { posix_spawn_file_actions_destroy(&actions) }
+        guard posix_spawnattr_init(&attributes) == 0 else { throw SevenZipWorkerError.ioFailure }
+        defer { posix_spawnattr_destroy(&attributes) }
+        for (source, target) in [(pipes[0], Int32(0)), (pipes[3], 1), (pipes[5], 2), (pipes[7], 3)] {
+            guard posix_spawn_file_actions_adddup2(&actions, source, target) == 0 else { throw SevenZipWorkerError.ioFailure }
+        }
+        for fd in pipes {
+            guard posix_spawn_file_actions_addclose(&actions, fd) == 0 else { throw SevenZipWorkerError.ioFailure }
+        }
+        guard posix_spawnattr_setflags(&attributes, Int16(POSIX_SPAWN_CLOEXEC_DEFAULT)) == 0 else { throw SevenZipWorkerError.ioFailure }
+        var arguments: [UnsafeMutablePointer<CChar>?] = [provider.executable.path, provider.library.path, "--output-fd", "3"].map { $0.withCString { strdup($0) } } + [nil]
+        var environment: [UnsafeMutablePointer<CChar>?] = ["LANG=en_US.UTF-8", "LC_ALL=en_US.UTF-8", "PATH=/usr/bin:/bin"].map { $0.withCString { strdup($0) } } + [nil]
+        defer { for item in arguments + environment { free(item) } }
+        var pid: pid_t = 0
+        try control.check()
+        let result = posix_spawn(&pid, provider.executable.path, &actions, &attributes, &arguments, &environment)
+        guard result == 0 else { throw SevenZipWorkerError.unavailable }
+        control.install(pid)
+        requestFD = pipes[1]; responseFD = pipes[2]; errorFD = pipes[4]; dataFD = pipes[6]
+        pipes.removeAll { [requestFD, responseFD, errorFD, dataFD].contains($0) }
+        for fd in [requestFD, responseFD, errorFD, dataFD] {
+            if fcntl(fd, F_SETFL, fcntl(fd, F_GETFL) | O_NONBLOCK) < 0 { stop(); throw SevenZipWorkerError.ioFailure }
+        }
+        if fcntl(requestFD, F_SETNOSIGPIPE, 1) < 0 { stop(); throw SevenZipWorkerError.ioFailure }
+    }
+    deinit { stop() }
+    func stop() {
+        control.stop()
+        for fd in [requestFD, responseFD, errorFD, dataFD] where fd >= 0 { Darwin.close(fd) }
+        requestFD = -1; responseFD = -1; errorFD = -1; dataFD = -1
+    }
+    func check() throws {
+        try control.check()
+        if DispatchTime.now().uptimeNanoseconds >= deadline { throw SevenZipWorkerError.timedOut }
+    }
+    private func wait(_ descriptors: inout [pollfd]) throws {
+        try check()
+        let now = DispatchTime.now().uptimeNanoseconds
+        guard now < deadline else { throw SevenZipWorkerError.timedOut }
+        let remaining = deadline - now
+        let milliseconds = Int32(min(50, (remaining / 1_000_000) + 1))
+        let result = poll(&descriptors, nfds_t(descriptors.count), milliseconds)
+        if result < 0 && errno != EINTR { throw SevenZipWorkerError.ioFailure }
+        try check()
+    }
+    private func send(_ value: [String: Any]) throws {
+        let payload = try JSONSerialization.data(withJSONObject: value)
+        guard payload.count > 0, payload.count <= 1_048_576 else { throw SevenZipWorkerError.invalidConfiguration }
+        var length = UInt32(payload.count).bigEndian
+        var frame = withUnsafeBytes(of: &length) { Data($0) }; frame.append(payload)
+        var offset = 0
+        while offset < frame.count {
+            var descriptors = [pollfd(fd: requestFD, events: Int16(POLLOUT), revents: 0)]
+            try wait(&descriptors)
+            if descriptors[0].revents == 0 { continue }
+            let count = frame.withUnsafeBytes { Darwin.write(requestFD, $0.baseAddress!.advanced(by: offset), $0.count - offset) }
+            if count < 0 && (errno == EINTR || errno == EAGAIN) { continue }
+            guard count > 0 else { try check(); throw SevenZipWorkerError.ioFailure }
+            offset += count
+        }
+    }
+    private func receive(expectedBytes: UInt64? = nil, sink: ((Data) throws -> Void)? = nil) throws -> SevenZipReply {
+        var frame = Data(), frameSize: Int?, result: SevenZipReply?, received: UInt64 = 0
+        var buffer = [UInt8](repeating: 0, count: 65_536)
+        while result == nil || received < (expectedBytes ?? 0) {
+            var descriptors = [pollfd(fd: responseFD, events: Int16(POLLIN), revents: 0),
+                               pollfd(fd: dataFD, events: Int16(POLLIN), revents: 0),
+                               pollfd(fd: errorFD, events: Int16(POLLIN), revents: 0)]
+            try wait(&descriptors)
+            if descriptors[2].revents & Int16(POLLIN) != 0 { throw SevenZipWorkerError.invalidResponse }
+            if descriptors[1].revents & Int16(POLLIN) != 0 {
+                let count = Darwin.read(dataFD, &buffer, buffer.count)
+                if count > 0 {
+                    guard let expectedBytes, received + UInt64(count) <= expectedBytes, let sink else { throw SevenZipWorkerError.invalidResponse }
+                    try sink(Data(buffer.prefix(count))); received += UInt64(count)
+                } else if count < 0 && errno != EAGAIN && errno != EINTR { throw SevenZipWorkerError.ioFailure }
+            }
+            if result == nil && descriptors[0].revents != 0 {
+                let remaining = (frameSize ?? 4) - frame.count
+                let count = Darwin.read(responseFD, &buffer, min(buffer.count, remaining))
+                if count == 0 { try check(); throw SevenZipWorkerError.unexpectedExit }
+                if count < 0 {
+                    if errno == EAGAIN || errno == EINTR { continue }
+                    throw SevenZipWorkerError.ioFailure
+                }
+                frame.append(contentsOf: buffer.prefix(count))
+                if frameSize == nil && frame.count == 4 {
+                    let size = frame.reduce(UInt32(0)) { ($0 << 8) | UInt32($1) }
+                    guard size > 0, size <= 8_388_608 else { throw SevenZipWorkerError.invalidResponse }
+                    frameSize = Int(size) + 4
+                } else if let frameSize, frame.count == frameSize {
+                    guard let decoded = try? JSONDecoder().decode(SevenZipReply.self, from: frame.dropFirst(4)), decoded.version == 1 else { throw SevenZipWorkerError.invalidResponse }
+                    if !decoded.ok {
+                        let known = ["sdk-load", "source-open", "password-required", "password-or-corrupt", "not-archive", "invalid-metadata", "limit", "source-changed", "internal", "output-write", "unsupported-item", "corrupt-data"]
+                        guard let code = decoded.error?.code, known.contains(code) else { throw SevenZipWorkerError.invalidResponse }
+                        throw SevenZipWorkerError.worker(code)
+                    }
+                    guard decoded.error == nil else { throw SevenZipWorkerError.invalidResponse }
+                    result = decoded
+                }
+            }
+        }
+        return result!
+    }
+    func open(_ archive: URL, password: String?, maximumEntries: Int = 100_000) throws -> [SevenZipItem] {
+        guard archive.isFileURL, maximumEntries > 0, maximumEntries <= 100_000,
+              password?.utf8.contains(0) != true else { throw SevenZipWorkerError.invalidConfiguration }
+        try send(["version": 1, "operation": "list", "archivePath": archive.path,
+                  "password": password as Any? ?? NSNull(), "maxEntries": maximumEntries])
+        let response = try receive()
+        guard let items = response.items, items.count <= maximumEntries, let token = response.session, UUID(uuidString: token) != nil,
+              let source = response.source, UInt64(source.device) != nil, UInt64(source.inode) != nil else { throw SevenZipWorkerError.invalidResponse }
+        for (index, item) in items.enumerated() {
+            guard item.index == UInt32(index), ArchiveEntryKind(rawValue: item.kind) != nil, item.size >= 0,
+                  !item.path.utf8.contains(0) else { throw SevenZipWorkerError.invalidResponse }
+        }
+        self.token = token
+        return items
+    }
+    func extract(_ item: SevenZipItem, maximum: Int64, sink: @escaping (Data) throws -> Void) throws {
+        guard let token else { throw SevenZipWorkerError.invalidResponse }
+        try send(["version": 1, "operation": "extract", "session": token, "index": item.index,
+                  "expectedSize": item.size, "maximumBytes": min(maximum, 8_000_000_000)])
+        let response = try receive(expectedBytes: UInt64(item.size), sink: sink)
+        guard response.session == token, response.written == UInt64(item.size) else { throw SevenZipWorkerError.invalidResponse }
+    }
+    func close() throws {
+        guard let token else { throw SevenZipWorkerError.invalidResponse }
+        try send(["version": 1, "operation": "close", "session": token])
+        let response = try receive()
+        guard response.closed == true else { throw SevenZipWorkerError.invalidResponse }
+        while true {
+            try check()
+            if let status = control.reap() {
+                guard status == 0 else { throw SevenZipWorkerError.unexpectedExit }
+                break
+            }
+            var descriptors: [pollfd] = []
+            try wait(&descriptors)
+        }
+        // Successful completion must not leave unconsumed bytes in any output channel.
+        for fd in [responseFD, dataFD, errorFD] {
+            var byte: UInt8 = 0
+            guard Darwin.read(fd, &byte, 1) == 0 else { throw SevenZipWorkerError.invalidResponse }
+        }
+        self.token = nil
+    }
+}
+
+private final class SevenZipStagingTree {
+    let parent: URL, staging: URL, destination: URL
+    private let parentFD: Int32, rootFD: Int32
+    private var published = false
+    private var records: [String: stat] = [:]
+    init(destination: URL) throws {
+        guard destination.isFileURL, !["", ".", "..", "/"].contains(destination.lastPathComponent) else { throw SevenZipWorkerError.invalidConfiguration }
+        self.destination = destination
+        parent = destination.deletingLastPathComponent()
+        staging = parent.appendingPathComponent(".files-7z-\(UUID().uuidString)")
+        parentFD = Darwin.open(parent.path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
+        guard parentFD >= 0 else { throw ZipArchiveError.destinationNotDirectory }
+        var info = stat()
+        guard fstatat(parentFD, destination.lastPathComponent, &info, AT_SYMLINK_NOFOLLOW) != 0, errno == ENOENT else {
+            Darwin.close(parentFD); throw ZipArchiveError.destinationConflict(destination.lastPathComponent)
+        }
+        guard mkdirat(parentFD, staging.lastPathComponent, 0o700) == 0 else { Darwin.close(parentFD); throw SevenZipWorkerError.ioFailure }
+        rootFD = openat(parentFD, staging.lastPathComponent, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
+        guard rootFD >= 0 else { Darwin.close(parentFD); throw SevenZipWorkerError.stagingPreserved(staging) }
+    }
+    deinit { Darwin.close(rootFD); Darwin.close(parentFD) }
+    private func matches(_ fd: Int32, at path: String) -> Bool {
+        var held = stat(), current = stat()
+        return fstat(fd, &held) == 0 && lstat(path, &current) == 0 && held.st_dev == current.st_dev && held.st_ino == current.st_ino
+    }
+    private func directoryFD(_ parts: [Substring]) throws -> Int32 {
+        var current = dup(rootFD)
+        guard current >= 0 else { throw SevenZipWorkerError.ioFailure }
+        do {
+            var prefix = ""
+            for part in parts {
+                let name = String(part)
+                prefix = prefix.isEmpty ? name : prefix + "/" + name
+                let made = mkdirat(current, name, 0o700) == 0
+                if !made && (errno != EEXIST || records[prefix] == nil) { throw SevenZipWorkerError.ioFailure }
+                let next = openat(current, name, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
+                guard next >= 0 else { throw SevenZipWorkerError.ioFailure }
+                var info = stat()
+                guard fstat(next, &info) == 0 else { Darwin.close(next); throw SevenZipWorkerError.ioFailure }
+                if let expected = records[prefix], !sameIdentity(expected, info) {
+                    Darwin.close(next); throw SevenZipWorkerError.ioFailure
+                }
+                records[prefix] = info
+                Darwin.close(current); current = next
+            }
+            return current
+        } catch { Darwin.close(current); throw error }
+    }
+    func directory(_ path: String) throws { Darwin.close(try directoryFD(path.split(separator: "/"))) }
+    func file(_ path: String) throws -> Int32 {
+        let parts = path.split(separator: "/"), fd = try directoryFD(Array(parts.dropLast()))
+        defer { Darwin.close(fd) }
+        let output = openat(fd, String(parts.last!), O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC, 0o600)
+        guard output >= 0 else { throw SevenZipWorkerError.ioFailure }
+        var info = stat()
+        guard fstat(output, &info) == 0 else { Darwin.close(output); throw SevenZipWorkerError.ioFailure }
+        records[path] = info
+        return output
+    }
+    func completedFile(_ path: String, fd: Int32, size: Int64) throws {
+        var info = stat()
+        guard fstat(fd, &info) == 0, let expected = records[path], sameIdentity(expected, info), info.st_size == size else { throw SevenZipWorkerError.ioFailure }
+        records[path] = info
+    }
+    private func sameIdentity(_ first: stat, _ second: stat) -> Bool {
+        first.st_dev == second.st_dev && first.st_ino == second.st_ino && (first.st_mode & S_IFMT) == (second.st_mode & S_IFMT)
+    }
+    private func checkedDirectory(_ path: String) -> Int32? {
+        var current = dup(rootFD), prefix = ""
+        guard current >= 0 else { return nil }
+        for part in path.split(separator: "/") {
+            let name = String(part); prefix = prefix.isEmpty ? name : prefix + "/" + name
+            let next = openat(current, name, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
+            Darwin.close(current)
+            guard next >= 0 else { return nil }
+            var info = stat()
+            guard fstat(next, &info) == 0, let expected = records[prefix], sameIdentity(expected, info) else { Darwin.close(next); return nil }
+            current = next
+        }
+        return current
+    }
+    private func verify(contents: Bool) -> Bool {
+        guard matches(parentFD, at: parent.path), matches(rootFD, at: staging.path) else { return false }
+        let directories = [""] + records.filter { ($0.value.st_mode & S_IFMT) == S_IFDIR }.map(\.key)
+        var seen = Set<String>()
+        for path in directories {
+            guard let fd = checkedDirectory(path) else { return false }
+            guard let stream = fdopendir(fd) else { Darwin.close(fd); return false }
+            rewinddir(stream)
+            var valid = true
+            while true {
+                errno = 0
+                guard let entry = readdir(stream) else { if errno != 0 { valid = false }; break }
+                let name = withUnsafePointer(to: &entry.pointee.d_name) {
+                    $0.withMemoryRebound(to: CChar.self, capacity: Int(entry.pointee.d_namlen) + 1) { String(cString: $0) }
+                }
+                if name == "." || name == ".." { continue }
+                let key = path.isEmpty ? name : path + "/" + name
+                var actual = stat()
+                guard let expected = records[key], fstatat(fd, name, &actual, AT_SYMLINK_NOFOLLOW) == 0, sameIdentity(expected, actual) else { valid = false; break }
+                if contents && (actual.st_mode & S_IFMT) == S_IFREG &&
+                    (actual.st_size != expected.st_size || actual.st_mtimespec.tv_sec != expected.st_mtimespec.tv_sec ||
+                     actual.st_mtimespec.tv_nsec != expected.st_mtimespec.tv_nsec || actual.st_ctimespec.tv_sec != expected.st_ctimespec.tv_sec ||
+                     actual.st_ctimespec.tv_nsec != expected.st_ctimespec.tv_nsec) { valid = false; break }
+                seen.insert(key)
+            }
+            closedir(stream)
+            if !valid { return false }
+        }
+        return seen == Set(records.keys) && matches(parentFD, at: parent.path) && matches(rootFD, at: staging.path)
+    }
+    func publish() throws {
+        guard verify(contents: true) else { throw SevenZipWorkerError.ioFailure }
+        // Strict descriptor-relative no-replace publication; unsupported file systems fail safely.
+        guard renameatx_np(parentFD, staging.lastPathComponent, parentFD, destination.lastPathComponent, UInt32(RENAME_EXCL)) == 0 else {
+            if errno == EEXIST { throw ZipArchiveError.destinationConflict(destination.lastPathComponent) }
+            throw SevenZipWorkerError.ioFailure
+        }
+        published = true
+    }
+    func clean() -> Bool {
+        if published { return true }
+        guard verify(contents: false) else { return false }
+        do { try FileManager.default.removeItem(at: staging); return true }
+        catch { return false }
+    }
+}

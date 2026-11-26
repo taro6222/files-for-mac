@@ -4,13 +4,13 @@
 
 ## 현재 단계
 
-M7 출시 검증이 진행 중이다. [유니버설 개발 프리뷰](verification/m7/PREVIEW_0.1.0.md)의 Apple Silicon 설치·교체·복원은 통과했다. 정식 서명·공증, Intel과 최소 macOS, 실제 서버, Windows 실행 화면, VoiceOver와 장시간 검증은 [출시 검증 현황](verification/m7/RELEASE_GATES.md)에서 추적한다.
+M7 출시 검증이 진행 중이다. [유니버설 개발 프리뷰](verification/m7/PREVIEW_0.1.0.md)의 Apple Silicon 설치·교체·복원은 통과했다. 정식 서명·공증, Intel과 최소 macOS, 실제 서버, 원본 전체 UI 상태 대조, VoiceOver와 장시간 검증은 [출시 검증 현황](verification/m7/RELEASE_GATES.md)에서 추적한다.
 
 원본 명령 202개, 설정 143개, 화면 33개가 대응표에 분류돼 있으며 구조 감사가 통과했다. 이 수치는 각 항목의 실제 수용 검증률과 별도로 관리한다. 전체 UI 상태 대조와 VoiceOver 동선, 외부 서비스 및 지원 환경별 미검증 항목이 있어 전체 대응 완료 판정은 진행 중이다.
 
 ## 최신 검증과 남은 실행
 
-[Git 지연 중 진단 수집](verification/m7/INCREMENT_338.md)은 최초 조회가 1초 이상 진행 중일 때 스택 수집을 시작하고 기존 10초 판정을 유지한다. DEBUG 밖 소스는 유지했다. 로컬 10ms 진단 경로에서 네 조합 전체 UI 각각 306개/경계 18개·Debug·parity가 통과했고 실제 부모 스택 네 개를 확인했다. 원격 05dd05d ARM에서는 세션 비교 JSON 보존과 최대 0.4pt 오차를 확인했다. 간헐 Git 지연의 원인/해결·최신 원격/장시간·실제 입력·정식 서명/공증은 미완료다.
+[Swift 7z 클라이언트와 안전한 새 폴더 게시](verification/m7/INCREMENT_347.md)는 private 파이프 통신·기한·취소 후 PID 회수와 Core 경로/총량 검증을 연결했다. 모든 추출/종료 검증 뒤 RENAME_EXCL로 게시하고, 충돌·외부 항목이 있는 staging을 보존한다. 신규 8개·참조/SDK 활성화 Core 성공 385개·환경 건너뜀 19개와 Debug/Release가 통과했다. 직전 SDK 목록/추출 59개는 macOS 15 ARM·Intel native 모두 통과했다. 제품 UI/패키징·여기/스마트 배치·메타데이터·메모리 격리·최신 Intel Swift 클라이언트 수용은 남아 있다. 정식 출시는 진행 중이다.
 
 | 항목 | 확인한 결과 | 남은 실행 |
 |---|---|---|
