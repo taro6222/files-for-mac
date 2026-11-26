@@ -15,6 +15,36 @@ def sha(path):
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
+def collect_heap(target_pid, output, timeout=20):
+    command = ['heap', '-s', str(target_pid)]
+    with output.open('wb') as stream:
+        with subprocess.Popen(command, stdout=stream, stderr=subprocess.STDOUT) as sampler:
+            try:
+                sampler.wait(timeout=timeout)
+            except subprocess.TimeoutExpired:
+                details = {'targetPID': target_pid, 'toolPID': sampler.pid,
+                           'command': command, 'timeoutSeconds': timeout}
+                try:
+                    for name, arguments in (
+                        ('process', ['ps', '-p', str(sampler.pid), '-o', 'pid=,ppid=,stat=,wchan=,comm=']),
+                        ('sample', ['sample', str(sampler.pid), '1', '-file', str(output.with_suffix('.timeout-sample.txt'))]),
+                    ):
+                        with output.with_suffix(f'.timeout-{name}.log').open('wb') as diagnostic:
+                            try:
+                                result = subprocess.run(arguments, stdout=diagnostic, stderr=subprocess.STDOUT, timeout=5)
+                                details[name + 'ReturnCode'] = result.returncode
+                            except (OSError, subprocess.TimeoutExpired) as error:
+                                details[name + 'Error'] = str(error)
+                finally:
+                    sampler.kill()
+                    sampler.wait(timeout=5)
+                    details['toolExitCode'] = sampler.returncode
+                    output.with_suffix('.timeout.json').write_text(json.dumps(details, indent=2) + '\n')
+                raise
+            if sampler.returncode:
+                raise subprocess.CalledProcessError(sampler.returncode, command)
+
+
 def run_case(binary, output, tabs, cycles):
     output.mkdir()
     observations = []
@@ -32,9 +62,7 @@ def run_case(binary, output, tabs, cycles):
                         if cycle not in checkpoints:
                             raise RuntimeError(f'Unexpected checkpoint: {current}')
                         heap = output / f'heap-{cycle}.txt'
-                        with heap.open('wb') as stream:
-                            subprocess.run(['heap', '-s', str(app.pid)], stdout=stream,
-                                           stderr=subprocess.STDOUT, timeout=20, check=True)
+                        collect_heap(app.pid, heap)
                         counts = {}
                         for cls in ('NSKeyValueDependencyContext', 'NSKeyValueDependency',
                                     'NSWindow', 'NSKVONotifying_NSWindow', 'NSWindowTab', 'NSTextField'):
@@ -78,7 +106,8 @@ def main():
         for tabs in (False, True):
             name = f'{repeat}-' + ('tabs' if tabs else 'windows')
             cases[name] = run_case(binary, output / name, tabs, args.cycles)
-    result = {'architecture': platform.machine(), 'os': platform.platform(), 'binarySHA256': sha(binary),
+    result = {'cyclesPerProcess': args.cycles, 'repetitionsPerMode': args.repetitions,
+              'architecture': platform.machine(), 'os': platform.platform(), 'binarySHA256': sha(binary),
               'probeSourceSHA256': sha(Path(__file__).with_name('NativeTabMemoryProbe.swift')),
               'harnessSHA256': sha(Path(__file__)), 'cases': cases, 'productChanged': False,
               'stabilityGatePassed': False,

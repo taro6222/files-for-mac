@@ -2,6 +2,17 @@ name: Native AppKit tab memory diagnostic
 
 on:
   workflow_dispatch:
+    inputs:
+      cycles:
+        description: Cycles per owned process
+        type: choice
+        options: ['400', '40']
+        default: '400'
+      repetitions:
+        description: Repetitions for each window mode
+        type: choice
+        options: ['3', '1']
+        default: '3'
 
 permissions:
   contents: read
@@ -39,10 +50,14 @@ jobs:
           shasum -a 256 build/native-tab-memory/NativeTabProbe scripts/diagnostics/NativeTabMemoryProbe.swift \
             scripts/diagnostics/verify-native-tab-memory.py >> build/native-tab-memory/build-info.txt
           git rev-parse HEAD >> build/native-tab-memory/build-info.txt
-      - name: Measure windows and tabs at five, forty and four hundred cycles
+      - name: Measure owned window and tab processes
+        env:
+          PROBE_CYCLES: ${{ inputs.cycles }}
+          PROBE_REPETITIONS: ${{ inputs.repetitions }}
         run: |
           python3 scripts/diagnostics/verify-native-tab-memory.py \
-            --binary build/native-tab-memory/NativeTabProbe --output build/native-tab-memory/results
+            --binary build/native-tab-memory/NativeTabProbe --output build/native-tab-memory/results \
+            --cycles "$PROBE_CYCLES" --repetitions "$PROBE_REPETITIONS"
       - name: Retain diagnostics even when incomplete
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7

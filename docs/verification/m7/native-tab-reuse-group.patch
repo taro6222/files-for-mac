@@ -1,0 +1,30 @@
+--- a/scripts/diagnostics/NativeTabMemoryProbe.swift
++++ b/scripts/diagnostics/NativeTabMemoryProbe.swift
+@@ -5,6 +5,7 @@
+     let output = URL(fileURLWithPath: ProcessInfo.processInfo.environment["PROBE_OUTPUT"]!)
+     let tabs = ProcessInfo.processInfo.environment["PROBE_TABS"] == "1"
+     let cycles = Int(ProcessInfo.processInfo.environment["PROBE_CYCLES"] ?? "400")!
++    var retainedGroup: NSWindowTabGroup?
+     var primary: NSWindow!
+     func applicationDidFinishLaunching(_ notification: Notification) {
+         Task { await run() }
+@@ -28,6 +29,7 @@
+         do {
+             primary = window("Primary")
+             primary.makeKeyAndOrderFront(nil)
++            retainedGroup = primary.tabGroup
+             guard cycles >= 40 else { throw NSError(domain:"At least forty cycles required",code:1) }
+             for cycle in 1...cycles {
+                 weak var released: NSWindow?
+@@ -36,7 +38,11 @@
+                     released = secondary
+                     secondary.makeKeyAndOrderFront(nil)
+                     if tabs {
++                        if let retainedGroup { retainedGroup.addWindow(secondary) }
++                    else {
+                         primary.addTabbedWindow(secondary,ordered:.above)
++                        retainedGroup = primary.tabGroup
++                    }
+                         guard primary.tabbedWindows?.count == 2 else { throw NSError(domain:"Tab did not attach",code:cycle) }
+                     } else {
+                         guard (primary.tabbedWindows?.count ?? 1) == 1 && (secondary.tabbedWindows?.count ?? 1) == 1 else {

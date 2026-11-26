@@ -1,0 +1,43 @@
+--- a/scripts/diagnostics/NativeTabMemoryProbe.swift
++++ b/scripts/diagnostics/NativeTabMemoryProbe.swift
+@@ -5,6 +5,7 @@
+     let output = URL(fileURLWithPath: ProcessInfo.processInfo.environment["PROBE_OUTPUT"]!)
+     let tabs = ProcessInfo.processInfo.environment["PROBE_TABS"] == "1"
+     let cycles = Int(ProcessInfo.processInfo.environment["PROBE_CYCLES"] ?? "400")!
++    var reused: NSWindow!
+     var primary: NSWindow!
+     func applicationDidFinishLaunching(_ notification: Notification) {
+         Task { await run() }
+@@ -21,18 +22,19 @@
+     func report(_ cycle: Int, _ state: String) throws {
+         let data: [String:Any] = ["cycle":cycle,"state":state,"pid":ProcessInfo.processInfo.processIdentifier,
+                                 "tabs":tabs,"os":ProcessInfo.processInfo.operatingSystemVersionString,
+-                                "releasedSecondaryWindows":cycle,"primaryClass":NSStringFromClass(object_getClass(primary!)!)]
++                                "closedReusedWindowCycles":cycle,"primaryClass":NSStringFromClass(object_getClass(primary!)!)]
+         try JSONSerialization.data(withJSONObject: data,options:[.sortedKeys]).write(to:output.appendingPathComponent("report.json"),options:.atomic)
+     }
+     func run() async {
+         do {
+             primary = window("Primary")
+             primary.makeKeyAndOrderFront(nil)
++            reused = window("Secondary")
+             guard cycles >= 40 else { throw NSError(domain:"At least forty cycles required",code:1) }
+             for cycle in 1...cycles {
+                 weak var released: NSWindow?
+                 try autoreleasepool {
+-                    let secondary = window("Secondary")
++                    let secondary = reused!
+                     released = secondary
+                     secondary.makeKeyAndOrderFront(nil)
+                     if tabs {
+@@ -47,9 +49,7 @@
+                     secondary.displayIfNeeded()
+                     secondary.close()
+                 }
+-                let deadline = ContinuousClock.now + .seconds(5)
+-                while released != nil && ContinuousClock.now < deadline { try await Task.sleep(for:.milliseconds(20)) }
+-                guard released == nil else { throw NSError(domain:"Window retained",code:cycle) }
++                guard released === reused else { throw NSError(domain:"Reuse identity changed",code:cycle) }
+                 try await Task.sleep(for:.milliseconds(50))
+                 if cycle == 5 || cycle == 40 || cycle == cycles {
+                     try report(cycle,"waiting")

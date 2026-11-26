@@ -1,0 +1,953 @@
+{
+  "sourceBaseSHA": "855126a6ab59832ba38e780fbc97100185bba225",
+  "productChanged": false,
+  "stabilityGatePassed": false,
+  "remote": {
+    "architecture": "arm64",
+    "os": "macOS-15.8.2-arm64-arm-64bit-Mach-O",
+    "binarySHA256": "8e933a1401eee7d1ba37704b64051a232152222f8abb11e2150064459bdd6f4f",
+    "probeSourceSHA256": "39bee008582584d08b98397a41365b26205ce38c96651d5d86f46b975598f9c3",
+    "harnessSHA256": "4ab2cf1473b40bc35b47d34b7d9c462dc3500abc029661dc4257ba1969a0cd83",
+    "cases": {
+      "1-windows": {
+        "exitCode": 0,
+        "report": {
+          "cycle": 400,
+          "os": "Version 15.8.2 (Build 24H232)",
+          "pid": 1876,
+          "primaryClass": "NSWindow",
+          "releasedSecondaryWindows": 400,
+          "state": "completed",
+          "tabs": false
+        },
+        "observations": [
+          {
+            "cycle": 5,
+            "counts": {
+              "NSKeyValueDependencyContext": 17,
+              "NSKeyValueDependency": 87,
+              "NSWindow": 1,
+              "NSKVONotifying_NSWindow": null,
+              "NSWindowTab": null,
+              "NSTextField": 1
+            },
+            "heapSHA256": "99b3b952c81146d2376358e6d6728c4d98bbbbc8a76a68dd5cfc1c56313d1ce7",
+            "releasedSecondaryWindows": 5
+          },
+          {
+            "cycle": 40,
+            "counts": {
+              "NSKeyValueDependencyContext": 17,
+              "NSKeyValueDependency": 87,
+              "NSWindow": 1,
+              "NSKVONotifying_NSWindow": null,
+              "NSWindowTab": null,
+              "NSTextField": 1
+            },
+            "heapSHA256": "3bbb0ad701d53c6e39f05cd5e40c6e32b571493d243796aad0c7a8767c7a657d",
+            "releasedSecondaryWindows": 40
+          },
+          {
+            "cycle": 400,
+            "counts": {
+              "NSKeyValueDependencyContext": 17,
+              "NSKeyValueDependency": 87,
+              "NSWindow": 1,
+              "NSKVONotifying_NSWindow": null,
+              "NSWindowTab": null,
+              "NSTextField": 1
+            },
+            "heapSHA256": "1afd6fb605396d742b938cfec1e768f84a25d6bcd5c405289568443e59acd249",
+            "releasedSecondaryWindows": 400
+          }
+        ]
+      },
+      "1-tabs": {
+        "exitCode": 0,
+        "report": {
+          "cycle": 400,
+          "os": "Version 15.8.2 (Build 24H232)",
+          "pid": 2422,
+          "primaryClass": "NSWindow",
+          "releasedSecondaryWindows": 400,
+          "state": "completed",
+          "tabs": true
+        },
+        "observations": [
+          {
+            "cycle": 5,
+            "counts": {
+              "NSKeyValueDependencyContext": 71,
+              "NSKeyValueDependency": 238,
+              "NSWindow": 1,
+              "NSKVONotifying_NSWindow": null,
+              "NSWindowTab": 1,
+              "NSTextField": 2
+            },
+            "heapSHA256": "8c9f03869e89af53e0617982f44af275110b6d8d8791406eec0dd8a78276db89",
+            "releasedSecondaryWindows": 5
+          },
+          {
+            "cycle": 40,
+            "counts": {
+              "NSKeyValueDependencyContext": 211,
+              "NSKeyValueDependency": 448,
+              "NSWindow": 1,
+              "NSKVONotifying_NSWindow": null,
+              "NSWindowTab": 1,
+              "NSTextField": 2
+            },
+            "heapSHA256": "845bf11eee27600d3624ab0c7777d81bdf84ea0e52a8069fe1b892e55c4e9149",
+            "releasedSecondaryWindows": 40
+          },
+          {
+            "cycle": 400,
+            "counts": {
+              "NSKeyValueDependencyContext": 1651,
+              "NSKeyValueDependency": 2608,
+              "NSWindow": 1,
+              "NSKVONotifying_NSWindow": null,
+              "NSWindowTab": 1,
+              "NSTextField": 2
+            },
+            "heapSHA256": "393a465e5af80836f61f07a5b298b0c9378d8c94030950bc28f2a950ea272209",
+            "releasedSecondaryWindows": 400
+          }
+        ]
+      },
+      "2-windows": {
+        "exitCode": 0,
+        "report": {
+          "cycle": 400,
+          "os": "Version 15.8.2 (Build 24H232)",
+          "pid": 3225,
+          "primaryClass": "NSWindow",
+          "releasedSecondaryWindows": 400,
+          "state": "completed",
+          "tabs": false
+        },
+        "observations": [
+          {
+            "cycle": 5,
+            "counts": {
+              "NSKeyValueDependencyContext": 17,
+              "NSKeyValueDependency": 63,
+              "NSWindow": 1,
+              "NSKVONotifying_NSWindow": null,
+              "NSWindowTab": null,
+              "NSTextField": 1
+            },
+            "heapSHA256": "c1cf7d5396dbacf0541dabc9d93b3cb5a54ad1dc24801afbd542ff41dff272e7",
+            "releasedSecondaryWindows": 5
+          },
+          {
+            "cycle": 40,
+            "counts": {
+              "NSKeyValueDependencyContext": 17,
+              "NSKeyValueDependency": 63,
+              "NSWindow": 1,
+              "NSKVONotifying_NSWindow": null,
+              "NSWindowTab": null,
+              "NSTextField": 1
+            },
+            "heapSHA256": "c5cdf489219bd3c40ab3e57e4f51a0c328a000afc5563ea0b4557255ce7825b1",
+            "releasedSecondaryWindows": 40
+          },
+          {
+            "cycle": 400,
+            "counts": {
+              "NSKeyValueDependencyContext": 17,
+              "NSKeyValueDependency": 63,
+              "NSWindow": 1,
+              "NSKVONotifying_NSWindow": null,
+              "NSWindowTab": null,
+              "NSTextField": 1
+            },
+            "heapSHA256": "8613df6d87f6c630c62bf7284fdf6ca61de089206ad3a8112fb1658379ec7961",
+            "releasedSecondaryWindows": 400
+          }
+        ]
+      },
+      "2-tabs": {
+        "exitCode": 0,
+        "report": {
+          "cycle": 400,
+          "os": "Version 15.8.2 (Build 24H232)",
+          "pid": 4079,
+          "primaryClass": "NSWindow",
+          "releasedSecondaryWindows": 400,
+          "state": "completed",
+          "tabs": true
+        },
+        "observations": [
+          {
+            "cycle": 5,
+            "counts": {
+              "NSKeyValueDependencyContext": 71,
+              "NSKeyValueDependency": 238,
+              "NSWindow": 1,
+              "NSKVONotifying_NSWindow": null,
+              "NSWindowTab": 1,
+              "NSTextField": 2
+            },
+            "heapSHA256": "dab1cc5caddd56876f2ef673bee75cb2ba1f864af41e97cd1365db5e2c00d9f2",
+            "releasedSecondaryWindows": 5
+          },
+          {
+            "cycle": 40,
+            "counts": {
+              "NSKeyValueDependencyContext": 211,
+              "NSKeyValueDependency": 448,
+              "NSWindow": 1,
+              "NSKVONotifying_NSWindow": null,
+              "NSWindowTab": 1,
+              "NSTextField": 2
+            },
+            "heapSHA256": "248e1546dcb18188f2c22d438d69c8337232def9f4230ceaccbb85dfb3067a84",
+            "releasedSecondaryWindows": 40
+          },
+          {
+            "cycle": 400,
+            "counts": {
+              "NSKeyValueDependencyContext": 1651,
+              "NSKeyValueDependency": 2608,
+              "NSWindow": 1,
+              "NSKVONotifying_NSWindow": null,
+              "NSWindowTab": 1,
+              "NSTextField": 2
+            },
+            "heapSHA256": "62e16e3d112c6dbb61d2de0872dc903670ef008138e5481b06220ed06bd39a3a",
+            "releasedSecondaryWindows": 400
+          }
+        ]
+      },
+      "3-windows": {
+        "exitCode": 0,
+        "report": {
+          "cycle": 400,
+          "os": "Version 15.8.2 (Build 24H232)",
+          "pid": 5024,
+          "primaryClass": "NSWindow",
+          "releasedSecondaryWindows": 400,
+          "state": "completed",
+          "tabs": false
+        },
+        "observations": [
+          {
+            "cycle": 5,
+            "counts": {
+              "NSKeyValueDependencyContext": 17,
+              "NSKeyValueDependency": 63,
+              "NSWindow": 1,
+              "NSKVONotifying_NSWindow": null,
+              "NSWindowTab": null,
+              "NSTextField": 1
+            },
+            "heapSHA256": "bbe4d4c5b8fcba8d4801a6937f004f5819fd19aef0f23e6e858d8d9c81f59b83",
+            "releasedSecondaryWindows": 5
+          },
+          {
+            "cycle": 40,
+            "counts": {
+              "NSKeyValueDependencyContext": 17,
+              "NSKeyValueDependency": 63,
+              "NSWindow": 1,
+              "NSKVONotifying_NSWindow": null,
+              "NSWindowTab": null,
+              "NSTextField": 1
+            },
+            "heapSHA256": "ee7c07976cd99c86bc4159d92a8929fc608ba9322eb33ae00db74ad8b2b28d63",
+            "releasedSecondaryWindows": 40
+          },
+          {
+            "cycle": 400,
+            "counts": {
+              "NSKeyValueDependencyContext": 17,
+              "NSKeyValueDependency": 63,
+              "NSWindow": 1,
+              "NSKVONotifying_NSWindow": null,
+              "NSWindowTab": null,
+              "NSTextField": 1
+            },
+            "heapSHA256": "44a3a6d8792f5629d94ca174c09e1991ab99d17afac2e89bfb66bd66bdca7319",
+            "releasedSecondaryWindows": 400
+          }
+        ]
+      },
+      "3-tabs": {
+        "exitCode": 0,
+        "report": {
+          "cycle": 400,
+          "os": "Version 15.8.2 (Build 24H232)",
+          "pid": 6206,
+          "primaryClass": "NSWindow",
+          "releasedSecondaryWindows": 400,
+          "state": "completed",
+          "tabs": true
+        },
+        "observations": [
+          {
+            "cycle": 5,
+            "counts": {
+              "NSKeyValueDependencyContext": 71,
+              "NSKeyValueDependency": 238,
+              "NSWindow": 1,
+              "NSKVONotifying_NSWindow": null,
+              "NSWindowTab": 1,
+              "NSTextField": 2
+            },
+            "heapSHA256": "603f43a440d2d8d9ada054da13bceee6a0c80599dab77da9827d5e6febb526bd",
+            "releasedSecondaryWindows": 5
+          },
+          {
+            "cycle": 40,
+            "counts": {
+              "NSKeyValueDependencyContext": 211,
+              "NSKeyValueDependency": 448,
+              "NSWindow": 1,
+              "NSKVONotifying_NSWindow": null,
+              "NSWindowTab": 1,
+              "NSTextField": 2
+            },
+            "heapSHA256": "54b4be118cad0a2ffe07f4a99b032edca4e4f86f6eec680ad1cc978aef1d381b",
+            "releasedSecondaryWindows": 40
+          },
+          {
+            "cycle": 400,
+            "counts": {
+              "NSKeyValueDependencyContext": 1651,
+              "NSKeyValueDependency": 2608,
+              "NSWindow": 1,
+              "NSKVONotifying_NSWindow": null,
+              "NSWindowTab": 1,
+              "NSTextField": 2
+            },
+            "heapSHA256": "312a96f2a41d6ad2731a731613eb356f26fac1e6513be71b45d7579510a820d5",
+            "releasedSecondaryWindows": 400
+          }
+        ]
+      }
+    },
+    "productChanged": false,
+    "stabilityGatePassed": false,
+    "limits": [
+      "Short standalone AppKit diagnostic; no Files application code is linked.",
+      "Missing runtime classes are null, not zero or a stability pass.",
+      "Counts do not establish physical-footprint stability, all product growth causes, or OS defect ownership.",
+      "Different SDK/runtime combinations are not a controlled OS-only comparison.",
+      "A completed diagnostic can show growth; growth does not turn this runner into a product acceptance gate."
+    ]
+  },
+  "sameRemoteBinaryOnMacOS27": {
+    "cyclesPerProcess": 400,
+    "repetitionsPerMode": 3,
+    "architecture": "arm64",
+    "os": "macOS-27.2.1-arm64-arm-64bit",
+    "binarySHA256": "8e933a1401eee7d1ba37704b64051a232152222f8abb11e2150064459bdd6f4f",
+    "probeSourceSHA256": "39bee008582584d08b98397a41365b26205ce38c96651d5d86f46b975598f9c3",
+    "harnessSHA256": "34c74907fa2aa0cfcc05ea7a5916125d22f64c9ce315202507fb6f20372f2c3e",
+    "cases": {
+      "1-windows": {
+        "exitCode": 0,
+        "report": {
+          "cycle": 400,
+          "os": "Version 27.2.1 (Build 26B131)",
+          "pid": 16768,
+          "primaryClass": "NSKVONotifying_NSWindow",
+          "releasedSecondaryWindows": 400,
+          "state": "completed",
+          "tabs": false
+        },
+        "observations": [
+          {
+            "cycle": 5,
+            "counts": {
+              "NSKeyValueDependencyContext": 104,
+              "NSKeyValueDependency": 332,
+              "NSWindow": null,
+              "NSKVONotifying_NSWindow": 1,
+              "NSWindowTab": null,
+              "NSTextField": 1
+            },
+            "heapSHA256": "e23ae3b82632d3296ff4854eb8e108cb3814a5459d39a11e4463440da1ced371",
+            "releasedSecondaryWindows": 5
+          },
+          {
+            "cycle": 40,
+            "counts": {
+              "NSKeyValueDependencyContext": 104,
+              "NSKeyValueDependency": 332,
+              "NSWindow": null,
+              "NSKVONotifying_NSWindow": 1,
+              "NSWindowTab": null,
+              "NSTextField": 1
+            },
+            "heapSHA256": "22743b3ff2de051e6ee13912dfb3fbb8dc7cc290020ec4e5d31fa185e92f9c10",
+            "releasedSecondaryWindows": 40
+          },
+          {
+            "cycle": 400,
+            "counts": {
+              "NSKeyValueDependencyContext": 104,
+              "NSKeyValueDependency": 332,
+              "NSWindow": null,
+              "NSKVONotifying_NSWindow": 1,
+              "NSWindowTab": null,
+              "NSTextField": 1
+            },
+            "heapSHA256": "d63530b8d3f70dec23ba9d825f8d4db3520e18497295534c7c589da1abe0d1de",
+            "releasedSecondaryWindows": 400
+          }
+        ]
+      },
+      "1-tabs": {
+        "exitCode": 0,
+        "report": {
+          "cycle": 400,
+          "os": "Version 27.2.1 (Build 26B131)",
+          "pid": 16780,
+          "primaryClass": "NSKVONotifying_NSWindow",
+          "releasedSecondaryWindows": 400,
+          "state": "completed",
+          "tabs": true
+        },
+        "observations": [
+          {
+            "cycle": 5,
+            "counts": {
+              "NSKeyValueDependencyContext": 413,
+              "NSKeyValueDependency": 1169,
+              "NSWindow": null,
+              "NSKVONotifying_NSWindow": 1,
+              "NSWindowTab": 1,
+              "NSTextField": 2
+            },
+            "heapSHA256": "0f846f370e4376183437dfee71e76609d17808f765d906f9b6c248c16d75c154",
+            "releasedSecondaryWindows": 5
+          },
+          {
+            "cycle": 40,
+            "counts": {
+              "NSKeyValueDependencyContext": 1113,
+              "NSKeyValueDependency": 2009,
+              "NSWindow": null,
+              "NSKVONotifying_NSWindow": 1,
+              "NSWindowTab": 1,
+              "NSTextField": 2
+            },
+            "heapSHA256": "f89a4473f70875456f9614eb09b7c93c4041eae1a212347143cad1ac15200ff2",
+            "releasedSecondaryWindows": 40
+          },
+          {
+            "cycle": 400,
+            "counts": {
+              "NSKeyValueDependencyContext": 8313,
+              "NSKeyValueDependency": 10649,
+              "NSWindow": null,
+              "NSKVONotifying_NSWindow": 1,
+              "NSWindowTab": 1,
+              "NSTextField": 2
+            },
+            "heapSHA256": "5985d2d89d9fad80faf56ae2ddb95bcdc770069991e44142fa7964ed7bcef7be",
+            "releasedSecondaryWindows": 400
+          }
+        ]
+      },
+      "2-windows": {
+        "exitCode": 0,
+        "report": {
+          "cycle": 400,
+          "os": "Version 27.2.1 (Build 26B131)",
+          "pid": 16793,
+          "primaryClass": "NSKVONotifying_NSWindow",
+          "releasedSecondaryWindows": 400,
+          "state": "completed",
+          "tabs": false
+        },
+        "observations": [
+          {
+            "cycle": 5,
+            "counts": {
+              "NSKeyValueDependencyContext": 104,
+              "NSKeyValueDependency": 332,
+              "NSWindow": null,
+              "NSKVONotifying_NSWindow": 1,
+              "NSWindowTab": null,
+              "NSTextField": 1
+            },
+            "heapSHA256": "b712e860db83fcd06f8935baef7528762d3d20b0ac1a620287dc7da48cda891c",
+            "releasedSecondaryWindows": 5
+          },
+          {
+            "cycle": 40,
+            "counts": {
+              "NSKeyValueDependencyContext": 104,
+              "NSKeyValueDependency": 332,
+              "NSWindow": null,
+              "NSKVONotifying_NSWindow": 1,
+              "NSWindowTab": null,
+              "NSTextField": 1
+            },
+            "heapSHA256": "74ac57e725f6a001ff95d6c2033db051ba35a03e5d1264cad269fdff6ea2aacc",
+            "releasedSecondaryWindows": 40
+          },
+          {
+            "cycle": 400,
+            "counts": {
+              "NSKeyValueDependencyContext": 104,
+              "NSKeyValueDependency": 332,
+              "NSWindow": null,
+              "NSKVONotifying_NSWindow": 1,
+              "NSWindowTab": null,
+              "NSTextField": 1
+            },
+            "heapSHA256": "e7d70b92c70e7a9120086c3919807dc4c1ebf7717204d2f60d61ff25a040023c",
+            "releasedSecondaryWindows": 400
+          }
+        ]
+      },
+      "2-tabs": {
+        "exitCode": 0,
+        "report": {
+          "cycle": 400,
+          "os": "Version 27.2.1 (Build 26B131)",
+          "pid": 16817,
+          "primaryClass": "NSKVONotifying_NSWindow",
+          "releasedSecondaryWindows": 400,
+          "state": "completed",
+          "tabs": true
+        },
+        "observations": [
+          {
+            "cycle": 5,
+            "counts": {
+              "NSKeyValueDependencyContext": 413,
+              "NSKeyValueDependency": 1169,
+              "NSWindow": null,
+              "NSKVONotifying_NSWindow": 1,
+              "NSWindowTab": 1,
+              "NSTextField": 2
+            },
+            "heapSHA256": "c3c56b627f4a0e5c3700a95e50bfc6156dcac258a47ad0395017abd4213a8bce",
+            "releasedSecondaryWindows": 5
+          },
+          {
+            "cycle": 40,
+            "counts": {
+              "NSKeyValueDependencyContext": 1113,
+              "NSKeyValueDependency": 2009,
+              "NSWindow": null,
+              "NSKVONotifying_NSWindow": 1,
+              "NSWindowTab": 1,
+              "NSTextField": 2
+            },
+            "heapSHA256": "b270c9f75fbf5096d5bf58e71598504e5305f42260f4292c7255f4f2812dc231",
+            "releasedSecondaryWindows": 40
+          },
+          {
+            "cycle": 400,
+            "counts": {
+              "NSKeyValueDependencyContext": 8313,
+              "NSKeyValueDependency": 10649,
+              "NSWindow": null,
+              "NSKVONotifying_NSWindow": 1,
+              "NSWindowTab": 1,
+              "NSTextField": 2
+            },
+            "heapSHA256": "bc6eaa949194163d206c1c6d6c2579ee2ba1fe842d1f8236bc55641102bbfa6d",
+            "releasedSecondaryWindows": 400
+          }
+        ]
+      },
+      "3-windows": {
+        "exitCode": 0,
+        "report": {
+          "cycle": 400,
+          "os": "Version 27.2.1 (Build 26B131)",
+          "pid": 16846,
+          "primaryClass": "NSKVONotifying_NSWindow",
+          "releasedSecondaryWindows": 400,
+          "state": "completed",
+          "tabs": false
+        },
+        "observations": [
+          {
+            "cycle": 5,
+            "counts": {
+              "NSKeyValueDependencyContext": 104,
+              "NSKeyValueDependency": 332,
+              "NSWindow": null,
+              "NSKVONotifying_NSWindow": 1,
+              "NSWindowTab": null,
+              "NSTextField": 1
+            },
+            "heapSHA256": "86e2df639d92bcf2e822e2c4d468192b90ff13d9e07583fb3465eb5d78fdb6fb",
+            "releasedSecondaryWindows": 5
+          },
+          {
+            "cycle": 40,
+            "counts": {
+              "NSKeyValueDependencyContext": 104,
+              "NSKeyValueDependency": 332,
+              "NSWindow": null,
+              "NSKVONotifying_NSWindow": 1,
+              "NSWindowTab": null,
+              "NSTextField": 1
+            },
+            "heapSHA256": "1b181d6e5da0a7688f8049ece2b60c9f18eebc963b785a72a1df2622b7ed5934",
+            "releasedSecondaryWindows": 40
+          },
+          {
+            "cycle": 400,
+            "counts": {
+              "NSKeyValueDependencyContext": 104,
+              "NSKeyValueDependency": 332,
+              "NSWindow": null,
+              "NSKVONotifying_NSWindow": 1,
+              "NSWindowTab": null,
+              "NSTextField": 1
+            },
+            "heapSHA256": "ffec7acf66be21de2f4a8f8957636a73f0397fe902a351f92bdf7444b52c4b7e",
+            "releasedSecondaryWindows": 400
+          }
+        ]
+      },
+      "3-tabs": {
+        "exitCode": 0,
+        "report": {
+          "cycle": 400,
+          "os": "Version 27.2.1 (Build 26B131)",
+          "pid": 16857,
+          "primaryClass": "NSKVONotifying_NSWindow",
+          "releasedSecondaryWindows": 400,
+          "state": "completed",
+          "tabs": true
+        },
+        "observations": [
+          {
+            "cycle": 5,
+            "counts": {
+              "NSKeyValueDependencyContext": 413,
+              "NSKeyValueDependency": 1169,
+              "NSWindow": null,
+              "NSKVONotifying_NSWindow": 1,
+              "NSWindowTab": 1,
+              "NSTextField": 2
+            },
+            "heapSHA256": "c509fa8c69b0eb0f5360151642708c5c885e968764bd5406557d332e0e9a72ac",
+            "releasedSecondaryWindows": 5
+          },
+          {
+            "cycle": 40,
+            "counts": {
+              "NSKeyValueDependencyContext": 1113,
+              "NSKeyValueDependency": 2009,
+              "NSWindow": null,
+              "NSKVONotifying_NSWindow": 1,
+              "NSWindowTab": 1,
+              "NSTextField": 2
+            },
+            "heapSHA256": "9cfa68e3d9e70678c66d739888ee8b1c22e4964572f2a80f8d4dd923d6c50ea1",
+            "releasedSecondaryWindows": 40
+          },
+          {
+            "cycle": 400,
+            "counts": {
+              "NSKeyValueDependencyContext": 8313,
+              "NSKeyValueDependency": 10649,
+              "NSWindow": null,
+              "NSKVONotifying_NSWindow": 1,
+              "NSWindowTab": 1,
+              "NSTextField": 2
+            },
+            "heapSHA256": "7633f26d5de4d0a99a1f9610f709597270263dc641269eb93ad8cce136bd6a70",
+            "releasedSecondaryWindows": 400
+          }
+        ]
+      }
+    },
+    "productChanged": false,
+    "stabilityGatePassed": false,
+    "limits": [
+      "Short standalone AppKit diagnostic; no Files application code is linked.",
+      "Missing runtime classes are null, not zero or a stability pass.",
+      "Counts do not establish physical-footprint stability, all product growth causes, or OS defect ownership.",
+      "Different SDK/runtime combinations are not a controlled OS-only comparison.",
+      "A completed diagnostic can show growth; growth does not turn this runner into a product acceptance gate."
+    ]
+  },
+  "sameHostSDK27ShortCollectorValidation": {
+    "cyclesPerProcess": 40,
+    "repetitionsPerMode": 1,
+    "architecture": "arm64",
+    "os": "macOS-27.2.1-arm64-arm-64bit",
+    "binarySHA256": "7bd4eca502ea0c416231cc6ae670518face2f700008137212164efe95e74d2e9",
+    "probeSourceSHA256": "39bee008582584d08b98397a41365b26205ce38c96651d5d86f46b975598f9c3",
+    "harnessSHA256": "34c74907fa2aa0cfcc05ea7a5916125d22f64c9ce315202507fb6f20372f2c3e",
+    "cases": {
+      "1-windows": {
+        "exitCode": 0,
+        "report": {
+          "cycle": 40,
+          "os": "Version 27.2.1 (Build 26B131)",
+          "pid": 16720,
+          "primaryClass": "NSKVONotifying_NSWindow",
+          "releasedSecondaryWindows": 40,
+          "state": "completed",
+          "tabs": false
+        },
+        "observations": [
+          {
+            "cycle": 5,
+            "counts": {
+              "NSKeyValueDependencyContext": 104,
+              "NSKeyValueDependency": 333,
+              "NSWindow": null,
+              "NSKVONotifying_NSWindow": 1,
+              "NSWindowTab": null,
+              "NSTextField": 1
+            },
+            "heapSHA256": "1e8999b228cc03f699ee4907e0512e9912c90f297da5ee4e7486d84483c24143",
+            "releasedSecondaryWindows": 5
+          },
+          {
+            "cycle": 40,
+            "counts": {
+              "NSKeyValueDependencyContext": 104,
+              "NSKeyValueDependency": 333,
+              "NSWindow": null,
+              "NSKVONotifying_NSWindow": 1,
+              "NSWindowTab": null,
+              "NSTextField": 1
+            },
+            "heapSHA256": "a2fb414fef8d15b76db124f8fc7f1b8127bd5de1a675d35429e2cf7fdcd6991a",
+            "releasedSecondaryWindows": 40
+          }
+        ]
+      },
+      "1-tabs": {
+        "exitCode": 0,
+        "report": {
+          "cycle": 40,
+          "os": "Version 27.2.1 (Build 26B131)",
+          "pid": 16723,
+          "primaryClass": "NSKVONotifying_NSWindow",
+          "releasedSecondaryWindows": 40,
+          "state": "completed",
+          "tabs": true
+        },
+        "observations": [
+          {
+            "cycle": 5,
+            "counts": {
+              "NSKeyValueDependencyContext": 413,
+              "NSKeyValueDependency": 1170,
+              "NSWindow": null,
+              "NSKVONotifying_NSWindow": 1,
+              "NSWindowTab": 1,
+              "NSTextField": 2
+            },
+            "heapSHA256": "1567a251dbb250716402728557fea0f1bc1658edc79b83bd418a5d74709a3114",
+            "releasedSecondaryWindows": 5
+          },
+          {
+            "cycle": 40,
+            "counts": {
+              "NSKeyValueDependencyContext": 1113,
+              "NSKeyValueDependency": 2010,
+              "NSWindow": null,
+              "NSKVONotifying_NSWindow": 1,
+              "NSWindowTab": 1,
+              "NSTextField": 2
+            },
+            "heapSHA256": "4a6a16414504deea865b7951d327f661007094bbd253a015028b6827332fdbc9",
+            "releasedSecondaryWindows": 40
+          }
+        ]
+      }
+    },
+    "productChanged": false,
+    "stabilityGatePassed": false,
+    "limits": [
+      "Short standalone AppKit diagnostic; no Files application code is linked.",
+      "Missing runtime classes are null, not zero or a stability pass.",
+      "Counts do not establish physical-footprint stability, all product growth causes, or OS defect ownership.",
+      "Different SDK/runtime combinations are not a controlled OS-only comparison.",
+      "A completed diagnostic can show growth; growth does not turn this runner into a product acceptance gate."
+    ]
+  },
+  "timeoutCleanupValidation": {
+    "targetPID": 16713,
+    "toolPID": 16714,
+    "command": [
+      "heap",
+      "-s",
+      "16713"
+    ],
+    "timeoutSeconds": 1,
+    "processReturnCode": 0,
+    "sampleReturnCode": 0,
+    "toolExitCode": -9,
+    "elapsedSeconds": 2.2457315840001684,
+    "timeoutPropagated": true,
+    "ownedChildStopped": true,
+    "outputDirectory": "/tmp/native-heap-timeout-0t506n4i"
+  },
+  "windowReuse": {
+    "tabs": {
+      "exitCode": 0,
+      "report": {
+        "closedReusedWindowCycles": 400,
+        "cycle": 400,
+        "os": "Version 27.2.1 (Build 26B131)",
+        "pid": 16537,
+        "primaryClass": "NSKVONotifying_NSWindow",
+        "state": "completed",
+        "tabs": true
+      },
+      "observations": [
+        {
+          "cycle": 5,
+          "counts": {
+            "NSKeyValueDependencyContext": 518,
+            "NSKeyValueDependency": 1503,
+            "NSKVONotifying_NSWindow": 2,
+            "NSWindowTab": 2,
+            "NSTextField": 3
+          },
+          "heapSHA256": "155266e67e1762da3780f1513f0c5b900999b8fcd39884e7447e2085b44def1e"
+        },
+        {
+          "cycle": 40,
+          "counts": {
+            "NSKeyValueDependencyContext": 1218,
+            "NSKeyValueDependency": 2343,
+            "NSKVONotifying_NSWindow": 2,
+            "NSWindowTab": 2,
+            "NSTextField": 3
+          },
+          "heapSHA256": "f5a166a7461efc551d01fdc9afbab6d58879a875fed3307c13ccb30ae3cae8d8"
+        },
+        {
+          "cycle": 400,
+          "counts": {
+            "NSKeyValueDependencyContext": 8418,
+            "NSKeyValueDependency": 10983,
+            "NSKVONotifying_NSWindow": 2,
+            "NSWindowTab": 2,
+            "NSTextField": 3
+          },
+          "heapSHA256": "3c19d3c10b72cfec0915b9c8ef1e4d5414b513313bdf4ec7d576f43a8cb731be"
+        }
+      ]
+    }
+  },
+  "retainedGroup": {
+    "tabs": {
+      "exitCode": 0,
+      "report": {
+        "cycle": 400,
+        "os": "Version 27.2.1 (Build 26B131)",
+        "pid": 16845,
+        "primaryClass": "NSKVONotifying_NSWindow",
+        "releasedSecondaryWindows": 400,
+        "state": "completed",
+        "tabs": true
+      },
+      "observations": [
+        {
+          "cycle": 5,
+          "counts": {
+            "NSKeyValueDependencyContext": 385,
+            "NSKeyValueDependency": 1125,
+            "NSWindow": null,
+            "NSWindowTab": 1,
+            "NSTextField": 2,
+            "NSKVONotifying_NSWindow": 1
+          },
+          "heapSHA256": "73d1aaeee4bb564e81752e752d63245566c87711f167056291da5af6d4721a2b"
+        },
+        {
+          "cycle": 40,
+          "counts": {
+            "NSKeyValueDependencyContext": 840,
+            "NSKeyValueDependency": 1580,
+            "NSWindow": null,
+            "NSWindowTab": 1,
+            "NSTextField": 2,
+            "NSKVONotifying_NSWindow": 1
+          },
+          "heapSHA256": "59a991dd55cefcde5e9628e3942bbc9c97eb8a0a0b278e9f6318b8f25cf744fc"
+        },
+        {
+          "cycle": 400,
+          "counts": {
+            "NSKeyValueDependencyContext": 5520,
+            "NSKeyValueDependency": 6260,
+            "NSWindow": null,
+            "NSWindowTab": 1,
+            "NSTextField": 2,
+            "NSKVONotifying_NSWindow": 1
+          },
+          "heapSHA256": "9c49d6ec37ac541755c65b55a2ac646d402303d35529739b99c28f8097a43fe5"
+        }
+      ]
+    }
+  },
+  "remoteWorkflow": {
+    "conclusion": "failure",
+    "headSha": "855126a6ab59832ba38e780fbc97100185bba225",
+    "jobs": [
+      {
+        "conclusion": "success",
+        "name": "Native AppKit (arm64)",
+        "status": "completed"
+      },
+      {
+        "conclusion": "failure",
+        "name": "Native AppKit (x86_64)",
+        "status": "completed"
+      }
+    ],
+    "status": "completed",
+    "url": "https://github.com/taro6222/files-for-mac/actions/runs/45727101467"
+  },
+  "remoteBuildInfo": "Apple Swift version 6.2.4 (swiftlang-6.2.4.1.4 clang-1700.6.4.2)\nTarget: arm64-apple-macosx15.0\nbuild/native-tab-memory/NativeTabProbe:\nLoad command 11\n      cmd LC_BUILD_VERSION\n  cmdsize 32\n platform MACOS\n    minos 14.0\n      sdk 26.2\n   ntools 1\n     tool LD\n  version 1230.1\n8e933a1401eee7d1ba37704b64051a232152222f8abb11e2150064459bdd6f4f  build/native-tab-memory/NativeTabProbe\n39bee008582584d08b98397a41365b26205ce38c96651d5d86f46b975598f9c3  scripts/diagnostics/NativeTabMemoryProbe.swift\n4ab2cf1473b40bc35b47d34b7d9c462dc3500abc029661dc4257ba1969a0cd83  scripts/diagnostics/verify-native-tab-memory.py\n855126a6ab59832ba38e780fbc97100185bba225\n",
+  "intelFailedMeasurement": {
+    "report": {
+      "cycle": 5,
+      "os": "Version 15.7.9 (Build 24G830)",
+      "pid": 10713,
+      "primaryClass": "NSWindow",
+      "releasedSecondaryWindows": 5,
+      "state": "waiting",
+      "tabs": false
+    },
+    "heapLogSHA256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "jobLogSHA256": "1cebb228d6825ea895e7c994661029cd84a0029f81272494d20b089f1cfc06e7",
+    "reason": "heap -s timed out after 20 seconds before any class observations"
+  },
+  "currentHarnessSHA256": "34c74907fa2aa0cfcc05ea7a5916125d22f64c9ce315202507fb6f20372f2c3e",
+  "currentWorkflowSHA256": "b9d35bad8f9d0b7b1bfd9db202ffbbee7a5e9c0dfc889dcf7328acc43465718a",
+  "limitations": [
+    "Same remote binary removes source/compiler/SDK differences between those two executions, but hosts and OS still differ.",
+    "Context counts are not physical footprint or a complete product leak attribution.",
+    "Window reuse deliberately keeps two window objects; retained group test still requires each secondary to release.",
+    "Reuse candidates are diagnostic-only and were not applied to product code.",
+    "Native heap timeout remains twenty seconds; one-second timeout applies only to a fake owned heap child.",
+    "Intel initial measurement failed and does not establish stable or growing memory on Intel."
+  ],
+  "separateProductCIFailureEvidence": "acl-51ce8dd-ci-final.json",
+  "diagnosticVariantHashes": {
+    "window": {
+      "sourceSHA256": "d35c764f87ab25553a130d663f4877c854f0b6221c999bc9befe82bbecef50ca",
+      "binarySHA256": "c57e8273336ae1d4c6ab83ad4ddddc50491985f3b7405b6f7073ebb31f5d4cd3",
+      "patchSHA256": "ce83f614638964ad00c4b4b81e0f6c5e6fe6e018ca7a2fceb3356fdc36e2764b"
+    },
+    "group": {
+      "sourceSHA256": "3aeba3715db19224b773cfdde69af23e06a31b70cc761e6289eddc3b1b14e89a",
+      "binarySHA256": "0564ce031ea0222007cf71890f2c0af6c8775eef09d4a224a691db593ca2960b",
+      "patchSHA256": "7464ecaaf8f5c116e8ceb42efce787bd0a74a293a568f0121cc81e0f7b8af81c"
+    }
+  }
+}
