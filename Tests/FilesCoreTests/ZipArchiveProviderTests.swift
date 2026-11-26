@@ -194,3 +194,35 @@ private func makeZip(source: URL, archive: URL) throws {
     #expect(try fm.contentsOfDirectory(atPath: destination.path).isEmpty)
     #expect((try fm.contentsOfDirectory(atPath: destination.path)).allSatisfy { !$0.hasPrefix(".files-extract-") })
 }
+
+@Test(arguments: [ArchiveFormat.zip, .sevenZip])
+func archiveCompressionLevelsRoundTripAndStoreRemainsUncompressed(format: ArchiveFormat) async throws {
+    let fm = FileManager.default
+    let root = fm.temporaryDirectory.appendingPathComponent("archive-levels-\(UUID())", isDirectory: true)
+    try fm.createDirectory(at: root, withIntermediateDirectories: true)
+    defer { try? fm.removeItem(at: root) }
+    let source = root.appendingPathComponent("한글-é.txt")
+    let content = Data(String(repeating: "Compression test 한글 0123456789\n", count: 8192).utf8)
+    try content.write(to: source)
+    let provider = ZipArchiveProvider()
+    var sizes: [ArchiveCompressionLevel: Int] = [:]
+    for level in ArchiveCompressionLevel.allCases {
+        let archive = root.appendingPathComponent("level-\(level.rawValue).\(format.rawValue)")
+        _ = try await provider.create(from: [source], at: archive, compressionLevel: level)
+        let bytes = try Data(contentsOf: archive)
+        sizes[level] = bytes.count
+        if format == .zip {
+            #expect(bytes.count > 10)
+            #expect(bytes[8] == (level == .store ? 0 : 8) && bytes[9] == 0)
+        }
+        let destination = root.appendingPathComponent("extract-\(level.rawValue)", isDirectory: true)
+        try fm.createDirectory(at: destination, withIntermediateDirectories: false)
+        _ = try await provider.extract(archive, to: destination)
+        #expect(try Data(contentsOf: destination.appendingPathComponent(source.lastPathComponent)) == content)
+        #expect(try Data(contentsOf: source) == content)
+    }
+    let stored = try #require(sizes[.store]), ultra = try #require(sizes[.ultra])
+    #expect(stored >= content.count)
+    #expect(ultra < stored / 4)
+    #expect(try fm.contentsOfDirectory(atPath: root.path).allSatisfy { !$0.hasPrefix(".files-create-") })
+}

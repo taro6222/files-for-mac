@@ -1,0 +1,133 @@
+{
+  "sourceBase": "29824275d880269ea3355e8aa0c2aa84ca9c66e8",
+  "releaseComplete": false,
+  "sourceSHA256": {
+    "Sources/CLibArchive/include/shim.h": "ca4b70ba3349c498cd238af99954b1a27c6990868a6f0db599225b897b1e76c4",
+    "Sources/FilesCore/ArchiveCapabilities.swift": "65901b1d48e39dd3815614e5d121eccde9a72a03f47f01e5ff93f70178fb5ec9",
+    "Sources/FilesCore/BrowserPreferences.swift": "ddbc5119416a1901b189dce05e7d2538846ee9c6b373749e633f8cca22dc78e1",
+    "Sources/FilesCore/ZipArchiveProvider.swift": "95e4b0c1cb5373b0a81c80944fa57afb1815c7f2bb6f9d9353e9ac86a25fc625",
+    "Sources/FilesMac/ArchiveCreationWindow.swift": "e3f2414c2bab5ffdb85c70b5bfc1f638d4106ecf853f6e955415ea43c1c7b77f",
+    "Sources/FilesMac/BrowserWindow.swift": "1021f19faba9cb0060f6244c3ddad150a9d26c0c81fe9d23c295df6cd8b4185e",
+    "Tests/FilesCoreTests/FilesCoreTests.swift": "314c97138462b907832011c6a1a439ce382ee3a882a0a9e1a53754595030d70a",
+    "Tests/FilesCoreTests/ZipArchiveProviderTests.swift": "ca0e5bfb30bc26bbe3c56db8650be159f07af9cabf1860354dfc38fb27f1a59b",
+    "scripts/verify-ui.sh": "f323a0819a71a0e60fb77a7ce3fcb4037b2aa27a2d9fc2e7714849db949fa18a"
+  },
+  "binariesSHA256": {
+    "debug": "f661541d9060233f983580b3e0b9ebc16e6758d89317b0ad6729dc8d5da9fead",
+    "release": "6942c8cafc63b1e62568383af76e5337acca612059d7759a930ba83d7a0828ac"
+  },
+  "logsSHA256": {
+    "build/archive-level-340-final-build.log": "aaa5343daff4c522323464aa0e7e7988252430ccfea62d3a3d26bfdb7f744776",
+    "build/archive-level-340-release.log": "51cf6d0dcba403e638c46a2bc6a82a0a073573cbbd0bb79ef102688748b7cb54",
+    "build/archive-level-340-core.log": "85cc28e31d6a95d45240e8910608a722ee39f614429cae9a1e0e52a97cb21140",
+    "build/archive-level-340-ui.log": "5351929e27bf209a84c77d0a970eb631aa2e82fde7861d9e2d59ff847ab07dd1",
+    "build/archive-level-340-parity.log": "f2e8f311d376fa306990bf6651b074ea8c5cdac5bfc49dd049df9ac2a1b96f01"
+  },
+  "core": {
+    "reportedTests": 391,
+    "passed": 372,
+    "environmentSkipped": 19,
+    "newTests": [
+      "archiveCompressionLevelPersistsAndImportsSafely",
+      "archiveCompressionLevelsRoundTripAndStoreRemainsUncompressed"
+    ],
+    "parameterizedFormatCases": 2,
+    "levelsPerFormat": 6,
+    "newArchiveRoundTrips": 12
+  },
+  "localUI": [
+    {
+      "combination": "en-dark",
+      "checks": 312,
+      "reportSHA256": "8ba1bb634c2ad8c97b5cc5e1f01bdb7ec8a327eb933ca615eb905cba826096ed",
+      "compressionChecks": {
+        "archiveCompressionLevelDefault": true,
+        "archiveCompressionLevelSelection": true,
+        "archiveCreation": true,
+        "archiveCreationCancellation": true,
+        "sevenZipCreation": true
+      },
+      "componentCapture": {
+        "path": "archive-level-340-en-dark.png",
+        "sha256": "6651c6f137635605c23e3a4036fad90727fa025b1959adaa3404fd2dd5dae0b3",
+        "scope": "accessory component rendering only"
+      }
+    },
+    {
+      "combination": "en-light",
+      "checks": 312,
+      "reportSHA256": "8dd8fa7e6005f82bbfd21b50bd919e7cc32a30c9ef9c346b9b998a936510bd6a",
+      "compressionChecks": {
+        "archiveCompressionLevelDefault": true,
+        "archiveCompressionLevelSelection": true,
+        "archiveCreation": true,
+        "archiveCreationCancellation": true,
+        "sevenZipCreation": true
+      },
+      "componentCapture": {
+        "path": "archive-level-340-en-light.png",
+        "sha256": "45b68a5874a876a0bcf00b01b0cad1324080932213eee72f89b9c0d613ce1631",
+        "scope": "accessory component rendering only"
+      }
+    },
+    {
+      "combination": "ko-dark",
+      "checks": 312,
+      "reportSHA256": "dc2baaa75f246f4f64120849ff6e6214d5eee2e1fbf8cdcc464ca4ab328db7a8",
+      "compressionChecks": {
+        "archiveCompressionLevelDefault": true,
+        "archiveCompressionLevelSelection": true,
+        "archiveCreation": true,
+        "archiveCreationCancellation": true,
+        "sevenZipCreation": true
+      },
+      "componentCapture": {
+        "path": "archive-level-340-ko-dark.png",
+        "sha256": "02cf351491dedac80cee4caf944c76194fe1a1eaa72d9386f2350c712e6b4b26",
+        "scope": "accessory component rendering only"
+      }
+    },
+    {
+      "combination": "ko-light",
+      "checks": 312,
+      "reportSHA256": "fb16e1c5e71bf4897dfd335f2e4ba22fa861010dd7d1947d9106e83ced1645f9",
+      "compressionChecks": {
+        "archiveCompressionLevelDefault": true,
+        "archiveCompressionLevelSelection": true,
+        "archiveCreation": true,
+        "archiveCreationCancellation": true,
+        "sevenZipCreation": true
+      },
+      "componentCapture": {
+        "path": "archive-level-340-ko-light.png",
+        "sha256": "ca1b884c187e11c266eef67ae259ad789148f0390ac246c5298134574e08c435",
+        "scope": "accessory component rendering only"
+      }
+    },
+    {
+      "combination": "tabs-en-dark",
+      "checks": 18,
+      "reportSHA256": "c336c66ffa5615d15ce0ad8170538ddff2d86cefbb915dd613652aef3c4d8698"
+    },
+    {
+      "combination": "tabs-en-light",
+      "checks": 18,
+      "reportSHA256": "8c264c2a29119eb2daf0ea2712c24b4be6ec4fa7c3f0f318ef2bc5a95b7dccc3"
+    },
+    {
+      "combination": "tabs-ko-dark",
+      "checks": 18,
+      "reportSHA256": "f9e4644de8b42404017c390334d5bb70e231d287107ede7b437aa36ef7820105"
+    },
+    {
+      "combination": "tabs-ko-light",
+      "checks": 18,
+      "reportSHA256": "5b008d20c14072811f18b76134b1c3416b0e5965e58149ded52f3fba9b860b27"
+    }
+  ],
+  "limitations": [
+    "whole original archive UI parity incomplete; see ARCHIVE_OPTIONS_PARITY.md",
+    "physical input and VoiceOver not accepted",
+    "new source two CPU CI and release signing pending"
+  ]
+}

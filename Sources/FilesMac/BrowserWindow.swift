@@ -1896,19 +1896,20 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
     @objc func createArchive(_ sender: Any?) {
         let sources = activeSelectedItems.map(\.url)
         guard !sources.isEmpty, !activeModel.isLoading, !ArchiveCreationWindow.isRunning, let parent = activeModel.location, let window else { return }
-        let panel = Self.archiveSavePanel(sources: sources, parent: parent)
+        let panel = Self.archiveSavePanel(sources: sources, parent: parent, preferences: preferences)
+        let options = panel.accessoryView as? ArchiveSaveOptionsView
         panel.beginSheetModal(for: window) { [weak self] response in
             guard response == .OK, let destination = panel.url, let self else { return }
-            ArchiveCreationWindow.start(sources: sources, destination: destination) { self.refreshActivePane() }
+            ArchiveCreationWindow.start(sources: sources, destination: destination, compressionLevel: options?.compressionLevel) { self.refreshActivePane() }
         }
     }
-    private static func archiveSavePanel(sources: [URL], parent: URL) -> NSSavePanel {
+    private static func archiveSavePanel(sources: [URL], parent: URL, preferences: BrowserPreferences? = nil) -> NSSavePanel {
         let panel = NSSavePanel()
         panel.canCreateDirectories = true; panel.isExtensionHidden = false
         let base = sources.count == 1 ? sources[0].lastPathComponent : parent.lastPathComponent
         panel.nameFieldStringValue = (base.isEmpty || base == "/" ? L("압축 파일", "Archive") : base) + ".zip"
         panel.directoryURL = parent; panel.prompt = L("압축", "Compress")
-        panel.accessoryView = ArchiveSaveOptionsView(panel: panel)
+        panel.accessoryView = ArchiveSaveOptionsView(panel: panel, preferences: preferences)
         return panel
     }
     private var selectedArchiveURLs: [URL] {
@@ -5585,7 +5586,8 @@ extension BrowserWindow {
                 parent: archiveParent).nameFieldStringValue == "archive-default-parent.v1.zip"
             checks["archiveDefaultNameRootFallback"] = Self.archiveSavePanel(sources: archiveSources,
                 parent: URL(fileURLWithPath: "/", isDirectory: true)).nameFieldStringValue == L("압축 파일.zip", "Archive.zip")
-            let formatPanel = Self.archiveSavePanel(sources: [archiveParent.appendingPathComponent("preview.txt")], parent: archiveParent)
+            let archivePreferences = BrowserPreferences(defaults: defaults, initialFavorites: [])
+            let formatPanel = Self.archiveSavePanel(sources: [archiveParent.appendingPathComponent("preview.txt")], parent: archiveParent, preferences: archivePreferences)
             if let options = formatPanel.accessoryView as? ArchiveSaveOptionsView {
                 let button = options.formatButton
                 checks["archiveFormatDefault"] = button.itemTitles == ["ZIP (.zip)", "7z (.7z)"] && button.indexOfSelectedItem == 0 &&
@@ -5607,24 +5609,39 @@ extension BrowserWindow {
                 formatPanel.nameFieldStringValue = "already.7Z"
                 button.selectItem(at: 0); NSApp.sendAction(button.action!, to: button.target, from: button)
                 checks["archiveFormatEmptyAndExplicitExtension"] = emptyNamePreserved && formatPanel.nameFieldStringValue == "already.zip"
+                checks["archiveCompressionLevelDefault"] = options.levelButton.numberOfItems == 6 && options.compressionLevel == .normal
+                options.levelButton.selectItem(at: 0)
+                NSApp.sendAction(options.levelButton.action!, to: options.levelButton.target, from: options.levelButton)
+                let ultraSelected = options.compressionLevel == .ultra
+                options.levelButton.selectItem(at: 5)
+                NSApp.sendAction(options.levelButton.action!, to: options.levelButton.target, from: options.levelButton)
+                let reopenedPanel = Self.archiveSavePanel(sources: archiveSources, parent: archiveParent, preferences: archivePreferences)
+                checks["archiveCompressionLevelSelection"] = ultraSelected && options.compressionLevel == .store && archivePreferences.archiveCompressionLevel == .store &&
+                    (reopenedPanel.accessoryView as? ArchiveSaveOptionsView)?.compressionLevel == .store
                 options.appearance = window.effectiveAppearance
                 try capture("archive-format-options", view: options, backingColor: .windowBackgroundColor)
             } else {
                 checks["archiveFormatDefault"] = false; checks["archiveFormatSevenZipSelection"] = false
                 checks["archiveFormatPreservesEditedBaseAndRoundTrips"] = false
                 checks["archiveFormatEmptyAndExplicitExtension"] = false
+                checks["archiveCompressionLevelDefault"] = false; checks["archiveCompressionLevelSelection"] = false
             }
             let createdArchive = destination.appendingPathComponent("created-by-ui.zip")
             try? fm.removeItem(at: createdArchive)
-            ArchiveCreationWindow.start(sources: [fixture.appendingPathComponent("00000-한글-é-📁-long-file-name.txt")], destination: createdArchive) {}
+            ArchiveCreationWindow.start(sources: [fixture.appendingPathComponent("00000-한글-é-📁-long-file-name.txt")], destination: createdArchive,
+                                        compressionLevel: (formatPanel.accessoryView as? ArchiveSaveOptionsView)?.compressionLevel) {}
             let archiveCreate = ContinuousClock.now
             while ArchiveCreationWindow.qaLatest?.qaRunning == true && archiveCreate.duration(to: .now) < .seconds(10) { try await Task.sleep(for: .milliseconds(10)) }
             let createdEntries = try ZipArchiveProvider().entries(at: createdArchive)
-            checks["archiveCreation"] = ArchiveCreationWindow.qaLatest?.qaSucceeded == true && createdEntries.count == 1
+            let storedZIP = try Data(contentsOf: createdArchive)
+            checks["archiveCreation"] = ArchiveCreationWindow.qaLatest?.qaSucceeded == true && createdEntries.count == 1 &&
+                storedZIP.count > 10 && storedZIP[8] == 0 && storedZIP[9] == 0
             try capture("archive-creation", view: ArchiveCreationWindow.qaLatest?.window?.contentView)
             ArchiveCreationWindow.qaLatest?.close(); window.makeKeyAndOrderFront(nil)
             let createdSevenZip = destination.appendingPathComponent("created-by-ui.7z"); try? fm.removeItem(at: createdSevenZip)
-            ArchiveCreationWindow.start(sources: [fixture.appendingPathComponent("00000-한글-é-📁-long-file-name.txt")], destination: createdSevenZip) {}
+            (formatPanel.accessoryView as? ArchiveSaveOptionsView)?.levelButton.selectItem(at: 0)
+            ArchiveCreationWindow.start(sources: [fixture.appendingPathComponent("00000-한글-é-📁-long-file-name.txt")], destination: createdSevenZip,
+                                        compressionLevel: (formatPanel.accessoryView as? ArchiveSaveOptionsView)?.compressionLevel) {}
             let sevenZipCreate = ContinuousClock.now
             while ArchiveCreationWindow.qaLatest?.qaRunning == true && sevenZipCreate.duration(to: .now) < .seconds(10) { try await Task.sleep(for: .milliseconds(10)) }
             let createdSevenZipEntries = try ZipArchiveProvider().entries(at: createdSevenZip)

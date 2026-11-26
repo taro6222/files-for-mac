@@ -1,5 +1,9 @@
 import Foundation
 
+public enum ArchiveCompressionLevel: Int, CaseIterable, Sendable {
+    case ultra = 9, high = 7, normal = 5, low = 3, fast = 1, store = 0
+}
+
 public enum ArchiveFormat: String, CaseIterable, Sendable, Equatable {
     case zip, sevenZip = "7z", rar
 

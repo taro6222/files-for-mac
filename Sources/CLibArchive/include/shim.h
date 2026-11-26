@@ -28,6 +28,7 @@ struct archive *archive_write_new(void);
 int archive_write_set_format_zip(struct archive *);
 int archive_write_set_format_7zip(struct archive *);
 int archive_write_add_filter_none(struct archive *);
+int archive_write_set_format_option(struct archive *, const char *, const char *, const char *);
 int archive_write_open_filename(struct archive *, const char *);
 int archive_write_header(struct archive *, struct archive_entry *);
 ssize_t archive_write_data(struct archive *, const void *, size_t);

@@ -1900,3 +1900,30 @@ private struct ManyBatchLoader: DirectoryStreaming {
     #expect(currentChild.groupID == originalChild.groupID)
     #expect(currentChild.accessControlList == originalChild.accessControlList)
 }
+
+@Test @MainActor func archiveCompressionLevelPersistsAndImportsSafely() throws {
+    let suite = "FilesCore.ArchiveLevel.\(UUID())"
+    let defaults = try #require(UserDefaults(suiteName: suite))
+    defer { defaults.removePersistentDomain(forName: suite) }
+    let preferences = BrowserPreferences(defaults: defaults, initialFavorites: [])
+    #expect(preferences.archiveCompressionLevel == .normal)
+    preferences.setArchiveCompressionLevel(.store)
+    #expect(BrowserPreferences(defaults: defaults).archiveCompressionLevel == .store)
+    let data = try preferences.exportData()
+    preferences.setArchiveCompressionLevel(.ultra)
+    try preferences.importData(data)
+    #expect(preferences.archiveCompressionLevel == .store)
+    var object = try #require(JSONSerialization.jsonObject(with: data) as? [String: Any])
+    object["archiveCompressionLevel"] = 42
+    let before = try preferences.exportData()
+    #expect(throws: BrowserPreferencesArchiveError.invalidValue) {
+        try preferences.importData(JSONSerialization.data(withJSONObject: object))
+    }
+    #expect(try preferences.exportData() == before)
+    #expect(BrowserPreferences(defaults: defaults).archiveCompressionLevel == .store)
+    object.removeValue(forKey: "archiveCompressionLevel")
+    try preferences.importData(JSONSerialization.data(withJSONObject: object))
+    #expect(preferences.archiveCompressionLevel == .normal)
+    defaults.set(-7, forKey: "archiveCompressionLevel")
+    #expect(BrowserPreferences(defaults: defaults).archiveCompressionLevel == .normal)
+}

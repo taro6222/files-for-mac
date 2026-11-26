@@ -5,24 +5,45 @@ import UniformTypeIdentifiers
 @MainActor
 final class ArchiveSaveOptionsView: NSStackView {
     let formatButton = NSPopUpButton()
+    let levelButton = NSPopUpButton()
+    var compressionLevel: ArchiveCompressionLevel { ArchiveCompressionLevel.allCases[levelButton.indexOfSelectedItem] }
     private weak var panel: NSSavePanel?
+    private let preferences: BrowserPreferences?
     private let formats: [ArchiveFormat] = [.zip, .sevenZip]
     private var selectedFormat: ArchiveFormat = .zip
 
-    init(panel: NSSavePanel) {
+    init(panel: NSSavePanel, preferences: BrowserPreferences? = nil) {
         self.panel = panel
-        super.init(frame: NSRect(x: 0, y: 0, width: 340, height: 32))
-        orientation = .horizontal; alignment = .centerY; spacing = 12
-        addArrangedSubview(NSTextField(labelWithString: L("압축 형식:", "Archive format:")))
+        self.preferences = preferences
+        super.init(frame: NSRect(x: 0, y: 0, width: 400, height: 76))
+        orientation = .vertical; alignment = .leading; spacing = 12
         formatButton.addItems(withTitles: ["ZIP (.zip)", "7z (.7z)"])
         formatButton.setAccessibilityLabel(L("압축 형식", "Archive format"))
         formatButton.identifier = NSUserInterfaceItemIdentifier("archive-format")
         formatButton.target = self; formatButton.action = #selector(changeFormat(_:))
-        addArrangedSubview(formatButton)
+        levelButton.addItems(withTitles: [L("최고", "Ultra"), L("높음", "High"), L("보통", "Normal"),
+                                         L("낮음", "Low"), L("빠르게", "Fast"), L("압축 안 함", "No compression")])
+        levelButton.selectItem(at: ArchiveCompressionLevel.allCases.firstIndex(of: preferences?.archiveCompressionLevel ?? .normal)!)
+        levelButton.setAccessibilityLabel(L("압축 수준", "Compression level"))
+        levelButton.identifier = NSUserInterfaceItemIdentifier("archive-compression-level")
+        levelButton.target = self; levelButton.action = #selector(changeLevel(_:))
+        for (title, button) in [(L("압축 형식:", "Archive format:"), formatButton),
+                                (L("압축 수준:", "Compression level:"), levelButton)] {
+            let label = NSTextField(labelWithString: title)
+            label.widthAnchor.constraint(equalToConstant: 145).isActive = true
+            button.widthAnchor.constraint(equalToConstant: 220).isActive = true
+            let row = NSStackView(views: [label, button]); row.orientation = .horizontal; row.alignment = .centerY; row.spacing = 12
+            addArrangedSubview(row)
+        }
         panel.allowedContentTypes = [.zip]
         panel.allowsOtherFileTypes = false
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
+
+    @objc private func changeLevel(_ sender: NSPopUpButton) {
+        guard ArchiveCompressionLevel.allCases.indices.contains(sender.indexOfSelectedItem) else { return }
+        preferences?.setArchiveCompressionLevel(compressionLevel)
+    }
 
     @objc private func changeFormat(_ sender: NSPopUpButton) {
         guard formats.indices.contains(sender.indexOfSelectedItem), let panel else { return }
@@ -50,13 +71,13 @@ final class ArchiveCreationWindow: NSWindowController, NSWindowDelegate {
     private var running = true
     private var succeeded = false
 
-    static func start(sources: [URL], destination: URL, completion: @escaping @MainActor () -> Void) {
+    static func start(sources: [URL], destination: URL, compressionLevel: ArchiveCompressionLevel? = nil, completion: @escaping @MainActor () -> Void) {
         guard !sources.isEmpty, !isRunning else { return }
         let controller = ArchiveCreationWindow(sources: sources, destination: destination)
         operations.append(controller); controller.showWindow(nil); controller.window?.makeKeyAndOrderFront(nil)
         controller.task = Task { [weak controller] in
             do {
-                _ = try await ZipArchiveProvider().create(from: sources, at: destination) { [weak controller] update in
+                _ = try await ZipArchiveProvider().create(from: sources, at: destination, compressionLevel: compressionLevel) { [weak controller] update in
                     Task { @MainActor [weak controller] in controller?.update(update) }
                 }
                 guard let controller, !Task.isCancelled else { return }
