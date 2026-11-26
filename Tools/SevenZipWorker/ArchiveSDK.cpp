@@ -14,6 +14,8 @@
 #include <limits.h>
 #include <memory>
 #include <errno.h>
+#include <string>
+#include <string.h>
 
 Z7_DEFINE_GUID(CLSID_SevenZip, 0x23170f69, 0x40c1, 0x278a, 0x10, 0, 0, 1, 0x10, 7, 0, 0);
 
@@ -225,5 +227,176 @@ extern "C" int SevenZipExtract(void *handle, uint32_t index, uint64_t expectedSi
             return 12;
         }
         return extract->selectedStream && output->count == size ? 0 : 12;
+    } catch (...) { return 8; }
+}
+
+
+// Creation reads only planned regular files/directories, without following any path symlinks.
+static int openSource(const char *path) {
+    if (!path || path[0] != '/') return -1;
+    int current = open("/", O_RDONLY | O_DIRECTORY | O_CLOEXEC);
+    if (current < 0) return -1;
+    const char *part = path + 1;
+    while (*part) {
+        const char *end = strchr(part, '/');
+        size_t size = end ? (size_t)(end - part) : strlen(part);
+        if (!size || (size == 1 && part[0] == '.') || (size == 2 && part[0] == '.' && part[1] == '.')) { close(current); return -1; }
+        std::string name(part, size);
+        int next = openat(current, name.c_str(), O_RDONLY | O_NOFOLLOW | O_NONBLOCK | O_CLOEXEC | (end ? O_DIRECTORY : 0));
+        close(current); current = next;
+        if (current < 0 || !end) return current;
+        part = end + 1;
+    }
+    close(current); return -1;
+}
+static bool matchesCreateItem(const SevenZipCreateItem &item, int fd) {
+    struct stat info;
+    return fstat(fd, &info) == 0 && (uint64_t)info.st_dev == item.device && (uint64_t)info.st_ino == item.inode &&
+        (uint32_t)info.st_mode == item.mode && (item.directory ? S_ISDIR(info.st_mode) : S_ISREG(info.st_mode)) &&
+        (item.directory || (info.st_size >= 0 && (uint64_t)info.st_size == item.size)) &&
+        info.st_mtimespec.tv_sec == item.modifiedSeconds && info.st_mtimespec.tv_nsec == item.modifiedNanos &&
+        info.st_ctimespec.tv_sec == item.changedSeconds && info.st_ctimespec.tv_nsec == item.changedNanos;
+}
+class CreateInput final: public ISequentialInStream, public CMyUnknownImp {
+    Z7_COM_UNKNOWN_IMP_1(ISequentialInStream)
+    int fd;
+    SevenZipCreateItem item;
+    uint64_t readBytes = 0;
+    bool *changed;
+public:
+    CreateInput(int descriptor, const SevenZipCreateItem &entry, bool *flag): fd(descriptor), item(entry), changed(flag) {}
+    ~CreateInput() { if (!matchesCreateItem(item, fd) || readBytes != item.size) *changed = true; close(fd); }
+    Z7_COM7F_IMF(Read(void *data, UInt32 size, UInt32 *processed)) override {
+        if (processed) *processed = 0;
+        if (!matchesCreateItem(item, fd)) { *changed = true; return E_ABORT; }
+        ssize_t count;
+        do { count = read(fd, data, size); } while (count < 0 && errno == EINTR);
+        if (count < 0 || (uint64_t)count > item.size - readBytes) return E_FAIL;
+        readBytes += count;
+        if (count == 0 && size && readBytes != item.size) { *changed = true; return E_ABORT; }
+        if (processed) *processed = (UInt32)count;
+        return S_OK;
+    }
+};
+class CreateOutput final: public IOutStream, public CMyUnknownImp {
+    Z7_COM_UNKNOWN_IMP_2(IOutStream, ISequentialOutStream)
+    int fd;
+public:
+    explicit CreateOutput(int descriptor): fd(descriptor) {}
+    Z7_COM7F_IMF(Write(const void *data, UInt32 size, UInt32 *processed)) override {
+        if (processed) *processed = 0;
+        off_t position = lseek(fd, 0, SEEK_CUR);
+        if (position < 0 || (uint64_t)position + size > 8000000000ULL) return E_FAIL;
+        UInt32 total = 0;
+        while (total < size) {
+            ssize_t count = write(fd, (const char *)data + total, size - total);
+            if (count < 0 && errno == EINTR) continue;
+            if (count <= 0) return E_FAIL;
+            total += (UInt32)count;
+        }
+        if (processed) *processed = total;
+        return S_OK;
+    }
+    Z7_COM7F_IMF(Seek(Int64 offset, UInt32 origin, UInt64 *position)) override {
+        if (origin > 2) return E_INVALIDARG;
+        off_t result = lseek(fd, offset, origin == 0 ? SEEK_SET : (origin == 1 ? SEEK_CUR : SEEK_END));
+        if (result < 0 || (uint64_t)result > 8000000000ULL) return E_FAIL;
+        if (position) *position = result;
+        return S_OK;
+    }
+    Z7_COM7F_IMF(SetSize(UInt64 size)) override {
+        return size <= 8000000000ULL && ftruncate(fd, size) == 0 ? S_OK : E_FAIL;
+    }
+};
+class CreateCallback final: public IArchiveUpdateCallback, public ICryptoGetTextPassword2, public CMyUnknownImp {
+    Z7_IFACES_IMP_UNK_2(IArchiveUpdateCallback, ICryptoGetTextPassword2)
+    Z7_IFACE_COM7_IMP(IProgress)
+public:
+    const SevenZipCreateItem *items;
+    uint32_t count;
+    bool defined = false, changed = false, failed = false;
+    UString password;
+};
+Z7_COM7F_IMF(CreateCallback::SetTotal(UInt64)) { return S_OK; }
+Z7_COM7F_IMF(CreateCallback::SetCompleted(const UInt64 *)) { return S_OK; }
+Z7_COM7F_IMF(CreateCallback::GetUpdateItemInfo(UInt32 index, Int32 *data, Int32 *properties, UInt32 *oldIndex)) {
+    if (index >= count) return E_INVALIDARG;
+    if (data) *data = 1;
+    if (properties) *properties = 1;
+    if (oldIndex) *oldIndex = (UInt32)-1;
+    return S_OK;
+}
+Z7_COM7F_IMF(CreateCallback::GetProperty(UInt32 index, PROPID propertyID, PROPVARIANT *value)) {
+    if (index >= count) return E_INVALIDARG;
+    const auto &item = items[index];
+    NWindows::NCOM::CPropVariant property;
+    switch (propertyID) {
+        case kpidPath: {
+            UString path;
+            if (!ConvertUTF8ToUnicode(AString(item.path), path)) return E_INVALIDARG;
+            property = path; break;
+        }
+        case kpidIsDir: property = (item.directory != 0); break;
+        case kpidSize: property = (UInt64)item.size; break;
+        case kpidIsAnti: property = false; break;
+        case kpidPosixAttrib: property = (UInt32)item.mode; break;
+        case kpidMTime: {
+            // SDK FILETIME uses 100ns ticks since 1601.
+            if (item.modifiedSeconds >= -11644473600LL) {
+                uint64_t ticks = ((uint64_t)(item.modifiedSeconds + 11644473600LL)) * 10000000ULL + item.modifiedNanos / 100;
+                FILETIME time; time.dwLowDateTime = (UInt32)ticks; time.dwHighDateTime = (UInt32)(ticks >> 32);
+                property = time;
+            }
+            break;
+        }
+    }
+    property.Detach(value); return S_OK;
+}
+Z7_COM7F_IMF(CreateCallback::GetStream(UInt32 index, ISequentialInStream **stream)) {
+    if (index >= count) return E_INVALIDARG;
+    *stream = nullptr;
+    const auto &item = items[index];
+    int fd = openSource(item.source);
+    if (fd < 0) { changed = true; return E_ABORT; }
+    if (!matchesCreateItem(item, fd)) { close(fd); changed = true; return E_ABORT; }
+    if (item.directory) { close(fd); return S_OK; }
+    CMyComPtr<ISequentialInStream> input = new CreateInput(fd, item, &changed);
+    *stream = input.Detach(); return S_OK;
+}
+Z7_COM7F_IMF(CreateCallback::SetOperationResult(Int32 result)) { if (result != 0) failed = true; return result == 0 ? S_OK : E_FAIL; }
+Z7_COM7F_IMF(CreateCallback::CryptoGetTextPassword2(Int32 *isDefined, BSTR *value)) {
+    *isDefined = defined ? 1 : 0;
+    return StringToBstr(password, value);
+}
+extern "C" int SevenZipCreate(const char *library, int outputFD, const SevenZipCreateItem *items, uint32_t count,
+                              const char *password, int level, int encryptHeader) {
+    // The library stays loaded until all COM objects have been released, including exceptions.
+    struct Library { void *handle; ~Library() { if (handle) dlclose(handle); } } loaded{dlopen(library, RTLD_NOW | RTLD_LOCAL)};
+    if (!loaded.handle) return 1;
+    try {
+        typedef HRESULT (*Create)(const GUID *, const GUID *, void **);
+        auto create = (Create)dlsym(loaded.handle, "CreateObject");
+        CMyComPtr<IOutArchive> archive;
+        if (!create || create(&CLSID_SevenZip, &IID_IOutArchive, (void **)&archive) != S_OK) return 1;
+        CMyComPtr<ISetProperties> properties;
+        if (archive->QueryInterface(IID_ISetProperties, (void **)&properties) != S_OK || !properties) return 1;
+        const wchar_t *names[] = { L"x", L"he", L"mt" };
+        NWindows::NCOM::CPropVariant values[3]; values[0] = (UInt32)level; values[1] = (encryptHeader != 0); values[2] = (UInt32)2;
+        if (properties->SetProperties(names, values, 3) != S_OK) return 6;
+        CreateCallback *callback = new CreateCallback();
+        CMyComPtr<IArchiveUpdateCallback> callbackHolder = callback;
+        callback->items = items; callback->count = count; callback->defined = password != nullptr;
+        if (password && !ConvertUTF8ToUnicode(AString(password), callback->password)) return 6;
+        CMyComPtr<ISequentialOutStream> output = new CreateOutput(outputFD);
+        HRESULT status = archive->UpdateItems(output, count, callbackHolder);
+        if (callback->changed) return 9;
+        if (status != S_OK || callback->failed) return 10;
+        for (uint32_t i = 0; i < count; ++i) {
+            int fd = openSource(items[i].source);
+            if (fd < 0) return 9;
+            bool matches = matchesCreateItem(items[i], fd); close(fd);
+            if (!matches) return 9;
+        }
+        return fsync(outputFD) == 0 ? 0 : 10;
     } catch (...) { return 8; }
 }

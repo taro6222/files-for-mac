@@ -359,6 +359,11 @@ func sevenZipSDKBundleResolutionAndUse() async throws {
     let report = try await provider.extractToNewDirectory(fixture.archive, at: destination, password: "QA-349-한글-🔑")
     #expect(report.entries == 3)
     for (name, data) in fixture.payloads { #expect(try Data(contentsOf: destination.appendingPathComponent(name)) == data) }
+    let created = root.appendingPathComponent("bundled-created.7z")
+    _ = try await provider.create(from: [destination], at: created, compressionLevel: .fast, password: "bundled-한글-🔑")
+    let restored = root.appendingPathComponent("bundled-created-restored")
+    _ = try await provider.extractToNewDirectory(created, at: restored, password: "bundled-한글-🔑")
+    for (name, data) in fixture.payloads { #expect(try Data(contentsOf: restored.appendingPathComponent(destination.lastPathComponent).appendingPathComponent(name)) == data) }
     // Mutation after resolution must be checked again before the next worker is spawned.
     try Data("changed after resolution".utf8).write(to: bundle.appendingPathComponent(SevenZipBundleVerifier.resource + "/BUILD.md"))
     do { _ = try await provider.entries(at: fixture.archive, password: "QA-349-한글-🔑"); Issue.record("Modified resolved bundle executed") }
@@ -430,4 +435,106 @@ func sevenZipSDKBundlePinsSelectedRevisionAcrossResigning() async throws {
     // The replacement is independently valid, but an existing operation must not switch revisions.
     _ = try await SevenZipArchiveProvider.bundled(in: bundle)
     await #expect(throws: SevenZipBundleError.changedBundle) { try await original.entries(at: root.appendingPathComponent("not-opened.7z")) }
+}
+
+@Test(.enabled(if: hasIntegrationFixture("FILES_TEST_SEVENZIP_REFERENCE") && hasIntegrationFixture("FILES_TEST_SEVENZIP_WORKER"), "Requires native SDK and reference"))
+func sevenZipSDKCreationLevelsPasswordAndIndependentExtraction() async throws {
+    let root = try sdkRoot(); defer { try? FileManager.default.removeItem(at: root) }
+    let folder = root.appendingPathComponent("소스-📁"), empty = folder.appendingPathComponent("empty")
+    try FileManager.default.createDirectory(at: empty, withIntermediateDirectories: true)
+    let source = folder.appendingPathComponent("한글-é\nfile.txt"), bytes = Data(String(repeating: "SDK creation payload 한글\n", count: 2000).utf8)
+    try bytes.write(to: source)
+    let provider = try sdkRealProvider(), reference = URL(fileURLWithPath: try #require(ProcessInfo.processInfo.environment["FILES_TEST_SEVENZIP_REFERENCE"]))
+    for (index, level) in ArchiveCompressionLevel.allCases.enumerated() {
+        let archive = root.appendingPathComponent("level-\(level.rawValue).7z"), password: String? = index == 2 ? nil : "QA-351-한글-🔑"
+        let header = index % 2 == 0
+        _ = try await provider.create(from: [folder], at: archive, compressionLevel: level, password: password, encryptHeader: header)
+        let entries = try await provider.entries(at: archive, password: password)
+        #expect(entries.count == 3 && entries.filter { $0.kind == .regularFile }.allSatisfy { $0.isEncrypted == (password != nil) })
+        if header && password != nil {
+            await #expect(throws: SevenZipWorkerError.worker("password-required")) { try await provider.entries(at: archive) }
+        } else { #expect(try await provider.entries(at: archive).count == 3) }
+        let out = root.appendingPathComponent("restored-\(index)")
+        let process = Process(), input = Pipe()
+        process.executableURL = reference; process.arguments = ["x", "-y", "-o" + out.path, archive.path]
+        process.standardInput = input; process.standardOutput = FileHandle.nullDevice; process.standardError = FileHandle.nullDevice
+        try process.run()
+        defer { if process.isRunning { kill(process.processIdentifier, SIGKILL); process.waitUntilExit() } }
+        if let password { try input.fileHandleForWriting.write(contentsOf: Data((password + "\n" + password + "\n").utf8)) }
+        try input.fileHandleForWriting.close()
+        let deadline = ContinuousClock.now + .seconds(15)
+        while process.isRunning && ContinuousClock.now < deadline { try await Task.sleep(for: .milliseconds(5)) }
+        guard !process.isRunning else { throw SevenZipWorkerError.timedOut }
+        #expect(process.terminationStatus == 0)
+        #expect(try Data(contentsOf: out.appendingPathComponent(folder.lastPathComponent).appendingPathComponent(source.lastPathComponent)) == bytes)
+        #expect(FileManager.default.fileExists(atPath: out.appendingPathComponent(folder.lastPathComponent).appendingPathComponent("empty").path))
+        if let password {
+            await #expect(throws: (any Error).self) {
+                try await provider.extractToNewDirectory(archive, at: root.appendingPathComponent("wrong-\(index)"), password: password + "wrong")
+            }
+        }
+    }
+    #expect(try Data(contentsOf: source) == bytes)
+    #expect(!(try FileManager.default.contentsOfDirectory(atPath: root.path)).contains { $0.hasPrefix(".files-create-") })
+}
+
+@Test func sevenZipSDKCreationPlanRejectsLinksAndDuplicatePaths() throws {
+    let root = try sdkRoot(); defer { try? FileManager.default.removeItem(at: root) }
+    let source = root.appendingPathComponent("source"), link = root.appendingPathComponent("link")
+    try Data("keep".utf8).write(to: source)
+    try FileManager.default.createSymbolicLink(at: link, withDestinationURL: source)
+    let destination = root.appendingPathComponent("out.7z")
+    #expect(throws: (any Error).self) { try SevenZipCreationPlan(sources: [link], destination: destination, check: {}) }
+    #expect(throws: (any Error).self) { try SevenZipCreationPlan(sources: [source, source], destination: destination, check: {}) }
+    let folder = root.appendingPathComponent("folder")
+    try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: false)
+    #expect(throws: (any Error).self) { try SevenZipCreationPlan(sources: [folder], destination: folder.appendingPathComponent("self.7z"), check: {}) }
+    let nested = folder.appendingPathComponent("link")
+    try FileManager.default.createSymbolicLink(at: nested, withDestinationURL: source)
+    #expect(throws: (any Error).self) { try SevenZipCreationPlan(sources: [folder], destination: destination, check: {}) }
+}
+
+private final class SDKCreationMutation: @unchecked Sendable {
+    let source: URL, target: URL, changeSource: Bool
+    init(source: URL, target: URL, changeSource: Bool) { self.source = source; self.target = target; self.changeSource = changeSource }
+    func apply(_ update: ArchiveProgress) {
+        guard update.phase == .publishing else { return }
+        try? Data("foreign change".utf8).write(to: changeSource ? source : target)
+    }
+}
+
+@Test(.enabled(if: hasIntegrationFixture("FILES_TEST_SEVENZIP_REFERENCE") && hasIntegrationFixture("FILES_TEST_SEVENZIP_WORKER"), "Requires native SDK and reference"))
+func sevenZipSDKCreationSourceChangeAndDestinationRacePreserveData() async throws {
+    let root = try sdkRoot(); defer { try? FileManager.default.removeItem(at: root) }
+    let source = root.appendingPathComponent("source"), provider = try sdkRealProvider()
+    for changeSource in [true, false] {
+        try Data("original".utf8).write(to: source)
+        let target = root.appendingPathComponent("out-\(changeSource).7z")
+        let mutation = SDKCreationMutation(source: source, target: target, changeSource: changeSource)
+        await #expect(throws: (any Error).self) {
+            try await provider.create(from: [source], at: target, compressionLevel: .store, password: "pw", progress: mutation.apply)
+        }
+        if changeSource { #expect(!FileManager.default.fileExists(atPath: target.path)); #expect(try String(contentsOf: source, encoding: .utf8) == "foreign change") }
+        else {
+            #expect(try String(contentsOf: target, encoding: .utf8) == "foreign change")
+            #expect(try String(contentsOf: source, encoding: .utf8) == "original")
+        }
+    }
+    #expect(!(try FileManager.default.contentsOfDirectory(atPath: root.path)).contains { $0.hasPrefix(".files-create-") })
+}
+
+@Test(.enabled(if: hasIntegrationFixture("FILES_TEST_SEVENZIP_REFERENCE") && hasIntegrationFixture("FILES_TEST_SEVENZIP_WORKER"), "Requires native SDK and reference"))
+func sevenZipSDKCreationCancellationBeforePublicationDiscardsOutput() async throws {
+    let root = try sdkRoot(); defer { try? FileManager.default.removeItem(at: root) }
+    let source = root.appendingPathComponent("source"), target = root.appendingPathComponent("cancelled.7z")
+    try Data("keep original".utf8).write(to: source)
+    let provider = try sdkRealProvider(), gate = SDKPublicationGate()
+    let task = Task { try await provider.create(from: [source], at: target, compressionLevel: .store, progress: gate.pause) }
+    let deadline = ContinuousClock.now + .seconds(10)
+    while !gate.reached, ContinuousClock.now < deadline { try await Task.sleep(for: .milliseconds(5)) }
+    #expect(gate.reached); task.cancel(); gate.release.signal()
+    await #expect(throws: CancellationError.self) { try await task.value }
+    #expect(!FileManager.default.fileExists(atPath: target.path))
+    #expect(try String(contentsOf: source, encoding: .utf8) == "keep original")
+    #expect(!(try FileManager.default.contentsOfDirectory(atPath: root.path)).contains { $0.hasPrefix(".files-create-") })
 }

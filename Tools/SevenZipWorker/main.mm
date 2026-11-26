@@ -7,6 +7,7 @@
 #include <math.h>
 #include <fcntl.h>
 #include <sys/stat.h>
+#include <vector>
 
 static const size_t RequestLimit = 1024 * 1024, ResponseLimit = 8 * 1024 * 1024;
 static ssize_t readExact(void *bytes, size_t count) {
@@ -86,15 +87,66 @@ static int outputBytes(void *context, const void *bytes, size_t length) {
     return 1;
 }
 
+static bool unsignedText(id value, uint64_t *number) {
+    if (!text(value, false)) return false;
+    const char *bytes = [value UTF8String];
+    for (const char *p = bytes; *p; ++p) if (*p < '0' || *p > '9') return false;
+    char *end = nullptr; errno = 0;
+    unsigned long long result = strtoull(bytes, &end, 10);
+    if (errno || *end) return false;
+    *number = result; return true;
+}
+static int createArchive(const char *library, int output, NSDictionary *request) {
+    NSSet *allowed = [NSSet setWithArray:@[@"version", @"operation", @"items", @"password", @"level", @"encryptHeader"]];
+    id password = request[@"password"], level = request[@"level"], header = request[@"encryptHeader"], items = request[@"items"];
+    if (![[NSSet setWithArray:request.allKeys] isSubsetOfSet:allowed] ||
+        ![items isKindOfClass:[NSArray class]] || [items count] == 0 || [items count] > 100000 ||
+        !integer(level, 0, 9) || ![@[@0, @1, @3, @5, @7, @9] containsObject:level] ||
+        ![header isKindOfClass:[NSNumber class]] || CFGetTypeID((__bridge CFTypeRef)header) != CFBooleanGetTypeID() ||
+        (password && password != [NSNull null] && !text(password, false)) ||
+        ([header boolValue] && ![password isKindOfClass:[NSString class]])) return 6;
+    std::vector<SevenZipCreateItem> entries;
+    uint64_t total = 0;
+    NSMutableSet *paths = [NSMutableSet set];
+    NSSet *itemKeys = [NSSet setWithArray:@[@"source", @"path", @"device", @"inode", @"size", @"modifiedSeconds", @"modifiedNanos", @"changedSeconds", @"changedNanos", @"mode", @"directory"]];
+    for (id item in items) {
+        if (![item isKindOfClass:[NSDictionary class]] || ![[NSSet setWithArray:[item allKeys]] isEqualToSet:itemKeys] ||
+            !text(item[@"source"], false) || ![item[@"source"] hasPrefix:@"/"] || !text(item[@"path"], false) ||
+            [item[@"path"] hasPrefix:@"/"] || [paths containsObject:item[@"path"]] ||
+            !integer(item[@"size"], 0, 8000000000LL) || !integer(item[@"mode"], 0, UINT32_MAX) ||
+            !integer(item[@"modifiedSeconds"], -11644473600LL, 100000000000LL) ||
+            !integer(item[@"changedSeconds"], -11644473600LL, 100000000000LL) ||
+            !integer(item[@"modifiedNanos"], 0, 999999999) || !integer(item[@"changedNanos"], 0, 999999999) ||
+            !integer(item[@"directory"], 0, 1)) return 6;
+        for (NSString *part in [item[@"path"] componentsSeparatedByString:@"/"]) {
+            if (!part.length || [part isEqual:@"."] || [part isEqual:@".."] || [part containsString:@"\\"]) return 6;
+        }
+        SevenZipCreateItem entry = {};
+        if (!unsignedText(item[@"device"], &entry.device) || !unsignedText(item[@"inode"], &entry.inode)) return 6;
+        entry.source = [item[@"source"] UTF8String]; entry.path = [item[@"path"] UTF8String];
+        entry.size = [item[@"size"] unsignedLongLongValue]; entry.mode = [item[@"mode"] unsignedIntValue];
+        entry.modifiedSeconds = [item[@"modifiedSeconds"] longLongValue]; entry.modifiedNanos = [item[@"modifiedNanos"] unsignedIntValue];
+        entry.changedSeconds = [item[@"changedSeconds"] longLongValue]; entry.changedNanos = [item[@"changedNanos"] unsignedIntValue];
+        entry.directory = [item[@"directory"] intValue];
+        if (entry.directory && entry.size) return 6;
+        total += entry.size; if (total > 8000000000ULL) return 7;
+        entries.push_back(entry); [paths addObject:item[@"path"]];
+    }
+    return SevenZipCreate(library, output, entries.data(), (uint32_t)entries.size(),
+        [password isKindOfClass:[NSString class]] ? [password UTF8String] : nullptr, [level intValue], [header boolValue]);
+}
+
 int main(int argc, const char *argv[]) {
     @autoreleasepool {
         signal(SIGPIPE, SIG_IGN);
         int outputDescriptor = -1;
-        if (argc == 4 && strcmp(argv[2], "--output-fd") == 0) {
+        bool creation = argc == 4 && strcmp(argv[2], "--create-output-fd") == 0;
+        if (argc == 4 && (creation || strcmp(argv[2], "--output-fd") == 0)) {
             char *end = nullptr; long value = strtol(argv[3], &end, 10);
             struct stat info;
             if (!*argv[3] || *end || value < 3 || value > INT_MAX || fstat((int)value, &info) != 0 ||
-                !S_ISFIFO(info.st_mode) || (fcntl((int)value, F_GETFL) & O_ACCMODE) != O_WRONLY) {
+                (creation ? (!S_ISREG(info.st_mode) || info.st_size != 0 || info.st_nlink != 1 || lseek((int)value, 0, SEEK_CUR) != 0)
+                          : !S_ISFIFO(info.st_mode)) || (fcntl((int)value, F_GETFL) & O_ACCMODE) != O_WRONLY) {
                 reply(failure(@"output-descriptor")); return 1;
             }
             outputDescriptor = (int)value;
@@ -115,6 +167,12 @@ int main(int argc, const char *argv[]) {
                 id request = [NSJSONSerialization JSONObjectWithData:data options:0 error:nil];
                 if (![request isKindOfClass:[NSDictionary class]] || !integer(request[@"version"], 1, 1) || !text(request[@"operation"], false)) {
                     reply(failure(@"invalid-request")); result = 1; break;
+                }
+                if (creation) {
+                    if (![request[@"operation"] isEqual:@"create"]) { reply(failure(@"unsupported-operation")); result = 1; break; }
+                    int error = createArchive(argv[1], outputDescriptor, request);
+                    reply(error ? failure(sdkError(error)) : @{ @"version": @1, @"ok": @YES, @"closed": @YES });
+                    result = error ? 1 : 0; break;
                 }
                 NSSet *allowed = session ? [NSSet setWithArray:@[@"version", @"operation", @"session", @"maxEntries"]]
                                          : [NSSet setWithArray:@[@"version", @"operation", @"archivePath", @"password", @"maxEntries"]];

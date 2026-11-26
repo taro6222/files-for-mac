@@ -15,6 +15,17 @@ int SevenZipExtract(void *session, uint32_t index, uint64_t expectedSize, uint64
 SevenZipSourceIdentity SevenZipIdentity(void *session);
 int SevenZipHeaderPasswordRequested(void *session);
 void SevenZipClose(void *session);
+typedef struct {
+    const char *source, *path;
+    uint64_t device, inode, size;
+    int64_t modifiedSeconds, changedSeconds;
+    uint32_t modifiedNanos, changedNanos, mode;
+    int directory;
+} SevenZipCreateItem;
+// Output is an already-created, caller-owned seekable file. No output paths are opened.
+int SevenZipCreate(const char *library, int output, const SevenZipCreateItem *items, uint32_t count,
+                   const char *password, int level, int encryptHeader);
+
 #ifdef __cplusplus
 }
 #endif

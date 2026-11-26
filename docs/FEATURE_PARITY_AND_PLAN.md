@@ -229,3 +229,5 @@ PR 또는 변경 단위에는 기능 ID, 바뀐 동작, 테스트 결과, UI 캡
 [번들 SDK 런타임 resolver](verification/m7/INCREMENT_349.md)는 Security API의 앱/구성 요소 서명·identifier/Team 정책과 private 경로·manifest·해시·소스 pin 검증을 연결했다. 선택한 CodeDirectory/manifest identity를 고정하고 매 작업 전에 재검증하며 CLI/PATH 탐색을 사용하지 않는다. ARM 번들 포함 검사 19개·기본 CI 선택 14개, Core 성공 396개·환경 건너뜀 19개와 Debug/Release가 통과했다. 직전 EOF 회귀 9개는 macOS 15 ARM·Intel 실제 보고서 모두 통과했다. 새 resolver의 최신 두 CPU·실제 Developer ID·UI/배치 연결·메모리 격리와 정식 출시는 미완료다.
 
 [7z 기존 폴더 게시와 암호 UI 연결](verification/m7/INCREMENT_350.md)은 검증된 SDK 선택·헤더 암호 목록 열기·개별/일괄 추출과 here/smart/child 배치를 연결했다. 부분 게시 충돌/취소 rollback과 변경 항목 보존, child 이름 충돌 보존도 구현했다. 로컬 SDK 검사 23개·Core 성공 400개·환경 건너뜀 19개와 Debug/Release가 통과했다. 새 UI 검사 6개는 원격 실행 대기이며 제품 UI 수용 완료로 표시하지 않는다. 사용자 Mac에서 장시간 시험이나 GUI 반복 시험을 재시작하지 않았다. 생성/세부 옵션/분할·메타데이터·자원 격리·정식 배포는 남아 있다.
+
+[7z 암호 생성과 생성 화면 연결](verification/m7/INCREMENT_351.md)은 검증된 SDK로 여섯 압축 수준·Unicode 암호·선택적 파일 이름 암호화를 생성 UI에 연결했다. 원본/출력 identity 검증, 충돌 시 덮어쓰기 거부와 취소 정리를 유지한다. native SDK/번들 검사 27개와 Debug/Release·번들 서명 검증이 통과했다. 실제 공식 7-Zip으로 여섯 생성 결과를 복원했다. 새 UI 검사는 원격 수용 대기이며 로컬 GUI·장시간 시험 앱을 다시 실행하지 않았다. 세부 옵션/분할·메타데이터·자원 격리·정식 출시는 미완료다.

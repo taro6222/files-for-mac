@@ -21,6 +21,62 @@ public struct SevenZipArchiveProvider: Sendable {
         executable = verifiedExecutable; self.library = library; self.timeout = timeout; verifiedBundle = bundle; verifiedIdentity = identity
     }
 
+    /// Create a 7z archive in a private file and atomically publish without replacement.
+    /// Passwords travel only through the private framed request pipe, never argv/environment.
+    public func create(from sources: [URL], at destination: URL, compressionLevel: ArchiveCompressionLevel = .normal,
+                       password: String? = nil, encryptHeader: Bool = true,
+                       progress: ArchiveProgressHandler? = nil) async throws -> URL {
+        guard destination.isFileURL, password == nil || (password?.isEmpty == false && password?.utf8.contains(0) == false) else {
+            throw SevenZipWorkerError.invalidConfiguration
+        }
+        let parent = try sevenZipCanonicalDirectory(destination.deletingLastPathComponent())
+        let target = parent.appendingPathComponent(destination.lastPathComponent)
+        let parentFD = Darwin.open(parent.path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
+        guard parentFD >= 0 else { throw ZipArchiveError.destinationNotDirectory }
+        defer { Darwin.close(parentFD) }
+        var existing = stat()
+        guard fstatat(parentFD, target.lastPathComponent, &existing, AT_SYMLINK_NOFOLLOW) != 0 && errno == ENOENT else {
+            throw ZipArchiveError.destinationConflict(target.lastPathComponent)
+        }
+        let name = ".files-create-\(UUID().uuidString).7z"
+        let fd = openat(parentFD, name, O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC, 0o600)
+        guard fd >= 0 else { throw SevenZipWorkerError.ioFailure }
+        defer { Darwin.close(fd) }
+        var identity = stat()
+        guard fstat(fd, &identity) == 0 else { throw SevenZipWorkerError.ioFailure }
+        let device = identity.st_dev, inode = identity.st_ino
+        defer {
+            var current = stat()
+            if fstatat(parentFD, name, &current, AT_SYMLINK_NOFOLLOW) == 0 && current.st_dev == device && current.st_ino == inode {
+                _ = unlinkat(parentFD, name, 0)
+            }
+        }
+        return try await perform(outputFD: fd) { session in
+            let plan = try SevenZipCreationPlan(sources: sources, destination: target, check: session.check)
+            progress?(.init(phase: .writing, completedEntries: 0, totalEntries: plan.items.count,
+                            completedBytes: 0, totalBytes: plan.totalBytes, currentPath: nil))
+            try session.check()
+            try session.create(plan, level: compressionLevel, password: password, encryptHeader: encryptHeader && password != nil)
+            progress?(.init(phase: .publishing, completedEntries: plan.items.count, totalEntries: plan.items.count,
+                            completedBytes: plan.totalBytes, totalBytes: plan.totalBytes, currentPath: target.lastPathComponent))
+            try plan.verify(check: session.check)
+            var held = stat(), current = stat(), heldParent = stat(), pathParent = stat()
+            guard fstat(fd, &held) == 0, held.st_size > 0, held.st_nlink == 1,
+                  fstatat(parentFD, name, &current, AT_SYMLINK_NOFOLLOW) == 0,
+                  current.st_dev == device, current.st_ino == inode,
+                  fstat(parentFD, &heldParent) == 0, lstat(parent.path, &pathParent) == 0,
+                  heldParent.st_dev == pathParent.st_dev, heldParent.st_ino == pathParent.st_ino else {
+                throw SevenZipWorkerError.ioFailure
+            }
+            try session.check()
+            guard renameatx_np(parentFD, name, parentFD, target.lastPathComponent, UInt32(RENAME_EXCL)) == 0 else {
+                if errno == EEXIST { throw ZipArchiveError.destinationConflict(target.lastPathComponent) }
+                throw SevenZipWorkerError.ioFailure
+            }
+            return destination
+        }
+    }
+
     public func entries(at archive: URL, password: String? = nil) async throws -> [ArchiveEntryDescriptor] {
         try await perform { session in
             let listed = try session.open(archive, password: password)
@@ -95,7 +151,7 @@ public struct SevenZipArchiveProvider: Sendable {
         }
     }
 
-    private func perform<T: Sendable>(_ body: @escaping @Sendable (SevenZipSession) throws -> T) async throws -> T {
+    private func perform<T: Sendable>(outputFD: Int32? = nil, _ body: @escaping @Sendable (SevenZipSession) throws -> T) async throws -> T {
         let control = SevenZipProcessControl()
         return try await withTaskCancellationHandler(operation: {
             try Task.checkCancellation()
@@ -109,7 +165,7 @@ public struct SevenZipArchiveProvider: Sendable {
                             let locations = try SevenZipBundleVerifier.verify(verifiedBundle, check: control.check)
                             guard locations.worker == executable, locations.library == library, locations.identity == verifiedIdentity else { throw SevenZipBundleError.changedBundle }
                         }
-                        let session = try SevenZipSession(provider: self, control: control)
+                        let session = try SevenZipSession(provider: self, control: control, outputFD: outputFD)
                         defer { session.stop() }
                         return try body(session)
                     })
@@ -174,7 +230,7 @@ private final class SevenZipSession {
     private var requestFD: Int32 = -1, responseFD: Int32 = -1, dataFD: Int32 = -1, errorFD: Int32 = -1
     private var token: String?
     private var diagnosticsEnded = false
-    init(provider: SevenZipArchiveProvider, control: SevenZipProcessControl) throws {
+    init(provider: SevenZipArchiveProvider, control: SevenZipProcessControl, outputFD: Int32? = nil) throws {
         self.control = control
         let now = DispatchTime.now().uptimeNanoseconds
         guard provider.timeout <= 86_400 else { throw SevenZipWorkerError.invalidConfiguration }
@@ -193,19 +249,25 @@ private final class SevenZipSession {
             }
             pipes.append(contentsOf: normalized)
         }
+        var outputDuplicate: Int32?
+        if let outputFD {
+            let duplicate = fcntl(outputFD, F_DUPFD_CLOEXEC, 10)
+            guard duplicate >= 10 else { throw SevenZipWorkerError.ioFailure }
+            outputDuplicate = duplicate; pipes.append(duplicate)
+        }
         var actions: posix_spawn_file_actions_t?, attributes: posix_spawnattr_t?
         guard posix_spawn_file_actions_init(&actions) == 0 else { throw SevenZipWorkerError.ioFailure }
         defer { posix_spawn_file_actions_destroy(&actions) }
         guard posix_spawnattr_init(&attributes) == 0 else { throw SevenZipWorkerError.ioFailure }
         defer { posix_spawnattr_destroy(&attributes) }
-        for (source, target) in [(pipes[0], Int32(0)), (pipes[3], 1), (pipes[5], 2), (pipes[7], 3)] {
+        for (source, target) in [(pipes[0], Int32(0)), (pipes[3], 1), (pipes[5], 2), (outputDuplicate ?? pipes[7], 3)] {
             guard posix_spawn_file_actions_adddup2(&actions, source, target) == 0 else { throw SevenZipWorkerError.ioFailure }
         }
         for fd in pipes {
             guard posix_spawn_file_actions_addclose(&actions, fd) == 0 else { throw SevenZipWorkerError.ioFailure }
         }
         guard posix_spawnattr_setflags(&attributes, Int16(POSIX_SPAWN_CLOEXEC_DEFAULT)) == 0 else { throw SevenZipWorkerError.ioFailure }
-        var arguments: [UnsafeMutablePointer<CChar>?] = [provider.executable.path, provider.library.path, "--output-fd", "3"].map { $0.withCString { strdup($0) } } + [nil]
+        var arguments: [UnsafeMutablePointer<CChar>?] = [provider.executable.path, provider.library.path, outputFD == nil ? "--output-fd" : "--create-output-fd", "3"].map { $0.withCString { strdup($0) } } + [nil]
         var environment: [UnsafeMutablePointer<CChar>?] = ["LANG=en_US.UTF-8", "LC_ALL=en_US.UTF-8", "PATH=/usr/bin:/bin"].map { $0.withCString { strdup($0) } } + [nil]
         defer { for item in arguments + environment { free(item) } }
         var pid: pid_t = 0
@@ -333,6 +395,16 @@ private final class SevenZipSession {
         try send(["version": 1, "operation": "close", "session": token])
         let response = try receive()
         guard response.closed == true else { throw SevenZipWorkerError.invalidResponse }
+        try waitForExit()
+        self.token = nil
+    }
+    func create(_ plan: SevenZipCreationPlan, level: ArchiveCompressionLevel, password: String?, encryptHeader: Bool) throws {
+        try send(["version": 1, "operation": "create", "items": plan.items.map(\.request), "level": level.rawValue,
+                  "password": password as Any? ?? NSNull(), "encryptHeader": encryptHeader])
+        guard try receive().closed == true else { throw SevenZipWorkerError.invalidResponse }
+        try waitForExit()
+    }
+    private func waitForExit() throws {
         while true {
             try check()
             if let status = control.reap() {
@@ -349,7 +421,6 @@ private final class SevenZipSession {
             repeat { count = Darwin.read(fd, &byte, 1) } while count < 0 && errno == EINTR
             guard count == 0 else { throw SevenZipWorkerError.invalidResponse }
         }
-        self.token = nil
     }
 }
 

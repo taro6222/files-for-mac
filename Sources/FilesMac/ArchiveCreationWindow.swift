@@ -6,8 +6,16 @@ import UniformTypeIdentifiers
 final class ArchiveSaveOptionsView: NSStackView, NSOpenSavePanelDelegate {
     let formatButton = NSPopUpButton()
     let levelButton = NSPopUpButton()
-    let encryptionButton = NSButton(checkboxWithTitle: L("암호화 (ZIP)", "Encrypt (ZIP)"), target: nil, action: nil)
+    let encryptionButton = NSButton(checkboxWithTitle: L("암호화", "Encrypt"), target: nil, action: nil)
     let passwordInput = ArchivePasswordView()
+    let headerEncryptionButton = NSButton(checkboxWithTitle: L("파일 이름 암호화 (7z)", "Encrypt file names (7z)"), target: nil, action: nil)
+    var encryptHeader: Bool { selectedFormat == .sevenZip && encryptionButton.state == .on && headerEncryptionButton.state == .on }
+    private var supportsSevenZipEncryption: Bool {
+#if DEBUG
+        if ProcessInfo.processInfo.environment["FILES_UI_QA_SEVENZIP_BUNDLE"] != nil { return true }
+#endif
+        return Bundle.main.object(forInfoDictionaryKey: "FilesArchiveSDKVersion") != nil
+    }
     private let passwordNote = NSTextField(wrappingLabelWithString: L("파일 이름은 암호화되지 않습니다.", "File names are not encrypted."))
     var compressionLevel: ArchiveCompressionLevel { ArchiveCompressionLevel.allCases[levelButton.indexOfSelectedItem] }
     private weak var panel: NSSavePanel?
@@ -42,7 +50,8 @@ final class ArchiveSaveOptionsView: NSStackView, NSOpenSavePanelDelegate {
         panel.allowedContentTypes = [.zip]
         panel.allowsOtherFileTypes = false
         encryptionButton.target = self; encryptionButton.action = #selector(changeEncryption(_:))
-        addArrangedSubview(encryptionButton); addArrangedSubview(passwordInput); addArrangedSubview(passwordNote)
+        addArrangedSubview(encryptionButton); addArrangedSubview(passwordInput); addArrangedSubview(headerEncryptionButton); addArrangedSubview(passwordNote)
+        headerEncryptionButton.state = .on; headerEncryptionButton.isHidden = true
         passwordInput.isHidden = true; passwordNote.isHidden = true
         passwordNote.textColor = .secondaryLabelColor; passwordNote.font = .systemFont(ofSize: 11)
         panel.delegate = self
@@ -51,7 +60,7 @@ final class ArchiveSaveOptionsView: NSStackView, NSOpenSavePanelDelegate {
 
     func panel(_ sender: Any, validate url: URL) throws {
         if encryptionButton.state == .on {
-            guard selectedFormat == .zip else { throw ZipArchiveError.unsupportedEncryption }
+            guard selectedFormat == .zip || supportsSevenZipEncryption else { throw ZipArchiveError.unsupportedEncryption }
             guard !passwordInput.value.isEmpty && !passwordInput.value.utf8.contains(0) else {
                 throw NSError(domain: "FilesMac.Archive", code: 1, userInfo: [NSLocalizedDescriptionKey: L("암호를 입력하세요.", "Enter a password.")])
             }
@@ -63,15 +72,16 @@ final class ArchiveSaveOptionsView: NSStackView, NSOpenSavePanelDelegate {
     }
     func clearPassword() {
         passwordInput.clear(); encryptionButton.state = .off
-        passwordInput.isHidden = true; passwordNote.isHidden = true
+        passwordInput.isHidden = true; passwordNote.isHidden = true; headerEncryptionButton.isHidden = true
         formatButton.item(at: 1)?.isEnabled = true
     }
     @objc private func changeEncryption(_ sender: NSButton) {
-        guard selectedFormat == .zip else { sender.state = .off; clearPassword(); return }
+        guard selectedFormat == .zip || supportsSevenZipEncryption else { sender.state = .off; clearPassword(); return }
         let encrypted = sender.state == .on
         if !encrypted { passwordInput.clear() }
         passwordInput.isHidden = !encrypted; passwordNote.isHidden = !encrypted
-        formatButton.item(at: 1)?.isEnabled = !encrypted
+        headerEncryptionButton.isHidden = !encrypted || selectedFormat != .sevenZip
+        formatButton.item(at: 1)?.isEnabled = !encrypted || supportsSevenZipEncryption
     }
 
     @objc private func changeLevel(_ sender: NSPopUpButton) {
@@ -82,7 +92,7 @@ final class ArchiveSaveOptionsView: NSStackView, NSOpenSavePanelDelegate {
     @objc private func changeFormat(_ sender: NSPopUpButton) {
         guard formats.indices.contains(sender.indexOfSelectedItem), let panel else { return }
         let format = formats[sender.indexOfSelectedItem]
-        if encryptionButton.state == .on && format != .zip {
+        if encryptionButton.state == .on && format != .zip && !supportsSevenZipEncryption {
             sender.selectItem(at: formats.firstIndex(of: selectedFormat)!); return
         }
         guard format != selectedFormat, let type = UTType(filenameExtension: format.rawValue) else { return }
@@ -93,7 +103,11 @@ final class ArchiveSaveOptionsView: NSStackView, NSOpenSavePanelDelegate {
         panel.allowedContentTypes = [type]
         panel.nameFieldStringValue = name.isEmpty ? "" : name + "." + format.rawValue
         selectedFormat = format
-        encryptionButton.isEnabled = format == .zip
+        encryptionButton.isEnabled = format == .zip || supportsSevenZipEncryption
+        headerEncryptionButton.isHidden = encryptionButton.state != .on || format != .sevenZip
+        passwordNote.stringValue = format == .sevenZip
+            ? L("파일 이름 암호화를 끄면 암호 없이 목록을 볼 수 있습니다.", "When file name encryption is off, the file list is visible without a password.")
+            : L("파일 이름은 암호화되지 않습니다.", "File names are not encrypted.")
     }
 }
 
@@ -108,17 +122,26 @@ final class ArchiveCreationWindow: NSWindowController, NSWindowDelegate {
     private var task: Task<Void, Never>?
     private var running = true
     private var succeeded = false
+    private var pendingClose = false
 
-    static func start(sources: [URL], destination: URL, compressionLevel: ArchiveCompressionLevel? = nil, password: String? = nil, completion: @escaping @MainActor () -> Void) {
+    static func start(sources: [URL], destination: URL, compressionLevel: ArchiveCompressionLevel? = nil, password: String? = nil, encryptHeader: Bool = true, completion: @escaping @MainActor () -> Void) {
         guard !sources.isEmpty, !isRunning else { return }
         let controller = ArchiveCreationWindow(sources: sources, destination: destination)
         operations.append(controller); controller.showWindow(nil); controller.window?.makeKeyAndOrderFront(nil)
         controller.task = Task { [weak controller] in
             do {
-                _ = try await ZipArchiveProvider().create(from: sources, at: destination, compressionLevel: compressionLevel, password: password) { [weak controller] update in
+                let backend = try await ArchiveReadBackend.resolve(for: destination)
+                let update: ArchiveProgressHandler = { [weak controller] update in
                     Task { @MainActor [weak controller] in controller?.update(update) }
                 }
-                guard let controller, !Task.isCancelled else { return }
+                switch backend {
+                case .sevenZip(let provider):
+                    _ = try await provider.create(from: sources, at: destination, compressionLevel: compressionLevel ?? .normal,
+                                                  password: password, encryptHeader: encryptHeader, progress: update)
+                case .system:
+                    _ = try await ZipArchiveProvider().create(from: sources, at: destination, compressionLevel: compressionLevel, password: password, progress: update)
+                }
+                guard let controller else { return }
                 controller.finish(success: true, message: L("압축 파일 생성을 완료했습니다.", "Archive created.")); completion()
             } catch is CancellationError {
                 controller?.finish(success: false, message: L("생성을 중단했습니다.", "Creation stopped."))
@@ -159,8 +182,9 @@ final class ArchiveCreationWindow: NSWindowController, NSWindowDelegate {
     }
     private func finish(success: Bool, message: String) {
         running = false; succeeded = success; progress.stopAnimation(nil); progress.isIndeterminate = false; progress.doubleValue = success ? 1 : 0; label.stringValue = message; cancelButton.title = L("닫기", "Close"); cancelButton.isEnabled = true
+        if pendingClose { close() }
     }
-    func windowShouldClose(_ sender: NSWindow) -> Bool { if running { NSSound.beep(); return false }; return true }
+    func windowShouldClose(_ sender: NSWindow) -> Bool { if running { pendingClose = true; cancel(nil); return false }; return true }
     func windowWillClose(_ notification: Notification) { Self.operations.removeAll { $0 === self } }
 #if DEBUG
     static var qaLatest: ArchiveCreationWindow? { operations.last }

@@ -1901,8 +1901,9 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         panel.beginSheetModal(for: window) { [weak self] response in
             defer { options?.clearPassword() }
             guard response == .OK, let destination = panel.url, let self else { return }
+            let encryptHeader = options?.encryptHeader ?? true
             let password = options?.takePassword()
-            ArchiveCreationWindow.start(sources: sources, destination: destination, compressionLevel: options?.compressionLevel, password: password) { self.refreshActivePane() }
+            ArchiveCreationWindow.start(sources: sources, destination: destination, compressionLevel: options?.compressionLevel, password: password, encryptHeader: encryptHeader) { self.refreshActivePane() }
         }
     }
     private static func archiveSavePanel(sources: [URL], parent: URL, preferences: BrowserPreferences? = nil) -> NSSavePanel {
@@ -5665,9 +5666,10 @@ extension BrowserWindow {
                 options.encryptionButton.performClick(nil)
                 var rejectsEmpty = false
                 do { try options.panel(encryptionPanel, validate: encryptedByUI) } catch { rejectsEmpty = true }
-                let excludesSevenZip = options.formatButton.item(at: 1)?.isEnabled == false
+                let allowsSevenZip = options.formatButton.item(at: 1)?.isEnabled == true
                 options.formatButton.selectItem(at: 1); NSApp.sendAction(options.formatButton.action!, to: options.formatButton.target, from: options.formatButton)
-                checks["archiveEncryptionValidationAndFormatGate"] = rejectsEmpty && excludesSevenZip && options.formatButton.indexOfSelectedItem == 0 && encryptionPanel.allowedContentTypes == [.zip]
+                checks["archiveEncryptionValidationAndFormatGate"] = rejectsEmpty && allowsSevenZip && options.formatButton.indexOfSelectedItem == 1 && options.encryptHeader && !options.headerEncryptionButton.isHidden
+                options.formatButton.selectItem(at: 0); NSApp.sendAction(options.formatButton.action!, to: options.formatButton.target, from: options.formatButton)
                 let testPassword = "QA-342-한글-password"
                 options.passwordInput.value = testPassword
                 try options.panel(encryptionPanel, validate: encryptedByUI)
@@ -5754,7 +5756,7 @@ extension BrowserWindow {
             } else {
                 for key in ["archiveEncryptionValidationAndFormatGate", "archivePasswordRevealAndClear", "archiveEncryptedCreation", "archiveEncryptedBrowserWrongPasswordAndRetry", "archiveEncryptedBrowserCancellationAndStop", "archiveEncryptedBatchExtractionAndCancel"] { checks[key] = false }
             }
-            let sevenZipKeys = ["sevenZipEncryptedBrowseAndRetry", "sevenZipEncryptedExtractAndCancel", "sevenZipBatchPlacement", "sevenZipChildCollision", "sevenZipHeaderCancellation", "sevenZipPasswordCapability"]
+            let sevenZipKeys = ["sevenZipEncryptedBrowseAndRetry", "sevenZipEncryptedExtractAndCancel", "sevenZipBatchPlacement", "sevenZipChildCollision", "sevenZipHeaderCancellation", "sevenZipPasswordCapability", "sevenZipEncryptedCreationOptionsAndRoundTrip"]
             if let referencePath = ProcessInfo.processInfo.environment["FILES_UI_QA_SEVENZIP_REFERENCE"],
                ProcessInfo.processInfo.environment["FILES_UI_QA_SEVENZIP_BUNDLE"] != nil {
                 let source = destination.appendingPathComponent("sdk-ui-source"), archive = destination.appendingPathComponent("sdk-encrypted.7z")
@@ -5828,8 +5830,38 @@ extension BrowserWindow {
                 let capabilities = ArchiveCapabilitiesWindow(); capabilities.present()
                 let supportStart = ContinuousClock.now
                 while capabilities.qaSevenZipPassword == L("확인 중", "Checking") && supportStart.duration(to: .now) < .seconds(5) { try await Task.sleep(for: .milliseconds(10)) }
-                checks[sevenZipKeys[5]] = capabilities.qaSevenZipPassword == L("추출", "Extract")
-                capabilities.close(); window.makeKeyAndOrderFront(nil)
+                checks[sevenZipKeys[5]] = capabilities.qaSevenZipPassword == L("생성·추출", "Create/extract")
+                capabilities.close()
+                let createdArchive = destination.appendingPathComponent("sdk-created-by-ui.7z")
+                let savePanel = Self.archiveSavePanel(sources: [source], parent: destination)
+                if let options = savePanel.accessoryView as? ArchiveSaveOptionsView {
+                    options.formatButton.selectItem(at: 1); NSApp.sendAction(options.formatButton.action!, to: options.formatButton.target, from: options.formatButton)
+                    options.encryptionButton.performClick(nil); options.passwordInput.value = password
+                    try options.panel(savePanel, validate: createdArchive)
+                    let encryptedHeader = options.encryptHeader
+                    options.headerEncryptionButton.performClick(nil)
+                    let headerCanBeDisabled = !options.encryptHeader
+                    options.headerEncryptionButton.performClick(nil)
+                    options.appearance = window.effectiveAppearance
+                    try capture("sevenzip-creation-options", view: options, backingColor: .windowBackgroundColor)
+                    let creationPassword = options.takePassword()
+                    ArchiveCreationWindow.start(sources: [source], destination: createdArchive, compressionLevel: .fast,
+                                                password: creationPassword, encryptHeader: encryptedHeader) {}
+                    let start = ContinuousClock.now
+                    while ArchiveCreationWindow.qaLatest?.qaRunning == true && start.duration(to: .now) < .seconds(15) { try await Task.sleep(for: .milliseconds(10)) }
+                    let creationSucceeded = ArchiveCreationWindow.qaLatest?.qaSucceeded == true
+                    if ArchiveCreationWindow.qaLatest?.qaRunning == false { ArchiveCreationWindow.qaLatest?.close() }
+                    if creationSucceeded, case .sevenZip(let sdk) = try await ArchiveReadBackend.resolve(for: createdArchive) {
+                        let restored = destination.appendingPathComponent("sdk-created-restored")
+                        _ = try await sdk.extractToNewDirectory(createdArchive, at: restored, password: password)
+                        var needsPassword = false
+                        do { _ = try await sdk.entries(at: createdArchive) }
+                        catch SevenZipWorkerError.worker("password-required") { needsPassword = true }
+                        let restoredPayload = try Data(contentsOf: restored.appendingPathComponent(source.lastPathComponent).appendingPathComponent(filename))
+                        checks[sevenZipKeys[6]] = encryptedHeader && headerCanBeDisabled && needsPassword && options.passwordInput.value.isEmpty && restoredPayload == payload
+                    } else { checks[sevenZipKeys[6]] = false }
+                } else { checks[sevenZipKeys[6]] = false }
+                window.makeKeyAndOrderFront(nil)
             } else { for key in sevenZipKeys { checks[key] = false } }
             try await Task.sleep(for: .milliseconds(300))
             let metadataRefresh = ContinuousClock.now
