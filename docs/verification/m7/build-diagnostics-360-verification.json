@@ -1,0 +1,141 @@
+{
+  "increment": 360,
+  "status": "owned build diagnostic supervisor implemented and smoke verified; remote timeout root cause pending",
+  "sourcesSHA256": {
+    "scripts/build-with-diagnostics.py": "d620842ef436f8f76fd283a9ab5b146181bc229f74c127d50faa5f20f8652fc7",
+    "scripts/verify-build-diagnostics.py": "8a2ff3bc561ad7e4eb414d666ca3dda4b4706c693a5e351c75f069778e84f7d2",
+    ".github/workflows/macos.yml": "ead8ad34ee37bf1f80dee02289f58b8d3c3a5631f170b52645eb604ebaa5f391"
+  },
+  "verification": {
+    "passed": true,
+    "checks": {
+      "successExitPropagated": true,
+      "successNoRestart": true,
+      "CompilerOutputPreserved": true,
+      "failureExitPropagated": true,
+      "failureNoRestart": true,
+      "observationExitPropagated": true,
+      "observationNoRestart": true,
+      "ObservationDidNotStopBuild": true,
+      "ActualOwnedProcessSample": true,
+      "SampleToolsReaped": true,
+      "CancellationFixtureReady": true,
+      "CancellationPropagated": true,
+      "CancelledBuildReaped": true,
+      "CancelledBuildChildTerminated": true,
+      "CancelledObserversReaped": true
+    },
+    "productBuildVerified": false,
+    "localGUIStarted": false
+  },
+  "evidenceSHA256": {
+    "build/build-diagnostics-360/verification-final/cancellation/observation-01/processes.json": "cea9a47c6468f36f4e44483f1c850cd2e8caf1d865c279ddf0382b2197a8850f",
+    "build/build-diagnostics-360/verification-final/cancellation/observation-01/sample-58958.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "build/build-diagnostics-360/verification-final/cancellation/result.json": "18d4e1d6bce7867b0ea8a0ef023cc77d8305d128020a1345e4e95fd1bf0526e8",
+    "build/build-diagnostics-360/verification-final/cancellation.log": "a566f3bf08172ee32cf1eafbe4ff91fd3462e5e89aca4f251baeb54976335b41",
+    "build/build-diagnostics-360/verification-final/failure/result.json": "7e04bd27a466f5eca9a40c6b00ced3c06510c538036896c6cf1ec9985d185fd0",
+    "build/build-diagnostics-360/verification-final/failure/stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "build/build-diagnostics-360/verification-final/failure/stdout.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "build/build-diagnostics-360/verification-final/fixture-child.pid": "6eacf0710a5bee936d60f31e0afafc09f40f50e81f8170ed6f5adc4ef2566c48",
+    "build/build-diagnostics-360/verification-final/fixture-parent.pid": "87bb862b0bcc75cb66f80c33174cc1e6c3edadae0fc864187e8a701f4cb209a5",
+    "build/build-diagnostics-360/verification-final/observation/observation-01/processes.json": "43db8eae414e39c0575fcff79a6c5f966444add0170f0d8d5abdd89528f8389e",
+    "build/build-diagnostics-360/verification-final/observation/observation-01/sample-58949.log": "c586cbeffa13987038df591dfdbd93e525f7ba16282c4d2971ac67be140604ef",
+    "build/build-diagnostics-360/verification-final/observation/observation-01/sample-58949.txt": "73ec9520b51d621f54193f8db96978a2def2f1bf473c9c6b1cfb6fedc1697dbf",
+    "build/build-diagnostics-360/verification-final/observation/result.json": "0d3da7e5f5600ceb41d0925c449e5745757719497a992044e830e3ed4c7293a5",
+    "build/build-diagnostics-360/verification-final/observation/stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "build/build-diagnostics-360/verification-final/observation/stdout.log": "4fc3f467d0a983beaf9a88a413ff2473136152af80546c5b6a9f458dc382bdbb",
+    "build/build-diagnostics-360/verification-final/result.json": "670c742222f2b040f0225494461ac02f14866335a29e765b5fcf2f34f3a2a524",
+    "build/build-diagnostics-360/verification-final/success/result.json": "d38b47052f13df06fe27c0384b07269caebc184c619688249a5e358fe1a70161",
+    "build/build-diagnostics-360/verification-final/success/stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "build/build-diagnostics-360/verification-final/success/stdout.log": "15ab03c06ad19bc594f3df2b727e443aa170909738dfa4278699be7c8d395ebe"
+  },
+  "remote358Observed": {
+    "runId": 45827259348,
+    "source": "d37f01e8af97cb63dab8f2e368db29431bd25946",
+    "status": "in_progress",
+    "conclusion": "",
+    "jobs": [
+      {
+        "name": "macOS 15 (arm64)",
+        "id": 139934710117,
+        "status": "completed",
+        "conclusion": "failure",
+        "activeSteps": [],
+        "completedSteps": [
+          "Set up job",
+          "Run actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803",
+          "Verify runner and toolchain",
+          "Audit parity inventories",
+          "Verify Spotlight fixture ownership guards",
+          "Verify archive reference acquisition guards",
+          "Verify private SDK bundle guards",
+          "Retain Git scheduling diagnostics",
+          "Retain file promise contract diagnostics",
+          "Retain cleanup restart diagnostics",
+          "Post Run actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803",
+          "Complete job"
+        ]
+      },
+      {
+        "name": "macOS 15 (x86_64)",
+        "id": 139934711851,
+        "status": "in_progress",
+        "conclusion": "",
+        "activeSteps": [
+          "Build and launch the installed developer preview"
+        ],
+        "completedSteps": [
+          "Set up job",
+          "Run actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803",
+          "Verify runner and toolchain",
+          "Audit parity inventories",
+          "Verify Spotlight fixture ownership guards",
+          "Verify archive reference acquisition guards",
+          "Verify private SDK bundle guards",
+          "Build app and test targets",
+          "Run Swift tests",
+          "Verify Git and directory scheduling with a constrained Swift executor",
+          "Retain Git scheduling diagnostics",
+          "Verify mounted file systems and AppKit file operations",
+          "Verify AppKit file promise export contracts",
+          "Retain file promise contract diagnostics",
+          "Verify interrupted received cleanup in a fresh app process",
+          "Retain cleanup restart diagnostics"
+        ]
+      },
+      {
+        "name": "Xcode (${{ matrix.architecture }})",
+        "id": 139934712410,
+        "status": "completed",
+        "conclusion": "skipped",
+        "activeSteps": [],
+        "completedSteps": []
+      },
+      {
+        "name": "Optimized performance (${{ matrix.architecture }})",
+        "id": 139934785483,
+        "status": "completed",
+        "conclusion": "skipped",
+        "activeSteps": [],
+        "completedSteps": []
+      }
+    ]
+  },
+  "configuration": {
+    "firstObservationSeconds": 120,
+    "intervalSeconds": 240,
+    "maximumObservations": 4,
+    "maximumSamplesPerObservation": 4,
+    "observerTimeoutSeconds": 8,
+    "terminationGraceSeconds": 5,
+    "debugDeadlineMinutes": {
+      "arm64": 12,
+      "x86_64": 20
+    },
+    "previewDeadlineMinutes": 15
+  },
+  "applicationSourcesChanged": false,
+  "localGUIStarted": false,
+  "longRunStarted": false,
+  "remoteBuildPassed": false
+}

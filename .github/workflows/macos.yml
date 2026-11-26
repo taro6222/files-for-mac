@@ -124,10 +124,23 @@ jobs:
             build/sevenzip-worker-verification/
             build/sevenzip-worker/*/*.build.log
           if-no-files-found: ignore
+      - name: Verify build monitor lifecycle
+        if: github.event_name != 'workflow_dispatch' || !inputs.verify_upgrade || inputs.verify_full_appkit
+        timeout-minutes: 2
+        run: python3 scripts/verify-build-diagnostics.py --output build/build-monitor-verification
       - name: Build app and test targets
         if: github.event_name != 'workflow_dispatch' || !inputs.verify_upgrade || inputs.verify_full_appkit
         timeout-minutes: ${{ matrix.debug_build_minutes }}
-        run: swift build --build-tests --disable-sandbox -debug-info-format none
+        run: python3 scripts/build-with-diagnostics.py --output build/swift-build-diagnostics -- swift build --build-tests --disable-sandbox -debug-info-format none
+      - name: Retain build process diagnostics
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: files-build-${{ matrix.architecture }}
+          path: |
+            build/swift-build-diagnostics/
+            build/build-monitor-verification/
+          if-no-files-found: ignore
       - name: Run Swift tests
         if: github.event_name != 'workflow_dispatch' || !inputs.verify_upgrade
         timeout-minutes: 5
@@ -275,9 +288,16 @@ jobs:
           EXPECTED_ARCH: ${{ matrix.architecture }}
           FILES_VERIFY_SEVENZIP_PACKAGE: ${{ inputs.verify_full_appkit && '1' || '0' }}
         run: |
-          bash scripts/build-dmg.sh --preview
+          python3 scripts/build-with-diagnostics.py --output build/preview-build-diagnostics -- bash scripts/build-dmg.sh --preview
           python3 scripts/verify-preview-install.py build/Files-macOS-preview.dmg \
             --startup --launch-services --expect-architecture "$EXPECTED_ARCH"
+      - name: Retain preview build diagnostics
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: files-preview-build-${{ matrix.architecture }}
+          path: build/preview-build-diagnostics/
+          if-no-files-found: ignore
       - name: Retain packaged SDK execution reports
         if: always() && github.event_name == 'workflow_dispatch' && inputs.verify_full_appkit
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
