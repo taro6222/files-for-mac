@@ -165,7 +165,7 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
     private var watcher: DirectoryWatcher?
     private enum WatcherStatus { case idle, connecting, active, unavailable }
     private var watcherStatus: WatcherStatus = .idle
-    private let makeWatcher: @Sendable (URL) -> DirectoryWatcher?
+    private let makeWatcher: (@Sendable (URL) -> DirectoryWatcher?)?
     private let loadMountedVolumes: @Sendable () -> [MountedVolume]
     private var watcherTask: Task<Void, Never>?
     private var watchedURL: URL?
@@ -197,7 +197,7 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
          initialWorkspace: SplitTabState? = nil,
          loader: any DirectoryLoading = LocalFileSystem(),
          cloudProvider: CloudLocationProvider = CloudLocationProvider(),
-         makeWatcher: @escaping @Sendable (URL) -> DirectoryWatcher? = { DirectoryWatcher(url: $0) },
+         makeWatcher: (@Sendable (URL) -> DirectoryWatcher?)? = nil,
          loadMountedVolumes: @escaping @Sendable () -> [MountedVolume] = { MountedVolumeProvider().mountedVolumes() },
          openSystemURL: @escaping (URL) -> Bool = { NSWorkspace.shared.open($0) },
          undoJournalDirectory: URL? = nil,
@@ -225,6 +225,7 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         setupUI(restoresLayout: restoresFrame)
         applyAppBackground()
         model.onChange = { [weak self] in self?.render() }
+        model.onListingPrepared = { [weak self] in self?.updateWatcher() }
         preferencesToken = preferences.observe(includesRecentLocations: false) { [weak self] in self?.preferencesChanged() }
         recentLocationsToken = preferences.observeRecentLocations { [weak self] in
             guard let self else { return }
@@ -259,9 +260,9 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
                 guard let self else { return }
                 self.watcherTask?.cancel()
                 self.watcherTask = nil
-                if let watcher = self.watcher { Task.detached { watcher.stop() } }
+                if let watcher = self.watcher { DispatchQueue.global(qos: .utility).async { watcher.stop() } }
                 self.watcher = nil
-                self.model.onChange = nil; self.model.cancelLoad()
+                self.model.onChange = nil; self.model.onListingPrepared = nil; self.model.cancelLoad()
                 self.model.cancelDirectorySizeRequests()
                 self.homeFileTagTask?.cancel()
                 self.columnView.update(baseURL: nil, items: [], selection: [])
@@ -3108,28 +3109,34 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         }
     }
     private func updateWatcher(force: Bool = false) {
-        guard force || watchedURL != model.location else { return }
+        guard force || watchedURL != model.location
+            || (watcherTask == nil && watcherStatus == .connecting && model.listingWatchToken != nil) else { return }
         watcherTask?.cancel()
         watcherTask = nil
-        if let watcher { Task.detached { watcher.stop() } }
+        if let watcher { DispatchQueue.global(qos: .utility).async { watcher.stop() } }
         watcher = nil; watchedURL = model.location
         watcherStatus = model.location == nil ? .idle : .connecting
         updateStatus()
         pendingRefresh = false
-        guard let url = model.location else { return }
+        guard let url = model.location, let token = model.listingWatchToken else { return }
+        // The token was captured before the model's initial read, off MainActor.
         watcherTask = Task { [weak self, makeWatcher] in
-            // FSEventStreamCreate and symlink resolution may block on filesystem I/O.
-            let watcher = await Task.detached(priority: .utility) { makeWatcher(url) }.value
+            // Keep blocking registration off both MainActor and Swift's cooperative pool.
+            let watcher: DirectoryWatcher? = try? await FileSystemWork.run(qos: .utility) { _ in
+                if let makeWatcher { return makeWatcher(url) }
+                return DirectoryWatcher(url: url, readToken: token)
+            }
             guard !Task.isCancelled, self?.watchedURL == url else {
-                if let watcher { Task.detached { watcher.stop() } }
+                if let watcher { DispatchQueue.global(qos: .utility).async { watcher.stop() } }
                 return
             }
             self?.watcher = watcher
             self?.watcherStatus = watcher == nil ? .unavailable : .active
             self?.updateStatus()
             guard let watcher else { return }
-            // Cover changes between the initial directory read and watcher activation.
-            self?.requestWatcherRefresh(for: url)
+            // Historical events cover the read/registration gap without an unconditional
+            // second enumeration. Unsupported history and custom SinceNow factories rescan.
+            if !watcher.replaysCapturedEvents { self?.requestWatcherRefresh(for: url) }
             for await _ in watcher.events {
                 guard let self, !Task.isCancelled, self.model.location == url else { return }
                 self.requestWatcherRefresh(for: url)
@@ -5830,8 +5837,10 @@ extension BrowserWindow {
             checks["closedWindowReleased"] = releasedPeer == nil
             controller.focusFiles(nil)
             checks["remainingWindowUsable"] = window.firstResponder === controller.table && controller.model.items.count == 10_001
+            let factoryStarted = DispatchSemaphore(value: 0)
             let factoryFinished = DispatchSemaphore(value: 0)
             let delayed = BrowserWindow(preferences: preferences, restoresFrame: false, makeWatcher: { url in
+                factoryStarted.signal()
                 Thread.sleep(forTimeInterval: 0.5)
                 let watcher = DirectoryWatcher(url: url)
                 factoryFinished.signal()
@@ -5839,8 +5848,18 @@ extension BrowserWindow {
             })
             let navigationStart = ContinuousClock.now
             delayed.navigate(denied)
+            let firstNavigationSeconds = elapsed(navigationStart)
+            let factoryStartDeadline = ContinuousClock.now + .seconds(3)
+            func factoryHasStarted() -> Bool { factoryStarted.wait(timeout: .now()) == .success }
+            var started = false
+            while !started && ContinuousClock.now < factoryStartDeadline {
+                started = factoryHasStarted()
+                if !started { try await Task.sleep(for: .milliseconds(10)) }
+            }
+            let homeNavigationStart = ContinuousClock.now
             delayed.goHome(nil)
-            checks["slowWatcherDoesNotBlockNavigation"] = elapsed(navigationStart) < 0.4 && delayed.model.location == nil
+            checks["slowWatcherDoesNotBlockNavigation"] = started
+                && firstNavigationSeconds + elapsed(homeNavigationStart) < 0.4 && delayed.model.location == nil
             try await Task.sleep(for: .seconds(1))
             func factoryHasFinished() -> Bool { factoryFinished.wait(timeout: .now()) == .success }
             checks["lateWatcherDiscarded"] = factoryHasFinished()

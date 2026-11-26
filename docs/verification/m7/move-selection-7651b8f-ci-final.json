@@ -1,0 +1,150 @@
+{
+  "conclusion": "failure",
+  "headSha": "7651b8f33177957be8ca62cbdb16e0320992871f",
+  "status": "completed",
+  "url": "https://github.com/taro6222/files-for-mac/actions/runs/45725567403",
+  "jobs": [
+    {
+      "name": "Xcode (x86_64)",
+      "conclusion": "success"
+    },
+    {
+      "name": "macOS 15 (x86_64)",
+      "conclusion": "failure"
+    },
+    {
+      "name": "Xcode (arm64)",
+      "conclusion": "success"
+    },
+    {
+      "name": "macOS 15 (arm64)",
+      "conclusion": "success"
+    },
+    {
+      "name": "Optimized performance (${{ matrix.architecture }})",
+      "conclusion": "skipped"
+    }
+  ],
+  "intelCases": {
+    "ko-light": {
+      "checks": 283,
+      "failures": [
+        "folderSizeCalculation",
+        "folderSizeRequestFromDetails"
+      ],
+      "folderSize": {
+        "folderSizeAutomaticBytes": -1,
+        "folderSizeAutomaticTaskPending": true,
+        "folderSizeListingReady": false,
+        "folderSizeLoadedItemCount": 3200,
+        "folderSizeRequestButtonAvailable": false,
+        "folderSizeRequestResult": "nil",
+        "folderSizeRequestWasPending": false
+      },
+      "acl": {
+        "after": "group:ABCDEFAB-CDEF-ABCD-EFAB-CDEF0000000C:everyone:12:allow:read\ngroup:ABCDEFAB-CDEF-ABCD-EFAB-CDEF0000000C:everyone:12:allow:write",
+        "before": "group:ABCDEFAB-CDEF-ABCD-EFAB-CDEF0000000C:everyone:12:allow:read",
+        "mode": 416,
+        "ui": {
+          "accountCount": 160,
+          "accountLoading": false,
+          "entries": "group:ABCDEFAB-CDEF-ABCD-EFAB-CDEF0000000C:everyone:12:allow:read\ngroup:ABCDEFAB-CDEF-ABCD-EFAB-CDEF0000000C:everyone:12:allow:write",
+          "rulePending": false,
+          "saveEnabled": false,
+          "seconds": 0.815344865,
+          "stage": "save-requested",
+          "status": "규칙을 추가했습니다. 저장을 눌러 적용하세요."
+        },
+        "uiReturned": true
+      }
+    },
+    "ko-dark": {
+      "checks": 283,
+      "failures": [],
+      "folderSize": {
+        "folderSizeAutomaticBytes": 21,
+        "folderSizeAutomaticTaskPending": false,
+        "folderSizeListingReady": true,
+        "folderSizeLoadedItemCount": 10000,
+        "folderSizeRequestButtonAvailable": true,
+        "folderSizeRequestResult": "Optional(FilesCore.BrowserModel.DirectorySizeStatus.available(21))",
+        "folderSizeRequestWasPending": true
+      },
+      "acl": {
+        "after": "group:ABCDEFAB-CDEF-ABCD-EFAB-CDEF0000000C:everyone:12:allow:read\ngroup:ABCDEFAB-CDEF-ABCD-EFAB-CDEF0000000C:everyone:12:allow:write",
+        "before": "group:ABCDEFAB-CDEF-ABCD-EFAB-CDEF0000000C:everyone:12:allow:read",
+        "mode": 416,
+        "ui": {
+          "accountCount": 160,
+          "accountLoading": false,
+          "entries": "group:ABCDEFAB-CDEF-ABCD-EFAB-CDEF0000000C:everyone:12:allow:read\ngroup:ABCDEFAB-CDEF-ABCD-EFAB-CDEF0000000C:everyone:12:allow:write",
+          "rulePending": false,
+          "saveEnabled": false,
+          "seconds": 0.97480786,
+          "stage": "save-requested",
+          "status": "규칙을 추가했습니다. 저장을 눌러 적용하세요."
+        },
+        "uiReturned": true
+      }
+    },
+    "en-light": {
+      "checks": 283,
+      "failures": [],
+      "folderSize": {
+        "folderSizeAutomaticBytes": 21,
+        "folderSizeAutomaticTaskPending": false,
+        "folderSizeListingReady": true,
+        "folderSizeLoadedItemCount": 10000,
+        "folderSizeRequestButtonAvailable": true,
+        "folderSizeRequestResult": "Optional(FilesCore.BrowserModel.DirectorySizeStatus.available(21))",
+        "folderSizeRequestWasPending": true
+      },
+      "acl": {
+        "after": "group:ABCDEFAB-CDEF-ABCD-EFAB-CDEF0000000C:everyone:12:allow:read\ngroup:ABCDEFAB-CDEF-ABCD-EFAB-CDEF0000000C:everyone:12:allow:write",
+        "before": "group:ABCDEFAB-CDEF-ABCD-EFAB-CDEF0000000C:everyone:12:allow:read",
+        "mode": 416,
+        "ui": {
+          "accountCount": 160,
+          "accountLoading": false,
+          "entries": "group:ABCDEFAB-CDEF-ABCD-EFAB-CDEF0000000C:everyone:12:allow:read\ngroup:ABCDEFAB-CDEF-ABCD-EFAB-CDEF0000000C:everyone:12:allow:write",
+          "rulePending": false,
+          "saveEnabled": false,
+          "seconds": 0.5336486,
+          "stage": "save-requested",
+          "status": "Rule added. Choose Save to apply it."
+        },
+        "uiReturned": true
+      }
+    },
+    "en-dark": {
+      "checks": 283,
+      "failures": [],
+      "folderSize": {
+        "folderSizeAutomaticBytes": 21,
+        "folderSizeAutomaticTaskPending": false,
+        "folderSizeListingReady": true,
+        "folderSizeLoadedItemCount": 10000,
+        "folderSizeRequestButtonAvailable": true,
+        "folderSizeRequestResult": "Optional(FilesCore.BrowserModel.DirectorySizeStatus.available(21))",
+        "folderSizeRequestWasPending": true
+      },
+      "acl": {
+        "after": "group:ABCDEFAB-CDEF-ABCD-EFAB-CDEF0000000C:everyone:12:allow:read\ngroup:ABCDEFAB-CDEF-ABCD-EFAB-CDEF0000000C:everyone:12:allow:write",
+        "before": "group:ABCDEFAB-CDEF-ABCD-EFAB-CDEF0000000C:everyone:12:allow:read",
+        "mode": 416,
+        "ui": {
+          "accountCount": 160,
+          "accountLoading": false,
+          "entries": "group:ABCDEFAB-CDEF-ABCD-EFAB-CDEF0000000C:everyone:12:allow:read\ngroup:ABCDEFAB-CDEF-ABCD-EFAB-CDEF0000000C:everyone:12:allow:write",
+          "rulePending": false,
+          "saveEnabled": false,
+          "seconds": 1.038036204,
+          "stage": "save-requested",
+          "status": "Rule added. Choose Save to apply it."
+        },
+        "uiReturned": true
+      }
+    }
+  },
+  "jobLogSHA256": "719f72701f4f86b6baa9f92203389fbe6c5dbc5889ecfed8118ad1cd60989085"
+}

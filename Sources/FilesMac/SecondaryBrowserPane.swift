@@ -55,6 +55,7 @@ final class SecondaryBrowserPane: NSView, NSTableViewDataSource, NSTableViewDele
         wantsLayer = true; translatesAutoresizingMaskIntoConstraints = false
         buildUI()
         model.onChange = { [weak self] in self?.modelChanged() }
+        model.onListingPrepared = { [weak self] in self?.updateWatcher() }
         model.restore(snapshot)
         if preferences.syncFolderLayouts { applyFolderViewPreference() }
     }
@@ -202,8 +203,8 @@ final class SecondaryBrowserPane: NSView, NSTableViewDataSource, NSTableViewDele
         model.cancelDirectorySizeRequests()
         columnView.update(baseURL: nil, items: [], selection: [])
         watcherTask?.cancel(); watcherTask = nil
-        if let watcher { Task.detached { watcher.stop() } }
-        watcher = nil; watchedURL = nil; model.onChange = nil; model.cancelLoad()
+        if let watcher { DispatchQueue.global(qos: .utility).async { watcher.stop() } }
+        watcher = nil; watchedURL = nil; model.onChange = nil; model.onListingPrepared = nil; model.cancelLoad()
     }
 
     private func buildUI() {
@@ -615,19 +616,23 @@ final class SecondaryBrowserPane: NSView, NSTableViewDataSource, NSTableViewDele
         goUp()
     }
     private func updateWatcher(force: Bool = false) {
-        guard force || watchedURL != model.location else { return }
-        watcherTask?.cancel()
-        if let watcher { Task.detached { watcher.stop() } }
+        guard force || watchedURL != model.location
+            || (watcherTask == nil && watcher == nil && model.listingWatchToken != nil) else { return }
+        watcherTask?.cancel(); watcherTask = nil
+        if let watcher { DispatchQueue.global(qos: .utility).async { watcher.stop() } }
         watcher = nil; watchedURL = model.location; pendingRefresh = false
-        guard let url = model.location else { return }
+        guard let url = model.location, let token = model.listingWatchToken else { return }
         watcherTask = Task { [weak self] in
-            let watcher = await Task.detached(priority: .utility) { DirectoryWatcher(url: url) }.value
+            let watcher: DirectoryWatcher? = try? await FileSystemWork.run(qos: .utility) { _ in
+                DirectoryWatcher(url: url, readToken: token)
+            }
             guard let self, !Task.isCancelled, self.watchedURL == url else {
-                if let watcher { Task.detached { watcher.stop() } }
+                if let watcher { DispatchQueue.global(qos: .utility).async { watcher.stop() } }
                 return
             }
             self.watcher = watcher
             guard let watcher else { return }
+            if !watcher.replaysCapturedEvents { self.requestWatcherRefresh(for: url) }
             for await _ in watcher.events {
                 guard !Task.isCancelled, self.watchedURL == url, self.model.location == url else { return }
                 self.requestWatcherRefresh(for: url)

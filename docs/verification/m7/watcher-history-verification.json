@@ -1,0 +1,104 @@
+{
+  "sourceBaseSHA": "f9e4f02483ec8591d98d17f87b7a385f772e5a06",
+  "sourceFilesSHA256": {
+    "Sources/FilesCore/DirectoryWatcher.swift": "d669a0bea9ddcd51d7d301286b32f099021d65b9d1f6578c0d51cdbdb1a2fbdd",
+    "Sources/FilesCore/BrowserModel.swift": "a157d0a0fa987a7f3f180a6886547d2abaf0f9016aa255e1afe172e500f237a7",
+    "Sources/FilesMac/BrowserWindow.swift": "95d78dac49d6b88a65c76590b77f41d0caa5446adc84475afc4b2bd7ddda7ce0",
+    "Sources/FilesMac/SecondaryBrowserPane.swift": "60e7ba28f3aecd852bee0e7f4611cb47e5ca9bd48c6f9cf3fd13b1af13bae007",
+    "Tests/FilesCoreTests/DirectoryWatcherHistoryTests.swift": "463fceb1230c3981f852c5923257a0694f99c1d9cf042103a63d23b1307fbc2d"
+  },
+  "debugSHA256": "d770d0174816753f6d8b7baaeed9de50f74e743e307a0877c78e85ff74688815",
+  "releaseSHA256": "42e5bd92f7d7e33b1f64c6a09d5d7459800b9d32f9ba103819daaeb7720f9b27",
+  "swiftTests": {
+    "reported": 380,
+    "passed": 361,
+    "environmentSkipped": 19,
+    "historyGapMutationCases": 3
+  },
+  "mountedVolumeTests": 8,
+  "strictExecutorTests": 10,
+  "cases": {
+    "ko-light": {
+      "fileOperationChecks": 85,
+      "fullChecks": 283,
+      "folderSizeDiagnostics": {
+        "folderSizeAutomaticBytes": 21,
+        "folderSizeAutomaticTaskPending": false,
+        "folderSizeListingReady": true,
+        "folderSizeLoadedItemCount": 10000,
+        "folderSizeRequestButtonAvailable": true,
+        "folderSizeRequestResult": "Optional(FilesCore.BrowserModel.DirectorySizeStatus.available(21))",
+        "folderSizeRequestWasPending": true
+      },
+      "fileOperationReportSHA256": "3b769954d77f9056b324856fd277815aa28fb69244c8d71c0ae3bd52890ae76b",
+      "fullReportSHA256": "c73532d582f6275066f636044b1334079e166c90fb90a7e6db50753ca127bbb5"
+    },
+    "ko-dark": {
+      "fileOperationChecks": 85,
+      "fullChecks": 283,
+      "folderSizeDiagnostics": {
+        "folderSizeAutomaticBytes": 21,
+        "folderSizeAutomaticTaskPending": false,
+        "folderSizeListingReady": true,
+        "folderSizeLoadedItemCount": 10000,
+        "folderSizeRequestButtonAvailable": true,
+        "folderSizeRequestResult": "Optional(FilesCore.BrowserModel.DirectorySizeStatus.available(21))",
+        "folderSizeRequestWasPending": true
+      },
+      "fileOperationReportSHA256": "5bdb60000f95ddd9065b4e151dfeec519efeaf316fa58cd6dc8121a8d7d5f30a",
+      "fullReportSHA256": "0167ab6b95d8f6d2a23d97c9a426e02167342af08c191807785ae78f1e2cdaf7"
+    },
+    "en-light": {
+      "fileOperationChecks": 85,
+      "fullChecks": 283,
+      "folderSizeDiagnostics": {
+        "folderSizeAutomaticBytes": 21,
+        "folderSizeAutomaticTaskPending": false,
+        "folderSizeListingReady": true,
+        "folderSizeLoadedItemCount": 10000,
+        "folderSizeRequestButtonAvailable": true,
+        "folderSizeRequestResult": "Optional(FilesCore.BrowserModel.DirectorySizeStatus.available(21))",
+        "folderSizeRequestWasPending": true
+      },
+      "fileOperationReportSHA256": "0be0703b662a66ec7c6b1dee4b3e11a6fe86c7cd74b41066e09ec008eecb54de",
+      "fullReportSHA256": "50781c7fd268a18c935b1f54b77c370fe90f567c0474497ae0ec541e861ac2bb"
+    },
+    "en-dark": {
+      "fileOperationChecks": 85,
+      "fullChecks": 283,
+      "folderSizeDiagnostics": {
+        "folderSizeAutomaticBytes": 21,
+        "folderSizeAutomaticTaskPending": false,
+        "folderSizeListingReady": true,
+        "folderSizeLoadedItemCount": 10000,
+        "folderSizeRequestButtonAvailable": true,
+        "folderSizeRequestResult": "Optional(FilesCore.BrowserModel.DirectorySizeStatus.available(21))",
+        "folderSizeRequestWasPending": true
+      },
+      "fileOperationReportSHA256": "4cb92aec97fe6a4120f8a502fce3cd8e5c7f05e933858dfbb9268d16b39f71fa",
+      "fullReportSHA256": "c48b0a84b31a3a3eecce964318ec0eb8fcd22e0703583e1f11f7ad0a47158fcf"
+    }
+  },
+  "logsSHA256": {
+    "tests": "899359940c0236c3b623b7bf82b510d17d0bd139e7f6782ab076577b886642f0",
+    "volume-ui": "6beea79603fd7b719b694e3ca5efd1d18941eb3ef1e635ff3837c761050e3d96",
+    "strict": "2a6eb8a2d80c6d5bc4a53122e3a39f383c030b78d7df891f6c31a791cf2f4732",
+    "release": "dd60488d9b4eb68627ff66e9bb1227a70b16d789bbf90a6eb2282c48642c03c4",
+    "full-ui": "82d4a38261a62cae2c71f472bf228783fced68abc0bef3e9f2529eb3b49814cc",
+    "build": "3b3c19adfc0ad15761b005b60f339804a6fd6fea99afe49401098d7cb74abf46"
+  },
+  "guards": [
+    "Read preparation runs off MainActor and cooperative executor before enumeration.",
+    "Path/device/history UUID and non-regressing event cursor must match to replay.",
+    "Non-internal or unavailable/changed history retains initial reconciliation.",
+    "HistoryDone paths are ignored; root changes, dropped events and wrapped IDs trigger a full rescan.",
+    "Cancelled or superseded preparation does not start the obsolete loader.",
+    "Slow factory QA waits for actual start, preserves summed 0.4-second navigation budget and tests late disposal."
+  ],
+  "limitations": [
+    "No metadata keys, cloud states, sorting rules or complete-list conditions are removed.",
+    "This removes unconditional activation reads when history is valid; real change hints can still require repeated enumeration.",
+    "Local functional success does not prove the cause or resolution of the previous Intel performance/functional failures.",
+    "Latest remote acceptance, memory stability, latest-source eight-hour and signed/notarized release remain open."
+  ]
+}

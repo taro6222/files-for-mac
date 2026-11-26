@@ -66,6 +66,7 @@ public final class BrowserModel {
     public private(set) var viewMode: BrowserViewMode = .details
     public private(set) var grouping = FileGroupOptions()
     public var onChange: (() -> Void)?
+    public var onListingPrepared: (() -> Void)?
     private let loader: any DirectoryLoading
     private var generation = 0
     private var loadedLocation: URL?
@@ -77,6 +78,8 @@ public final class BrowserModel {
     public init(loader: any DirectoryLoading = LocalFileSystem()) { self.loader = loader }
     public var location: URL? { history.current.url }
     public var listingRevision: Int { generation }
+    /// Captured on a filesystem worker before enumeration, even if a view attaches later.
+    public private(set) var listingWatchToken: DirectoryWatcher.ReadToken?
     public var snapshot: TabSnapshot {
         TabSnapshot(history: history, sortOrder: sortOrder, showHidden: showHidden, viewMode: viewMode, grouping: grouping)
     }
@@ -121,6 +124,7 @@ public final class BrowserModel {
     }
     public func reload(userInitiated: Bool = false) {
         generation += 1
+        listingWatchToken = nil
         let request = generation
         cancelDirectorySizeRequests()
         if !measuredDirectorySizes.isEmpty {
@@ -145,6 +149,13 @@ public final class BrowserModel {
             ) : nil
             defer { if let activity { process.endActivity(activity) } }
             do {
+                let token = try await FileSystemWork.run(qos: .userInitiated) { _ in
+                    DirectoryWatcher.captureReadToken(for: url)
+                }
+                guard self?.generation == request, !Task.isCancelled else { return }
+                self?.listingWatchToken = token
+                self?.onListingPrepared?()
+                guard self?.generation == request, !Task.isCancelled else { return }
                 let result: [FileItem]
                 if let streaming = loader as? any DirectoryStreaming {
                     var sortedPrefix: [FileItem] = []

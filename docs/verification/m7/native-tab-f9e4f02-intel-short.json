@@ -1,0 +1,105 @@
+{
+  "sourceSHA": "f9e4f02483ec8591d98d17f87b7a385f772e5a06",
+  "runURL": "https://github.com/taro6222/files-for-mac/actions/runs/45729236520",
+  "scope": "one repeat per mode, forty cycles; not the four-hundred-cycle diagnostic or product stability gate",
+  "result": {
+    "cyclesPerProcess": 40,
+    "repetitionsPerMode": 1,
+    "architecture": "x86_64",
+    "os": "macOS-15.7.9-x86_64-i386-64bit-Mach-O",
+    "binarySHA256": "e284bdaf7b80ac2f0eed683e4c5197c53f30a5cafa6bde4ca4e39df7f456e5be",
+    "probeSourceSHA256": "39bee008582584d08b98397a41365b26205ce38c96651d5d86f46b975598f9c3",
+    "harnessSHA256": "34c74907fa2aa0cfcc05ea7a5916125d22f64c9ce315202507fb6f20372f2c3e",
+    "cases": {
+      "1-windows": {
+        "exitCode": 0,
+        "report": {
+          "cycle": 40,
+          "os": "Version 15.7.9 (Build 24G830)",
+          "pid": 3795,
+          "primaryClass": "NSWindow",
+          "releasedSecondaryWindows": 40,
+          "state": "completed",
+          "tabs": false
+        },
+        "observations": [
+          {
+            "cycle": 5,
+            "counts": {
+              "NSKeyValueDependencyContext": 17,
+              "NSKeyValueDependency": 63,
+              "NSWindow": 1,
+              "NSKVONotifying_NSWindow": null,
+              "NSWindowTab": null,
+              "NSTextField": 1
+            },
+            "heapSHA256": "1e74333f4d0048f5f8d6671552eb63c5ca2915686b3bcdb34874be87cd95fce2",
+            "releasedSecondaryWindows": 5
+          },
+          {
+            "cycle": 40,
+            "counts": {
+              "NSKeyValueDependencyContext": 17,
+              "NSKeyValueDependency": 63,
+              "NSWindow": 1,
+              "NSKVONotifying_NSWindow": null,
+              "NSWindowTab": null,
+              "NSTextField": 1
+            },
+            "heapSHA256": "23e9ef550734ce76a142a2bf02592027e8896dd87339468782e910e41595ce25",
+            "releasedSecondaryWindows": 40
+          }
+        ]
+      },
+      "1-tabs": {
+        "exitCode": 0,
+        "report": {
+          "cycle": 40,
+          "os": "Version 15.7.9 (Build 24G830)",
+          "pid": 4074,
+          "primaryClass": "NSWindow",
+          "releasedSecondaryWindows": 40,
+          "state": "completed",
+          "tabs": true
+        },
+        "observations": [
+          {
+            "cycle": 5,
+            "counts": {
+              "NSKeyValueDependencyContext": 71,
+              "NSKeyValueDependency": 238,
+              "NSWindow": 1,
+              "NSKVONotifying_NSWindow": null,
+              "NSWindowTab": 1,
+              "NSTextField": 2
+            },
+            "heapSHA256": "6d264bdd6029cd08ba5225c23474bd7078cd8f76f00d1d5093e08440b4f2d73a",
+            "releasedSecondaryWindows": 5
+          },
+          {
+            "cycle": 40,
+            "counts": {
+              "NSKeyValueDependencyContext": 211,
+              "NSKeyValueDependency": 448,
+              "NSWindow": 1,
+              "NSKVONotifying_NSWindow": null,
+              "NSWindowTab": 1,
+              "NSTextField": 2
+            },
+            "heapSHA256": "a01e71089c193b9c43c2d60a3ab44ada4bc786768fa5d55ae4c82ca72c79c6e3",
+            "releasedSecondaryWindows": 40
+          }
+        ]
+      }
+    },
+    "productChanged": false,
+    "stabilityGatePassed": false,
+    "limits": [
+      "Short standalone AppKit diagnostic; no Files application code is linked.",
+      "Missing runtime classes are null, not zero or a stability pass.",
+      "Counts do not establish physical-footprint stability, all product growth causes, or OS defect ownership.",
+      "Different SDK/runtime combinations are not a controlled OS-only comparison.",
+      "A completed diagnostic can show growth; growth does not turn this runner into a product acceptance gate."
+    ]
+  }
+}
