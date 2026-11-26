@@ -60,10 +60,31 @@ def verify(output):
     code = 'import os,signal,subprocess,sys,time; from pathlib import Path; signal.signal(signal.SIGTERM,signal.SIG_IGN); Path(' + repr(str(root_marker)) + ').write_text(str(os.getpid())); subprocess.Popen([sys.executable,"-c",' + repr(child_code) + ']); time.sleep(30)'
     command = [sys.executable, str(monitor), '--output', str(folder), '--diagnostic-after', '.05',
                '--termination-grace', '.25', '--max-observations', '1', '--', sys.executable, '-c', code]
+    # Reproduce macOS's EPERM for a redundant SIGKILL after the group has died.
+    # The first call still kills the real private fixture group.
+    fault = output / 'late-signal-fixture'
+    fault.mkdir()
+    deliveries = output.resolve() / 'group-kill-deliveries.jsonl'
+    (fault / 'sitecustomize.py').write_text('''import errno,json,os,signal
+from pathlib import Path
+original = os.killpg
+kill_count = 0
+def killpg(group, sig):
+ global kill_count
+ if sig == signal.SIGKILL:
+  kill_count += 1
+  with Path(''' + repr(str(deliveries)) + ''').open('a') as log:
+   log.write(json.dumps(dict(caller=os.getpid(),group=group,count=kill_count))+'\\n')
+  if kill_count > 1:
+   raise PermissionError(errno.EPERM, 'fixture: group already terminated')
+ return original(group, sig)
+os.killpg = killpg
+''')
     process = None
     with (output / 'cancellation.log').open('wb') as log:
         try:
-            process = subprocess.Popen(command, stdout=log, stderr=subprocess.STDOUT)
+            process = subprocess.Popen(command, stdout=log, stderr=subprocess.STDOUT,
+                                       env=dict(os.environ, PYTHONPATH=str(fault.resolve())))
             deadline = time.monotonic() + 5
             while time.monotonic() < deadline:
                 if root_marker.exists() and child_marker.exists() and list(folder.glob('observation-*/*.log')):
@@ -76,6 +97,8 @@ def verify(output):
             process.wait(timeout=5)
             report = json.loads((folder / 'result.json').read_text())
             check('CancellationPropagated', process.returncode == 143 and report['receivedSignal'] == signal.SIGTERM)
+            calls = [json.loads(line) for line in deliveries.read_text().splitlines()]
+            check('NoRedundantGroupKill', len(calls) == 1 and calls[0]['group'] == report['processPID'])
             check('CancelledBuildReaped', terminal(int(root_marker.read_text())))
             child_pid = int(child_marker.read_text())
             deadline = time.monotonic() + 2
@@ -96,6 +119,41 @@ def verify(output):
                 try:
                     child_in_group = child_marker.exists() and not terminal(int(child_marker.read_text())) and os.getpgid(int(child_marker.read_text())) == pid
                     if (not terminal(pid) and os.getpgid(pid) == pid) or child_in_group:
+                        os.killpg(pid, signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
+    normal = output / 'normal-cancellation'
+    marker = output.resolve() / 'normal-fixture.pid'
+    (fault / 'sitecustomize.py').write_text('''import errno,os,signal
+original = os.killpg
+def killpg(group, sig):
+ if sig == signal.SIGKILL:
+  raise PermissionError(errno.EPERM, 'fixture: terminal group')
+ return original(group, sig)
+os.killpg = killpg
+''')
+    code = 'import os,time; from pathlib import Path; Path(' + repr(str(marker)) + ').write_text(str(os.getpid())); time.sleep(30)'
+    command = [sys.executable, str(monitor), '--output', str(normal), '--', sys.executable, '-c', code]
+    with (output / 'normal-cancellation.log').open('wb') as log:
+        process = subprocess.Popen(command, stdout=log, stderr=subprocess.STDOUT,
+                                   env=dict(os.environ, PYTHONPATH=str(fault.resolve())))
+        try:
+            deadline = time.monotonic() + 5
+            while not marker.exists() and process.poll() is None and time.monotonic() < deadline:
+                time.sleep(.01)
+            check('NormalCancellationReady', marker.exists())
+            process.send_signal(signal.SIGTERM)
+            process.wait(timeout=5)
+            report = json.loads((normal / 'result.json').read_text())
+            check('TerminalGroupPermissionPreservesReport', process.returncode == 143 and report['receivedSignal'] == signal.SIGTERM)
+            check('NormalCancelledBuildReaped', terminal(int(marker.read_text())))
+        finally:
+            if process.poll() is None:
+                process.kill(); process.wait()
+            if marker.exists():
+                pid = int(marker.read_text())
+                try:
+                    if not terminal(pid) and os.getpgid(pid) == pid:
                         os.killpg(pid, signal.SIGKILL)
                 except ProcessLookupError:
                     pass

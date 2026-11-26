@@ -31,6 +31,18 @@ def group_processes(group):
     return owned
 
 
+def signal_group(group, signum):
+    try:
+        os.killpg(group, signum)
+    except ProcessLookupError:
+        return
+    except PermissionError:
+        # Darwin can return EPERM for a group containing only terminal remnants.
+        # Never treat permission denial as completion while a live member remains.
+        if any(not p['state'].startswith('Z') for p in group_processes(group)):
+            raise
+
+
 def collect(output, group, index, cancelled, track_observer):
     folder = output / f'observation-{index:02d}'
     folder.mkdir()
@@ -91,6 +103,7 @@ def main():
     cancellation_started = None
     observations = []
     active_observer = None
+    group_killed = False
 
     def track_observer(observer):
         nonlocal active_observer
@@ -103,10 +116,7 @@ def main():
         if requested_signal is None:
             requested_signal = signum
             cancellation_started = time.monotonic()
-            try:
-                os.killpg(process.pid, signum)
-            except ProcessLookupError:
-                pass
+            signal_group(process.pid, signum)
             if active_observer is not None and active_observer.poll() is None:
                 active_observer.kill()
 
@@ -117,10 +127,8 @@ def main():
             now = time.monotonic()
             if cancellation_started is not None:
                 if now - cancellation_started >= args.termination_grace:
-                    try:
-                        os.killpg(process.pid, signal.SIGKILL)
-                    except ProcessLookupError:
-                        pass
+                    signal_group(process.pid, signal.SIGKILL)
+                    group_killed = True
                     process.wait()
                     break
             elif now >= next_observation and len(observations) < args.max_observations:
@@ -134,11 +142,8 @@ def main():
             time.sleep(0.1)
     finally:
         # Cancellation/observer failures must not leave a private compiler group behind.
-        if requested_signal is not None or process.poll() is None:
-            try:
-                os.killpg(process.pid, signal.SIGKILL)
-            except ProcessLookupError:
-                pass
+        if not group_killed and (requested_signal is not None or process.poll() is None):
+            signal_group(process.pid, signal.SIGKILL)
         process.wait()
         for signum, handler in previous.items():
             signal.signal(signum, handler)
