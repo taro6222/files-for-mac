@@ -1,0 +1,117 @@
+{
+  "increment": 378,
+  "status": "ARM UI failures recorded; fixture isolation and recovery details layout changed; new GUI acceptance pending",
+  "observedRun": 45873718296,
+  "observedSource": "0c9c80563fa6ed20fa0dc6ef70d9ca44094f1d78",
+  "observedARMProfiles": [
+    {
+      "profile": "en-dark",
+      "sha256": "543bda782deb647285f2011044945f8f3bbe85f231f6f322616b7a8262c18075",
+      "checks": 360,
+      "failed": [
+        "multiwindowCycles",
+        "remainingWindowUsable",
+        "sevenZipBatchPlacement"
+      ],
+      "editingChecks": 28,
+      "editingPassed": true,
+      "fullSuiteSeconds": 117.156036792
+    },
+    {
+      "profile": "en-light",
+      "sha256": "ff6d30891b2fbe9958fa3f48b89c7d5046ba9caea2db2abeb59968bf7dc82b77",
+      "checks": 360,
+      "failed": [
+        "multiwindowCycles",
+        "remainingWindowUsable"
+      ],
+      "editingChecks": 28,
+      "editingPassed": true,
+      "fullSuiteSeconds": 109.045102958
+    },
+    {
+      "profile": "ko-dark",
+      "sha256": "7713544cec10bc31e67634cb8922830fcea1e382d8115c7c602c89d1607b962a",
+      "checks": 360,
+      "failed": [
+        "multiwindowCycles",
+        "remainingWindowUsable"
+      ],
+      "editingChecks": 28,
+      "editingPassed": true,
+      "fullSuiteSeconds": 114.196263041
+    },
+    {
+      "profile": "ko-light",
+      "sha256": "6db695befdedcff2a7c7d42698bb5884e6ccef75737d577008e3849d3366166a",
+      "checks": 360,
+      "failed": [
+        "multiwindowCycles",
+        "remainingWindowUsable"
+      ],
+      "editingChecks": 28,
+      "editingPassed": true,
+      "fullSuiteSeconds": 114.956381459
+    },
+    {
+      "profile": "tabs-en-dark",
+      "sha256": "4cd5dc149461c75b593e647a0784a7a4efc95a8c5c56558ef4fd9754202c353c",
+      "checks": 18,
+      "failed": [],
+      "editingChecks": 0,
+      "editingPassed": null,
+      "fullSuiteSeconds": null
+    },
+    {
+      "profile": "tabs-en-light",
+      "sha256": "8c7ea58db35d39197a12b053f583fba009acff534def6be24e64c77900d59e6f",
+      "checks": 18,
+      "failed": [],
+      "editingChecks": 0,
+      "editingPassed": null,
+      "fullSuiteSeconds": null
+    },
+    {
+      "profile": "tabs-ko-dark",
+      "sha256": "d14f0ebb7836c334065287abcc60161673f48e525a3d647fc8d6ea82de87a617",
+      "checks": 18,
+      "failed": [],
+      "editingChecks": 0,
+      "editingPassed": null,
+      "fullSuiteSeconds": null
+    },
+    {
+      "profile": "tabs-ko-light",
+      "sha256": "1b569fbfbb07dfa73d081a669fe6cb1161f69877bed214dfbe4ec0d80dfad9b9",
+      "checks": 18,
+      "failed": [],
+      "editingChecks": 0,
+      "editingPassed": null,
+      "fullSuiteSeconds": null
+    }
+  ],
+  "intel": "same run still in progress at observation",
+  "sourcesSHA256": {
+    "Sources/FilesMac/ArchiveEditRecoveryWindow.swift": "5b132122ae34586f70d4f0c33af229d111d1ab959fe092e02e90dc1d686cfb17",
+    "Sources/FilesMac/ArchiveEditingUIVerification.swift": "cc630331fbc9b56b8a8b50630f3089869ba1484a4e93af37a0e11d921f6b2ab1",
+    "Sources/FilesMac/BrowserWindow.swift": "6f0b545a4a15171ecf9cf26eab9b9d9724fa1147feb68345fe098d5421369425",
+    "scripts/verify-ui.sh": "41114685241773602c2d08981a07ea7e3fab2cca502b9c62ec9da3d45108f6c2",
+    ".github/workflows/macos.yml": "c74652325b8f822a31325985f4db722305a38a52abd99ecbb2dfbc40ccb0e7cc"
+  },
+  "coreAndProbeTestsUnchanged": true,
+  "definedUIChecks": 361,
+  "newGUIChecksPassed": null,
+  "localGUIStarted": false,
+  "builds": {
+    "debug": {
+      "passed": true,
+      "seconds": 33.33,
+      "logSHA256": "f850519e63183d8ac3a0b9884931db1cf58dc870ad633c3f9f2025381f27fcb1"
+    },
+    "release": {
+      "passed": true,
+      "seconds": 18.17,
+      "logSHA256": "b4d3b16ecfe78aa01a95c28342f0be436cd50ada9516ee20480863bfabe7f79b"
+    }
+  }
+}

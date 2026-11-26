@@ -40,6 +40,10 @@ final class ArchiveEditRecoveryWindow: NSWindowController, NSWindowDelegate, NST
         table.delegate = self; table.dataSource = self; table.setAccessibilityLabel(L("압축 편집 기록", "Archive edit history"))
         let scroll = NSScrollView(); scroll.documentView = table; scroll.hasVerticalScroller = true; scroll.borderType = .bezelBorder
         detail.isEditable = false; detail.isSelectable = true; detail.font = .monospacedSystemFont(ofSize: 12, weight: .regular); detail.setAccessibilityLabel(L("선택한 기록과 보존 위치", "Selected record and retained locations"))
+        detail.frame = NSRect(x: 0, y: 0, width: 844, height: 130)
+        detail.isVerticallyResizable = true; detail.isHorizontallyResizable = false; detail.autoresizingMask = [.width]
+        detail.textContainer?.widthTracksTextView = true
+        detail.textContainer?.containerSize = NSSize(width: 844, height: CGFloat.greatestFiniteMagnitude)
         let details = NSScrollView(); details.documentView = detail; details.hasVerticalScroller = true; details.borderType = .bezelBorder
         let actions = NSStackView(views: [refreshButton, inspectButton, undoButton, redoButton, revealButton, stopButton]); actions.orientation = .horizontal; actions.spacing = 8
         for (button, action) in [(refreshButton, #selector(refresh(_:))), (inspectButton, #selector(inspect(_:))), (undoButton, #selector(undo(_:))), (redoButton, #selector(redo(_:))), (revealButton, #selector(reveal(_:))), (stopButton, #selector(stop(_:)))] { button.target = self; button.action = action; button.bezelStyle = .rounded; button.setAccessibilityLabel(button.title) }
@@ -141,6 +145,12 @@ final class ArchiveEditRecoveryWindow: NSWindowController, NSWindowDelegate, NST
     static var qaLatest: ArchiveEditRecoveryWindow? { shared }
     var qaBusy: Bool { busy }
     var qaRecords: [ArchiveEditHistoryItem] { records }
+    var qaDetailsVisible: Bool {
+        window?.contentView?.layoutSubtreeIfNeeded()
+        guard let item = selected, detail.string.contains(item.journal.path), let container = detail.textContainer, let layout = detail.layoutManager else { return false }
+        layout.ensureLayout(for: container)
+        return detail.bounds.width > 100 && detail.visibleRect.height > 0 && layout.glyphRange(forBoundingRect: detail.visibleRect, in: container).length > 0
+    }
     var qaCanUndo: Bool { undoButton.isEnabled }
     var qaCanRedo: Bool { redoButton.isEnabled }
     func qaSelect(_ row: Int) { table.selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false) }

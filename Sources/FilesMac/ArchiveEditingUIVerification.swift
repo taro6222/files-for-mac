@@ -12,6 +12,12 @@ func verifyArchiveEditingUI(_ controller: ArchiveWindow, root: URL, capture: (St
         while (controller.qaIsRunning || controller.window?.attachedSheet != nil) && start.duration(to: .now) < .seconds(10) { try await Task.sleep(for: .milliseconds(10)) }
         guard !controller.qaIsRunning, controller.window?.attachedSheet == nil else { throw SevenZipWorkerError.timedOut }
     }
+    // Editing keeps recovery versions beside the archive. Keep those retained files
+    // outside the separate 10,001-row browser fixture used later in this suite.
+    guard let sourceArchive = controller.qaArchiveURL else { throw ArchiveEditError.invalidState }
+    let workingArchive = root.appendingPathComponent("archive-edit-working.zip")
+    try fm.copyItem(at: sourceArchive, to: workingArchive)
+    controller.present(archiveURL: workingArchive); try await idle()
     checks["archiveEditingAvailable"] = controller.qaEditReady
     controller.window?.makeKeyAndOrderFront(nil)
     checks["archiveEditingMenuRoute"] = NSApp.target(forAction: #selector(ArchiveWindow.createFolder(_:))) as? ArchiveWindow === controller
@@ -60,6 +66,7 @@ func verifyArchiveEditingUI(_ controller: ArchiveWindow, root: URL, capture: (St
     checks["archiveHistoryRequiresVerification"] = !history.qaCanUndo && !history.qaCanRedo
     history.qaVerify(); try await historyIdle()
     checks["archiveHistoryVerifiesRedoCandidate"] = history.qaCanRedo && !history.qaCanUndo
+    checks["archiveHistoryDetailsVisible"] = history.qaDetailsVisible
     guard let currentArchive = controller.qaArchiveURL else { throw ArchiveEditError.invalidState }
     let beforeRecoveryCancel = try Data(contentsOf: currentArchive)
     history.qaRedo(); history.qaConfirm(false); try await historyIdle()

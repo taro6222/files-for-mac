@@ -5540,7 +5540,7 @@ extension BrowserWindow {
                 try capture("archive", view: controller.archiveWindow?.window?.contentView)
                 if let archiveWindow = controller.archiveWindow {
                     checkpoint(checks, phase: "archive-editing")
-                    let editing = try await verifyArchiveEditingUI(archiveWindow, root: destination) { name, view in try capture(name, view: view) }
+                    let editing = try await verifyArchiveEditingUI(archiveWindow, root: destination) { name, view in try capture(name, view: view, backingColor: .windowBackgroundColor) }
                     checks.merge(editing, uniquingKeysWith: { _, new in new })
                     checkpoint(checks, phase: "archive-editing-complete")
                 }
@@ -5816,6 +5816,7 @@ extension BrowserWindow {
                     }
                     checks[sevenZipKeys[1]] = extractOK; browser.close()
                     var placementsOK = true, collisionOK = false
+                    var placementDiagnostics: [[String: Any]] = []
                     for placement in [ArchiveExtractionPlacement.here, .smart, .childFolder] {
                         let name = placement == .here ? "here" : (placement == .smart ? "smart" : "child")
                         let target = destination.appendingPathComponent("sdk-placement-" + name)
@@ -5827,11 +5828,17 @@ extension BrowserWindow {
                             let start = ContinuousClock.now
                             while operation.qaRunning && start.duration(to: .now) < .seconds(10) { try await Task.sleep(for: .milliseconds(10)) }
                             let result = placement == .here ? target : target.appendingPathComponent(placement == .smart ? "sdk-encrypted" : "sdk-encrypted 2")
-                            placementsOK = placementsOK && operation.qaSucceeded && prompt.input.value.isEmpty && (try? Data(contentsOf: result.appendingPathComponent(filename))) == payload
+                            let payloadMatches = (try? Data(contentsOf: result.appendingPathComponent(filename))) == payload
+                            placementDiagnostics.append(["placement": name, "running": operation.qaRunning, "succeeded": operation.qaSucceeded,
+                                                         "passwordCleared": prompt.input.value.isEmpty, "payloadMatches": payloadMatches,
+                                                         "status": operation.qaMessage, "output": result.path,
+                                                         "children": (try? fm.contentsOfDirectory(atPath: target.path)) ?? []])
+                            placementsOK = placementsOK && operation.qaSucceeded && prompt.input.value.isEmpty && payloadMatches
                             if placement == .childFolder { collisionOK = (try? fm.contentsOfDirectory(atPath: target.appendingPathComponent("sdk-encrypted").path))?.isEmpty == true }
                             operation.close()
-                        } else { placementsOK = false }
+                        } else { placementsOK = false; placementDiagnostics.append(["placement": name, "promptMissing": true]) }
                     }
+                    diagnostics["sevenZipBatchPlacement"] = placementDiagnostics
                     checks[sevenZipKeys[2]] = placementsOK; checks[sevenZipKeys[3]] = collisionOK
                     let cancelled = ArchiveWindow(); cancelled.present(archiveURL: archive)
                     if let prompt = await ArchivePasswordPrompt.qaWait(for: cancelled.window!) {
@@ -6353,6 +6360,9 @@ extension BrowserWindow {
                 try await settleWindows()
                 cycle["restoredSelection"] = controller.model.history.current.selection == primarySelection
                 cycle["restoredRows"] = controller.table.numberOfRows == 10_001 && controller.model.failure == nil
+                diagnostics["multiwindowCycle\(iteration)"] = ["showHidden": preferences.showHidden, "tableRows": controller.table.numberOfRows,
+                                                                 "modelRows": controller.model.items.count, "location": controller.model.location?.path ?? "",
+                                                                 "hiddenNames": controller.model.items.filter { $0.name.hasPrefix(".") }.map(\.name)]
                 cycleChecks.append(cycle)
                 repeatsPassed = repeatsPassed && cycle.values.allSatisfy { $0 }
                 durations.append(elapsed(cycleStart))
