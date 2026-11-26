@@ -44,7 +44,7 @@ final class ArchiveEditRecoveryWindow: NSWindowController, NSWindowDelegate, NST
         detail.isVerticallyResizable = true; detail.isHorizontallyResizable = false; detail.autoresizingMask = [.width]
         detail.textContainer?.widthTracksTextView = true
         detail.textContainer?.containerSize = NSSize(width: 844, height: CGFloat.greatestFiniteMagnitude)
-        let details = NSScrollView(); details.documentView = detail; details.hasVerticalScroller = true; details.borderType = .bezelBorder
+        let details = NSScrollView(frame: NSRect(x: 0, y: 0, width: 844, height: 130)); details.documentView = detail; details.hasVerticalScroller = true; details.borderType = .bezelBorder
         let actions = NSStackView(views: [refreshButton, inspectButton, undoButton, redoButton, revealButton, stopButton]); actions.orientation = .horizontal; actions.spacing = 8
         for (button, action) in [(refreshButton, #selector(refresh(_:))), (inspectButton, #selector(inspect(_:))), (undoButton, #selector(undo(_:))), (redoButton, #selector(redo(_:))), (revealButton, #selector(reveal(_:))), (stopButton, #selector(stop(_:)))] { button.target = self; button.action = action; button.bezelStyle = .rounded; button.setAccessibilityLabel(button.title) }
         let stack = NSStackView(views: [note, status, scroll, details, actions]); stack.orientation = .vertical; stack.alignment = .leading; stack.spacing = 10; stack.translatesAutoresizingMaskIntoConstraints = false
@@ -149,7 +149,10 @@ final class ArchiveEditRecoveryWindow: NSWindowController, NSWindowDelegate, NST
         window?.contentView?.layoutSubtreeIfNeeded()
         guard let item = selected, detail.string.contains(item.journal.path), let container = detail.textContainer, let layout = detail.layoutManager else { return false }
         layout.ensureLayout(for: container)
-        return detail.bounds.width > 100 && detail.visibleRect.height > 0 && layout.glyphRange(forBoundingRect: detail.visibleRect, in: container).length > 0
+        guard let viewport = detail.enclosingScrollView?.contentSize.width else { return false }
+        return detail.bounds.width > 100 && detail.bounds.width <= viewport + 1 && container.containerSize.width <= viewport + 1
+            && layout.usedRect(for: container).width <= viewport + 1 && layout.usedRect(for: container).height <= detail.bounds.height + 1 && detail.visibleRect.height > 0
+            && layout.glyphRange(forBoundingRect: detail.visibleRect, in: container).length > 0
     }
     var qaCanUndo: Bool { undoButton.isEnabled }
     var qaCanRedo: Bool { redoButton.isEnabled }

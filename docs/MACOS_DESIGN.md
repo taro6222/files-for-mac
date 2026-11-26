@@ -1,5 +1,7 @@
 # Files macOS 제품·UI·기술 설계
 
+[384 UI 수정](verification/m7/INCREMENT_384.md): 복구 상세 스크롤의 초기 크기가 0이어서 문서 폭이 두 배가 되던 문제를 창 없는 네이티브 검사로 재현·수정했다. 초기/최소 폭과 긴 내용의 줄바꿈/높이, Debug/Release 빌드가 통과했다. 기존 369개 UI 조건 중 실제 내용 가시성을 강화했다. 새 전체 GUI 수용은 미완료이며 383 DMG에는 아직 포함하지 않았다.
+
 [383 프리뷰](verification/m7/INCREMENT_383.md): 앱 코드 7e31fc6의 최신 유니버설 개발 DMG를 만들었다. 두 CPU 서명/내용물/SDK와 실제 번들 Swift 74개·helper 113개·진단 205개·native 85개·권한 15개, 읽기 전용 DMG의 Swift 74개와 정상 해제를 확인했다. 로컬 GUI는 실행하지 않았으며 최신 Intel/전체 M7·정식 서명/공증은 미완료다.
 
 [382 실제 수용 기록](verification/m7/INCREMENT_382.md): 62f8d40 ARM 전체 작업 성공을 확인했다. 네 조합 UI 각각 369개·탭 경계 각각 18개와 번들 Swift 74개/SDK·설치 프리뷰가 통과했다. 전체 실행은 Intel의 Git 취소 정리 검사 실패로 미통과다. 고정 bare Git fixture와 내용/ref 비교, 컬럼·취소 세부 진단·artifact 보존을 추가했다. 새 도구의 원격 수용과 F23/M7 전체 완료는 미확정이며 Release 앱 코드는 유지한다.

@@ -1,0 +1,62 @@
+{
+  "increment": 384,
+  "status": "long recovery path layout corrected; new GUI acceptance pending",
+  "sourcesSHA256": {
+    "Sources/FilesMac/ArchiveEditRecoveryWindow.swift": "75e178f02f4ea41ec587f0227f79170600650e29260b815b5645bc9fd5c69572",
+    "Tools/ArchiveRecoveryLayoutProbe/main.swift": "b160a7c9fd6fc9106b74e34d7cd3ec6300f67c4d8089bc2d64f02b9566965e42"
+  },
+  "nativeLayout": {
+    "longContent": {
+      "containerWidth": 762,
+      "documentHeight": 165,
+      "documentWidth": 762,
+      "usedHeight": 165,
+      "usedWidth": 736.9609375,
+      "viewportWidth": 762
+    },
+    "sizedInitialScroll": {
+      "containerWidth": 842,
+      "documentHeight": 128,
+      "documentWidth": 842,
+      "usedHeight": 45,
+      "usedWidth": 840.8125,
+      "viewportWidth": 842
+    },
+    "sizedMinimum": {
+      "containerWidth": 762,
+      "documentHeight": 128,
+      "documentWidth": 762,
+      "usedHeight": 45,
+      "usedWidth": 736.9609375,
+      "viewportWidth": 762
+    },
+    "zeroInitialScroll": {
+      "containerWidth": 1686,
+      "documentHeight": 128,
+      "documentWidth": 1686,
+      "usedHeight": 30,
+      "usedWidth": 1360.0703125,
+      "viewportWidth": 842
+    }
+  },
+  "builds": {
+    "debug": {
+      "passed": true,
+      "seconds": 7.63,
+      "logSHA256": "c9e12b211a288a32e456507a2dec3611fb8f9e8c17f7221724625717c5b39f48"
+    },
+    "release": {
+      "passed": true,
+      "seconds": 15.8,
+      "logSHA256": "06b2fc758d7b3a55e625cea3ea24bc09b522090dea093c8f9e227a2f5eeb5f74"
+    }
+  },
+  "localWindowCreated": false,
+  "localGUIStarted": false,
+  "fullUICheckCount": 369,
+  "existingUICheckStrengthened": "archiveHistoryDetailsVisible now also requires document/container/content width within viewport and full content height within document",
+  "existingRun": 45882828053,
+  "existingSource": "7e31fc6f246b5c677b46b80daf4b42b67c435f17",
+  "preview383ContainsFix": false,
+  "overallM7Complete": false
+}
