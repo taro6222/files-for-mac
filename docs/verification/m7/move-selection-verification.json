@@ -1,0 +1,96 @@
+{
+  "sourceBaseSHA": "51ce8dda5f048a20d113e6f1affcbafa3a96ad39",
+  "sourceFilesSHA256": {
+    "Sources/FilesCore/EntryOperations.swift": "4dbbab5414811905ef224082905ea8a54079aee809a9ccc26911457cbf04559a",
+    "Sources/FilesMac/MoveWindow.swift": "54d2a619952814f69c0de2a83bf209f123860811280ffad92f5ac2c01b64fb1a",
+    "Sources/FilesMac/BrowserWindow.swift": "1eade6ccd8da91c3bfcf909a5d2fcfd197a24e3e7bfe0e2554873d6ad654e335",
+    "Tests/FilesCoreTests/MoveSelectionProgressTests.swift": "c48c91950cec8c89ce6814593bf0486b9280a4214376260e5716cc5293009bce"
+  },
+  "debugSHA256": "6cfa155d93e83017501fcae7e9137befaae72446cf6d1d63ba780318f62eca7f",
+  "releaseSHA256": "fb06c68289a85eca6007787084348ced637fcda4c7c4fe6dfed08f6336485c0a",
+  "swiftTests": {
+    "reported": 375,
+    "passed": 356,
+    "environmentSkipped": 19,
+    "moveSelectionTests": 7
+  },
+  "mountedVolumeTests": 8,
+  "volumeTypes": [
+    "APFS",
+    "Case-sensitive APFS",
+    "exFAT",
+    "FAT32",
+    "HFS+"
+  ],
+  "strictExecutorTests": 10,
+  "cases": {
+    "ko-light": {
+      "fileOperationChecks": 85,
+      "fullChecks": 283,
+      "sameVolumeState": {
+        "conflictPreserved": true,
+        "lateSizingIgnored": true,
+        "renameHasZeroStagedBytes": true,
+        "undoRestoredSources": true
+      },
+      "crossVolumeTwoSourceRetryAndUndo": true,
+      "fileOperationReportSHA256": "d2b9defc655760e46ffe04d4eab494b9efc6c02933fdd7bbbca1538a44276b74",
+      "fullReportSHA256": "33e6743d4aee2e8a0fec78c81cea67018a094574f0897af80f75ee73f71c26b3"
+    },
+    "ko-dark": {
+      "fileOperationChecks": 85,
+      "fullChecks": 283,
+      "sameVolumeState": {
+        "conflictPreserved": true,
+        "lateSizingIgnored": true,
+        "renameHasZeroStagedBytes": true,
+        "undoRestoredSources": true
+      },
+      "crossVolumeTwoSourceRetryAndUndo": true,
+      "fileOperationReportSHA256": "49098786e38ac854caa18b9afc1ee2c05608b5cb0fcc6816d852ca6cab50d2a5",
+      "fullReportSHA256": "7f3e0241b9002effaee72f18ae9ecdd663cf4fff401730b1729b161dbbc708f8"
+    },
+    "en-light": {
+      "fileOperationChecks": 85,
+      "fullChecks": 283,
+      "sameVolumeState": {
+        "conflictPreserved": true,
+        "lateSizingIgnored": true,
+        "renameHasZeroStagedBytes": true,
+        "undoRestoredSources": true
+      },
+      "crossVolumeTwoSourceRetryAndUndo": true,
+      "fileOperationReportSHA256": "e220eaf971aa59c83ad6860de761989b64c811a7c4b5136d74f06816b781ec92",
+      "fullReportSHA256": "dedab29baddb588191dd2b0849bae0d21d9b11f8f02727ef196adf5d91cca053"
+    },
+    "en-dark": {
+      "fileOperationChecks": 85,
+      "fullChecks": 283,
+      "sameVolumeState": {
+        "conflictPreserved": true,
+        "lateSizingIgnored": true,
+        "renameHasZeroStagedBytes": true,
+        "undoRestoredSources": true
+      },
+      "crossVolumeTwoSourceRetryAndUndo": true,
+      "fileOperationReportSHA256": "4cd8f3b4eca868c14369cb6694b636abfa33b7d6002bcd9cd75252c6139b22a0",
+      "fullReportSHA256": "7a74c0eae6df9e97bf289e35d6e214fd7cb0a5c0ca86acef82298b556c745a6e"
+    }
+  },
+  "logsSHA256": {
+    "verified-build": "ab9e8e3cbdd00e6bebe5e87f3b2f0047b912efcbd7f380e850f99e88c2522dff",
+    "final-tests": "1b78c2d8cc6efa5084bd032d92659bc86f74078a02805cfcb92909deec508e74",
+    "volume-ui-verified": "68a2b457679d0a4c0ccdd4d54d3830dba05a4f96eae32f794228856750f6cb91",
+    "full-ui-verified": "33234035b1c5be516494af5c3fc78f1e2750b397fc3f1d2fcb1587e3fab35f7f",
+    "release": "fac6722307dffb64257e926ae5c4c4bd94eab8ac0f4450f381e83562a785816e",
+    "strict": "d6328290579750895bbd74cca9e4bb60904530db0223a1d6e92a1d5dc2dc02ba"
+  },
+  "limitations": [
+    "Totals describe logical data staged across cross-volume move attempts, not operation success or physical IO.",
+    "Same-volume renames stage zero bytes.",
+    "Snapshots are required integrity snapshots prepared early and reused; future snapshots are retained until their source starts.",
+    "Previous remaining-item assertion failed after adding a second line; its first-line requirement is preserved in the corrected assertion.",
+    "Original raw full suite from the earlier binary is separate from the final verified binary.",
+    "Latest remote acceptance, memory stability, latest-source eight hours and signed/notarized release remain open."
+  ]
+}

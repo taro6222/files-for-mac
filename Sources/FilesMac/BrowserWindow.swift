@@ -6826,7 +6826,7 @@ extension BrowserWindow {
             let lastItem = L(" · 이후 0개", " · 0 after this item")
             checks["transferProgressShowsRemainingItems"] =
                 mixedCopy?.qaLastProgress.components(separatedBy: .newlines).first?.hasSuffix(missingSource.lastPathComponent + lastItem) == true
-                && moveResult?.qaLastProgress.hasSuffix(blockedMove.lastPathComponent + lastItem) == true
+                && moveResult?.qaLastProgress.components(separatedBy: .newlines).first?.hasSuffix(blockedMove.lastPathComponent + lastItem) == true
             try fm.setAttributes([.posixPermissions: 0o700], ofItemAtPath: restricted.path)
             moveResult?.qaRetry()
             while moveCompletions < 2 && elapsed(moveRetryStart) < 10 {
@@ -7139,6 +7139,7 @@ extension BrowserWindow {
             checks["paletteReturnExecutesInBrowser"] = palette.window?.isVisible == false && pathEditorIsFocused()
             checks["overlappingFolderUndoThroughMenu"] = try await qaOverlappingUndo(in: destination)
             checks["aclRulePendingSaveAndClosedReply"] = try await FileInfoWindow.qaVerifyACLRuleLookup(in: destination)
+            checks["moveSelectionTotalsAndLateFrames"] = try await MoveWindow.qaVerifySelectionPresentation(in: destination)
             let result: [String: Any] = ["checks": checks, "diagnostics": diagnostics,
                 "language": Locale.preferredLanguages.first ?? "unknown", "theme": dark ? "dark" : "light",
                 "os": ProcessInfo.processInfo.operatingSystemVersionString]
@@ -7220,6 +7221,9 @@ extension BrowserWindow {
         let folder = volume.appendingPathComponent("FilesMac-Retry-\(UUID())", isDirectory: true)
         let source = sourceFolder.appendingPathComponent("cross-volume-retry.txt")
         let target = folder.appendingPathComponent(source.lastPathComponent)
+        let second = sourceFolder.appendingPathComponent("cross-volume-second.bin")
+        let secondTarget = folder.appendingPathComponent(second.lastPathComponent)
+        let secondData = Data(repeating: 53, count: 65536)
         let contents = Data("cross-volume move retry fixture".utf8)
         try fm.createDirectory(at: folder, withIntermediateDirectories: false)
         defer {
@@ -7228,9 +7232,10 @@ extension BrowserWindow {
             NSApp.windows.compactMap { $0.windowController as? MoveWindow }.forEach { $0.close() }
         }
         try contents.write(to: source)
+        try secondData.write(to: second)
         try fm.setAttributes([.posixPermissions: 0o500], ofItemAtPath: folder.path)
         var completions = 0
-        MoveWindow.start(sources: [source], destination: folder, journalDirectory: journalDirectory) {
+        MoveWindow.start(sources: [source,second], destination: folder, journalDirectory: journalDirectory) {
             completions += 1
         }
         let firstStart = ContinuousClock.now
@@ -7245,7 +7250,8 @@ extension BrowserWindow {
         let retryStart = ContinuousClock.now
         while completions < 2 && elapsed(retryStart) < 10 { try await Task.sleep(for: .milliseconds(20)) }
         guard completions == 2, !result.qaCanRetry, !fm.fileExists(atPath: source.path),
-              try Data(contentsOf: target) == contents,
+              try Data(contentsOf: target) == contents, !fm.fileExists(atPath: second.path),
+              try Data(contentsOf: secondTarget) == secondData,
               let undo = EntryOperations.latestUndoMove(journalDirectory: journalDirectory) else { return false }
         let progressWait = ContinuousClock.now
         while !NSApp.windows.compactMap({ $0.windowController as? MoveWindow }).contains(where: { $0.qaHasLiveProgress }),
@@ -7255,7 +7261,8 @@ extension BrowserWindow {
         }) else { return false }
         let restored = await EntryOperations.undoMove(undo, journalDirectory: journalDirectory)
         return restored.state == "completed" && !fm.fileExists(atPath: target.path)
-            && (try? Data(contentsOf: source)) == contents
+            && (try? Data(contentsOf: source)) == contents && (try? Data(contentsOf: second)) == secondData
+            && !fm.fileExists(atPath: secondTarget.path)
     }
 
     private func waitForFolderQA(_ condition: () -> Bool) async throws {

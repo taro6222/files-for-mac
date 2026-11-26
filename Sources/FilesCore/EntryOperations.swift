@@ -65,6 +65,7 @@ public struct MoveOperationResult: Sendable {
     public let state: String
     public let items: [MoveItemOperationResult]
     public let journalError: String?
+    public var selectionTransfer: SelectionTransferProgress? = nil
 }
 
 public struct MoveProgress: Sendable {
@@ -74,6 +75,7 @@ public struct MoveProgress: Sendable {
     public let phase: String
     public let stagedTransfer: StagedFileTransfer?
     public var liveTransfer: LiveTransferProgress? = nil
+    public var selectionTransfer: SelectionTransferProgress? = nil
 }
 
 public struct MoveUndoItem: Codable, Sendable {
@@ -826,6 +828,7 @@ public enum EntryOperations {
                 let state: String
                 let items: [MoveItemJournal]
                 let journalError: String?
+                let selectionTransfer: SelectionTransferProgress?
             }
 
             let dateFormatter = operationDateFormatter()
@@ -842,6 +845,7 @@ public enum EntryOperations {
             var crossVolumeItems = Array(repeating: false, count: normalizedSources.count)
             var finalState = "completed"
             var journalError: String?
+            var finalTransfer: SelectionTransferProgress?
 
             func currentItemStates() -> [MoveItemJournal] {
                 return itemStates.enumerated().map { index, item in
@@ -852,13 +856,79 @@ public enum EntryOperations {
 
             func save(state: String) throws {
                 try fm.createDirectory(at: journalDirectory, withIntermediateDirectories: true)
-                let journal = MoveJournal(operationId: operationId, state: state, items: currentItemStates(), journalError: journalError)
+                let journal = MoveJournal(operationId: operationId, state: state, items: currentItemStates(), journalError: journalError, selectionTransfer: finalTransfer)
                 try JSONEncoder().encode(journal).write(to: journalURL, options: .atomic)
             }
 
             do {
                 try save(state: "queued")
+                // Reuse required cross-volume verification snapshots rather than scan sizes twice.
+                // Same-volume renames contribute no staged data and remain usable without read access.
+                var prepared = [Result<CopyEngine.VerificationSnapshot, any Error>?](repeating: nil, count: normalizedSources.count)
+                var preparedIdentities = [String?](repeating: nil, count: normalizedSources.count)
+                var plans = [Int64?](repeating: nil, count: normalizedSources.count)
                 for index in normalizedSources.indices {
+                    if cancellation.isCancelled { break }
+                    let source = normalizedSources[index]
+                    progress(MoveProgress(index: 0, total: normalizedSources.count, name: source.lastPathComponent,
+                                          phase: "sizing", stagedTransfer: nil))
+                    if conflictPolicy == .skip, entryExists(normalizedDestination.appendingPathComponent(source.lastPathComponent)) {
+                        plans[index] = 0
+                        continue
+                    }
+                    let result = Result { () throws -> CopyEngine.VerificationSnapshot? in
+                        try cancellation.check()
+                        guard CopyEngine.matches(normalizedDestination, descriptor: destinationFD),
+                              retryDestination?.isCurrent != false, retrySources?[index].isCurrent != false else {
+                            throw EntryOperationError.sourceChanged
+                        }
+                        if let redoItem {
+                            guard redoItem.target.standardizedFileURL.path == normalizedDestination.appendingPathComponent(source.lastPathComponent).path,
+                                  redoItem.destinationFolder.isCurrent,
+                                  try snapshotIdentity(source, fileManager: fm) == redoItem.identity else {
+                                throw EntryOperationError.sourceChanged
+                            }
+                        }
+                        if let flattenPlan {
+                            let parent = source.deletingLastPathComponent()
+                            guard flattenPlan.root.isCurrent, flattenPlan.entries[index].isCurrent,
+                                  FolderFlattenPlan.isDirectoryWithoutLink(parent),
+                                  let base = FolderFlattenPlan.canonicalPath(flattenPlan.destination),
+                                  FolderFlattenPlan.canonicalPath(parent)?.hasPrefix(base + "/") == true else {
+                                throw EntryOperationError.sourceChanged
+                            }
+                        }
+                        guard let sourceDevice = (try fm.attributesOfItem(atPath: source.path)[.systemNumber] as? NSNumber)?.uint64Value,
+                              let destinationDevice = (try fm.attributesOfItem(atPath: normalizedDestination.path)[.systemNumber] as? NSNumber)?.uint64Value else {
+                            throw EntryOperationError.sourceChanged
+                        }
+                        guard forceCrossVolume || sourceDevice != destinationDevice else { return nil }
+                        if try fm.attributesOfItem(atPath: source.path)[.type] as? FileAttributeType == .typeDirectory {
+                            let root = source.resolvingSymlinksInPath().path
+                            let target = normalizedDestination.resolvingSymlinksInPath().path
+                            guard target != root, !target.hasPrefix(root == "/" ? "/" : root + "/") else {
+                                throw MoveFailure(text: "Cannot move a folder into itself or a descendant.")
+                            }
+                        }
+                        let identity = try snapshotIdentity(source, fileManager: fm)
+                        let snapshot = try CopyEngine.makeSnapshot(source, cancellation: cancellation)
+                        guard try snapshotIdentity(source, fileManager: fm) == identity else { throw EntryOperationError.sourceChanged }
+                        preparedIdentities[index] = identity
+                        return snapshot
+                    }
+                    switch result {
+                    case .success(let snapshot):
+                        if let snapshot { prepared[index] = .success(snapshot); plans[index] = snapshot.logicalDataBytes }
+                        else { plans[index] = 0 }
+                    case .failure(let error): prepared[index] = .failure(error)
+                    }
+                }
+                let selection = SelectionTransferTracker(plans: plans)
+                for index in normalizedSources.indices {
+                    let preparedSource = prepared[index]
+                    prepared[index] = nil
+                    let preparedIdentity = preparedIdentities[index]
+                    preparedIdentities[index] = nil
                     let source = normalizedSources[index]
                     let target = normalizedDestination.appendingPathComponent(source.lastPathComponent)
                     var backup: URL?
@@ -880,7 +950,8 @@ public enum EntryOperations {
                     }
                     func emit(_ phase: String, stagedTransfer: StagedFileTransfer? = nil) {
                         progress(MoveProgress(index: index, total: normalizedSources.count,
-                                              name: source.lastPathComponent, phase: phase, stagedTransfer: stagedTransfer))
+                                              name: source.lastPathComponent, phase: phase, stagedTransfer: stagedTransfer,
+                                              selectionTransfer: selection.snapshot()))
                     }
                     func restoreBackup() -> URL? {
                         guard let backup else {
@@ -954,6 +1025,7 @@ public enum EntryOperations {
                             crossVolumeItems[index] = crossVolume
                             if entryExists(target) {
                                 if conflictPolicy == .skip {
+                                    selection.excludeUnstaged(index)
                                     itemStates[index] = MoveItemOperationResult(source: source, target: target, state: "conflict", message: LString.pathConflictMessage)
                                     finalState = "partial"
                                     try save(state: finalState)
@@ -996,7 +1068,8 @@ public enum EntryOperations {
                             }
                             if crossVolume {
                                 let sourceIdentity = try snapshotIdentity(source, fileManager: fm)
-                                let before = try CopyEngine.makeSnapshot(source, cancellation: cancellation)
+                                if let preparedIdentity, sourceIdentity != preparedIdentity { throw EntryOperationError.sourceChanged }
+                                let before = try preparedSource?.get() ?? CopyEngine.makeSnapshot(source, cancellation: cancellation)
                                 if let redoItem, sourceIdentity != redoItem.identity || !before.matchesOriginal(redoItem.snapshot) {
                                     throw EntryOperationError.sourceChanged
                                 }
@@ -1022,7 +1095,8 @@ public enum EntryOperations {
                                                        cancellation: cancellation) { update in
                                     progress(MoveProgress(index: index, total: normalizedSources.count,
                                                           name: source.lastPathComponent, phase: "copying",
-                                                          stagedTransfer: nil, liveTransfer: update))
+                                                          stagedTransfer: nil, liveTransfer: update,
+                                                          selectionTransfer: selection.record(index, live: update)))
                                 }
                                 try before.restoreCreationTimes(in: payload, cancellation: cancellation)
                                 try before.restoreDirectoryModificationTimes(in: payload, cancellation: cancellation)
@@ -1167,6 +1241,7 @@ public enum EntryOperations {
                     }
                     try save(state: finalState)
                 }
+                finalTransfer = selection.snapshot()
             } catch {
                 finalState = "failed"
                 journalError = error.localizedDescription
@@ -1210,7 +1285,7 @@ public enum EntryOperations {
                 try? save(state: finalState)
             }
 
-            return MoveOperationResult(id: operationId, state: finalState, items: itemStates, journalError: journalError)
+            return MoveOperationResult(id: operationId, state: finalState, items: itemStates, journalError: journalError, selectionTransfer: finalTransfer)
         }.value
     }
 

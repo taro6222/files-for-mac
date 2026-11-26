@@ -16,12 +16,14 @@ final class MoveWindow: NSWindowController, NSWindowDelegate {
     private let progress = NSProgressIndicator()
     private let details = NSTextView()
     private var latestProgressIndex = -1
-    private var copyingFinished = false
+    private var latestProgressPhase = -1
+    private var latestSelection: SelectionTransferProgress?
     private var latestLiveBytes: Int64?
 #if DEBUG
     private(set) var qaLastProgress = ""
     private var qaLiveUpdate: MoveProgress?
     private var qaVerifiedUpdate: MoveProgress?
+    private var qaFinalTransfer: SelectionTransferProgress?
 #endif
     private let close = NSButton(title: L("취소", "Cancel"), target: nil, action: #selector(cancelMove(_:)))
     private let retry = NSButton(title: L("실패 항목 다시 시도", "Retry Failed Items"), target: nil,
@@ -135,24 +137,29 @@ final class MoveWindow: NSWindowController, NSWindowDelegate {
 
     private func update(_ update: MoveProgress) {
 #if DEBUG
-        if update.liveTransfer?.bytes ?? 0 > 0 { qaLiveUpdate = update }
-        if update.phase == "verifying" { qaVerifiedUpdate = update }
+        if update.liveTransfer?.bytes ?? 0 > 0,
+           update.selectionTransfer?.sequence ?? 0 >= qaLiveUpdate?.selectionTransfer?.sequence ?? 0 { qaLiveUpdate = update }
+        if update.phase == "verifying",
+           update.selectionTransfer?.sequence ?? 0 >= qaVerifiedUpdate?.selectionTransfer?.sequence ?? 0 { qaVerifiedUpdate = update }
 #endif
         guard running, !cancellation.isCancelled else { return }
+        let rank = ["sizing": -1, "planning": 0, "backingUp": 1, "verifyingUndo": 1,
+                    "copying": 2, "verifying": 3, "committing": 4, "removingSource": 5][update.phase] ?? 5
         guard update.index >= latestProgressIndex else { return }
-        if update.index > latestProgressIndex {
-            latestProgressIndex = update.index; copyingFinished = false; latestLiveBytes = nil
-        }
-        if update.phase == "copying" {
-            guard !copyingFinished else { return }
-            if let latestLiveBytes {
+        if let value = update.selectionTransfer, let latestSelection,
+           value.sequence < latestSelection.sequence { return }
+        if update.index == latestProgressIndex {
+            guard rank >= latestProgressPhase else { return }
+            if rank == 2, let latestLiveBytes {
                 guard let live = update.liveTransfer, live.bytes >= latestLiveBytes else { return }
             }
-        }
-        if ["verifying", "committing", "removingSource"].contains(update.phase) { copyingFinished = true }
+        } else { latestLiveBytes = nil }
+        latestProgressIndex = update.index; latestProgressPhase = rank
         if let live = update.liveTransfer { latestLiveBytes = live.bytes }
+        if let selection = update.selectionTransfer { latestSelection = selection }
         let phase: String
         switch update.phase {
+        case "sizing": phase = L("전체 데이터 확인", "Checking selected data")
         case "planning": phase = L("원본 확인", "Checking source")
         case "backingUp": phase = L("기존 항목 백업", "Backing up existing item")
         case "copying": phase = L("교차 볼륨 복사", "Copying across volumes")
@@ -162,21 +169,29 @@ final class MoveWindow: NSWindowController, NSWindowDelegate {
         default: phase = L("결과 확정", "Committing")
         }
         let remaining = update.total - update.index - 1
-        label.stringValue = "\(update.index + 1)/\(update.total) · \(phase) · \(update.name)"
-            + L(" · 이후 \(remaining)개", " · \(remaining) after this item")
+        if update.phase == "sizing" {
+            label.stringValue = phase + " · " + update.name + L(" · 원본 \(update.total)개", " · \(update.total) sources")
+        } else {
+            label.stringValue = "\(update.index + 1)/\(update.total) · \(phase) · \(update.name)"
+                + L(" · 이후 \(remaining)개", " · \(remaining) after this item")
+        }
         if let transfer = update.stagedTransfer { label.stringValue += stagedTransferDescription(transfer) }
         if let transfer = update.liveTransfer { label.stringValue += liveTransferDescription(transfer) }
+        if let transfer = update.selectionTransfer { label.stringValue += selectionTransferDescription(transfer) }
 #if DEBUG
         qaLastProgress = label.stringValue
 #endif
         progress.doubleValue = Double(update.index)
-        progress.showCurrentFileActivity(update.phase == "copying" || update.phase == "verifying"
+        progress.showCurrentFileActivity(update.phase == "sizing" || update.phase == "copying" || update.phase == "verifying"
             || update.phase == "verifyingUndo")
         FileOperationCenter.activityChanged()
     }
 
     private func finish(_ report: MoveOperationResult) {
         running = false
+#if DEBUG
+        qaFinalTransfer = report.selectionTransfer
+#endif
         let completed = report.items.filter { $0.state == "completed" }.count
         let conflicts = report.items.filter { $0.state == "conflict" }.count
         let failed = report.items.filter { $0.state == "failed" || $0.state == "notFound" }.count
@@ -193,6 +208,7 @@ final class MoveWindow: NSWindowController, NSWindowDelegate {
         }
         if pending > 0 { label.stringValue += L(" · 실행 안 됨 \(pending)", " · Not attempted \(pending)") }
         if cancelled > 0 { label.stringValue += L(" · 취소 \(cancelled)", " · Cancelled \(cancelled)") }
+        if let transfer = report.selectionTransfer { label.stringValue += selectionTransferDescription(transfer) }
         progress.showCurrentFileActivity(false)
         progress.isHidden = true
         let itemDetails: [String] = report.items.map { item in
@@ -281,18 +297,56 @@ final class MoveWindow: NSWindowController, NSWindowDelegate {
     /// Inspect real engine events without claiming physical input or compositor presentation.
     func qaVerifyLiveTransferPresentation(source: URL) -> Bool {
         guard let live = qaLiveUpdate, let verified = qaVerifiedUpdate,
-              let transfer = live.liveTransfer, transfer.bytes > 0 else { return false }
+              let transfer = live.liveTransfer, transfer.bytes > 0,
+              let total = live.selectionTransfer, total.bytes == total.totalBytes,
+              let final = qaFinalTransfer, final.bytes == total.bytes, final.totalBytes == total.totalBytes,
+              label.stringValue.contains(selectionTransferDescription(final)) else { return false }
         let probe = MoveWindow(sources: [source], destination: URL(fileURLWithPath: destinationPath), conflictPolicy: .skip)
         defer { probe.close() }
         probe.update(live)
         let dataVisible = probe.label.stringValue.contains(L("현재 항목 데이터", "Current item data"))
             && probe.label.stringValue.contains(formatByteCount(transfer.bytes, unit: BrowserPreferences.shared.sizeUnit))
-            && probe.progress.isIndeterminate
+            && probe.progress.isIndeterminate && probe.label.stringValue.contains(selectionTransferDescription(total))
         probe.update(verified)
         let verification = probe.label.stringValue
         probe.update(live)
         return dataVisible && probe.label.stringValue == verification
             && verification.contains(L("내용 검증", "Verifying contents"))
+    }
+    static func qaVerifySelectionPresentation(in directory: URL) async throws -> Bool {
+        let fm = FileManager.default
+        let root = directory.appendingPathComponent("selection-move-fixture")
+        let target = root.appendingPathComponent("target")
+        try fm.createDirectory(at: target, withIntermediateDirectories: true)
+        let sources = ["first", "second", "skip"].map { root.appendingPathComponent($0) }
+        for source in sources { try Data(source.lastPathComponent.utf8).write(to: source) }
+        try Data("preserved".utf8).write(to: target.appendingPathComponent("skip"))
+        let journals = root.appendingPathComponent("journals")
+        let events = MoveSelectionQARecorder()
+        let report = try await EntryOperations.move(sources, to: target, journalDirectory: journals) { events.append($0) }
+        guard report.items.map(\.state) == ["completed", "completed", "conflict"],
+              let first = events.values.first, first.phase == "sizing",
+              let last = events.values.last, let total = report.selectionTransfer,
+              total.bytes == 0, total.totalBytes == 0 else { return false }
+        let probe = MoveWindow(sources: sources, destination: target, conflictPolicy: .skip)
+        defer { probe.close() }
+        probe.update(last)
+        let current = probe.label.stringValue
+        probe.update(first)
+        let staleRejected = probe.label.stringValue == current
+        probe.finish(report)
+        let terminal = probe.label.stringValue
+        probe.update(last)
+        let summary = terminal.contains(selectionTransferDescription(total)) && !terminal.contains("100%")
+            && probe.progress.isHidden && probe.label.stringValue == terminal
+        let undo = EntryOperations.latestUndoMove(journalDirectory: journals)
+        guard let undo else { return false }
+        let restored = await EntryOperations.undoMove(undo, journalDirectory: journals)
+        let checks = ["renameHasZeroStagedBytes": summary, "lateSizingIgnored": staleRejected,
+                      "undoRestoredSources": restored.state == "completed" && sources.allSatisfy { fm.fileExists(atPath: $0.path) },
+                      "conflictPreserved": (try Data(contentsOf: target.appendingPathComponent("skip"))) == Data("preserved".utf8)]
+        try JSONSerialization.data(withJSONObject: checks, options: [.prettyPrinted,.sortedKeys]).write(to: directory.appendingPathComponent("selection-move-state.json"))
+        return checks.values.allSatisfy { $0 }
     }
     var qaCanRetry: Bool { !retry.isHidden }
     func qaRetry() { retry.performClick(nil) }
@@ -310,3 +364,12 @@ final class MoveWindow: NSWindowController, NSWindowDelegate {
         FileOperationCenter.activityChanged()
     }
 }
+
+#if DEBUG
+private final class MoveSelectionQARecorder: @unchecked Sendable {
+    private let lock = NSLock()
+    private var events: [MoveProgress] = []
+    func append(_ value: MoveProgress) { lock.withLock { events.append(value) } }
+    var values: [MoveProgress] { lock.withLock { events } }
+}
+#endif
