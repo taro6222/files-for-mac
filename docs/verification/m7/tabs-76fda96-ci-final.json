@@ -1,0 +1,70 @@
+{
+  "failedLogSHA256": "636c3380ad5acaa2aa459a33fedd19292fa5ea210f0430d0206f75e631d4d778",
+  "intelBuildFailure": "Existing Build app and test targets 20-minute step timeout; no compiler error was reported in the retained failed log.",
+  "headSHA": "76fda96bde6c7c1ab1a5075e380c96185d520820",
+  "status": "completed",
+  "conclusion": "failure",
+  "url": "https://github.com/taro6222/files-for-mac/actions/runs/45738668112",
+  "jobs": [
+    {
+      "name": "macOS 15 (x86_64)",
+      "status": "completed",
+      "conclusion": "failure",
+      "url": "https://github.com/taro6222/files-for-mac/actions/runs/45738668112/job/139637999451"
+    },
+    {
+      "name": "Xcode (x86_64)",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/taro6222/files-for-mac/actions/runs/45738668112/job/139637999758"
+    },
+    {
+      "name": "macOS 15 (arm64)",
+      "status": "completed",
+      "conclusion": "failure",
+      "url": "https://github.com/taro6222/files-for-mac/actions/runs/45738668112/job/139637999847"
+    },
+    {
+      "name": "Xcode (arm64)",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/taro6222/files-for-mac/actions/runs/45738668112/job/139637999864"
+    },
+    {
+      "name": "Optimized performance (${{ matrix.architecture }})",
+      "status": "completed",
+      "conclusion": "skipped",
+      "url": "https://github.com/taro6222/files-for-mac/actions/runs/45738668112/job/139638001838"
+    }
+  ],
+  "armReports": {
+    "en-dark": {
+      "reportedChecks": 290,
+      "failedChecks": [
+        "browserTabsRevealSynchronizesFrame"
+      ],
+      "reportSHA256": "0b9bfc4e051e603754efc399179abbce1b1114d2a03980adaadded79238e522d"
+    },
+    "ko-light": {
+      "reportedChecks": 290,
+      "failedChecks": [
+        "browserTabsRevealSynchronizesFrame"
+      ],
+      "reportSHA256": "3e0e73ab3d1087cc3e4c515df2765cf235502c567d599e497de0d546cfe48513"
+    },
+    "en-light": {
+      "reportedChecks": 290,
+      "failedChecks": [
+        "browserTabsRevealSynchronizesFrame"
+      ],
+      "reportSHA256": "1bbbc64473500999f3c4e4e63114a500ff63499029744857b824b20974347a09"
+    },
+    "ko-dark": {
+      "reportedChecks": 290,
+      "failedChecks": [
+        "browserTabsRevealSynchronizesFrame"
+      ],
+      "reportSHA256": "def4e1168b1b699f321d74c44e60807ed8db1e29ec0f02a573e30445da7eefb4"
+    }
+  }
+}

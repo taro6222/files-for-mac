@@ -1,0 +1,20 @@
+{
+  "checks" : {
+    "accessibleTabPressSelectsTab" : true,
+    "closeButtonClosesRepresentedBackgroundTab" : true,
+    "closeManyTabsClearsHiddenControls" : true,
+    "longTitleKeepsFullAccessibleLabel" : false,
+    "overflowControlsStayInsideBar" : true,
+    "overflowKeepsSelectedTabVisible" : true,
+    "tabArrowWrapsToFirst" : true,
+    "tabListSelectsRequestedHiddenTab" : false
+  },
+  "diagnostics" : {
+    "barBounds" : "{{0, 0}, {831, 40}}",
+    "clipBounds" : "{{1461, 0}, {743, 34}}",
+    "selectedFrame" : "{{2024, 2}, {180, 30}}"
+  },
+  "language" : "ko",
+  "physicalInputAccepted" : false,
+  "theme" : "light"
+}

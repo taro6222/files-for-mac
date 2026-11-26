@@ -4782,7 +4782,13 @@ extension BrowserWindow {
                     checks["browserTabsReorderAndCycle"] = cycled && group.browsers.elementsEqual([c, a, b], by: { $0 === $1 })
                     let resized = NSRect(x: 80, y: 90, width: 1100, height: 720)
                     c.window?.setFrame(resized, display: true)
+                    diagnostics["tabFrameRequested"] = NSStringFromRect(resized)
+                    diagnostics["tabFrameSourceBeforeReveal"] = c.window.map { NSStringFromRect($0.frame) } ?? "missing"
+                    diagnostics["tabFrameSourceScreen"] = c.window?.screen.map { NSStringFromRect($0.visibleFrame) } ?? "missing"
                     b.window?.makeKeyAndOrderFront(nil)
+                    diagnostics["tabFrameTargetAfterReveal"] = b.window.map { NSStringFromRect($0.frame) } ?? "missing"
+                    diagnostics["tabFrameSelectedTarget"] = group.selected === b
+                    diagnostics["tabFrameSourceVisibleAfterReveal"] = c.window?.isVisible ?? false
                     checks["browserTabsRevealSynchronizesFrame"] = group.selected === b
                         && b.window?.frame == resized && c.window?.isVisible == false
                     // A fresh window needs a run-loop layout pass, including its stack's visibility changes.

@@ -151,7 +151,8 @@ final class BrowserTabBar: NSView {
         add.isBordered = false; add.target = self; add.action = #selector(newTab(_:))
         add.setAccessibilityLabel(L("새 탭", "New tab"))
         list.addItem(withTitle: ""); list.imagePosition = .imageOnly
-        list.isBordered = false; list.target = self; list.action = #selector(chooseTab(_:))
+        list.isBordered = false
+        (list.cell as? NSPopUpButtonCell)?.arrowPosition = .noArrow
         list.setAccessibilityLabel(L("탭 목록", "Tab list"))
         for view in [scroll, add, list] { view.translatesAutoresizingMaskIntoConstraints = false; addSubview(view) }
         NSLayoutConstraint.activate([
@@ -192,9 +193,13 @@ final class BrowserTabBar: NSView {
         list.removeAllItems(); list.addItem(withTitle: "")
         list.item(at: 0)?.image = NSImage(systemSymbolName: "chevron.down", accessibilityDescription: nil)
         for (index, browser) in browsers.enumerated() {
-            list.addItem(withTitle: browser.tabDisplayTitle)
-            list.lastItem?.tag = index
-            list.lastItem?.state = owner.tabs.selected === browser ? .on : .off
+            // NSPopUpButton.addItem reuses an existing title. Different tabs may have
+            // identical titles, so append distinct menu items and keep weak identities.
+            let item = NSMenuItem(title: browser.tabDisplayTitle, action: #selector(chooseTab(_:)), keyEquivalent: "")
+            item.target = self; item.tag = index
+            item.representedObject = BrowserTabMenuReference(browser)
+            item.state = owner.tabs.selected === browser ? .on : .off
+            list.menu?.addItem(item)
         }
         needsLayout = true
     }
@@ -214,10 +219,10 @@ final class BrowserTabBar: NSView {
     }
     #endif
     @objc private func newTab(_ sender: Any?) { (NSApp.delegate as? AppDelegate)?.newTab(sender) }
-    @objc private func chooseTab(_ sender: Any?) {
-        guard let owner, let item = list.selectedItem, list.indexOfSelectedItem > 0,
-              owner.tabs.browsers.indices.contains(item.tag) else { return }
-        owner.tabs.select(owner.tabs.browsers[item.tag])
+    @objc private func chooseTab(_ item: NSMenuItem) {
+        guard let owner, let browser = (item.representedObject as? BrowserTabMenuReference)?.browser,
+              browser.tabs === owner.tabs else { return }
+        owner.tabs.select(browser)
     }
     override func draggingEntered(_ sender: any NSDraggingInfo) -> NSDragOperation { draggingUpdated(sender) }
     override func draggingUpdated(_ sender: any NSDraggingInfo) -> NSDragOperation {
@@ -235,9 +240,15 @@ final class BrowserTabBar: NSView {
 }
 
 @MainActor
+private final class BrowserTabMenuReference {
+    weak var browser: BrowserWindow?
+    init(_ browser: BrowserWindow) { self.browser = browser }
+}
+
+@MainActor
 private final class BrowserTabCell: WorkspaceTabDragHandle {
-    private let label = NSTextField(labelWithString: "")
-    private let closeButton = NSButton()
+    fileprivate let label = NSTextField(labelWithString: "")
+    fileprivate let closeButton = NSButton()
     private var selected = false
     init() {
         super.init(fixedSize: false)
@@ -334,6 +345,113 @@ extension BrowserTabs {
         checks["desktopSessionRestoresPaneAndHistoryState"] =
             desktopSnapshot(browsers: reopened, focused: reopened.last) == saved
         return checks
+    }
+}
+#endif
+
+#if DEBUG
+extension BrowserTabBar {
+    @MainActor static func runBoundaryVerification(output: String) async {
+        let root = URL(fileURLWithPath: output, isDirectory: true)
+        let suite = "tab-boundaries-\(UUID())"
+        var browsers: [BrowserWindow] = []
+        var checks: [String: Bool] = [:]
+        var diagnostics: [String: String] = [:]
+        var status: Int32 = 1
+        defer { for browser in browsers { browser.close() }; exit(status) }
+        do {
+            let fm = FileManager.default
+            try fm.createDirectory(at: root, withIntermediateDirectories: true)
+            guard let defaults = UserDefaults(suiteName: suite) else { throw CocoaError(.coderInvalidValue) }
+            defer { defaults.removePersistentDomain(forName: suite) }
+            let preferences = BrowserPreferences(defaults: defaults, initialFavorites: [])
+            let dark = ProcessInfo.processInfo.environment["FILES_TAB_UI_QA_THEME"] == "dark"
+            preferences.setAppearance(dark ? .dark : .light)
+            NSApp.appearance = NSAppearance(named: dark ? .darkAqua : .aqua)
+            let folder = root.appendingPathComponent(String(repeating: "긴이름", count: 16) + "-" + String(repeating: "a", count: 64), isDirectory: true)
+            try fm.createDirectory(at: folder, withIntermediateDirectories: false)
+            for index in 0..<12 {
+                let browser = BrowserWindow(preferences: preferences, restoresFrame: false, initialLocation: index == 11 ? folder : nil)
+                browsers.append(browser)
+                if index == 0 {
+                    browser.window?.setFrame(NSRect(x: 80, y: 80, width: 900, height: 600), display: true)
+                    browser.showWindow(nil)
+                } else { browsers[0].attachTab(browser, select: false) }
+            }
+            let group = browsers[0].tabs
+            group.select(browsers[11])
+            NSApp.activate(ignoringOtherApps: true)
+            try await Task.sleep(for: .milliseconds(250))
+            func findBar(_ view: NSView) -> BrowserTabBar? {
+                if let bar = view as? BrowserTabBar { return bar }
+                return view.subviews.lazy.compactMap(findBar).first
+            }
+            guard let content = browsers[11].window?.contentView, let bar = findBar(content) else { throw CocoaError(.coderInvalidValue) }
+            content.layoutSubtreeIfNeeded()
+            let visible = bar.scroll.contentView.bounds
+            let selectedFrame = bar.cells[11].frame
+            diagnostics["clipBounds"] = NSStringFromRect(visible)
+            diagnostics["selectedFrame"] = NSStringFromRect(selectedFrame)
+            diagnostics["barBounds"] = NSStringFromRect(bar.bounds)
+            checks["overflowKeepsSelectedTabVisible"] = bar.cells.count == 12 && bar.row.frame.width > visible.width
+                && visible.contains(selectedFrame) && bar.verifiesVisibleLayout
+            checks["overflowControlsStayInsideBar"] = bar.bounds.contains(bar.add.frame) && bar.bounds.contains(bar.list.frame)
+                && bar.add.frame.width >= 28 && bar.list.frame.width >= 28
+            diagnostics["accessibleLabel"] = bar.cells[11].accessibilityLabel() ?? "nil"
+            diagnostics["expectedTitle"] = folder.lastPathComponent
+            diagnostics["labelFrame"] = NSStringFromRect(bar.cells[11].label.frame)
+            diagnostics["closeFrame"] = NSStringFromRect(bar.cells[11].closeButton.frame)
+            diagnostics["lineBreakMode"] = String(describing: bar.cells[11].label.lineBreakMode)
+            checks["longTitleKeepsFullAccessibleLabel"] = bar.cells[11].accessibilityLabel() == folder.lastPathComponent
+                && bar.cells[11].label.lineBreakMode == .byTruncatingMiddle && bar.cells[11].closeButton.alignmentRect(forFrame: bar.cells[11].closeButton.frame).width == 20
+                && bar.cells[11].label.frame.maxX < bar.cells[11].closeButton.frame.minX
+            guard let bitmap = bar.bitmapImageRepForCachingDisplay(in: bar.bounds) else { throw CocoaError(.fileWriteUnknown) }
+            bar.effectiveAppearance.performAsCurrentDrawingAppearance {
+                bar.cacheDisplay(in: bar.bounds, to: bitmap)
+                if let context = NSGraphicsContext(bitmapImageRep: bitmap)?.cgContext {
+                    context.setBlendMode(.destinationOver)
+                    context.setFillColor(NSColor.windowBackgroundColor.cgColor)
+                    context.fill(CGRect(x: 0, y: 0, width: bitmap.pixelsWide, height: bitmap.pixelsHigh))
+                }
+            }
+            guard let png = bitmap.representation(using: .png, properties: [:]) else { throw CocoaError(.fileWriteUnknown) }
+            try png.write(to: root.appendingPathComponent("overflow.png"))
+            guard let menuItem = bar.list.item(at: 5), let action = menuItem.action else { throw CocoaError(.coderInvalidValue) }
+            checks["duplicateTitlesKeepDistinctMenuItems"] = bar.list.numberOfItems == 13
+                && (1...11).allSatisfy { bar.list.item(at: $0)?.title == browsers[0].tabDisplayTitle }
+            let sent = NSApp.sendAction(action, to: menuItem.target, from: menuItem)
+            checks["tabListSelectsRequestedHiddenTab"] = sent && group.selected === browsers[4]
+            group.insert(browsers[4], at: 11)
+            group.select(browsers[0])
+            let sentAfterReorder = NSApp.sendAction(action, to: menuItem.target, from: menuItem)
+            checks["trackedMenuItemFollowsTabAfterReorder"] = sentAfterReorder && group.selected === browsers[4]
+            group.insert(browsers[4], at: 4)
+            let target = browsers[4]
+            guard let targetBar = target.window?.contentView.flatMap(findBar) else { throw CocoaError(.coderInvalidValue) }
+            checks["accessibleTabPressSelectsTab"] = targetBar.cells[8].accessibilityPerformPress() && group.selected === browsers[8]
+            group.select(browsers[11])
+            guard let event = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [], timestamp: 0,
+                windowNumber: browsers[11].window!.windowNumber, context: nil, characters: "", charactersIgnoringModifiers: "", isARepeat: false, keyCode: 124) else { throw CocoaError(.coderInvalidValue) }
+            bar.cells[11].keyDown(with: event)
+            checks["tabArrowWrapsToFirst"] = group.selected === browsers[0]
+            // Exercise the actual close button for an unselected tab in a visible bar.
+            guard let firstBar = browsers[0].window?.contentView.flatMap(findBar) else { throw CocoaError(.coderInvalidValue) }
+            firstBar.cells[6].closeButton.performClick(nil)
+            try await Task.sleep(for: .milliseconds(100))
+            checks["closeButtonClosesRepresentedBackgroundTab"] = group.browsers.count == 11
+                && !group.browsers.contains { $0 === browsers[6] } && group.selected === browsers[0]
+            for browser in browsers.dropFirst() { browser.close() }
+            try await Task.sleep(for: .milliseconds(100))
+            checks["closeManyTabsClearsHiddenControls"] = group.browsers.count == 1 && firstBar.isHidden
+                && firstBar.cells.count <= 3 && firstBar.cells.allSatisfy { $0.representedBrowser == nil }
+                && firstBar.list.numberOfItems == 0
+            status = checks.values.allSatisfy { $0 } ? 0 : 1
+            let result: [String: Any] = ["checks": checks, "diagnostics": diagnostics, "theme": dark ? "dark" : "light",
+                "language": Locale.preferredLanguages.first ?? "unknown", "physicalInputAccepted": false]
+            try JSONSerialization.data(withJSONObject: result, options: [.prettyPrinted, .sortedKeys]).write(to: root.appendingPathComponent("report.json"), options: .atomic)
+        } catch {
+            fputs("Tab boundary verification: \(error)\n", stderr)
+        }
     }
 }
 #endif

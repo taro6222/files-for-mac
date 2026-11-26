@@ -40,6 +40,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         buildMenu()
         configureShortcuts()
         #if DEBUG
+        if let output = ProcessInfo.processInfo.environment["FILES_TAB_UI_QA_OUTPUT"] {
+            Task { @MainActor in await BrowserTabBar.runBoundaryVerification(output: output) }
+            return
+        }
         if let output = ProcessInfo.processInfo.environment["FILES_CLEANUP_RESTART_QA_OUTPUT"] {
             Task { @MainActor in await CleanupRestartVerification.run(output: output) }
             return

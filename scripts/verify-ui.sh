@@ -105,4 +105,5 @@ PY
     fi
   done
 done
+if ! bash scripts/verify-tab-ui.sh "$binary" "$outputRoot"; then failed=1; fi
 exit "$failed"
