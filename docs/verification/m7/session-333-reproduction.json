@@ -1,0 +1,78 @@
+{
+  "sourceBaseSHA": "a2249709f63b3c00248862f18a6e09f008647a00",
+  "fixture": "Selected group window set to current visibleFrame inset by -100pt on both axes before saving.",
+  "failedChecks": [
+    "desktopSessionRestoresPaneAndHistoryState"
+  ],
+  "fullCheckCount": 302,
+  "differences": [
+    {
+      "path": "tabs/0/1/ratio",
+      "saved": 0.6,
+      "restored": 0.6000962463907603
+    },
+    {
+      "path": "geometry/0/width",
+      "saved": 2000,
+      "restored": 1800
+    },
+    {
+      "path": "geometry/0/x",
+      "saved": -100,
+      "restored": 0
+    }
+  ],
+  "savedGeometry": [
+    {
+      "height": 1067,
+      "information": 280,
+      "sidebar": 220,
+      "width": 2000,
+      "x": -100,
+      "y": 63
+    },
+    {
+      "height": 848,
+      "information": 280,
+      "sidebar": 220,
+      "width": 1280,
+      "x": 260,
+      "y": 227
+    }
+  ],
+  "restoredGeometry": [
+    {
+      "height": 1067,
+      "information": 280,
+      "sidebar": 220,
+      "width": 1800,
+      "x": 0,
+      "y": 63
+    },
+    {
+      "height": 848,
+      "information": 280,
+      "sidebar": 220,
+      "width": 1280,
+      "x": 260,
+      "y": 227
+    }
+  ],
+  "savedSelectedTabs": [
+    2,
+    0
+  ],
+  "restoredSelectedTabs": [
+    2,
+    0
+  ],
+  "savedFocus": 1,
+  "restoredFocus": 1,
+  "diagnosticBinarySHA256": "0eb0a4eb58da8df7388c3990ac13a6b2946ce60c4047627e35be5dcf2ca4c107",
+  "reportSHA256": "3f7dcf65016402a1e5f3d70e26b19d291a2b4d175023c5e04de300f618a65e98",
+  "rawAppLogSHA256": "02f21af17ce3cde5e2543d43f5cd34a4bfecd09efff89286334776535536cf64",
+  "diagnosticExtraction": "Removed interleaved sandbox_extension_consume stderr lines from the JSON stdout diagnostic; raw log hash is retained.",
+  "limits": [
+    "Locally reproduces the same failed check with an explicit oversized frame; exact preceding remote field differences were not recorded."
+  ]
+}

@@ -507,7 +507,7 @@ def capture(output, app_id, window_handle, fixture=None, scope="all"):
                 send_control_shift("p")
                 set_editor_text("PART_TextBox", "Create archive")
                 command = wait_for("the visible Create archive command", lambda: element_route(
-                    "xpath", "//*[@AutomationId='PrimaryDisplayBlock' and @Name='Create archive' and @IsOffscreen='False']"))
+                    "xpath", "//*[@AutomationId='PrimaryDisplayBlock' and @Name='Create archive with selected item' and @IsOffscreen='False']"))
                 request("POST", command + "/click", {})
 
                 def archive_source(enabled, invalid=False):

@@ -1,0 +1,383 @@
+{
+  "sourceBaseSHA": "a2249709f63b3c00248862f18a6e09f008647a00",
+  "sourceSHA256": {
+    "Sources/FilesMac/BrowserTabs.swift": "fc80f024955faf5453fcd19dbcf7b7a1c3d7a6b17bf005ef14459c16f73f635f",
+    "Sources/FilesMac/BrowserWindow.swift": "2e54e390ef32ad8b623ae39f6473039b8204a34c64645dd2f6bdfe02da7bf822",
+    "scripts/verify-ui.sh": "0b8d7a8a183d4b34d6aa2707fb8ebc866b07af594b1c09b1c3b5d27e3b4c1f96",
+    "scripts/capture-windows-reference.py": "07d37e0d076d90131aa823b1547d58a715423f2932fa6d4b8216dd94bbb3e1fe"
+  },
+  "debugBinarySHA256": "cc32cbb6f6b86f2f7c2c63a34a0d4b64656b4b09c08e0e7666b971d8d6f09262",
+  "ui": {
+    "ko-light": {
+      "fullCheckCount": 303,
+      "boundaryCheckCount": 18,
+      "reportSHA256": "9329833f28cff23dfbdf698e561f2f000f3bca7e42d5289685fd3d16a820a1ee",
+      "boundaryReportSHA256": "5b008d20c14072811f18b76134b1c3416b0e5965e58149ded52f3fba9b860b27",
+      "comparisonSHA256": "abd317e5523e5ed6e66b104406964fc1a9b37a5c130c4a698ff3f035882e6977",
+      "ratioErrorsInPoints": [
+        0,
+        0.0999999999999881,
+        0,
+        0
+      ],
+      "savedGeometry": [
+        {
+          "height": 1067,
+          "information": 280,
+          "sidebar": 220,
+          "width": 2000,
+          "x": -100,
+          "y": 63
+        },
+        {
+          "height": 848,
+          "information": 280,
+          "sidebar": 220,
+          "width": 1280,
+          "x": 260,
+          "y": 227
+        }
+      ],
+      "restoredGeometry": [
+        {
+          "height": 1067,
+          "information": 280,
+          "sidebar": 220,
+          "width": 1800,
+          "x": 0,
+          "y": 63
+        },
+        {
+          "height": 848,
+          "information": 280,
+          "sidebar": 220,
+          "width": 1280,
+          "x": 260,
+          "y": 227
+        }
+      ],
+      "paneStateMatches": true,
+      "savedSelectedTabs": [
+        2,
+        0
+      ],
+      "restoredSelectedTabs": [
+        2,
+        0
+      ],
+      "savedFocus": 1,
+      "restoredFocus": 1
+    },
+    "ko-dark": {
+      "fullCheckCount": 303,
+      "boundaryCheckCount": 18,
+      "reportSHA256": "a8170a526e35876d6b5ea5f44bed8ac6536a9d562ff9400b4a5ccf6c2b80c2e9",
+      "boundaryReportSHA256": "f9e4644de8b42404017c390334d5bb70e231d287107ede7b437aa36ef7820105",
+      "comparisonSHA256": "d088d6345fe3055883183c4c4636695f44482b4fe71e2e01581092480d73a1f3",
+      "ratioErrorsInPoints": [
+        0,
+        0.0999999999999881,
+        0,
+        0
+      ],
+      "savedGeometry": [
+        {
+          "height": 1067,
+          "information": 280,
+          "sidebar": 220,
+          "width": 2000,
+          "x": -100,
+          "y": 63
+        },
+        {
+          "height": 848,
+          "information": 280,
+          "sidebar": 220,
+          "width": 1280,
+          "x": 260,
+          "y": 227
+        }
+      ],
+      "restoredGeometry": [
+        {
+          "height": 1067,
+          "information": 280,
+          "sidebar": 220,
+          "width": 1800,
+          "x": 0,
+          "y": 63
+        },
+        {
+          "height": 848,
+          "information": 280,
+          "sidebar": 220,
+          "width": 1280,
+          "x": 260,
+          "y": 227
+        }
+      ],
+      "paneStateMatches": true,
+      "savedSelectedTabs": [
+        2,
+        0
+      ],
+      "restoredSelectedTabs": [
+        2,
+        0
+      ],
+      "savedFocus": 1,
+      "restoredFocus": 1
+    },
+    "en-light": {
+      "fullCheckCount": 303,
+      "boundaryCheckCount": 18,
+      "reportSHA256": "ee350419d8fb7a270a726649b149d4b22001c840888a9a3e2f8b1ada752d57c0",
+      "boundaryReportSHA256": "8c264c2a29119eb2daf0ea2712c24b4be6ec4fa7c3f0f318ef2bc5a95b7dccc3",
+      "comparisonSHA256": "efa2b5990de9ab5df6a39fa650edf075fe4250de48c42182db16df1140fa4bde",
+      "ratioErrorsInPoints": [
+        0,
+        0.0999999999999881,
+        0,
+        0
+      ],
+      "savedGeometry": [
+        {
+          "height": 1067,
+          "information": 280,
+          "sidebar": 220,
+          "width": 2000,
+          "x": -100,
+          "y": 63
+        },
+        {
+          "height": 848,
+          "information": 280,
+          "sidebar": 220,
+          "width": 1280,
+          "x": 260,
+          "y": 227
+        }
+      ],
+      "restoredGeometry": [
+        {
+          "height": 1067,
+          "information": 280,
+          "sidebar": 220,
+          "width": 1800,
+          "x": 0,
+          "y": 63
+        },
+        {
+          "height": 848,
+          "information": 280,
+          "sidebar": 220,
+          "width": 1280,
+          "x": 260,
+          "y": 227
+        }
+      ],
+      "paneStateMatches": true,
+      "savedSelectedTabs": [
+        2,
+        0
+      ],
+      "restoredSelectedTabs": [
+        2,
+        0
+      ],
+      "savedFocus": 1,
+      "restoredFocus": 1
+    },
+    "en-dark": {
+      "fullCheckCount": 303,
+      "boundaryCheckCount": 18,
+      "reportSHA256": "4bbe1af31dbc8b0d6ff1d130f117a7aa95ff0443fba377cef39c9a9ae2197196",
+      "boundaryReportSHA256": "c336c66ffa5615d15ce0ad8170538ddff2d86cefbb915dd613652aef3c4d8698",
+      "comparisonSHA256": "a3e2e794249f72aa454d2c65a69c455d12c2b4979274733b0ac1e6a3b76680de",
+      "ratioErrorsInPoints": [
+        0,
+        0.0999999999999881,
+        0,
+        0
+      ],
+      "savedGeometry": [
+        {
+          "height": 1067,
+          "information": 280,
+          "sidebar": 220,
+          "width": 2000,
+          "x": -100,
+          "y": 63
+        },
+        {
+          "height": 848,
+          "information": 280,
+          "sidebar": 220,
+          "width": 1280,
+          "x": 260,
+          "y": 227
+        }
+      ],
+      "restoredGeometry": [
+        {
+          "height": 1067,
+          "information": 280,
+          "sidebar": 220,
+          "width": 1800,
+          "x": 0,
+          "y": 63
+        },
+        {
+          "height": 848,
+          "information": 280,
+          "sidebar": 220,
+          "width": 1280,
+          "x": 260,
+          "y": 227
+        }
+      ],
+      "paneStateMatches": true,
+      "savedSelectedTabs": [
+        2,
+        0
+      ],
+      "restoredSelectedTabs": [
+        2,
+        0
+      ],
+      "savedFocus": 1,
+      "restoredFocus": 1
+    }
+  },
+  "releaseSourceWithoutDEBUGMatchesBase": {
+    "Sources/FilesMac/BrowserTabs.swift": "ad0ef890abe14be1e3283542b74754664c1c087cf67b125b44f0c7ec7124d716",
+    "Sources/FilesMac/BrowserWindow.swift": "b75187fa6e4b7faeb0333da8e1757e08747ecaad9fbcda52de2967fdec69b489"
+  },
+  "captureGuardTests": 16,
+  "logsSHA256": {
+    "build-final": "173dffa26edab13a33ab9ce433354050ba00a7e99b56908d0d850fd8705ad340",
+    "ui-final": "30735ceb65bc089b84e0b1a52f1d7da6b4a39b93271fda86dbcc5b89062e1bcf",
+    "parity": "f2e8f311d376fa306990bf6651b074ea8c5cdac5bfc49dd049df9ac2a1b96f01",
+    "capture-tests": "ca371516ecd628db5bfda9da88c7a47c0752a45c3f441a1b762ef87ab4dae52d"
+  },
+  "precedingRemoteARM": {
+    "source4a41d12": {
+      "runURL": "https://github.com/taro6222/files-for-mac/actions/runs/45750985375",
+      "sourceSHA": "4a41d12d582c48e15221a778932c53c7041ca5a8",
+      "reports": {
+        "tabs-en-light": {
+          "count": 18,
+          "failed": [],
+          "reportSHA256": "8c7ea58db35d39197a12b053f583fba009acff534def6be24e64c77900d59e6f"
+        },
+        "en-dark": {
+          "count": 298,
+          "failed": [
+            "desktopSessionRestoresPaneAndHistoryState"
+          ],
+          "reportSHA256": "5e612f42bd2f40df76edaf43fa7b49caf2304cba90814917c355d9b7a7e3a502"
+        },
+        "ko-light": {
+          "count": 298,
+          "failed": [
+            "desktopSessionRestoresPaneAndHistoryState"
+          ],
+          "reportSHA256": "957e4d2f387e769b2ae5943f3d60c904fbd13f31b9ebc7d3924749d300c87eb3"
+        },
+        "en-light": {
+          "count": 298,
+          "failed": [
+            "desktopSessionRestoresPaneAndHistoryState"
+          ],
+          "reportSHA256": "dedc8891d7c85a21c3c2634c49774c97437b33a3487c3f79e4db133965ddbaab"
+        },
+        "tabs-ko-dark": {
+          "count": 18,
+          "failed": [],
+          "reportSHA256": "d14f0ebb7836c334065287abcc60161673f48e525a3d647fc8d6ea82de87a617"
+        },
+        "tabs-ko-light": {
+          "count": 18,
+          "failed": [],
+          "reportSHA256": "1b569fbfbb07dfa73d081a669fe6cb1161f69877bed214dfbe4ec0d80dfad9b9"
+        },
+        "tabs-en-dark": {
+          "count": 18,
+          "failed": [],
+          "reportSHA256": "4cd5dc149461c75b593e647a0784a7a4efc95a8c5c56558ef4fd9754202c353c"
+        },
+        "ko-dark": {
+          "count": 298,
+          "failed": [
+            "desktopSessionRestoresPaneAndHistoryState"
+          ],
+          "reportSHA256": "2b55470fb65bfe6724d97952c45aa07a22bc46c52e4da8aeaea86073569772da"
+        }
+      }
+    },
+    "source81524f8": {
+      "runURL": "https://github.com/taro6222/files-for-mac/actions/runs/45752296059",
+      "reports": {
+        "tabs-en-light": {
+          "count": 18,
+          "failed": [],
+          "reportSHA256": "8c7ea58db35d39197a12b053f583fba009acff534def6be24e64c77900d59e6f"
+        },
+        "en-dark": {
+          "count": 302,
+          "failed": [
+            "desktopSessionRestoresPaneAndHistoryState"
+          ],
+          "reportSHA256": "79751677f7dbfb4a0ba8da1c69ec80af25cffb3c210173705a4fcae879946dfd"
+        },
+        "ko-light": {
+          "count": 302,
+          "failed": [
+            "desktopSessionRestoresPaneAndHistoryState"
+          ],
+          "reportSHA256": "5e5699ebafd50466019a9122358a6bee07faea3acca90f117453913f4ca2fa68"
+        },
+        "en-light": {
+          "count": 302,
+          "failed": [
+            "desktopSessionRestoresPaneAndHistoryState"
+          ],
+          "reportSHA256": "d444b1147f09368e0e68f0370bce8d375f0f9c7134287c26006eb02de16c441b"
+        },
+        "tabs-ko-dark": {
+          "count": 18,
+          "failed": [],
+          "reportSHA256": "d14f0ebb7836c334065287abcc60161673f48e525a3d647fc8d6ea82de87a617"
+        },
+        "tabs-ko-light": {
+          "count": 18,
+          "failed": [],
+          "reportSHA256": "1b569fbfbb07dfa73d081a669fe6cb1161f69877bed214dfbe4ec0d80dfad9b9"
+        },
+        "tabs-en-dark": {
+          "count": 18,
+          "failed": [],
+          "reportSHA256": "4cd5dc149461c75b593e647a0784a7a4efc95a8c5c56558ef4fd9754202c353c"
+        },
+        "ko-dark": {
+          "count": 302,
+          "failed": [
+            "desktopSessionRestoresPaneAndHistoryState"
+          ],
+          "reportSHA256": "ab3bc55ff34655cbaf06724bc1887e23e17aa7a31876737bb8e589dfd3946420"
+        }
+      }
+    }
+  },
+  "physicalInputAccepted": false,
+  "releaseComplete": false,
+  "remaining": [
+    "remote acceptance of the corrected checks",
+    "8-hour memory stability",
+    "Windows archive dialog capture and comparison",
+    "physical input and VoiceOver",
+    "supported environments and external services",
+    "Intel reference performance",
+    "Developer ID and notarization"
+  ]
+}

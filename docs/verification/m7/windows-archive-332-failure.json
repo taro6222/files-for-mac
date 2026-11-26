@@ -1,0 +1,61 @@
+{
+  "runURL": "https://github.com/taro6222/files-for-mac/actions/runs/45753136603",
+  "sourceSHA": "a2249709f63b3c00248862f18a6e09f008647a00",
+  "capture": {
+    "upstreamSHA": "99951c66928c4da714da8b1dd46039421182cbab",
+    "packageSHA256": "dfd6914c7611d4e7eb4aa2888d81f0e515d43fd59154264f5d717741194c8341",
+    "appID": "FilesDev_ykqwq8d6ps0ag!App",
+    "windows": "10.0.26100",
+    "architecture": "AMD64",
+    "scope": "archive-create",
+    "screen": "UI-01 Home, initial runner defaults",
+    "screenshotSHA256": "a7b11720d23d34046af28f296a15e68440806b639f4d35403d98ae7c52413566",
+    "folder": {
+      "screens": [
+        "UI-02",
+        "UI-03"
+      ],
+      "entries": [
+        "Alpha",
+        "Workshop",
+        "notes.txt",
+        "preview.txt",
+        "readme.md"
+      ],
+      "visibleEntryNames": [
+        "Alpha",
+        "Workshop",
+        "notes.txt",
+        "preview.txt",
+        "readme.md"
+      ],
+      "detailColumnNames": [
+        "Date modified",
+        "Name",
+        "Size",
+        "Type"
+      ],
+      "screenshotSHA256": "fd1cea5d7940fa21853ed9f7358665a65fb6254730b24039f0a6c860c04c9363"
+    },
+    "archiveCreation": {
+      "state": "selected",
+      "sourceBefore": {
+        "files": 4,
+        "directories": 2,
+        "bytes": 96,
+        "sha256": "7e7d09e2029f64a7fadd563aa44340410927ec8df7fb75a987df92ecaaad65ae"
+      }
+    }
+  },
+  "error": "Timed out waiting for the visible Create archive command",
+  "diagnostics": {
+    "sourceRefreshedAfterFailure": true,
+    "sourceAttemptUnixSeconds": 1795666598.5826619
+  },
+  "imageSHA256": "1a551054a71b79700972d3c14284b7f5304cb31e55bd8459e8b817406bbcc06c",
+  "treeSHA256": "8ed78022d57ce88422482b9d78df30ece21b3963e9ad0ea3e6c5f8db402c53cc",
+  "observedCommandName": "Create archive with selected item",
+  "correctedMatcherCountInFailureTree": 1,
+  "archiveDialogAccepted": false,
+  "afterManifestCaptured": false
+}

@@ -333,6 +333,8 @@ extension BrowserTabs {
         a.tabs.insert(c, at: 0); a.tabs.select(b)
         d.showWindow(nil)
         try await Task.sleep(for: .milliseconds(200))
+        guard let visible = NSScreen.main?.visibleFrame else { throw CocoaError(.coderInvalidValue) }
+        b.window?.setFrame(visible.insetBy(dx: -100, dy: -100), display: false)
         let saved = desktopSnapshot(browsers: original, focused: d)
         var checks = ["desktopSessionUsesVisualOrder": saved.windows.count == 2
             && saved.windows[0].tabs == [c.workspaceSnapshot(), a.workspaceSnapshot(), b.workspaceSnapshot()]
@@ -353,8 +355,53 @@ extension BrowserTabs {
             && selections[0] === reopened[2] && selections[1] === reopened[3]
             && reopened.filter { $0.window?.isVisible == true }.count == 2
             && selections.allSatisfy { $0.tabs.selected === $0 && $0.window?.isVisible == true }
-        checks["desktopSessionRestoresPaneAndHistoryState"] =
-            desktopSnapshot(browsers: reopened, focused: reopened.last) == saved
+        let actual = desktopSnapshot(browsers: reopened, focused: reopened.last)
+        func geometries(_ session: WorkspaceDesktopSession) -> [[String: Double]] {
+            session.windows.map { window in
+                guard let g = window.geometry else { return [:] }
+                return ["x": g.x, "y": g.y, "width": g.width, "height": g.height,
+                        "sidebar": g.sidebarWidth, "information": g.informationWidth]
+            }
+        }
+        let encoder = JSONEncoder()
+        let savedTabs = try JSONSerialization.jsonObject(with: encoder.encode(saved.windows.map(\.tabs)))
+        let actualTabs = try JSONSerialization.jsonObject(with: encoder.encode(actual.windows.map(\.tabs)))
+        let orderedBrowsers = selections.flatMap { $0.tabs.browsers }
+        let expectedTabs = saved.windows.flatMap(\.tabs)
+        let restoredTabs = actual.windows.flatMap(\.tabs)
+        let ratioErrors = zip(zip(restoredTabs, expectedTabs), orderedBrowsers).map { pair, browser in
+            abs(pair.0.ratio - pair.1.ratio) * max(1, browser.qaWorkspaceDimension)
+        }
+        let paneStateMatches = restoredTabs.count == expectedTabs.count
+            && orderedBrowsers.count == expectedTabs.count
+            && zip(restoredTabs, expectedTabs).allSatisfy { current, previous in
+                current.panes == previous.panes && current.axis == previous.axis
+                    && current.activePaneID == previous.activePaneID
+            } && ratioErrors.allSatisfy { $0 <= 1 }
+        let geometryMatches = actual.windows.count == saved.windows.count
+            && zip(actual.windows, saved.windows).allSatisfy { current, previous in
+                guard let g = current.geometry, let saved = previous.geometry else { return false }
+                let expected = BrowserGeometryRestoration.frame(for: saved, screens: NSScreen.screens.map(\.visibleFrame))
+                return g.x == expected.minX && g.y == expected.minY && g.width == expected.width && g.height == expected.height
+                    && g.sidebarWidth == saved.sidebarWidth && g.informationWidth == saved.informationWidth
+            }
+        let comparison: [String: Any] = ["savedGeometry": geometries(saved), "restoredGeometry": geometries(actual),
+            "savedTabs": savedTabs, "restoredTabs": actualTabs,
+            "paneAndHistoryUnchanged": actual.windows.map(\.tabs) == saved.windows.map(\.tabs),
+            "paneStateMatchesWithOnePointRatioBound": paneStateMatches, "ratioErrorsInPoints": ratioErrors,
+            "savedSelectedTabs": saved.windows.map(\.selectedIndex), "restoredSelectedTabs": actual.windows.map(\.selectedIndex),
+            "savedFocus": saved.focusedWindowIndex, "restoredFocus": actual.focusedWindowIndex]
+        let data = try JSONSerialization.data(withJSONObject: comparison, options: [.sortedKeys])
+        if let output = ProcessInfo.processInfo.environment["FILES_UI_QA_OUTPUT"] {
+            try data.write(to: URL(fileURLWithPath: output).appendingPathComponent("desktop-session-comparison.json"), options: .atomic)
+        }
+        checks["desktopSessionRestoresPaneAndHistoryState"] = paneStateMatches
+            && actual.windows.map(\.selectedIndex) == saved.windows.map(\.selectedIndex)
+            && actual.focusedWindowIndex == saved.focusedWindowIndex
+        checks["desktopSessionClampsOversizedWindow"] = geometryMatches
+            && (saved.windows.first?.geometry?.width ?? 0) > visible.width
+            && actual.windows.first?.geometry?.x == visible.minX && actual.windows.first?.geometry?.y == visible.minY
+            && actual.windows.first?.geometry?.width == visible.width && actual.windows.first?.geometry?.height == visible.height
         return checks
     }
 }

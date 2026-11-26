@@ -4215,6 +4215,9 @@ extension BrowserWindow {
     var qaSidebarVisible: Bool { !sidebarContainer.isHidden }
     var qaHasAppBackground: Bool { content.image != nil }
     var qaGitLoading: Bool { gitTask != nil }
+    var qaWorkspaceDimension: Double {
+        Double(workspaceSplit.isVertical ? workspaceSplit.bounds.width : workspaceSplit.bounds.height)
+    }
     var qaGitMarkedRows: Int { model.items.filter { !gitStatus(for: $0).isEmpty }.count }
     var qaGitColumnVisible: Bool { table.tableColumns.contains { $0.identifier.rawValue == "git" && !$0.isHidden } }
     var qaVisibleDetailColumns: Set<String> { Set(table.tableColumns.filter { !$0.isHidden }.map { $0.identifier.rawValue }) }
