@@ -1,0 +1,36 @@
+{
+  "increment": 380,
+  "status": "DEBUG-only throw handling corrected; Swift 6.2 remote compilation and GUI acceptance pending",
+  "failedRun": 45878584565,
+  "failedSource": "b41087a1447b79e4bfda6acfdfe10638a0f83a22",
+  "failedJob": 140111846849,
+  "remoteSwift": "6.2.4",
+  "localSwift": "6.4.2",
+  "errors": [
+    {
+      "line": 124,
+      "message": "operator can throw but expression is not marked with try"
+    },
+    {
+      "line": 128,
+      "message": "operator can throw but expression is not marked with try"
+    },
+    {
+      "line": 133,
+      "message": "operator can throw but expression is not marked with try"
+    }
+  ],
+  "compilerLogSHA256": "42747106ebc4339d30ecc806f374747a849d4378062397f4aa0fe7273c11241c",
+  "sourceSHA256": "da832f28e891f41c3de7426f6c57d94dc46e976494c06b75ff705de6bdeb7d17",
+  "debugBuild": {
+    "passed": true,
+    "seconds": 9.84,
+    "logSHA256": "7041ea9a5893646518bda0b2720a70f193d61cf3a6b527f0aad6bc6d1a5e344e"
+  },
+  "archiveEditingCheckNamesUnchanged": true,
+  "archiveEditingChecks": 37,
+  "fullUIChecksDefined": 369,
+  "releaseCodeChanged": false,
+  "localGUIStarted": false,
+  "existingEarlierRun": 45877111686
+}

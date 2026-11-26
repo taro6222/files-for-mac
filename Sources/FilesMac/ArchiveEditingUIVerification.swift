@@ -121,16 +121,19 @@ func verifyArchiveEditingUI(_ controller: ArchiveWindow, root: URL, capture: (St
     controller.qaAdd([added], directory: "", encryptNewData: emptyOptions.encryptNewData)
     guard let cancelAddition = await ArchivePasswordPrompt.qaWait(for: window) else { throw SevenZipWorkerError.timedOut }
     cancelAddition.qaSubmit(nil); try await idle()
-    checks["archiveEmptyZIPPasswordCancelPreservesArchive"] = controller.qaEntryCount == 0 && (try Data(contentsOf: policyArchive)) == emptyZIP
+    let afterCancelledAddition = try Data(contentsOf: policyArchive)
+    checks["archiveEmptyZIPPasswordCancelPreservesArchive"] = controller.qaEntryCount == 0 && afterCancelledAddition == emptyZIP
     controller.qaAdd([added], directory: "", encryptNewData: emptyOptions.encryptNewData)
     guard let newPassword = await ArchivePasswordPrompt.qaWait(for: window) else { throw SevenZipWorkerError.timedOut }
     newPassword.qaSubmit(policyPassword); try await idle()
-    checks["archiveEmptyZIPEncryptedAddition"] = controller.qaEntryPaths == [added.lastPathComponent] && (try ZipArchiveProvider().entries(at: policyArchive)).first?.isEncrypted == true
+    let encryptedAdditionEntries = try ZipArchiveProvider().entries(at: policyArchive)
+    checks["archiveEmptyZIPEncryptedAddition"] = controller.qaEntryPaths == [added.lastPathComponent] && encryptedAdditionEntries.first?.isEncrypted == true
     controller.qaUndoEdit(); controller.qaConfirm(true); try await idle()
     let plainOptions = controller.qaAdditionOptions(); plainOptions.encryption.performClick(nil)
     checks["archiveEmptyZIPExplicitPlaintextOption"] = controller.qaEntryCount == 0 && !plainOptions.encryptNewData
     controller.qaAdd([added], directory: "", encryptNewData: plainOptions.encryptNewData); try await idle()
-    checks["archiveEmptyZIPExplicitPlaintextAddition"] = controller.qaEntryPaths == [added.lastPathComponent] && (try ZipArchiveProvider().entries(at: policyArchive)).first?.isEncrypted == false
+    let plainAdditionEntries = try ZipArchiveProvider().entries(at: policyArchive)
+    checks["archiveEmptyZIPExplicitPlaintextAddition"] = controller.qaEntryPaths == [added.lastPathComponent] && plainAdditionEntries.first?.isEncrypted == false
     let emptySevenZip = root.appendingPathComponent("archive-empty-header-policy.7z"), sdk = try await ArchiveReadBackend.editingProvider()
     _ = try await sdk.create(from: [added], at: emptySevenZip, password: policyPassword)
     _ = try await sdk.edit(emptySevenZip, operations: [.delete(paths: [added.lastPathComponent])], password: policyPassword, encryptNewData: true, journalDirectory: root.appendingPathComponent("archive-edit-journals"))
