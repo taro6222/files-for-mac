@@ -20,5 +20,6 @@ manifest="$app/Contents/Resources/ThirdParty/7zip/manifest.json"
 diagnostic_worker=$(python3 "$script_dir/build-sevenzip-worker.py")
 python3 "$script_dir/verify-sevenzip-worker.py" --worker "$diagnostic_worker" --reference "$reference" --output "$output/diagnostic-worker"
 python3 "$script_dir/verify-sevenzip-worker.py" --broker-only --worker "$worker" --library "$library" --bundle-manifest "$manifest" --reference "$reference" --output "$output/worker"
+python3 "$script_dir/verify-archive-edit-sdk.py" --library "$library" --reference "$reference" --app "$app" --output "$output/edit-sdk"
 python3 "$script_dir/verify-sevenzip-client.py" --worker "$worker" --library "$library" --bundle-manifest "$manifest" --app "$app" --reference "$reference" --output "$output/client"
 python3 "$script_dir/verify-sevenzip-sandbox.py" --app "$app" --output "$output/authority"

@@ -1,0 +1,107 @@
+{
+  "run": 45847539460,
+  "sourceSHA": "4a6c79dda1106bbbbb823863daf39db6241cdb82",
+  "conclusion": "success",
+  "profiles": [
+    {
+      "architecture": "arm64",
+      "language": "en",
+      "theme": "dark",
+      "checks": 332,
+      "passed": 332,
+      "tabBoundaryChecks": 18,
+      "tabBoundaryPassed": 18,
+      "reportPath": "build/edit-370/remote-ui-arm/files-ui-verification.03RHw6/en-dark/report.json",
+      "reportSHA256": "90e1c42929c06ebc69232d8f57edc260f1fe14c3e5723d594ada99bd768fe67d",
+      "tabsSHA256": "4cd5dc149461c75b593e647a0784a7a4efc95a8c5c56558ef4fd9754202c353c"
+    },
+    {
+      "architecture": "arm64",
+      "language": "en",
+      "theme": "light",
+      "checks": 332,
+      "passed": 332,
+      "tabBoundaryChecks": 18,
+      "tabBoundaryPassed": 18,
+      "reportPath": "build/edit-370/remote-ui-arm/files-ui-verification.03RHw6/en-light/report.json",
+      "reportSHA256": "e136e977d952ed438fb34f79013f8220313a4d9cde94005f0403278106e4aa78",
+      "tabsSHA256": "8c7ea58db35d39197a12b053f583fba009acff534def6be24e64c77900d59e6f"
+    },
+    {
+      "architecture": "arm64",
+      "language": "ko",
+      "theme": "dark",
+      "checks": 332,
+      "passed": 332,
+      "tabBoundaryChecks": 18,
+      "tabBoundaryPassed": 18,
+      "reportPath": "build/edit-370/remote-ui-arm/files-ui-verification.03RHw6/ko-dark/report.json",
+      "reportSHA256": "5609b693297adde5a2d67184452286cce9f0c1979e32662d90f8865b12caae61",
+      "tabsSHA256": "d14f0ebb7836c334065287abcc60161673f48e525a3d647fc8d6ea82de87a617"
+    },
+    {
+      "architecture": "arm64",
+      "language": "ko",
+      "theme": "light",
+      "checks": 332,
+      "passed": 332,
+      "tabBoundaryChecks": 18,
+      "tabBoundaryPassed": 18,
+      "reportPath": "build/edit-370/remote-ui-arm/files-ui-verification.03RHw6/ko-light/report.json",
+      "reportSHA256": "349debfdce3b430149ba4928a9f14c5e92a47ed0ff16a5158b09e7f74a08d594",
+      "tabsSHA256": "1b569fbfbb07dfa73d081a669fe6cb1161f69877bed214dfbe4ec0d80dfad9b9"
+    },
+    {
+      "architecture": "x86_64",
+      "language": "en",
+      "theme": "dark",
+      "checks": 332,
+      "passed": 332,
+      "tabBoundaryChecks": 18,
+      "tabBoundaryPassed": 18,
+      "reportPath": "build/edit-370/remote-ui-intel/files-ui-verification.pFnMqm/en-dark/report.json",
+      "reportSHA256": "139186b40803d3706a591853e2b8cacf39eca0e69c8d7122433b43d6d73b1d02",
+      "tabsSHA256": "4cd5dc149461c75b593e647a0784a7a4efc95a8c5c56558ef4fd9754202c353c"
+    },
+    {
+      "architecture": "x86_64",
+      "language": "en",
+      "theme": "light",
+      "checks": 332,
+      "passed": 332,
+      "tabBoundaryChecks": 18,
+      "tabBoundaryPassed": 18,
+      "reportPath": "build/edit-370/remote-ui-intel/files-ui-verification.pFnMqm/en-light/report.json",
+      "reportSHA256": "e30444df1c0e9def832a1bd1de465fba622c176f67e6a71c83446134ced83547",
+      "tabsSHA256": "8c7ea58db35d39197a12b053f583fba009acff534def6be24e64c77900d59e6f"
+    },
+    {
+      "architecture": "x86_64",
+      "language": "ko",
+      "theme": "dark",
+      "checks": 332,
+      "passed": 332,
+      "tabBoundaryChecks": 18,
+      "tabBoundaryPassed": 18,
+      "reportPath": "build/edit-370/remote-ui-intel/files-ui-verification.pFnMqm/ko-dark/report.json",
+      "reportSHA256": "7b2a868072bf4885055a5831575f3495ba1c295c9b194e4045e910ff7879270e",
+      "tabsSHA256": "d14f0ebb7836c334065287abcc60161673f48e525a3d647fc8d6ea82de87a617"
+    },
+    {
+      "architecture": "x86_64",
+      "language": "ko",
+      "theme": "light",
+      "checks": 332,
+      "passed": 332,
+      "tabBoundaryChecks": 18,
+      "tabBoundaryPassed": 18,
+      "reportPath": "build/edit-370/remote-ui-intel/files-ui-verification.pFnMqm/ko-light/report.json",
+      "reportSHA256": "10586359f5e064bda9b43bcbb5da5e8cbabfd7b9f54570a78423e962bc6885ba",
+      "tabsSHA256": "1b569fbfbb07dfa73d081a669fe6cb1161f69877bed214dfbe4ec0d80dfad9b9"
+    }
+  ],
+  "physicalInputVerified": false,
+  "fullOriginalUIParityProven": false,
+  "coversNewArchiveEditAPI": false,
+  "runMetadataSHA256": "85384d927f38562e8366f1e431d2abe2c0af3c0c0c73ca939ff1b8159e7d2284"
+}

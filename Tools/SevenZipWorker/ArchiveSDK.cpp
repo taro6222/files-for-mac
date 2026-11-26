@@ -19,9 +19,26 @@
 #include <vector>
 #include <algorithm>
 #include <mutex>
+#include <set>
+#include <CoreFoundation/CoreFoundation.h>
+#include <xlocale.h>
 #include <sys/resource.h>
 
 Z7_DEFINE_GUID(CLSID_SevenZip, 0x23170f69, 0x40c1, 0x278a, 0x10, 0, 0, 1, 0x10, 7, 0, 0);
+Z7_DEFINE_GUID(CLSID_Zip, 0x23170f69, 0x40c1, 0x278a, 0x10, 0, 0, 1, 0x10, 1, 0, 0);
+
+// ZIP's SDK password decoder uses the C multibyte conversion. Scope UTF-8 to
+// this thread; changing the process locale would affect unrelated host work.
+class EditLocale {
+    locale_t utf8 = nullptr, previous = nullptr;
+    bool enabled;
+public:
+    explicit EditLocale(bool value): enabled(value) {
+        if (enabled) { utf8 = newlocale(LC_CTYPE_MASK, "en_US.UTF-8", nullptr); if (utf8) previous = uselocale(utf8); }
+    }
+    bool valid() const { return !enabled || (utf8 && previous); }
+    ~EditLocale() { if (previous) uselocale(previous); if (utf8) freelocale(utf8); }
+};
 
 class SourceStream final: public IInStream, public CMyUnknownImp {
     Z7_COM_UNKNOWN_IMP_2(IInStream, ISequentialInStream)
@@ -37,6 +54,10 @@ class SourceStream final: public IInStream, public CMyUnknownImp {
 public:
     struct stat initial = {};
     uint64_t total = 0;
+    bool containsIdentity(const struct stat &info) const {
+        for (const auto &part: parts) if (part.info.st_dev == info.st_dev && part.info.st_ino == info.st_ino) return true;
+        return false;
+    }
     ~SourceStream() { for (const auto &part: parts) close(part.fd); }
     int append(const char *path, bool split) {
         int fd = open(path, O_RDONLY | O_CLOEXEC | O_NONBLOCK | (split ? O_NOFOLLOW : 0));
@@ -141,6 +162,7 @@ Z7_COM7F_IMF(OpenCallback::CryptoGetTextPassword(BSTR *value)) {
 }
 
 struct Session {
+    uint32_t editFormat = 0;
     void *library = nullptr;
     CMyComPtr<IInArchive> archive;
     CMyComPtr<IInStream> source;
@@ -155,7 +177,7 @@ struct Session {
 };
 
 static void *openArchives(const char *library, const char *const *paths, uint32_t count, bool split, const char *password, int *error,
-                          int *descriptors = nullptr, const SevenZipInputSource *sources = nullptr) {
+                          int *descriptors = nullptr, const SevenZipInputSource *sources = nullptr, const GUID *format = &CLSID_SevenZip) {
     *error = 8;
     try {
         std::unique_ptr<Session> session(new Session());
@@ -163,7 +185,7 @@ static void *openArchives(const char *library, const char *const *paths, uint32_
         if (!session->library) { *error = 1; return nullptr; }
         typedef HRESULT (*Create)(const GUID *, const GUID *, void **);
         auto create = (Create)dlsym(session->library, "CreateObject");
-        if (!create || create(&CLSID_SevenZip, &IID_IInArchive, (void **)&session->archive) != S_OK) { *error = 1; return nullptr; }
+        if (!create || create(format, &IID_IInArchive, (void **)&session->archive) != S_OK) { *error = 1; return nullptr; }
         if ((!paths && (!descriptors || !sources)) || !count || count > 1024 || (!split && count != 1)) { *error = 7; return nullptr; }
         if (split || descriptors) {
             const uint32_t needed = count + 64U;
@@ -289,6 +311,17 @@ extern "C" SevenZipSourceIdentity SevenZipIdentity(void *handle) {
     auto &info = ((Session *)handle)->stream->initial;
     return {(uint64_t)info.st_dev, (uint64_t)info.st_ino, ((Session *)handle)->stream->total};
 }
+extern "C" void *SevenZipOpenEditDescriptor(const char *library, int *descriptor, const SevenZipInputSource *source,
+                                             uint32_t format, const char *password, int *error) {
+    if (!error) return nullptr;
+    if (!descriptor || !source || (format != 1 && format != 7)) { *error = 6; return nullptr; }
+    EditLocale locale(format == 1);
+    if (!locale.valid()) { *error = 8; return nullptr; }
+    auto session = (Session *)openArchives(library, nullptr, 1, false, password, error, descriptor, source,
+                                         format == 1 ? &CLSID_Zip : &CLSID_SevenZip);
+    if (session) session->editFormat = format;
+    return session;
+}
 extern "C" int SevenZipHeaderPasswordRequested(void *handle) { return ((Session *)handle)->openCallback->requested; }
 extern "C" void SevenZipClose(void *handle) { delete (Session *)handle; }
 
@@ -344,6 +377,8 @@ extern "C" int SevenZipExtract(void *handle, uint32_t index, uint64_t expectedSi
     *written = 0;
     auto session = (Session *)handle;
     try {
+        EditLocale locale(session->editFormat == 1);
+        if (!locale.valid()) return 8;
         if (!session->stream->unchanged()) return 9;
         UInt32 count = 0;
         if (session->archive->GetNumberOfItems(&count) != S_OK) return 6;
@@ -392,7 +427,7 @@ static int openSource(const char *path) {
 }
 static bool matchesCreateItem(const SevenZipCreateItem &item, int fd) {
     struct stat info;
-    return fstat(fd, &info) == 0 && (uint64_t)info.st_dev == item.device && (uint64_t)info.st_ino == item.inode &&
+    return (fcntl(fd, F_GETFL) & O_ACCMODE) == O_RDONLY && fstat(fd, &info) == 0 && (uint64_t)info.st_dev == item.device && (uint64_t)info.st_ino == item.inode &&
         (uint32_t)info.st_mode == item.mode && (item.directory ? S_ISDIR(info.st_mode) : S_ISREG(info.st_mode)) &&
         (item.directory || (info.st_size >= 0 && (uint64_t)info.st_size == item.size)) &&
         info.st_mtimespec.tv_sec == item.modifiedSeconds && info.st_mtimespec.tv_nsec == item.modifiedNanos &&
@@ -494,9 +529,7 @@ Z7_COM7F_IMF(CreateCallback::GetUpdateItemInfo(UInt32 index, Int32 *data, Int32 
     if (oldIndex) *oldIndex = (UInt32)-1;
     return S_OK;
 }
-Z7_COM7F_IMF(CreateCallback::GetProperty(UInt32 index, PROPID propertyID, PROPVARIANT *value)) {
-    if (index >= count) return E_INVALIDARG;
-    const auto &item = items[index];
+static HRESULT createItemProperty(const SevenZipCreateItem &item, PROPID propertyID, PROPVARIANT *value) {
     NWindows::NCOM::CPropVariant property;
     switch (propertyID) {
         case kpidPath: {
@@ -525,6 +558,9 @@ Z7_COM7F_IMF(CreateCallback::GetProperty(UInt32 index, PROPID propertyID, PROPVA
         }
     }
     property.Detach(value); return S_OK;
+}
+Z7_COM7F_IMF(CreateCallback::GetProperty(UInt32 index, PROPID propertyID, PROPVARIANT *value)) {
+    return index < count ? createItemProperty(items[index], propertyID, value) : E_INVALIDARG;
 }
 Z7_COM7F_IMF(CreateCallback::GetStream(UInt32 index, ISequentialInStream **stream)) {
     if (index >= count) return E_INVALIDARG;
@@ -579,6 +615,225 @@ extern "C" int SevenZipCreate(const char *library, int outputFD, const SevenZipC
             bool matches = matchesCreateItem(items[i], fd); close(fd);
             if (!matches) return 9;
         }
+        return stream->finish() ? 0 : 10;
+    } catch (...) { return 8; }
+}
+
+// Test retained data without creating host files. This also validates encrypted data passwords
+// before a metadata-only edit can otherwise copy encrypted streams without decrypting them.
+class EditTestCallback final: public IArchiveExtractCallback, public ICryptoGetTextPassword, public CMyUnknownImp {
+    Z7_IFACES_IMP_UNK_2(IArchiveExtractCallback, ICryptoGetTextPassword)
+    Z7_IFACE_COM7_IMP(IProgress)
+public:
+    OpenCallback *credentials;
+    uint64_t maximum;
+    uint32_t completed = 0;
+    bool failed = false, limit = false, requestedPassword = false, testing = false;
+};
+Z7_COM7F_IMF(EditTestCallback::SetTotal(UInt64 value)) { if (value > maximum) { limit = true; return E_ABORT; } return S_OK; }
+Z7_COM7F_IMF(EditTestCallback::SetCompleted(const UInt64 *value)) { return value ? SetTotal(*value) : S_OK; }
+Z7_COM7F_IMF(EditTestCallback::GetStream(UInt32, ISequentialOutStream **stream, Int32)) { *stream = nullptr; return S_OK; }
+Z7_COM7F_IMF(EditTestCallback::PrepareOperation(Int32 mode)) { testing = mode == NArchive::NExtract::NAskMode::kTest; return S_OK; }
+Z7_COM7F_IMF(EditTestCallback::SetOperationResult(Int32 result)) {
+    if (testing) ++completed;
+    if (result != NArchive::NExtract::NOperationResult::kOK) failed = true;
+    return S_OK;
+}
+Z7_COM7F_IMF(EditTestCallback::CryptoGetTextPassword(BSTR *value)) {
+    requestedPassword = true;
+    return credentials->defined ? StringToBstr(credentials->password, value) : E_ABORT;
+}
+
+class EditCallback final: public IArchiveUpdateCallback, public ICryptoGetTextPassword2, public CMyUnknownImp {
+    Z7_IFACES_IMP_UNK_2(IArchiveUpdateCallback, ICryptoGetTextPassword2)
+    Z7_IFACE_COM7_IMP(IProgress)
+public:
+    const SevenZipEditItem *items;
+    uint32_t count;
+    CMyComPtr<IInArchive> source;
+    CMyComPtr<IArchiveUpdateCallback> additions;
+    OpenCallback *credentials;
+    bool encrypt = false, failed = false;
+};
+Z7_COM7F_IMF(EditCallback::SetTotal(UInt64)) { return S_OK; }
+Z7_COM7F_IMF(EditCallback::SetCompleted(const UInt64 *)) { return S_OK; }
+Z7_COM7F_IMF(EditCallback::GetUpdateItemInfo(UInt32 index, Int32 *data, Int32 *properties, UInt32 *oldIndex)) {
+    if (index >= count) return E_INVALIDARG;
+    const auto &entry = items[index];
+    if (data) *data = entry.addition ? 1 : 0;
+    if (properties) *properties = entry.addition || entry.renamedPath ? 1 : 0;
+    if (oldIndex) *oldIndex = entry.oldIndex;
+    return S_OK;
+}
+Z7_COM7F_IMF(EditCallback::GetProperty(UInt32 index, PROPID propertyID, PROPVARIANT *value)) {
+    if (index >= count) return E_INVALIDARG;
+    const auto &entry = items[index];
+    if (entry.addition) return additions->GetProperty(index, propertyID, value);
+    if (propertyID == kpidPath && entry.renamedPath) {
+        UString path;
+        if (!ConvertUTF8ToUnicode(AString(entry.renamedPath), path)) return E_INVALIDARG;
+        NWindows::NCOM::CPropVariant property(path); property.Detach(value); return S_OK;
+    }
+    return source->GetProperty(entry.oldIndex, propertyID, value);
+}
+Z7_COM7F_IMF(EditCallback::GetStream(UInt32 index, ISequentialInStream **stream)) {
+    *stream = nullptr;
+    if (index >= count || !items[index].addition) return E_INVALIDARG;
+    return items[index].syntheticDirectory ? S_OK : additions->GetStream(index, stream);
+}
+Z7_COM7F_IMF(EditCallback::SetOperationResult(Int32 result)) { if (result != 0) failed = true; return result == 0 ? S_OK : E_FAIL; }
+Z7_COM7F_IMF(EditCallback::CryptoGetTextPassword2(Int32 *defined, BSTR *value)) {
+    *defined = encrypt ? 1 : 0;
+    return StringToBstr(credentials->password, value);
+}
+
+static bool editPath(const char *path, std::string &canonical) {
+    if (!path) return false;
+    size_t length = strnlen(path, 1048577);
+    if (!length || length > 1048576 || path[0] == '/' || path[0] == '~' || strchr(path, '\\')) return false;
+    if (length >= 2 && path[1] == ':' && ((path[0] >= 'A' && path[0] <= 'Z') || (path[0] >= 'a' && path[0] <= 'z'))) return false;
+    std::string raw(path, length);
+    for (size_t start = 0; start <= length;) {
+        size_t end = raw.find('/', start); if (end == std::string::npos) end = length;
+        std::string component = raw.substr(start, end - start);
+        if (component.empty() || component == "." || component == "..") return false;
+        if (end == length) break;
+        start = end + 1;
+    }
+    CFStringRef original = CFStringCreateWithBytes(kCFAllocatorDefault, (const UInt8 *)path, length, kCFStringEncodingUTF8, false);
+    if (!original) return false;
+    CFMutableStringRef normalized = CFStringCreateMutableCopy(kCFAllocatorDefault, 0, original); CFRelease(original);
+    if (!normalized) return false;
+    CFStringNormalize(normalized, kCFStringNormalizationFormC);
+    std::vector<char> bytes((size_t)CFStringGetMaximumSizeForEncoding(CFStringGetLength(normalized), kCFStringEncodingUTF8) + 1);
+    bool valid = CFStringGetCString(normalized, bytes.data(), bytes.size(), kCFStringEncodingUTF8);
+    CFRelease(normalized);
+    if (!valid) return false;
+    canonical = bytes.data(); return canonical.size() <= 1048576;
+}
+
+extern "C" int SevenZipEdit(void *handle, int outputFD, const SevenZipEditItem *items, uint32_t count,
+                            int encryptNewData, uint64_t maximumUnpackedBytes,
+                            SevenZipCreateInputCallback inputCallback, void *inputContext) {
+    auto session = (Session *)handle;
+    if (!session || !session->editFormat || (count && !items) || count > 100000 ||
+        (encryptNewData != 0 && encryptNewData != 1) || !maximumUnpackedBytes || maximumUnpackedBytes > 20000000000ULL) return 6;
+    try {
+        EditLocale locale(session->editFormat == 1);
+        if (!locale.valid()) return 8;
+        if (!session->stream->unchanged()) return 9;
+        struct stat outputInfo;
+        int outputFlags = fcntl(outputFD, F_GETFL);
+        if (outputFlags < 0 || fstat(outputFD, &outputInfo) != 0 || !S_ISREG(outputInfo.st_mode) || outputInfo.st_size ||
+            outputInfo.st_nlink != 1 || (outputFlags & O_ACCMODE) != O_WRONLY || (outputFlags & O_APPEND) ||
+            lseek(outputFD, 0, SEEK_CUR) != 0 || session->stream->containsIdentity(outputInfo)) return 6;
+        if (session->stream->total > 8000000000ULL) return 7;
+        UInt32 oldCount = 0;
+        if (session->archive->GetNumberOfItems(&oldCount) != S_OK) return 6;
+        if (oldCount > 100000) return 7;
+        struct Old { AString path; UInt64 size; int kind; bool encrypted; };
+        std::vector<Old> old(oldCount);
+        uint64_t sourceBytes = 0, resultBytes = 0, pathBytes = 0, sourcePathBytes = 0;
+        for (UInt32 i = 0; i < oldCount; ++i) {
+            int error = metadata(session->archive, i, old[i].path, old[i].size, old[i].kind, old[i].encrypted);
+            if (error) return error;
+            sourcePathBytes += old[i].path.Len();
+            if (old[i].path.Len() > 1048576 || sourcePathBytes > 268435456) return 7;
+            if (old[i].size > 8000000000ULL || old[i].size > maximumUnpackedBytes - sourceBytes) return 7;
+            sourceBytes += old[i].size;
+        }
+        std::set<uint32_t> retained;
+        std::set<std::string> paths, files;
+        std::vector<std::string> desired(count);
+        std::vector<SevenZipCreateItem> added(count);
+        std::vector<UInt32> testIndices;
+        bool retainedEncrypted = false, fileAdditions = false;
+        for (uint32_t i = 0; i < count; ++i) {
+            const auto &entry = items[i];
+            const char *path = nullptr;
+            uint64_t size = 0;
+            bool directory = false;
+            if (entry.addition) {
+                const auto &a = *entry.addition;
+                if (entry.oldIndex != UINT32_MAX || entry.renamedPath || a.source ||
+                    (entry.syntheticDirectory != 0 && entry.syntheticDirectory != 1) ||
+                    (a.directory != 0 && a.directory != 1) || (entry.syntheticDirectory && !a.directory) ||
+                    (a.mode & S_IFMT) != (a.directory ? S_IFDIR : S_IFREG) || (a.directory && a.size) ||
+                    a.modifiedSeconds < -11644473600LL || a.modifiedSeconds > 100000000000LL || a.modifiedNanos >= 1000000000 ||
+                    a.changedSeconds < -11644473600LL || a.changedSeconds > 100000000000LL || a.changedNanos >= 1000000000) return 6;
+                added[i] = a; path = a.path; size = a.size; directory = a.directory;
+                if (!entry.syntheticDirectory) {
+                    if (!inputCallback) return 6;
+                    fileAdditions |= !a.directory;
+                    int fd = inputCallback(inputContext, i);
+                    if (fd < 0) return 9;
+                    bool matches = matchesCreateItem(a, fd); close(fd);
+                    if (!matches) return 9;
+                }
+            } else {
+                if (entry.syntheticDirectory || entry.oldIndex >= oldCount || !retained.insert(entry.oldIndex).second) return 6;
+                const auto &a = old[entry.oldIndex];
+                if (memchr(a.path.Ptr(), 0, a.path.Len())) return 6;
+                path = entry.renamedPath ? entry.renamedPath : a.path.Ptr(); size = a.size; directory = a.kind == 1;
+                retainedEncrypted |= a.encrypted;
+                if (!directory) testIndices.push_back(entry.oldIndex);
+            }
+            if (!editPath(path, desired[i]) || !paths.insert(desired[i]).second) return 6;
+            pathBytes += desired[i].size(); if (pathBytes > 268435456) return 7;
+            if (!directory) files.insert(desired[i]);
+            if (size > 8000000000ULL || size > maximumUnpackedBytes - resultBytes) return 7;
+            resultBytes += size;
+        }
+        for (const auto &path: paths) for (size_t pos = path.find('/'); pos != std::string::npos; pos = path.find('/', pos + 1))
+            if (files.count(path.substr(0, pos))) return 6;
+        bool headerEncrypted = session->editFormat == 7 && session->openCallback->requested;
+        if ((encryptNewData || headerEncrypted || retainedEncrypted) && !session->openCallback->defined) return 3;
+        if ((encryptNewData || headerEncrypted) && !session->openCallback->password.Len()) return 6;
+        // An encrypted archive cannot silently accept plaintext additions through a default policy.
+        if (fileAdditions && (retainedEncrypted || headerEncrypted) && !encryptNewData) return 6;
+        // The pinned ZIP writer rejects non-ASCII encryption passwords. Metadata-only
+        // edits copy encrypted payloads without asking that writer to encrypt new data.
+        if (session->editFormat == 1 && fileAdditions && encryptNewData)
+            for (unsigned i = 0; i < session->openCallback->password.Len(); ++i)
+                if (session->openCallback->password[i] < 0x20 || session->openCallback->password[i] > 0x7F) return 11;
+        if (!testIndices.empty()) {
+            std::sort(testIndices.begin(), testIndices.end());
+            auto tester = new EditTestCallback(); CMyComPtr<IArchiveExtractCallback> owner(tester);
+            tester->credentials = session->openCallback; tester->maximum = sourceBytes + session->stream->total;
+            HRESULT status = session->archive->Extract(testIndices.data(), (UInt32)testIndices.size(), 1, owner);
+            if (!session->stream->unchanged()) return 9;
+            if (tester->limit) return 7;
+            if (status != S_OK || tester->failed || tester->completed != testIndices.size())
+                return tester->requestedPassword ? (session->openCallback->defined ? 4 : 3) : 12;
+        }
+        CMyComPtr<IOutArchive> writer;
+        if (session->archive->QueryInterface(IID_IOutArchive, (void **)&writer) != S_OK || !writer) return 11;
+        CMyComPtr<ISetProperties> properties;
+        if (writer->QueryInterface(IID_ISetProperties, (void **)&properties) != S_OK || !properties) return 11;
+        const wchar_t *names[] = {L"x", L"mt", session->editFormat == 7 ? L"he" : L"em"};
+        NWindows::NCOM::CPropVariant values[3]; values[0] = (UInt32)5; values[1] = (UInt32)2;
+        if (session->editFormat == 7) values[2] = headerEncrypted;
+        else values[2] = L"AES256";
+        if (properties->SetProperties(names, values, session->editFormat == 7 || encryptNewData ? 3 : 2) != S_OK) return 6;
+        auto inputs = new CreateCallback(); CMyComPtr<IArchiveUpdateCallback> inputOwner(inputs);
+        inputs->items = added.data(); inputs->count = count; inputs->inputCallback = inputCallback; inputs->inputContext = inputContext;
+        auto edit = new EditCallback(); CMyComPtr<IArchiveUpdateCallback> owner(edit);
+        edit->items = items; edit->count = count; edit->source = session->archive; edit->additions = inputOwner;
+        edit->credentials = session->openCallback;
+        edit->encrypt = session->editFormat == 1 ? (fileAdditions && encryptNewData) : (encryptNewData || retainedEncrypted || headerEncrypted);
+        auto stream = new CreateOutput(outputFD, false); CMyComPtr<ISequentialOutStream> output(stream);
+        if (!session->stream->unchanged()) return 9;
+        HRESULT status = writer->UpdateItems(output, count, owner);
+        if (!session->stream->unchanged() || inputs->changed) return 9;
+        if (status != S_OK || inputs->failed || edit->failed) return 10;
+        for (uint32_t i = 0; i < count; ++i) if (items[i].addition && !items[i].syntheticDirectory) {
+            int fd = inputCallback(inputContext, i); if (fd < 0) return 9;
+            bool matches = matchesCreateItem(*items[i].addition, fd); close(fd);
+            if (!matches) return 9;
+        }
+        struct stat finalOutput;
+        if (!session->stream->unchanged() || fstat(outputFD, &finalOutput) != 0 || finalOutput.st_dev != outputInfo.st_dev ||
+            finalOutput.st_ino != outputInfo.st_ino || finalOutput.st_nlink != 1) return 9;
         return stream->finish() ? 0 : 10;
     } catch (...) { return 8; }
 }

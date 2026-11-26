@@ -2,18 +2,20 @@
 
 현재 상태: **미구현·출시 전 해결 필요**. ArchiveCapabilityMatrix의 모든 update 값은 false이고 ArchiveWindow에는 내부 항목 추가/이름 변경/삭제 작업이 없다. 기존 MACOS_DESIGN의 임시 아카이브 교체 정책과 FEATURE_PARITY_AND_PLAN의 F23 수정 검증을 구체화한다. 새 범위를 추가하거나 기존 요구를 다음 버전으로 미루는 문서가 아니다.
 
+[370단계](verification/m7/INCREMENT_370.md)에서 FD 기반 네이티브 ZIP/7z API를 부분 구현하고 실제 대응 소스/라이브러리로 83개를 통과했다. 제품 IPC·출력 검증/안전한 교체/복구·UI는 미연결이며 첫 개발 단위도 진행 중이다. 기존 Unicode AES ZIP의 metadata 편집은 통과했지만 새 암호 데이터 추가는 SDK 제한으로 미지원이다. 기존 Core AES writer 등을 이용한 브리지를 구현하기 전 update를 활성화하거나 기존 Unicode 암호 지원을 줄이지 않는다.
+
 ## 고정 원본과 현재 차이
 
 기준 commit은 99951c66928c4da714da8b1dd46039421182cbab이다.
 
 | 동작 | 원본 근거 | macOS 현재 |
 |---|---|---|
-| 내부 파일 추가 | [ZipStorageFolder.CreateFileAsync(Stream), 826행 이후](https://github.com/files-community/Files/blob/99951c66928c4da714da8b1dd46039421182cbab/src/Files.App/Utils/Storage/StorageItems/ZipStorageFolder.cs#L826) | 미구현 |
-| 내부 폴더 생성 | [CreateFolderAsync, 489행 이후](https://github.com/files-community/Files/blob/99951c66928c4da714da8b1dd46039421182cbab/src/Files.App/Utils/Storage/StorageItems/ZipStorageFolder.cs#L489) | 미구현 |
-| 파일 이름 변경 | [ZipStorageFile.RenameAsync, 518행 이후](https://github.com/files-community/Files/blob/99951c66928c4da714da8b1dd46039421182cbab/src/Files.App/Utils/Storage/StorageItems/ZipStorageFile.cs#L518) | 미구현 |
-| 폴더와 하위 경로 이름 변경 | [ZipStorageFolder.RenameAsync, 537행 이후](https://github.com/files-community/Files/blob/99951c66928c4da714da8b1dd46039421182cbab/src/Files.App/Utils/Storage/StorageItems/ZipStorageFolder.cs#L537) | 미구현 |
-| 내부 파일 삭제 | [ZipStorageFile.DeleteAsync, 569행 이후](https://github.com/files-community/Files/blob/99951c66928c4da714da8b1dd46039421182cbab/src/Files.App/Utils/Storage/StorageItems/ZipStorageFile.cs#L569) | 미구현 |
-| 폴더와 하위 항목 삭제 | [ZipStorageFolder.DeleteAsync, 591행 이후](https://github.com/files-community/Files/blob/99951c66928c4da714da8b1dd46039421182cbab/src/Files.App/Utils/Storage/StorageItems/ZipStorageFolder.cs#L591) | 미구현 |
+| 내부 파일 추가 | [ZipStorageFolder.CreateFileAsync(Stream), 826행 이후](https://github.com/files-community/Files/blob/99951c66928c4da714da8b1dd46039421182cbab/src/Files.App/Utils/Storage/StorageItems/ZipStorageFolder.cs#L826) | 네이티브 부분 구현·제품 미연결 |
+| 내부 폴더 생성 | [CreateFolderAsync, 489행 이후](https://github.com/files-community/Files/blob/99951c66928c4da714da8b1dd46039421182cbab/src/Files.App/Utils/Storage/StorageItems/ZipStorageFolder.cs#L489) | 네이티브 부분 구현·제품 미연결 |
+| 파일 이름 변경 | [ZipStorageFile.RenameAsync, 518행 이후](https://github.com/files-community/Files/blob/99951c66928c4da714da8b1dd46039421182cbab/src/Files.App/Utils/Storage/StorageItems/ZipStorageFile.cs#L518) | 네이티브 부분 구현·제품 미연결 |
+| 폴더와 하위 경로 이름 변경 | [ZipStorageFolder.RenameAsync, 537행 이후](https://github.com/files-community/Files/blob/99951c66928c4da714da8b1dd46039421182cbab/src/Files.App/Utils/Storage/StorageItems/ZipStorageFolder.cs#L537) | 네이티브 부분 구현·제품 미연결 |
+| 내부 파일 삭제 | [ZipStorageFile.DeleteAsync, 569행 이후](https://github.com/files-community/Files/blob/99951c66928c4da714da8b1dd46039421182cbab/src/Files.App/Utils/Storage/StorageItems/ZipStorageFile.cs#L569) | 네이티브 부분 구현·제품 미연결 |
+| 폴더와 하위 항목 삭제 | [ZipStorageFolder.DeleteAsync, 591행 이후](https://github.com/files-community/Files/blob/99951c66928c4da714da8b1dd46039421182cbab/src/Files.App/Utils/Storage/StorageItems/ZipStorageFolder.cs#L591) | 네이티브 부분 구현·제품 미연결 |
 
 일반 파일 시스템의 Rename/Delete/Copy 명령이 implemented로 분류됐어도 압축 내부 문맥까지 구현됐다는 증거가 아니다. 202개 명령/143개 설정/33개 화면 인벤토리의 구조 감사와 이 동작 수용을 구분한다.
 

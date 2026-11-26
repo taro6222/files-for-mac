@@ -85,7 +85,7 @@ def main():
             subprocess.run(['clang++', '-std=c++11', '-fobjc-arc', '-Wall', '-Wextra', '-Werror', *flags, '-c', str(files[2]), '-o', str(staging / 'main.o')], stdout=log, stderr=log, check=True, timeout=60)
             subprocess.run(['clang++', *flags, str(staging / 'main.o'), str(staging / 'adapter.o'), *map(str, common),
                             '-Wl,-sectcreate,__TEXT,__info_plist,' + str(info),
-                            '-framework', 'Foundation', '-ldl', '-lpthread', '-o', str(staging / 'SevenZipWorker')], stdout=log, stderr=log, check=True, timeout=60)
+                            '-framework', 'Foundation', '-framework', 'CoreFoundation', '-ldl', '-lpthread', '-o', str(staging / 'SevenZipWorker')], stdout=log, stderr=log, check=True, timeout=60)
         shutil.copyfile(source / f'CPP/7zip/Bundles/Format7zF/b/m_{suffix}/7z.so', staging / '7z.so')
         shutil.copyfile(source / 'DOC/License.txt', staging / 'License.txt')
         shutil.copyfile(build_log, staging / 'build.log')

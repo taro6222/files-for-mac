@@ -1,5 +1,7 @@
 # 검증 및 출시 기준
 
+[370단계](verification/m7/INCREMENT_370.md)는 FD 기반 압축 편집 네이티브 API를 부분 구현해 83개를 통과했고 기존 번들 Swift 57개·helper 50개·진단 SDK 142개·권한 15개·fixture 8개도 통과했다. 편집 IPC·안전한 교체/복구·UI와 Unicode AES ZIP 새 암호 데이터 브리지는 미완료이며 update는 false다. 이전 4a6c79d의 양 CPU 전체 실행은 여덟 프로필 각각 전체 332개·탭 경계 18개가 통과했다. 새 API 수용과 기존 UI 기준선을 구분한다. 로컬 GUI/장시간 시험은 실행하지 않았다.
+
 [369단계](verification/m7/INCREMENT_369.md)에서 F23 압축 내부 추가/폴더 생성/이름 변경/삭제가 실제 미구현임을 고정 원본과 제품 API로 확인했다. [구현·수용 계획](ARCHIVE_EDITING_PLAN.md)을 기존 요구에 연결했으며 출시 전 해결 항목이다. 분리한 4a6c79d의 원격 빌드는 ARM 213.879초·Intel 405.439초로 모두 성공했고 전체 AppKit은 진행 중이다. 제품 코드를 바꾸거나 로컬 GUI/장시간 시험을 실행하지 않았다.
 
 [368단계](verification/m7/INCREMENT_368.md)는 같은 366 프리뷰를 /private/tmp에 읽기 전용 마운트해 실제 앱의 내용물·서명과 Swift 57개·격리 helper 50개·진단 SDK 142개·권한 probe 15개를 통과했다. 정상 detach와 최종 미마운트도 확인했다. 작업 폴더 마운트의 원인은 미확정이며 실제 설치/정식 출시는 미완료다. 4a6c79d의 전체 AppKit 원격 실행은 유지 중이고 로컬 GUI/장시간 시험은 실행하지 않았다.

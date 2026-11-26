@@ -47,6 +47,19 @@ typedef int (*SevenZipCreateInputCallback)(void *, uint32_t);
 int SevenZipCreate(const char *library, int output, const SevenZipCreateItem *items, uint32_t count,
                    const char *password, int level, int encryptHeader, uint32_t dictionarySize, uint32_t wordSize, uint32_t threads, int framedOutput, SevenZipCreateInputCallback inputCallback, void *inputContext);
 
+// Editing is FD-only and writes a separate empty regular output. format is 1 (ZIP) or 7 (7z).
+void *SevenZipOpenEditDescriptor(const char *library, int *descriptor, const SevenZipInputSource *source,
+                                 uint32_t format, const char *password, int *error);
+typedef struct {
+    uint32_t oldIndex; // UINT32_MAX for a new entry; omitted old indices are deleted.
+    const char *renamedPath; // NULL retains the original name/properties.
+    const SevenZipCreateItem *addition; // Required only for new entries; source must be NULL.
+    int syntheticDirectory; // A new directory with no host filesystem input.
+} SevenZipEditItem;
+int SevenZipEdit(void *session, int output, const SevenZipEditItem *items, uint32_t count,
+                 int encryptNewData, uint64_t maximumUnpackedBytes,
+                 SevenZipCreateInputCallback inputCallback, void *inputContext);
+
 #ifdef __cplusplus
 }
 #endif
