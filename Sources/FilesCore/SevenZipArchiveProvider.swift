@@ -5,6 +5,7 @@ public enum SevenZipWorkerError: Error, Sendable, Equatable {
     case unavailable, invalidConfiguration, invalidResponse, ioFailure, timedOut, unexpectedExit
     case worker(String)
     case stagingPreserved(URL)
+    case publicationRecovery(staging: URL, published: [URL])
 }
 
 /// Explicit locations are available for integration tools; bundled() validates private app code.
@@ -29,15 +30,25 @@ public struct SevenZipArchiveProvider: Sendable {
     }
 
     /// Publish one new directory only after all entries and the worker's final exit succeed.
-    /// Existing-folder merge and the UI placement adapter are separate operations.
     public func extractToNewDirectory(_ archive: URL, at destination: URL, password: String? = nil,
                                      limits: ArchiveExtractionLimits = .init(),
                                      progress: ArchiveProgressHandler? = nil) async throws -> ArchiveExtractionReport {
+        try await extract(archive, destination: destination, intoExisting: false, password: password, limits: limits, progress: progress)
+    }
+
+    public func extract(_ archive: URL, to destination: URL, password: String? = nil,
+                        limits: ArchiveExtractionLimits = .init(), progress: ArchiveProgressHandler? = nil) async throws -> ArchiveExtractionReport {
+        try await extract(archive, destination: destination, intoExisting: true, password: password, limits: limits, progress: progress)
+    }
+
+    private func extract(_ archive: URL, destination: URL, intoExisting: Bool, password: String?,
+                         limits: ArchiveExtractionLimits, progress: ArchiveProgressHandler?) async throws -> ArchiveExtractionReport {
         try await perform { session in
             let listed = try session.open(archive, password: password, maximumEntries: limits.maximumEntries)
             let validated = try ArchiveExtractionValidator.validate(listed.map(\.descriptor), limits: limits)
-            let tree = try SevenZipStagingTree(destination: destination)
+            let tree = try SevenZipStagingTree(destination: destination, intoExisting: intoExisting)
             do {
+                if intoExisting { try tree.preflight(names: Set(validated.compactMap { $0.relativePath.split(separator: "/").first.map(String.init) }).sorted()) }
                 let total = validated.reduce(Int64(0)) { $0 + $1.uncompressedSize }
                 var completed: Int64 = 0
                 for (index, entry) in validated.enumerated() {
@@ -71,9 +82,13 @@ public struct SevenZipArchiveProvider: Sendable {
                 progress?(.init(phase: .publishing, completedEntries: validated.count, totalEntries: validated.count,
                                 completedBytes: completed, totalBytes: total, currentPath: nil))
                 try session.check()
-                try tree.publish()
-                return ArchiveExtractionReport(entries: validated.count, extractedBytes: completed, publishedURLs: [destination])
+                let published = try tree.publish(intoExisting: intoExisting, check: session.check) { name in
+                    progress?(.init(phase: .publishing, completedEntries: validated.count, totalEntries: validated.count,
+                                    completedBytes: completed, totalBytes: total, currentPath: name))
+                }
+                return ArchiveExtractionReport(entries: validated.count, extractedBytes: completed, publishedURLs: published)
             } catch {
+                if let worker = error as? SevenZipWorkerError, case .publicationRecovery = worker { throw error }
                 guard tree.clean() else { throw SevenZipWorkerError.stagingPreserved(tree.staging) }
                 throw error
             }
@@ -343,15 +358,15 @@ private final class SevenZipStagingTree {
     private let parentFD: Int32, rootFD: Int32
     private var published = false
     private var records: [String: stat] = [:]
-    init(destination: URL) throws {
+    init(destination: URL, intoExisting: Bool) throws {
         guard destination.isFileURL, !["", ".", "..", "/"].contains(destination.lastPathComponent) else { throw SevenZipWorkerError.invalidConfiguration }
         self.destination = destination
-        parent = destination.deletingLastPathComponent()
+        parent = intoExisting ? destination : destination.deletingLastPathComponent()
         staging = parent.appendingPathComponent(".files-7z-\(UUID().uuidString)")
         parentFD = Darwin.open(parent.path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
         guard parentFD >= 0 else { throw ZipArchiveError.destinationNotDirectory }
         var info = stat()
-        guard fstatat(parentFD, destination.lastPathComponent, &info, AT_SYMLINK_NOFOLLOW) != 0, errno == ENOENT else {
+        guard intoExisting || (fstatat(parentFD, destination.lastPathComponent, &info, AT_SYMLINK_NOFOLLOW) != 0 && errno == ENOENT) else {
             Darwin.close(parentFD); throw ZipArchiveError.destinationConflict(destination.lastPathComponent)
         }
         guard mkdirat(parentFD, staging.lastPathComponent, 0o700) == 0 else { Darwin.close(parentFD); throw SevenZipWorkerError.ioFailure }
@@ -405,8 +420,8 @@ private final class SevenZipStagingTree {
     private func sameIdentity(_ first: stat, _ second: stat) -> Bool {
         first.st_dev == second.st_dev && first.st_ino == second.st_ino && (first.st_mode & S_IFMT) == (second.st_mode & S_IFMT)
     }
-    private func checkedDirectory(_ path: String) -> Int32? {
-        var current = dup(rootFD), prefix = ""
+    private func checkedDirectory(_ path: String, base: Int32, expectedRecords: [String: stat]) -> Int32? {
+        var current = dup(base), prefix = ""
         guard current >= 0 else { return nil }
         for part in path.split(separator: "/") {
             let name = String(part); prefix = prefix.isEmpty ? name : prefix + "/" + name
@@ -414,17 +429,20 @@ private final class SevenZipStagingTree {
             Darwin.close(current)
             guard next >= 0 else { return nil }
             var info = stat()
-            guard fstat(next, &info) == 0, let expected = records[prefix], sameIdentity(expected, info) else { Darwin.close(next); return nil }
+            guard fstat(next, &info) == 0, let expected = expectedRecords[prefix], sameIdentity(expected, info) else { Darwin.close(next); return nil }
             current = next
         }
         return current
     }
     private func verify(contents: Bool) -> Bool {
+        verifyRecords(contents: contents, base: rootFD, expectedRecords: records, allowOtherTopLevel: false)
+    }
+    private func verifyRecords(contents: Bool, base: Int32, expectedRecords: [String: stat], allowOtherTopLevel: Bool) -> Bool {
         guard matches(parentFD, at: parent.path), matches(rootFD, at: staging.path) else { return false }
-        let directories = [""] + records.filter { ($0.value.st_mode & S_IFMT) == S_IFDIR }.map(\.key)
+        let directories = [""] + expectedRecords.filter { ($0.value.st_mode & S_IFMT) == S_IFDIR }.map(\.key)
         var seen = Set<String>()
         for path in directories {
-            guard let fd = checkedDirectory(path) else { return false }
+            guard let fd = checkedDirectory(path, base: base, expectedRecords: expectedRecords) else { return false }
             guard let stream = fdopendir(fd) else { Darwin.close(fd); return false }
             rewinddir(stream)
             var valid = true
@@ -436,8 +454,9 @@ private final class SevenZipStagingTree {
                 }
                 if name == "." || name == ".." { continue }
                 let key = path.isEmpty ? name : path + "/" + name
+                if path.isEmpty && allowOtherTopLevel && expectedRecords[key] == nil { continue }
                 var actual = stat()
-                guard let expected = records[key], fstatat(fd, name, &actual, AT_SYMLINK_NOFOLLOW) == 0, sameIdentity(expected, actual) else { valid = false; break }
+                guard let expected = expectedRecords[key], fstatat(fd, name, &actual, AT_SYMLINK_NOFOLLOW) == 0, sameIdentity(expected, actual) else { valid = false; break }
                 if contents && (actual.st_mode & S_IFMT) == S_IFREG &&
                     (actual.st_size != expected.st_size || actual.st_mtimespec.tv_sec != expected.st_mtimespec.tv_sec ||
                      actual.st_mtimespec.tv_nsec != expected.st_mtimespec.tv_nsec || actual.st_ctimespec.tv_sec != expected.st_ctimespec.tv_sec ||
@@ -447,16 +466,72 @@ private final class SevenZipStagingTree {
             closedir(stream)
             if !valid { return false }
         }
-        return seen == Set(records.keys) && matches(parentFD, at: parent.path) && matches(rootFD, at: staging.path)
+        return seen == Set(expectedRecords.keys) && matches(parentFD, at: parent.path) && matches(rootFD, at: staging.path)
     }
-    func publish() throws {
+    func preflight(names suppliedNames: [String]? = nil) throws {
+        guard matches(parentFD, at: parent.path) else { throw SevenZipWorkerError.ioFailure }
+        let names = suppliedNames ?? Set(records.keys.compactMap { $0.split(separator: "/").first.map(String.init) }).sorted()
+        for name in names {
+            var info = stat()
+            guard fstatat(parentFD, name, &info, AT_SYMLINK_NOFOLLOW) != 0, errno == ENOENT else { throw ZipArchiveError.destinationConflict(name) }
+        }
+    }
+    func publish(intoExisting: Bool, check: () throws -> Void, onItem: (String) -> Void) throws -> [URL] {
         guard verify(contents: true) else { throw SevenZipWorkerError.ioFailure }
+        if intoExisting { return try publishItems(check: check, onItem: onItem) }
         // Strict descriptor-relative no-replace publication; unsupported file systems fail safely.
         guard renameatx_np(parentFD, staging.lastPathComponent, parentFD, destination.lastPathComponent, UInt32(RENAME_EXCL)) == 0 else {
             if errno == EEXIST { throw ZipArchiveError.destinationConflict(destination.lastPathComponent) }
             throw SevenZipWorkerError.ioFailure
         }
         published = true
+        return [destination]
+    }
+    private func publishItems(check: () throws -> Void, onItem: (String) -> Void) throws -> [URL] {
+        try preflight()
+        let names = Set(records.keys.compactMap { $0.split(separator: "/").first.map(String.init) }).sorted()
+        var moved: [String] = [], remaining = records, movedRecords: [String: stat] = [:]
+        func subset(_ values: [String: stat], name: String) -> [String: stat] { values.filter { $0.key == name || $0.key.hasPrefix(name + "/") } }
+        func refreshTop(_ name: String, at fd: Int32) -> Bool {
+            var now = stat()
+            guard let old = records[name], fstatat(fd, name, &now, AT_SYMLINK_NOFOLLOW) == 0, sameIdentity(old, now) else { return false }
+            records[name] = now; return true
+        }
+        do {
+            for name in names {
+                try check()
+                guard verifyRecords(contents: true, base: rootFD, expectedRecords: remaining, allowOtherTopLevel: false),
+                      verifyRecords(contents: true, base: parentFD, expectedRecords: movedRecords, allowOtherTopLevel: true) else { throw SevenZipWorkerError.ioFailure }
+                guard renameatx_np(rootFD, name, parentFD, name, UInt32(RENAME_EXCL)) == 0 else {
+                    if errno == EEXIST { throw ZipArchiveError.destinationConflict(name) }
+                    throw SevenZipWorkerError.ioFailure
+                }
+                moved.append(name)
+                guard refreshTop(name, at: parentFD) else { throw SevenZipWorkerError.ioFailure }
+                let selected = subset(records, name: name)
+                movedRecords.merge(selected) { _, new in new }
+                remaining = remaining.filter { selected[$0.key] == nil }
+                onItem(name)
+            }
+            try check()
+            guard verifyRecords(contents: true, base: parentFD, expectedRecords: movedRecords, allowOtherTopLevel: true),
+                  verifyRecords(contents: true, base: rootFD, expectedRecords: [:], allowOtherTopLevel: false),
+                  unlinkat(parentFD, staging.lastPathComponent, AT_REMOVEDIR) == 0 else { throw SevenZipWorkerError.ioFailure }
+            published = true
+            return names.map { destination.appendingPathComponent($0) }
+        } catch {
+            var retained: [String] = []
+            for name in moved.reversed() {
+                let expected = subset(movedRecords, name: name)
+                var occupied = stat()
+                guard !expected.isEmpty, verifyRecords(contents: true, base: parentFD, expectedRecords: expected, allowOtherTopLevel: true),
+                      fstatat(rootFD, name, &occupied, AT_SYMLINK_NOFOLLOW) != 0, errno == ENOENT,
+                      renameatx_np(parentFD, name, rootFD, name, UInt32(RENAME_EXCL)) == 0,
+                      refreshTop(name, at: rootFD) else { retained.append(name); continue }
+            }
+            if !retained.isEmpty { throw SevenZipWorkerError.publicationRecovery(staging: staging, published: retained.sorted().map { destination.appendingPathComponent($0) }) }
+            throw error
+        }
     }
     func clean() -> Bool {
         if published { return true }

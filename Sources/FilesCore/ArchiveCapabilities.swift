@@ -18,6 +18,7 @@ public struct ArchiveFormatCapabilities: Sendable, Equatable {
     public let extract: Bool
     public let create: Bool
     public let update: Bool
+    /// Complete creation/extraction support; partial support is resolved by the operation backend.
     public let password: Bool
     public let splitVolumes: Bool
 

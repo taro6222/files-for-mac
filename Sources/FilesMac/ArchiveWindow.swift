@@ -1,6 +1,45 @@
 import AppKit
 import FilesCore
 
+enum ArchiveReadBackend: Sendable {
+    case system, sevenZip(SevenZipArchiveProvider)
+    static func resolve(for archive: URL) async throws -> Self {
+        guard ArchiveFormat.detect(archive) == .sevenZip else { return .system }
+#if DEBUG
+        if let path = ProcessInfo.processInfo.environment["FILES_UI_QA_SEVENZIP_BUNDLE"] {
+            return .sevenZip(try await .bundled(in: URL(fileURLWithPath: path)))
+        }
+#endif
+        guard Bundle.main.object(forInfoDictionaryKey: "FilesArchiveSDKVersion") != nil else { return .system }
+        return .sevenZip(try await .bundled())
+    }
+    func supportsPassword(for archive: URL) -> Bool {
+        if case .sevenZip = self { return true }
+        return ArchiveFormat.detect(archive) == .zip
+    }
+    func entries(at archive: URL, password: String? = nil) async throws -> [ArchiveEntryDescriptor] {
+        switch self {
+        case .sevenZip(let provider): return try await provider.entries(at: archive, password: password)
+        case .system:
+            let worker = Task.detached(priority: .userInitiated) { try ZipArchiveProvider().entries(at: archive, password: password) }
+            return try await withTaskCancellationHandler(operation: { try await worker.value }, onCancel: { worker.cancel() })
+        }
+    }
+    func extract(_ archive: URL, to destination: URL, password: String?, progress: ArchiveProgressHandler?) async throws -> ArchiveExtractionReport {
+        switch self {
+        case .sevenZip(let provider): return try await provider.extract(archive, to: destination, password: password, progress: progress)
+        case .system: return try await ZipArchiveProvider().extract(archive, to: destination, password: password, progress: progress)
+        }
+    }
+    @MainActor func readWithPassword(_ archive: URL, window: NSWindow) async throws -> (entries: [ArchiveEntryDescriptor], password: String?) {
+        do { return (try await entries(at: archive), nil) }
+        catch SevenZipWorkerError.worker("password-required") {
+            guard let password = await ArchivePasswordPrompt.request(for: window, archiveName: archive.lastPathComponent, reading: true) else { throw CancellationError() }
+            return (try await entries(at: archive, password: password), password)
+        }
+    }
+}
+
 @MainActor
 final class ArchivePasswordView: NSStackView {
     let secureField = NSSecureTextField(), visibleField = NSTextField()
@@ -43,18 +82,18 @@ extension ArchivePasswordView: NSTextFieldDelegate {
 final class ArchivePasswordPrompt {
     let input = ArchivePasswordView()
     private let alert = NSAlert()
-    private init(name: String) {
+    private init(name: String, reading: Bool) {
         alert.messageText = L("압축 파일 암호", "Archive Password")
-        alert.informativeText = L("‘\(name)’의 내용을 추출할 암호를 입력하세요.", "Enter the password to extract ‘\(name)’.")
-        alert.addButton(withTitle: L("추출", "Extract")); alert.addButton(withTitle: L("취소", "Cancel"))
+        alert.informativeText = reading ? L("‘\(name)’의 목록을 열 암호를 입력하세요.", "Enter the password to open ‘\(name)’.") : L("‘\(name)’의 내용을 추출할 암호를 입력하세요.", "Enter the password to extract ‘\(name)’.")
+        alert.addButton(withTitle: reading ? L("열기", "Open") : L("추출", "Extract")); alert.addButton(withTitle: L("취소", "Cancel"))
         alert.accessoryView = input; alert.buttons[0].isEnabled = false
         input.onChange = { [weak self] in
             guard let self else { return }
             self.alert.buttons[0].isEnabled = !self.input.value.isEmpty && !self.input.value.utf8.contains(0)
         }
     }
-    static func request(for window: NSWindow, archiveName: String) async -> String? {
-        let prompt = ArchivePasswordPrompt(name: archiveName)
+    static func request(for window: NSWindow, archiveName: String, reading: Bool = false) async -> String? {
+        let prompt = ArchivePasswordPrompt(name: archiveName, reading: reading)
 #if DEBUG
         qaLatest = prompt
 #endif
@@ -92,15 +131,17 @@ final class ArchivePasswordPrompt {
 }
 
 @MainActor
-final class ArchiveWindow: NSWindowController, NSTableViewDataSource, NSTableViewDelegate {
-    private let provider = ZipArchiveProvider()
+final class ArchiveWindow: NSWindowController, NSTableViewDataSource, NSTableViewDelegate, NSWindowDelegate {
+    private var backend: ArchiveReadBackend = .system
+    private var operationID = UUID()
+    private var pendingClose = false
     private let table = NSTableView(), status = NSTextField(labelWithString: ""), progress = NSProgressIndicator()
     private let extractButton = NSButton(), cancelButton = NSButton()
     private var archiveURL: URL?, entries: [ArchiveEntryDescriptor] = [], task: Task<Void, Never>?
 
     init() {
         let panel = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 720, height: 520), styleMask: [.titled, .closable, .resizable, .utilityWindow], backing: .buffered, defer: false)
-        super.init(window: panel); panel.isReleasedWhenClosed = false; buildUI()
+        super.init(window: panel); panel.isReleasedWhenClosed = false; panel.delegate = self; buildUI()
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
     deinit { task?.cancel() }
@@ -130,18 +171,22 @@ final class ArchiveWindow: NSWindowController, NSTableViewDataSource, NSTableVie
     }
 
     func present(archiveURL: URL, onRead: (() -> Void)? = nil) {
-        task?.cancel(); self.archiveURL = archiveURL; entries = []; table.reloadData()
+        task?.cancel(); pendingClose = false; operationID = UUID(); let currentID = operationID
+        self.archiveURL = archiveURL; entries = []; table.reloadData()
         window?.title = L("압축 파일: ", "Archive: ") + archiveURL.lastPathComponent
         status.stringValue = L("목록을 읽는 중…", "Reading archive…"); setRunning(true)
         window?.center(); showWindow(nil); window?.makeKeyAndOrderFront(nil)
-        task = Task { [weak self, provider] in
+        task = Task { [weak self] in
             do {
-                let loaded = try await Task.detached(priority: .userInitiated) { try provider.entries(at: archiveURL) }.value
-                guard let self, !Task.isCancelled else { return }
-                self.entries = loaded; self.status.stringValue = L("\(loaded.count)개 항목", "\(loaded.count) items"); self.setRunning(false); self.table.reloadData()
+                let backend = try await ArchiveReadBackend.resolve(for: archiveURL)
+                guard let self, self.operationID == currentID, let window = self.window else { return }
+                let loaded = try await backend.readWithPassword(archiveURL, window: window).entries
+                guard self.operationID == currentID else { return }
+                try Task<Never, Never>.checkCancellation()
+                self.backend = backend; self.entries = loaded; self.status.stringValue = L("\(loaded.count)개 항목", "\(loaded.count) items"); self.setRunning(false); self.table.reloadData()
                 onRead?()
-            } catch is CancellationError { }
-            catch { guard let self else { return }; self.status.stringValue = archiveErrorMessage(error); self.setRunning(false) }
+            } catch is CancellationError { guard let self, self.operationID == currentID else { return }; self.status.stringValue = L("읽기를 중단했습니다.", "Reading stopped."); self.setRunning(false) }
+            catch { guard let self, self.operationID == currentID else { return }; self.status.stringValue = archiveErrorMessage(error); self.setRunning(false) }
         }
     }
 
@@ -151,23 +196,24 @@ final class ArchiveWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         panel.beginSheetModal(for: window) { [weak self] response in guard response == .OK, let destination = panel.url else { return }; self?.extract(to: destination) }
     }
     private func extract(to destination: URL) {
-        guard let archiveURL else { return }; task?.cancel(); status.stringValue = L("안전하게 추출하는 중…", "Extracting safely…"); setRunning(true)
-        task = Task { [weak self, provider] in
+        guard let archiveURL else { return }; task?.cancel(); operationID = UUID(); let currentID = operationID
+        status.stringValue = L("안전하게 추출하는 중…", "Extracting safely…"); setRunning(true)
+        task = Task { [weak self, backend] in
             do {
                 var password: String?
                 if let self, self.entries.contains(where: \.isEncrypted), let window = self.window {
-                    guard ArchiveFormat.detect(archiveURL) == .zip else { throw ZipArchiveError.unsupportedEncryption }
+                    guard backend.supportsPassword(for: archiveURL) else { throw ZipArchiveError.unsupportedEncryption }
                     guard let entered = await ArchivePasswordPrompt.request(for: window, archiveName: archiveURL.lastPathComponent) else { throw CancellationError() }
                     password = entered
                 }
                 try Task<Never, Never>.checkCancellation()
-                let report = try await provider.extract(archiveURL, to: destination, password: password) { [weak self] update in
-                    Task { @MainActor [weak self] in self?.updateProgress(update) }
+                let report = try await backend.extract(archiveURL, to: destination, password: password) { [weak self] update in
+                    Task { @MainActor [weak self] in guard let self, self.operationID == currentID else { return }; self.updateProgress(update) }
                 }
-                guard let self, !Task.isCancelled else { return }
+                guard let self, self.operationID == currentID else { return }
                 self.status.stringValue = L("\(report.entries)개 항목을 추출했습니다.", "Extracted \(report.entries) items."); self.setRunning(false)
-            } catch is CancellationError { guard let self else { return }; self.status.stringValue = L("추출을 중단했습니다.", "Extraction stopped."); self.setRunning(false) }
-            catch { guard let self else { return }; self.status.stringValue = archiveExtractionErrorMessage(error, encrypted: self.entries.contains(where: \.isEncrypted)); self.setRunning(false) }
+            } catch is CancellationError { guard let self, self.operationID == currentID else { return }; self.status.stringValue = L("추출을 중단했습니다.", "Extraction stopped."); self.setRunning(false) }
+            catch { guard let self, self.operationID == currentID else { return }; self.status.stringValue = archiveExtractionErrorMessage(error, encrypted: self.entries.contains(where: \.isEncrypted)); self.setRunning(false) }
         }
     }
     @objc private func cancel(_ sender: Any?) { task?.cancel() }
@@ -180,7 +226,8 @@ final class ArchiveWindow: NSWindowController, NSTableViewDataSource, NSTableVie
         let phase = update.phase == .publishing ? L("결과 확정", "Publishing") : L("추출", "Extracting")
         status.stringValue = "\(phase) · \(update.completedEntries)/\(update.totalEntries) · \(ByteCountFormatter.string(fromByteCount: update.completedBytes, countStyle: .file))" + (update.currentPath.map { " · \($0)" } ?? "")
     }
-    private func setRunning(_ running: Bool) { if running { progress.isIndeterminate = true; progress.startAnimation(nil) } else { progress.stopAnimation(nil) }; cancelButton.isEnabled = running; extractButton.isEnabled = !running && !entries.isEmpty }
+    private func setRunning(_ running: Bool) { if running { progress.isIndeterminate = true; progress.startAnimation(nil) } else { progress.stopAnimation(nil) }; cancelButton.isEnabled = running; extractButton.isEnabled = !running && !entries.isEmpty; if !running && pendingClose { pendingClose = false; window?.close() } }
+    func windowShouldClose(_ sender: NSWindow) -> Bool { if cancelButton.isEnabled { pendingClose = true; task?.cancel(); return false }; return true }
     private func render() { setRunning(false); status.stringValue = L("압축 파일을 여세요.", "Open an archive.") }
     func numberOfRows(in tableView: NSTableView) -> Int { entries.count }
     func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
@@ -195,6 +242,7 @@ final class ArchiveWindow: NSWindowController, NSTableViewDataSource, NSTableVie
     func qaExtract(to destination: URL) { extract(to: destination) }
     var qaIsRunning: Bool { cancelButton.isEnabled }
     var qaSucceeded: Bool { status.stringValue.contains(L("추출했습니다", "Extracted")) }
+    var qaMessage: String { status.stringValue }
     func qaCancel() { cancel(nil) }
 #endif
 }

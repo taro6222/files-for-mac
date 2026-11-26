@@ -1,0 +1,147 @@
+{
+  "passed": true,
+  "exitCode": 0,
+  "timedOut": false,
+  "tests": {
+    "sevenZipSDKFramedClientRejectsMalformedReplies": true,
+    "sevenZipSDKFragmentedReplyAndClose": true,
+    "sevenZipSDKEOFOnDiagnosticPipeIsNotDiagnosticData": true,
+    "sevenZipSDKTimeoutAndCancellationReapOwnedChild": true,
+    "sevenZipSDKValidatesPathsBeforeStaging": true,
+    "sevenZipSDKEncryptedRoundTripAndFailureStaging": true,
+    "sevenZipSDKCorruptionAndLinksNeverPublish": true,
+    "sevenZipSDKPublicationConflictAndForeignStagingPreservation": true,
+    "sevenZipSDKCancellationBeforePublicationDiscardsStaging": true,
+    "sevenZipSDKBundleManifestRejectsUntrustedMetadata": true,
+    "sevenZipSDKBundleRejectsMissingLinksAndNonregularManifest": true,
+    "sevenZipSDKBundleCancellationAndInvalidTimeout": true,
+    "sevenZipSDKBundleDeveloperIDRequirementRejectsInvalidTeam": true,
+    "sevenZipSDKBundleBindsExecutingHostIdentity": true,
+    "sevenZipSDKExistingDirectoryExtractionPreservesUnrelatedItems": true,
+    "sevenZipSDKExistingDirectoryConflictRollsBackOwnedPublication": true,
+    "sevenZipSDKExistingDirectoryChangedPublicationIsPreserved": true,
+    "sevenZipSDKExistingDirectoryCancellationRollsBackPublication": true,
+    "sevenZipSDKBundleResolutionAndUse": true,
+    "sevenZipSDKBundleRejectsResealedHashMismatch": true,
+    "sevenZipSDKBundleRejectsAdhocStableAndWrongIdentity": true,
+    "sevenZipSDKBundleRejectsResealedSourcePinAndExtraFile": true,
+    "sevenZipSDKBundlePinsSelectedRevisionAcrossResigning": true
+  },
+  "sourcesSHA256": {
+    "Sources/FilesCore/SevenZipArchiveProvider.swift": "1e1a92f8132c5333634acd91449274652e1237809732666a9dbcc043bb16aa2f",
+    "Sources/FilesCore/SevenZipBundledBackend.swift": "93a1677c53671d7c0111bfad5185b1fd3966305fae9bd9d5be3d811634e4f9b7",
+    "Tests/FilesCoreTests/SevenZipArchiveProviderTests.swift": "584dcc5c274ebc045ad8dbb211e9450fc37169dd0284e3cc77b127c4d46602eb",
+    "Tests/FilesCoreTests/SevenZipBundledBackendTests.swift": "592a239960e1d486d2c1c86a63f2a246f0f85d9240e531f05de80eb99f8846ac"
+  },
+  "workerManifest": {
+    "version": 1,
+    "SDKVersion": "26.06",
+    "SDKSourceSHA256": "a4e374c8f864f51df48c2cfd0e1413ec3b2ea030deae852d6a655402ebb61ac4",
+    "architectures": [
+      "arm64",
+      "x86_64"
+    ],
+    "builds": {
+      "arm64": {
+        "fingerprint": "60d5d1f144063db86e21322bec79607c565db24ce201685ef5174b5d24103d07",
+        "inputs": {
+          "SDKVersion": "26.06",
+          "SDKSourceSHA256": "a4e374c8f864f51df48c2cfd0e1413ec3b2ea030deae852d6a655402ebb61ac4",
+          "architecture": "arm64",
+          "minimumOS": "14.0",
+          "compiler": "Apple clang version 21.0.0 (clang-2100.4.1.1)\nTarget: arm64-apple-darwin27.2.0\nThread model: posix\nInstalledDir: /Library/Developer/CommandLineTools/usr/bin",
+          "AppleSDK": "27.2",
+          "buildRecipeSHA256": "afe0d0bc6dc0c10236fd21b2b35d5a98d50fa1a53e29aca6af21224dcdc6b7f8",
+          "helperSourcesSHA256": {
+            "ArchiveSDK.h": "560acd253e08d8542d5d66bb9843cb340d354ac624b4091109df659d8f3a4b9e",
+            "ArchiveSDK.cpp": "ae8e4fe945ba47bddad55e031416a640bf8ac318cb1be8b663e69f3a137b4adb",
+            "main.mm": "43ec3bceaf602906317499c51d688a47ce391b77697acd7928f46fdfe881b713"
+          }
+        },
+        "filesSHA256": {
+          "SevenZipWorker": "6d86879436937424ac167ac790b16f264783c28421c194e48dc96ade489418ad",
+          "7z.so": "4873073e0113f41efcac833b7389f171708583335211c6530a8015302968b2e7",
+          "License.txt": "9ac2b4a97ab5d523965534d8b2d5868e511b39096d51fff458ab72c38b80fccc",
+          "build.log": "95dc420ffb4a0e346b871b38b19701ee63d93e59b528235517c2d0d792f990af"
+        }
+      },
+      "x86_64": {
+        "fingerprint": "defbee304ac70eec001ce2eb3a9696ce21bde50123ee1569e56364265260f468",
+        "inputs": {
+          "SDKVersion": "26.06",
+          "SDKSourceSHA256": "a4e374c8f864f51df48c2cfd0e1413ec3b2ea030deae852d6a655402ebb61ac4",
+          "architecture": "x86_64",
+          "minimumOS": "14.0",
+          "compiler": "Apple clang version 21.0.0 (clang-2100.4.1.1)\nTarget: arm64-apple-darwin27.2.0\nThread model: posix\nInstalledDir: /Library/Developer/CommandLineTools/usr/bin",
+          "AppleSDK": "27.2",
+          "buildRecipeSHA256": "afe0d0bc6dc0c10236fd21b2b35d5a98d50fa1a53e29aca6af21224dcdc6b7f8",
+          "helperSourcesSHA256": {
+            "ArchiveSDK.h": "560acd253e08d8542d5d66bb9843cb340d354ac624b4091109df659d8f3a4b9e",
+            "ArchiveSDK.cpp": "ae8e4fe945ba47bddad55e031416a640bf8ac318cb1be8b663e69f3a137b4adb",
+            "main.mm": "43ec3bceaf602906317499c51d688a47ce391b77697acd7928f46fdfe881b713"
+          }
+        },
+        "filesSHA256": {
+          "SevenZipWorker": "9cb3a36399ed2410f7e2d59dedae22aef9a672fb145f67f8c184651660a52bc9",
+          "7z.so": "0f6cbe402c174366562d948c98fd2149232172bba6997c63dc9b0cc8e322c0f0",
+          "License.txt": "9ac2b4a97ab5d523965534d8b2d5868e511b39096d51fff458ab72c38b80fccc",
+          "build.log": "0720ec30675e35a8e27e6883e18063912dba3f410261892191329add35e192a0"
+        }
+      }
+    },
+    "filesSHA256": {
+      "Contents/Helpers/SevenZipWorker": "856023cb59b00419c39350e8adfca4fbf288bac869470f24a83e42d477f622e4",
+      "Contents/Frameworks/7z.so": "fef5732ac5fca02f58721f2350ab70c91b71a9480cec7edf0bfc1f58806ab66e",
+      "Contents/Resources/ThirdParty/7zip/License.txt": "9ac2b4a97ab5d523965534d8b2d5868e511b39096d51fff458ab72c38b80fccc",
+      "Contents/Resources/ThirdParty/7zip/copying.txt": "1e7e6bae5a5bde32f1ae5a7c37a082d1ab03cf89354f7f936ac40be9e39a6531",
+      "Contents/Resources/ThirdParty/7zip/unRarLicense.txt": "17bd9fa4399092c777536fff045b41df76ec9d2ac4c9b8e7345d3b8b6ccc7976",
+      "Contents/Resources/ThirdParty/7zip/readme.txt": "20ad51b9e8c2bc859baf9c65d3d0fe04efc9cf52da97985991959c0fc6ae64ae",
+      "Contents/Resources/ThirdParty/7zip/7z2606-src.tar.xz": "a4e374c8f864f51df48c2cfd0e1413ec3b2ea030deae852d6a655402ebb61ac4",
+      "Contents/Resources/ThirdParty/7zip/BUILD.md": "4acf19456fa9ffb450099e11d4ad3f09849685a42fcee66f9ccc84344a02b63b",
+      "Contents/Resources/ThirdParty/7zip/Sources/LICENSE.txt": "8d81d3ba53241930c1afa5653701ac8dd9055b0037abd1ed0597bc8f0ad37114",
+      "Contents/Resources/ThirdParty/7zip/Sources/Tools/SevenZipWorker/ArchiveSDK.h": "560acd253e08d8542d5d66bb9843cb340d354ac624b4091109df659d8f3a4b9e",
+      "Contents/Resources/ThirdParty/7zip/Sources/Tools/SevenZipWorker/ArchiveSDK.cpp": "ae8e4fe945ba47bddad55e031416a640bf8ac318cb1be8b663e69f3a137b4adb",
+      "Contents/Resources/ThirdParty/7zip/Sources/Tools/SevenZipWorker/main.mm": "43ec3bceaf602906317499c51d688a47ce391b77697acd7928f46fdfe881b713",
+      "Contents/Resources/ThirdParty/7zip/Sources/scripts/build-sevenzip-worker.py": "afe0d0bc6dc0c10236fd21b2b35d5a98d50fa1a53e29aca6af21224dcdc6b7f8",
+      "Contents/Resources/ThirdParty/7zip/Sources/scripts/sevenzip_reference.py": "21aaed1dccf4a316b39d9e9e8395f21162d0896be9008cf39c8b834d77981597"
+    }
+  },
+  "referenceManifest": {
+    "version": "26.06",
+    "architecture": "arm64",
+    "archiveURL": "https://github.com/ip7z/7zip/releases/download/26.06/7z2606-mac.tar.xz",
+    "archiveSHA256": "b6f17920b4240940461dac8ef4009891881ac44d2a5ead625ede2ec8472185dd",
+    "sourceURL": "https://github.com/ip7z/7zip/releases/download/26.06/7z2606-src.tar.xz",
+    "sourceSHA256": "a4e374c8f864f51df48c2cfd0e1413ec3b2ea030deae852d6a655402ebb61ac4",
+    "filesSHA256": {
+      "7zz": "56cf8eb2fdc6f9c0ac5d7a3cd238505814ac8ed6b88a7c64a7e3256036252c60",
+      "License.txt": "1790374e5352329cedb46ee3808930a88e9ca2f08b82b10fcf5cf605d2c301b1",
+      "readme.txt": "79aa0fedbfb43f32d60858c8f13f42afc025adf19bf3e7ed66a7c55f451eae45"
+    }
+  },
+  "productUIIntegration": false,
+  "core": {
+    "total": 419,
+    "passed": 400,
+    "environmentSkipped": 19
+  },
+  "newUIConditions": 6,
+  "UIAcceptance": "pending remote execution",
+  "localGUIRuns": 0,
+  "longRunsRestarted": false,
+  "UISourcesSHA256": {
+    "Sources/FilesCore/ArchiveCapabilities.swift": "7aabc64511aadd8a083612f0e3d3474f74c9f9486143ea73221f008e6a04230b",
+    "Sources/FilesMac/ArchiveWindow.swift": "81ab8b398833e4fd65f30bece31f105719caaa6dab0c20ef76772838e37e2a1d",
+    "Sources/FilesMac/ArchiveExtractionWindow.swift": "2dbcb8d50c4944966a9150ab1b668b4c561d4251301b7f09337c14e41ebec536",
+    "Sources/FilesMac/ArchiveCapabilitiesWindow.swift": "d97010d44d8428680be0b79a9c005f3a2f949351502a9e60d949a8cab26c3b05",
+    "Sources/FilesMac/ArchiveErrorPresentation.swift": "7c056207d4008954f6a832e893b3f91e5107f68b99cf61e4ba02a6dc9c7b4746",
+    "Sources/FilesMac/BrowserWindow.swift": "dd7a53a225c5c714047d9fb6e3c8d2dbb0ad115aa1bc23dfd44bbcb54bd85f00",
+    "scripts/verify-ui.sh": "1f39fb263504677ebaa59c58196a49c1ec76d3351d53df1f06a66aed74f829d1",
+    "Tests/FilesCoreTests/SevenZipBundledBackendTests.swift": "592a239960e1d486d2c1c86a63f2a246f0f85d9240e531f05de80eb99f8846ac"
+  },
+  "logsSHA256": {
+    "build/sevenzip-350-all-core.log": "1705609643856895ec51ad0c4c6d8075fdd4bc0f449e7679524f78764dd280f8",
+    "build/sevenzip-350-final-release.log": "7638e751d0133cdba25a870036ac57943ec200e5e47d9e8476717bf7861a82bc"
+  },
+  "releaseBuildPassed": true
+}

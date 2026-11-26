@@ -19,6 +19,8 @@ TESTS = [
     'sevenZipSDKBundleCancellationAndInvalidTimeout',
     'sevenZipSDKBundleDeveloperIDRequirementRejectsInvalidTeam',
     'sevenZipSDKBundleBindsExecutingHostIdentity',
+    'sevenZipSDKExistingDirectoryExtractionPreservesUnrelatedItems', 'sevenZipSDKExistingDirectoryConflictRollsBackOwnedPublication',
+    'sevenZipSDKExistingDirectoryChangedPublicationIsPreserved', 'sevenZipSDKExistingDirectoryCancellationRollsBackPublication',
 ]
 BUNDLE_TESTS = ['sevenZipSDKBundleResolutionAndUse', 'sevenZipSDKBundleRejectsResealedHashMismatch',
                 'sevenZipSDKBundleRejectsAdhocStableAndWrongIdentity', 'sevenZipSDKBundleRejectsResealedSourcePinAndExtraFile',

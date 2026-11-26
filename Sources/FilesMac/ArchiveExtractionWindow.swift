@@ -1,5 +1,6 @@
 import AppKit
 import FilesCore
+import Darwin
 
 @MainActor
 final class ArchiveExtractionWindow: NSWindowController, NSWindowDelegate {
@@ -22,28 +23,31 @@ final class ArchiveExtractionWindow: NSWindowController, NSWindowDelegate {
                 for (index, archive) in archives.enumerated() {
                     try Task<Never, Never>.checkCancellation()
                     controller.encryptedArchive = false
-                    let entries = try await Task.detached(priority: .userInitiated) { try ZipArchiveProvider().entries(at: archive) }.value
+                    let backend = try await ArchiveReadBackend.resolve(for: archive)
+                    guard let window = controller.window else { throw CancellationError() }
+                    let loaded = try await backend.readWithPassword(archive, window: window)
+                    let entries = loaded.entries
                     controller.encryptedArchive = entries.contains(where: \.isEncrypted)
-                    var password: String?
-                    if entries.contains(where: \.isEncrypted), let window = controller.window {
-                        guard ArchiveFormat.detect(archive) == .zip else { throw ZipArchiveError.unsupportedEncryption }
+                    var password = loaded.password
+                    if password == nil, entries.contains(where: \.isEncrypted) {
+                        guard backend.supportsPassword(for: archive) else { throw ZipArchiveError.unsupportedEncryption }
                         guard let entered = await ArchivePasswordPrompt.request(for: window, archiveName: archive.lastPathComponent) else { throw CancellationError() }
                         password = entered
                     }
                     try Task<Never, Never>.checkCancellation()
                     let needsChild = try archiveNeedsChildFolder(entries, placement: placement)
-                    let destination = needsChild ? try controller.createUniqueChild(in: parent, base: archiveChildFolderBaseName(archive)) : parent
+                    let child = needsChild ? try controller.createUniqueChild(in: parent, base: archiveChildFolderBaseName(archive)) : nil
+                    let destination = child?.url ?? parent
                     do {
-                        _ = try await ZipArchiveProvider().extract(archive, to: destination, password: password) { [weak controller] update in
+                        _ = try await backend.extract(archive, to: destination, password: password) { [weak controller] update in
                             Task { @MainActor [weak controller] in controller?.update(update, archive: archive, index: index, total: archives.count) }
                         }
                     } catch {
-                        if needsChild, (try? FileManager.default.contentsOfDirectory(atPath: destination.path).isEmpty) == true { try? FileManager.default.removeItem(at: destination) }
+                        if let child { controller.removeEmptyChild(child) }
                         throw error
                     }
                     completed += 1
                 }
-                guard !Task.isCancelled else { return }
                 controller.finish(success: true, message: L("\(completed)개 압축 파일을 추출했습니다.", "Extracted \(completed) archives.")); completion()
             } catch is CancellationError { controller.finish(success: false, message: L("추출을 중단했습니다.", "Extraction stopped.")) }
             catch { controller.finish(success: false, message: archiveExtractionErrorMessage(error, encrypted: controller.encryptedArchive)) }
@@ -65,15 +69,25 @@ final class ArchiveExtractionWindow: NSWindowController, NSWindowDelegate {
     required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
     deinit { task?.cancel() }
 
-    private func createUniqueChild(in parent: URL, base: String) throws -> URL {
+    private struct Child { let url: URL, device: dev_t, inode: ino_t }
+    private func createUniqueChild(in parent: URL, base: String) throws -> Child {
         for index in 0..<10_000 {
             let name = index == 0 ? base : "\(base) \(index + 1)"
             let candidate = parent.appendingPathComponent(name, isDirectory: true)
-            do { try FileManager.default.createDirectory(at: candidate, withIntermediateDirectories: false); return candidate }
-            catch let error as CocoaError where error.code == .fileWriteFileExists { continue }
-            catch { throw error }
+            if mkdir(candidate.path, 0o700) == 0 {
+                var info = stat()
+                guard lstat(candidate.path, &info) == 0, (info.st_mode & S_IFMT) == S_IFDIR else { throw CocoaError(.fileWriteUnknown) }
+                return Child(url: candidate, device: info.st_dev, inode: info.st_ino)
+            }
+            if errno == EEXIST { continue }
+            throw CocoaError(.fileWriteUnknown)
         }
         throw CocoaError(.fileWriteFileExists)
+    }
+    private func removeEmptyChild(_ child: Child) {
+        var info = stat()
+        guard lstat(child.url.path, &info) == 0, info.st_dev == child.device, info.st_ino == child.inode, (info.st_mode & S_IFMT) == S_IFDIR else { return }
+        _ = rmdir(child.url.path)
     }
     @objc private func cancel(_ sender: Any?) {
         if !running { close(); return }

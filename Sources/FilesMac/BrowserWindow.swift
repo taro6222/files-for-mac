@@ -5754,6 +5754,83 @@ extension BrowserWindow {
             } else {
                 for key in ["archiveEncryptionValidationAndFormatGate", "archivePasswordRevealAndClear", "archiveEncryptedCreation", "archiveEncryptedBrowserWrongPasswordAndRetry", "archiveEncryptedBrowserCancellationAndStop", "archiveEncryptedBatchExtractionAndCancel"] { checks[key] = false }
             }
+            let sevenZipKeys = ["sevenZipEncryptedBrowseAndRetry", "sevenZipEncryptedExtractAndCancel", "sevenZipBatchPlacement", "sevenZipChildCollision", "sevenZipHeaderCancellation", "sevenZipPasswordCapability"]
+            if let referencePath = ProcessInfo.processInfo.environment["FILES_UI_QA_SEVENZIP_REFERENCE"],
+               ProcessInfo.processInfo.environment["FILES_UI_QA_SEVENZIP_BUNDLE"] != nil {
+                let source = destination.appendingPathComponent("sdk-ui-source"), archive = destination.appendingPathComponent("sdk-encrypted.7z")
+                try fm.createDirectory(at: source.appendingPathComponent("nested"), withIntermediateDirectories: true)
+                let filename = "한글-🔑.txt", payload = Data("7z UI payload".utf8), password = "QA-350-한글-🔑"
+                try payload.write(to: source.appendingPathComponent(filename)); try Data(repeating: 0x51, count: 32768).write(to: source.appendingPathComponent("nested/data.bin"))
+                let reference = Process(), input = Pipe(), logURL = destination.appendingPathComponent("sdk-reference.log")
+                fm.createFile(atPath: logURL.path, contents: nil)
+                let log = try FileHandle(forWritingTo: logURL); defer { try? log.close() }
+                reference.executableURL = URL(fileURLWithPath: referencePath); reference.currentDirectoryURL = source
+                reference.arguments = ["a", "-t7z", "-mhe=on", "-p", "-y", archive.path, "."]
+                reference.standardInput = input; reference.standardOutput = log; reference.standardError = log
+                try reference.run()
+                defer { if reference.isRunning { reference.terminate() } }
+                try input.fileHandleForWriting.write(contentsOf: Data((password + "\n" + password + "\n").utf8)); try input.fileHandleForWriting.close()
+                let referenceStart = ContinuousClock.now
+                while reference.isRunning && referenceStart.duration(to: .now) < .seconds(20) { try await Task.sleep(for: .milliseconds(10)) }
+                guard !reference.isRunning, reference.terminationStatus == 0 else { throw CocoaError(.fileReadCorruptFile) }
+                let browser = ArchiveWindow(); var readOK = true
+                for entered in ["wrong", password] {
+                    browser.present(archiveURL: archive)
+                    if let prompt = await ArchivePasswordPrompt.qaWait(for: browser.window!) {
+                        if entered == password { try capture("sevenzip-password-open", view: prompt.input) }
+                        prompt.qaSubmit(entered)
+                        let start = ContinuousClock.now
+                        while browser.qaIsRunning && start.duration(to: .now) < .seconds(10) { try await Task.sleep(for: .milliseconds(10)) }
+                        readOK = readOK && !browser.qaIsRunning && prompt.input.value.isEmpty
+                        readOK = readOK && (entered == password ? browser.qaEntryCount == 3 : browser.qaEntryCount == 0 && browser.qaMessage.contains(L("암호", "password")))
+                    } else { readOK = false; browser.qaCancel() }
+                }
+                checks[sevenZipKeys[0]] = readOK
+                var extractOK = true
+                for entered in ["wrong", password, "cancel"] {
+                    let target = destination.appendingPathComponent("sdk-browser-" + (entered == password ? "correct" : entered))
+                    try fm.createDirectory(at: target, withIntermediateDirectories: false); browser.qaExtract(to: target)
+                    if let prompt = await ArchivePasswordPrompt.qaWait(for: browser.window!) {
+                        prompt.qaSubmit(entered == "cancel" ? nil : entered)
+                        let start = ContinuousClock.now
+                        while browser.qaIsRunning && start.duration(to: .now) < .seconds(10) { try await Task.sleep(for: .milliseconds(10)) }
+                        extractOK = extractOK && !browser.qaIsRunning && prompt.input.value.isEmpty
+                        if entered == password { extractOK = extractOK && browser.qaSucceeded && (try? Data(contentsOf: target.appendingPathComponent(filename))) == payload }
+                        else { extractOK = extractOK && !browser.qaSucceeded && ((try? fm.contentsOfDirectory(atPath: target.path))?.isEmpty == true) }
+                    } else { extractOK = false; browser.qaCancel() }
+                }
+                checks[sevenZipKeys[1]] = extractOK; browser.close()
+                var placementsOK = true, collisionOK = false
+                for placement in [ArchiveExtractionPlacement.here, .smart, .childFolder] {
+                    let name = placement == .here ? "here" : (placement == .smart ? "smart" : "child")
+                    let target = destination.appendingPathComponent("sdk-placement-" + name)
+                    try fm.createDirectory(at: target, withIntermediateDirectories: false)
+                    if placement == .childFolder { try fm.createDirectory(at: target.appendingPathComponent("sdk-encrypted"), withIntermediateDirectories: false) }
+                    ArchiveExtractionWindow.start(archives: [archive], parent: target, placement: placement) {}
+                    if let operation = ArchiveExtractionWindow.qaLatest, let prompt = await ArchivePasswordPrompt.qaWait(for: operation.window!) {
+                        prompt.qaSubmit(password)
+                        let start = ContinuousClock.now
+                        while operation.qaRunning && start.duration(to: .now) < .seconds(10) { try await Task.sleep(for: .milliseconds(10)) }
+                        let result = placement == .here ? target : target.appendingPathComponent(placement == .smart ? "sdk-encrypted" : "sdk-encrypted 2")
+                        placementsOK = placementsOK && operation.qaSucceeded && prompt.input.value.isEmpty && (try? Data(contentsOf: result.appendingPathComponent(filename))) == payload
+                        if placement == .childFolder { collisionOK = (try? fm.contentsOfDirectory(atPath: target.appendingPathComponent("sdk-encrypted").path))?.isEmpty == true }
+                        operation.close()
+                    } else { placementsOK = false }
+                }
+                checks[sevenZipKeys[2]] = placementsOK; checks[sevenZipKeys[3]] = collisionOK
+                let cancelled = ArchiveWindow(); cancelled.present(archiveURL: archive)
+                if let prompt = await ArchivePasswordPrompt.qaWait(for: cancelled.window!) {
+                    cancelled.qaCancel(); let start = ContinuousClock.now
+                    while cancelled.qaIsRunning && start.duration(to: .now) < .seconds(5) { try await Task.sleep(for: .milliseconds(10)) }
+                    checks[sevenZipKeys[4]] = !cancelled.qaIsRunning && cancelled.qaEntryCount == 0 && prompt.input.value.isEmpty
+                } else { checks[sevenZipKeys[4]] = false }
+                cancelled.close()
+                let capabilities = ArchiveCapabilitiesWindow(); capabilities.present()
+                let supportStart = ContinuousClock.now
+                while capabilities.qaSevenZipPassword == L("확인 중", "Checking") && supportStart.duration(to: .now) < .seconds(5) { try await Task.sleep(for: .milliseconds(10)) }
+                checks[sevenZipKeys[5]] = capabilities.qaSevenZipPassword == L("추출", "Extract")
+                capabilities.close(); window.makeKeyAndOrderFront(nil)
+            } else { for key in sevenZipKeys { checks[key] = false } }
             try await Task.sleep(for: .milliseconds(300))
             let metadataRefresh = ContinuousClock.now
             while controller.model.isLoading && metadataRefresh.duration(to: .now) < .seconds(10) { try await Task.sleep(for: .milliseconds(10)) }

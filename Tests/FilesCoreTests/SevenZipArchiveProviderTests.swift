@@ -220,12 +220,95 @@ private final class SDKPublicationGate: @unchecked Sendable {
     let release = DispatchSemaphore(value: 0)
     private let lock = NSLock()
     private var started = false
+    private let afterItem: Bool
+    init(afterItem: Bool = false) { self.afterItem = afterItem }
     var reached: Bool { lock.withLock { started } }
     func pause(_ progress: ArchiveProgress) {
-        guard progress.phase == .publishing else { return }
+        guard progress.phase == .publishing, !afterItem || progress.currentPath != nil else { return }
         lock.withLock { started = true }
         _ = release.wait(timeout: .now() + 5)
     }
+}
+
+private final class SDKMergeMutation: @unchecked Sendable {
+    private let lock = NSLock()
+    private var applied = false, failure = false
+    let root: URL, destination: URL, secondName: String, replaceFirst: Bool
+    init(root: URL, destination: URL, secondName: String, replaceFirst: Bool) {
+        self.root = root; self.destination = destination; self.secondName = secondName; self.replaceFirst = replaceFirst
+    }
+    func apply(_ update: ArchiveProgress) {
+        guard update.phase == .publishing, let firstName = update.currentPath else { return }
+        lock.lock(); defer { lock.unlock() }; guard !applied else { return }; applied = true
+        do {
+            if replaceFirst {
+                let first = destination.appendingPathComponent(firstName)
+                try FileManager.default.moveItem(at: first, to: root.appendingPathComponent("held-owned-folder"))
+                try Data("foreign replacement".utf8).write(to: first)
+            } else { try Data("foreign collision".utf8).write(to: destination.appendingPathComponent(secondName)) }
+        } catch { failure = true }
+    }
+    var succeeded: Bool { lock.withLock { applied && !failure } }
+}
+
+@Test(.enabled(if: hasIntegrationFixture("FILES_TEST_SEVENZIP_REFERENCE") && hasIntegrationFixture("FILES_TEST_SEVENZIP_WORKER"), "Requires native SDK and reference"))
+func sevenZipSDKExistingDirectoryExtractionPreservesUnrelatedItems() async throws {
+    let root = try sdkRoot(); defer { try? FileManager.default.removeItem(at: root) }
+    let fixture = try await sdkFixture(root: root, password: "QA-350-한글-🔑"), provider = try sdkRealProvider()
+    let destination = root.appendingPathComponent("destination"); try FileManager.default.createDirectory(at: destination, withIntermediateDirectories: false)
+    let keep = destination.appendingPathComponent("keep.txt"); try Data("keep".utf8).write(to: keep)
+    let before = try Data(contentsOf: fixture.archive)
+    let report = try await provider.extract(fixture.archive, to: destination, password: "QA-350-한글-🔑")
+    #expect(report.entries == 3 && report.publishedURLs.count == 2)
+    for (name, data) in fixture.payloads { #expect(try Data(contentsOf: destination.appendingPathComponent(name)) == data) }
+    #expect(try Data(contentsOf: keep) == Data("keep".utf8)); #expect(try Data(contentsOf: fixture.archive) == before)
+    #expect(!(try FileManager.default.contentsOfDirectory(atPath: destination.path)).contains { $0.hasPrefix(".files-7z-") })
+    await #expect(throws: (any Error).self) { try await provider.extract(fixture.archive, to: destination, password: "QA-350-한글-🔑") }
+    #expect(try Data(contentsOf: keep) == Data("keep".utf8))
+}
+
+@Test(.enabled(if: hasIntegrationFixture("FILES_TEST_SEVENZIP_REFERENCE") && hasIntegrationFixture("FILES_TEST_SEVENZIP_WORKER"), "Requires native SDK and reference"))
+func sevenZipSDKExistingDirectoryConflictRollsBackOwnedPublication() async throws {
+    let root = try sdkRoot(); defer { try? FileManager.default.removeItem(at: root) }
+    let fixture = try await sdkFixture(root: root), provider = try sdkRealProvider()
+    let destination = root.appendingPathComponent("destination"); try FileManager.default.createDirectory(at: destination, withIntermediateDirectories: false)
+    let second = try #require(fixture.payloads.keys.first { !$0.hasPrefix("folder/") })
+    let mutation = SDKMergeMutation(root: root, destination: destination, secondName: second, replaceFirst: false)
+    await #expect(throws: ZipArchiveError.destinationConflict(second)) { try await provider.extract(fixture.archive, to: destination, progress: mutation.apply) }
+    #expect(mutation.succeeded)
+    #expect(try String(contentsOf: destination.appendingPathComponent(second), encoding: .utf8) == "foreign collision")
+    #expect(try FileManager.default.contentsOfDirectory(atPath: destination.path) == [second])
+}
+
+@Test(.enabled(if: hasIntegrationFixture("FILES_TEST_SEVENZIP_REFERENCE") && hasIntegrationFixture("FILES_TEST_SEVENZIP_WORKER"), "Requires native SDK and reference"))
+func sevenZipSDKExistingDirectoryChangedPublicationIsPreserved() async throws {
+    let root = try sdkRoot(); defer { try? FileManager.default.removeItem(at: root) }
+    let fixture = try await sdkFixture(root: root), provider = try sdkRealProvider()
+    let destination = root.appendingPathComponent("destination"); try FileManager.default.createDirectory(at: destination, withIntermediateDirectories: false)
+    let second = try #require(fixture.payloads.keys.first { !$0.hasPrefix("folder/") })
+    let mutation = SDKMergeMutation(root: root, destination: destination, secondName: second, replaceFirst: true)
+    do { _ = try await provider.extract(fixture.archive, to: destination, progress: mutation.apply); Issue.record("Changed publication was accepted") }
+    catch SevenZipWorkerError.publicationRecovery(let staging, let published) {
+        #expect(published.map(\.lastPathComponent) == ["folder"])
+        #expect(try Data(contentsOf: staging.appendingPathComponent(second)) == fixture.payloads[second])
+    }
+    #expect(mutation.succeeded)
+    #expect(try String(contentsOf: destination.appendingPathComponent("folder"), encoding: .utf8) == "foreign replacement")
+    #expect(try Data(contentsOf: root.appendingPathComponent("held-owned-folder/large.bin")) == fixture.payloads["folder/large.bin"])
+}
+
+@Test(.enabled(if: hasIntegrationFixture("FILES_TEST_SEVENZIP_REFERENCE") && hasIntegrationFixture("FILES_TEST_SEVENZIP_WORKER"), "Requires native SDK and reference"))
+func sevenZipSDKExistingDirectoryCancellationRollsBackPublication() async throws {
+    let root = try sdkRoot(); defer { try? FileManager.default.removeItem(at: root) }
+    let fixture = try await sdkFixture(root: root), provider = try sdkRealProvider(), gate = SDKPublicationGate(afterItem: true)
+    let destination = root.appendingPathComponent("destination"); try FileManager.default.createDirectory(at: destination, withIntermediateDirectories: false)
+    defer { gate.release.signal() }
+    let task = Task { try await provider.extract(fixture.archive, to: destination, progress: gate.pause) }
+    let deadline = ContinuousClock.now + .seconds(4)
+    while !gate.reached, ContinuousClock.now < deadline { try await Task.sleep(for: .milliseconds(2)) }
+    #expect(gate.reached); task.cancel(); gate.release.signal()
+    await #expect(throws: CancellationError.self) { try await task.value }
+    #expect(try FileManager.default.contentsOfDirectory(atPath: destination.path).isEmpty)
 }
 
 @Test(.enabled(if: hasIntegrationFixture("FILES_TEST_SEVENZIP_REFERENCE") && hasIntegrationFixture("FILES_TEST_SEVENZIP_WORKER"), "Requires the pinned native SDK worker and reference"))

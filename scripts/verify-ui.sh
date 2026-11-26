@@ -36,6 +36,16 @@ fi
 outputRoot=$(mktemp -d "${TMPDIR:-/tmp}/$runName.XXXXXX")
 outputRoot=$(cd "$outputRoot" && pwd -P)
 printf 'UI verification results: %s\n' "$outputRoot"
+# Exercise the same verified SDK selection as a packaged app; the override is DEBUG-only.
+export PYTHONDONTWRITEBYTECODE=1
+if [[ -z "${FILES_UI_QA_SEVENZIP_BUNDLE:-}" ]]; then
+  export FILES_UI_QA_SEVENZIP_BUNDLE="$outputRoot/sdk/Files macOS.app"
+  FILES_APP_OUTPUT="$FILES_UI_QA_SEVENZIP_BUNDLE" bash scripts/build-app.sh > "$outputRoot/sdk-build.log" 2>&1
+fi
+if [[ -z "${FILES_UI_QA_SEVENZIP_REFERENCE:-}" ]]; then
+  FILES_UI_QA_SEVENZIP_REFERENCE=$(python3 scripts/sevenzip_reference.py)
+  export FILES_UI_QA_SEVENZIP_REFERENCE
+fi
 # Each process gets an isolated preferences suite and a fresh fixture directory.
 failed=0
 for language in "${languages[@]}"; do

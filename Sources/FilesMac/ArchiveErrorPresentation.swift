@@ -14,6 +14,24 @@ func archiveExtractionErrorMessage(_ error: Error, encrypted: Bool) -> String {
 
 func archiveErrorMessage(_ error: Error) -> String {
     switch error {
+    case SevenZipWorkerError.worker("password-required"), SevenZipWorkerError.worker("password-or-corrupt"):
+        return L("암호가 없거나 올바르지 않습니다. 암호와 압축 파일을 확인한 뒤 다시 시도하세요.", "The password is missing or incorrect. Check the password and archive, then try again.")
+    case SevenZipWorkerError.worker("source-changed"):
+        return L("압축 파일이 작업 중 변경되어 중단했습니다. 파일을 다시 열어 시도하세요.", "The archive changed during the operation. Reopen it and try again.")
+    case SevenZipWorkerError.worker("limit"):
+        return L("압축 해제 항목 수나 크기가 안전 한도를 넘어 중단했습니다.", "The archive exceeds the safe item or size limit.")
+    case SevenZipWorkerError.worker("unsupported-item"), SevenZipWorkerError.worker("invalid-metadata"):
+        return L("안전하게 추출할 수 없는 경로나 항목이 있어 중단했습니다.", "The archive contains an unsafe path or entry.")
+    case let SevenZipWorkerError.stagingPreserved(url):
+        return L("임시 결과가 변경되어 자동 삭제하지 않았습니다. 확인할 위치: ", "Temporary output changed and was preserved. Inspect: ") + url.path
+    case let SevenZipWorkerError.publicationRecovery(staging, published):
+        return L("일부 결과가 변경되어 되돌리지 않았습니다. 다음 위치를 확인하세요: ", "Some results changed and were preserved. Inspect: ") + ([staging] + published).map(\.path).joined(separator: " · ")
+    case is SevenZipBundleError, SevenZipWorkerError.unavailable:
+        return L("압축 구성 요소를 확인할 수 없습니다. 앱을 다시 설치한 뒤 시도하세요.", "The archive components could not be verified. Reinstall the app and try again.")
+    case SevenZipWorkerError.timedOut:
+        return L("압축 처리 제한 시간이 지나 중단했습니다. 다른 파일을 선택하거나 다시 시도하세요.", "Archive processing timed out. Choose another file or try again.")
+    case is SevenZipWorkerError:
+        return L("압축 파일을 처리하지 못했습니다. 파일과 저장 위치를 확인하세요.", "The archive could not be processed. Check the file and destination.")
     case ZipArchiveError.emptyPassword:
         return L("비어 있지 않고 NUL 문자를 포함하지 않는 암호를 입력하세요.", "Enter a nonempty password without NUL characters.")
     case ZipArchiveError.unsupportedEncryption:
