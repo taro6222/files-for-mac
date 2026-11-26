@@ -1069,7 +1069,11 @@ func sevenZipSDKCreationBrokerManyInputsAndPreflightPreserveSources() async thro
     let root = try sevenZipCanonicalDirectory(sdkRoot()); defer { try? FileManager.default.removeItem(at: root) }
     let input = root.appendingPathComponent("inputs"), archive = root.appendingPathComponent("broker-created.7z")
     try FileManager.default.createDirectory(at: input, withIntermediateDirectories: false)
-    for index in 0..<300 { try Data("value \(index)".utf8).write(to: input.appendingPathComponent("file-\(index).txt")) }
+    let count = 4000
+    func name(_ index: Int) -> String { "file-\(index)-한글-\n" + String(repeating: "a", count: 60) + ".txt" }
+    for index in 0..<count { try Data("value \(index)".utf8).write(to: input.appendingPathComponent(name(index))) }
+    let plan = try SevenZipCreationPlan(sources: [input], destination: archive, check: {})
+    #expect(try JSONSerialization.data(withJSONObject: plan.items.map(\.brokerRequest)).count > 1_048_576)
     let provider = try sdkRealProvider()
     let before = try FileManager.default.attributesOfItem(atPath: input.path)
     await #expect(throws: ZipArchiveError.invalidSource(input.appendingPathComponent("inside.7z").path)) {
@@ -1077,15 +1081,29 @@ func sevenZipSDKCreationBrokerManyInputsAndPreflightPreserveSources() async thro
     }
     let after = try FileManager.default.attributesOfItem(atPath: input.path)
     #expect(before[.modificationDate] as? Date == after[.modificationDate] as? Date)
-    #expect(try FileManager.default.contentsOfDirectory(atPath: input.path).count == 300)
+    #expect(try FileManager.default.contentsOfDirectory(atPath: input.path).count == count)
     var limitBefore = rlimit(), limitAfter = rlimit()
     #expect(getrlimit(RLIMIT_NOFILE, &limitBefore) == 0)
     _ = try await provider.create(from: [input], at: archive, compressionLevel: .store)
     #expect(getrlimit(RLIMIT_NOFILE, &limitAfter) == 0 && limitBefore.rlim_cur == limitAfter.rlim_cur && limitBefore.rlim_max == limitAfter.rlim_max)
     let restored = root.appendingPathComponent("restored")
     _ = try await provider.extractToNewDirectory(archive, at: restored)
-    for index in 0..<300 {
-        #expect(try Data(contentsOf: restored.appendingPathComponent("inputs/file-\(index).txt")) == Data("value \(index)".utf8))
+    for index in 0..<count {
+        #expect(try Data(contentsOf: restored.appendingPathComponent("inputs").appendingPathComponent(name(index))) == Data("value \(index)".utf8))
+    }
+    let official = root.appendingPathComponent("official"), process = Process()
+    process.executableURL = URL(fileURLWithPath: try #require(ProcessInfo.processInfo.environment["FILES_TEST_SEVENZIP_REFERENCE"]))
+    process.arguments = ["x", "-y", "-o" + official.path, archive.path]
+    process.standardOutput = FileHandle.nullDevice; process.standardError = FileHandle.nullDevice
+    try process.run()
+    defer { if process.isRunning { kill(process.processIdentifier, SIGKILL); process.waitUntilExit() } }
+    let deadline = ContinuousClock.now + .seconds(15)
+    while process.isRunning && ContinuousClock.now < deadline { try await Task.sleep(for: .milliseconds(5)) }
+    guard !process.isRunning else { throw SevenZipWorkerError.timedOut }
+    #expect(process.terminationStatus == 0)
+    #expect(try FileManager.default.contentsOfDirectory(atPath: official.appendingPathComponent("inputs").path).count == count)
+    for index in 0..<count {
+        #expect(try Data(contentsOf: official.appendingPathComponent("inputs").appendingPathComponent(name(index))) == Data("value \(index)".utf8))
     }
 }
 
@@ -1095,11 +1113,45 @@ func sevenZipSDKCreationBrokerManyInputsAndPreflightPreserveSources() async thro
     try bytes.write(to: source)
     for (index, request) in ["pack('CN',0x43,4294967295)", "pack('CN',0x58,0)", "pack('CC',0x43,0)"].enumerated() {
         let provider = try sdkMock("""
+        request(); reply('{"version":1,"ok":true,"upload":"00000000-0000-0000-0000-000000000001","accepted":0}');
+        request(); reply('{"version":1,"ok":true,"upload":"00000000-0000-0000-0000-000000000001","accepted":1}');
         request(); open(my $output,'>&=3') or die; print $output 'unfinished'; close($output);
         open(my $socket,'+<&=4') or die; syswrite($socket,\(request)); close($socket);
         reply('{"version":1,"ok":true,"closed":true}');
         """, root: root)
         let target = root.appendingPathComponent("rejected-\(index).7z")
+        await #expect(throws: SevenZipWorkerError.invalidResponse) { try await provider.create(from: [source], at: target) }
+        #expect(!FileManager.default.fileExists(atPath: target.path))
+        #expect(try Data(contentsOf: source) == bytes)
+        #expect(!(try FileManager.default.contentsOfDirectory(atPath: root.path)).contains { $0.hasPrefix(".files-create-") })
+    }
+}
+
+@Test func sevenZipCreationUploadRejectsIncorrectAcknowledgments() async throws {
+    let root = try sdkRoot(); defer { try? FileManager.default.removeItem(at: root) }
+    let source = root.appendingPathComponent("source.bin"), bytes = Data("source preserved".utf8)
+    try bytes.write(to: source)
+    for (index, acknowledgment) in [
+        #"{"version":1,"ok":true,"upload":"not-a-token","accepted":0}"#,
+        #"{"version":1,"ok":true,"upload":"00000000-0000-0000-0000-000000000001","accepted":1}"#,
+        #"{"version":1,"ok":true,"upload":"00000000-0000-0000-0000-000000000001","accepted":0,"closed":true}"#,
+    ].enumerated() {
+        let provider = try sdkMock("request(); reply('\(acknowledgment)');", root: root)
+        let target = root.appendingPathComponent("bad-ack-\(index).7z")
+        await #expect(throws: SevenZipWorkerError.invalidResponse) { try await provider.create(from: [source], at: target) }
+        #expect(!FileManager.default.fileExists(atPath: target.path))
+        #expect(try Data(contentsOf: source) == bytes)
+        #expect(!(try FileManager.default.contentsOfDirectory(atPath: root.path)).contains { $0.hasPrefix(".files-create-") })
+    }
+    for (index, acknowledgment) in [
+        #"{"version":1,"ok":true,"upload":"00000000-0000-0000-0000-000000000001","accepted":0}"#,
+        #"{"version":1,"ok":true,"upload":"00000000-0000-0000-0000-000000000002","accepted":1}"#,
+    ].enumerated() {
+        let provider = try sdkMock("""
+        request(); reply('{"version":1,"ok":true,"upload":"00000000-0000-0000-0000-000000000001","accepted":0}');
+        request(); reply('\(acknowledgment)');
+        """, root: root)
+        let target = root.appendingPathComponent("bad-chunk-ack-\(index).7z")
         await #expect(throws: SevenZipWorkerError.invalidResponse) { try await provider.create(from: [source], at: target) }
         #expect(!FileManager.default.fileExists(atPath: target.path))
         #expect(try Data(contentsOf: source) == bytes)

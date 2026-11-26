@@ -466,6 +466,37 @@ def verify_descriptors(executable, reference, root, library, plain, payloads, ch
         restored = root / 'fd-created-restored'
         subprocess.run([str(reference), 'x', '-y', '-o' + str(restored), str(output)], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         check('createDescriptorOfficialRoundTrip', (restored / 'fd-only.bin').read_bytes() == broker_bytes)
+        output = root / 'chunked-created.7z'
+        with output.open('wb') as stream:
+            worker = Worker(executable, output_fd=stream.fileno(), library=library, create_output=True, descriptor_input=True)
+            ready = worker.request(dict(version=1, operation='create-begin', itemCount=2, level=0, encryptHeader=False))
+            upload = ready.get('upload')
+            check('createUploadBeginsWithoutOutput', ready.get('accepted') == 0 and isinstance(upload, str) and output.stat().st_size == 0)
+            for index in range(2):
+                accepted = worker.request(dict(version=1, operation='create-items', upload=upload, offset=index,
+                                              items=[dict(broker_entry, path='chunk-' + str(index))]))
+                check('createUploadAcknowledges' + str(index), accepted.get('upload') == upload and accepted.get('accepted') == index + 1 and output.stat().st_size == 0)
+            response, calls = worker.broker_create(dict(version=1, operation='create-commit', upload=upload), lambda index: os.dup(held))
+            worker.finish()
+        check('createUploadCommitsBrokerOnly', response.get('closed') and set(calls) == {0, 1})
+        restored = root / 'chunked-restored'
+        subprocess.run([str(reference), 'x', '-y', '-o' + str(restored), str(output)], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        check('createUploadOfficialRoundTrip', all((restored / ('chunk-' + str(index))).read_bytes() == broker_bytes for index in range(2)))
+        for name, bad in [
+            ('earlyCommit', dict(operation='create-commit')),
+            ('wrongOffset', dict(operation='create-items', offset=1, items=[broker_entry])),
+            ('wrongUpload', dict(operation='create-items', upload='foreign', offset=0, items=[broker_entry])),
+            ('emptyChunk', dict(operation='create-items', offset=0, items=[])),
+            ('oversizedChunk', dict(operation='create-items', offset=0, items=[broker_entry] * 257)),
+            ('extraItem', dict(operation='create-items', offset=0, items=[broker_entry] * 3)),
+        ]:
+            output = root / ('upload-' + name + '.7z')
+            with output.open('wb') as stream:
+                worker = Worker(executable, output_fd=stream.fileno(), library=library, create_output=True, descriptor_input=True)
+                ready = worker.request(dict(version=1, operation='create-begin', itemCount=2))
+                response = worker.request(dict(version=1, upload=ready['upload'], **bad)) if 'upload' not in bad else worker.request(dict(version=1, **bad))
+                worker.finish(1)
+            check('createUploadRejects-' + name, response.get('error', {}).get('code') == 'invalid-request' and output.stat().st_size == 0)
         for name, request_value, provider, marker, rights, code in [
             ('createDescriptorLegacyPathRejected', dict(create_request, items=[dict(broker_entry, source='/must-not-open')]), original, b'F', True, 'invalid-metadata'),
             ('createDescriptorMarkerRejected', create_request, original, b'X', True, 'invalid-metadata'),

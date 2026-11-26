@@ -337,6 +337,7 @@ private struct SevenZipReply: Decodable {
     struct Source: Decodable, Equatable { let device: String, inode: String, size: UInt64 }
     let version: Int, ok: Bool
     let session: String?, source: Source?, items: [SevenZipItem]?, error: Failure?, written: UInt64?, closed: Bool?
+    let upload: String?, accepted: Int?
 }
 
 private final class SevenZipSession {
@@ -596,18 +597,44 @@ private final class SevenZipSession {
         try readSource?.verify(check: check)
         self.token = nil
     }
-    func create(_ plan: SevenZipCreationPlan, level: ArchiveCompressionLevel, password: String?, encryptHeader: Bool, options: SevenZipCompressionOptions) throws {
-        try send(["version": 1, "operation": "create", "items": plan.items.map(\.brokerRequest), "level": level.rawValue,
+    private func uploadCreationPlan(_ plan: SevenZipCreationPlan, level: ArchiveCompressionLevel, password: String?, encryptHeader: Bool,
+                                    options: SevenZipCompressionOptions) throws {
+        try send(["version": 1, "operation": "create-begin", "itemCount": plan.items.count, "level": level.rawValue,
                   "password": password as Any? ?? NSNull(), "encryptHeader": encryptHeader,
                   "dictionarySize": options.effectiveDictionarySize(for: level), "wordSize": options.effectiveWordSize(for: level), "threads": options.threadCount])
+        let ready = try receive()
+        guard let upload = ready.upload, UUID(uuidString: upload) != nil, ready.accepted == 0,
+              ready.closed == nil, ready.session == nil, ready.items == nil, ready.written == nil else { throw SevenZipWorkerError.invalidResponse }
+        var batch: [[String: Any]] = [], batchBytes = 0, sent = 0
+        func flush() throws {
+            guard !batch.isEmpty else { return }
+            try send(["version": 1, "operation": "create-items", "upload": upload, "offset": sent, "items": batch])
+            let accepted = try receive()
+            sent += batch.count
+            guard accepted.upload == upload, accepted.accepted == sent, accepted.closed == nil, accepted.session == nil,
+                  accepted.items == nil, accepted.written == nil else { throw SevenZipWorkerError.invalidResponse }
+            batch.removeAll(keepingCapacity: true); batchBytes = 0
+        }
+        for item in plan.items {
+            try check()
+            let value = item.brokerRequest
+            let bytes = try JSONSerialization.data(withJSONObject: value).count + 1
+            guard bytes <= 524_288 else { throw SevenZipWorkerError.invalidConfiguration }
+            if batch.count == 256 || batchBytes + bytes > 524_288 { try flush() }
+            batch.append(value); batchBytes += bytes
+        }
+        try flush()
+        guard sent == plan.items.count else { throw SevenZipWorkerError.invalidResponse }
+        try send(["version": 1, "operation": "create-commit", "upload": upload])
+    }
+    func create(_ plan: SevenZipCreationPlan, level: ArchiveCompressionLevel, password: String?, encryptHeader: Bool, options: SevenZipCompressionOptions) throws {
+        try uploadCreationPlan(plan, level: level, password: password, encryptHeader: encryptHeader, options: options)
         guard try receive(brokerPlan: plan).closed == true else { throw SevenZipWorkerError.invalidResponse }
         try waitForExit()
     }
     func createSplit(_ plan: SevenZipCreationPlan, level: ArchiveCompressionLevel, password: String?, encryptHeader: Bool,
                      options: SevenZipCompressionOptions, staging: SevenZipSplitStaging) throws {
-        try send(["version": 1, "operation": "create", "items": plan.items.map(\.brokerRequest), "level": level.rawValue,
-                  "password": password as Any? ?? NSNull(), "encryptHeader": encryptHeader,
-                  "dictionarySize": options.effectiveDictionarySize(for: level), "wordSize": options.effectiveWordSize(for: level), "threads": options.threadCount])
+        try uploadCreationPlan(plan, level: level, password: password, encryptHeader: encryptHeader, options: options)
         guard try receive(creation: staging, brokerPlan: plan).closed == true else { throw SevenZipWorkerError.invalidResponse }
         try waitForExit()
     }

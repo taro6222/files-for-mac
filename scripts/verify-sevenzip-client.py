@@ -10,6 +10,7 @@ import signal
 import subprocess
 
 TESTS = [
+    'sevenZipCreationUploadRejectsIncorrectAcknowledgments',
     'sevenZipSDKBundleWorkerPolicyRejectsExpandedAuthority',
     'sevenZipSDKRestoresFileAndDirectoryTimesAndPermissions', 'sevenZipSDKRestrictiveDirectoryMetadataFinishesAfterChildren',
     'sevenZipSDKRejectsMalformedMetadataBeforeStaging',

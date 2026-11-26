@@ -1,5 +1,7 @@
 # 7z 고급 기능 백엔드 연결 계약
 
+현재 생성 목록 계약(364단계): 제품은 `create-begin(itemCount, options)` → `create-items(upload UUID, offset, items)` 반복 → `create-commit(upload UUID)`를 사용한다. 각 ACK의 UUID와 누적 accepted를 부모가 확인한다. 한 묶음은 최대 256항목·부모의 item JSON 합계 512KiB이며 기존 요청 프레임 상한 1MiB를 유지한다. helper는 최대 100,000항목·누적 계획 JSON 256MiB로 제한하고 항목 수가 맞는 commit에서 전체 metadata/경로 검증을 끝낸 뒤 SDK와 FD broker를 시작한다. 그 전에는 출력 데이터를 쓰지 않는다. 일반/분할 생성이 같은 업로드 경로를 쓰며 취소·기한·독립 메모리 관찰·원본 재확인·게시/복구는 기존 계약을 따른다. 단일 create는 진단용으로 보존한다. 아래 이전 단계의 단일 생성 프레임 설명은 역사적 기록이다. 목록 응답 8MiB와 극대규모/지원 환경 수용은 여전히 별도 제한이다. [검증](verification/m7/INCREMENT_364.md).
+
 상태: 362단계에서 제품 helper의 단일 App Sandbox·내장 ID와 정책 검증을 연결했다. [362단계](verification/m7/INCREMENT_362.md)를 따른다. 최신 원격/지원 환경·CPU/프로세스 트리·나머지 metadata와 정식 출시는 미완료다.
 
 [358단계](verification/m7/INCREMENT_358.md)는 부모의 독립 메모리 관찰과 초과 helper 종료·회수, 한/영 오류 안내를 연결했다. 새 번들 47개 검사가 통과했고 목록·추출·일반/분할 생성의 원본 보존과 미게시를 확인했다. 표본 관찰은 할당 하드 상한이 아니며 파일/네트워크 권한·CPU/프로세스 트리 격리·메타데이터·최신 지원 환경과 정식 출시는 미완료다. 로컬 GUI/장시간 시험은 재시작하지 않았다.

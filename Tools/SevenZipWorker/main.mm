@@ -280,6 +280,11 @@ int main(int argc, const char *argv[]) {
         const bool descriptorInput = inputDescriptor >= 0;
         void *session = nullptr;
         NSString *token = nil;
+        NSMutableDictionary *creationRequest = nil;
+        NSMutableArray *creationItems = nil;
+        NSString *upload = nil;
+        NSUInteger expectedItems = 0;
+        uint64_t creationBytes = 0;
         int result = 0;
         while (true) {
             @autoreleasepool {
@@ -296,7 +301,45 @@ int main(int argc, const char *argv[]) {
                     reply(failure(@"invalid-request")); result = 1; break;
                 }
                 if (creation) {
-                    if (![request[@"operation"] isEqual:@"create"]) { reply(failure(@"unsupported-operation")); result = 1; break; }
+                    NSString *operation = request[@"operation"];
+                    if ([operation isEqual:@"create-begin"]) {
+                        NSSet *allowed = [NSSet setWithArray:@[@"version", @"operation", @"itemCount", @"password", @"level", @"encryptHeader", @"dictionarySize", @"wordSize", @"threads"]];
+                        if (creationRequest || inputDescriptor < 0 || ![[NSSet setWithArray:[request allKeys]] isSubsetOfSet:allowed] ||
+                            !integer(request[@"itemCount"], 1, 100000)) { reply(failure(@"invalid-request")); result = 1; break; }
+                        expectedItems = [request[@"itemCount"] unsignedIntegerValue];
+                        creationRequest = [request mutableCopy];
+                        [creationRequest removeObjectForKey:@"itemCount"];
+                        creationRequest[@"operation"] = @"create";
+                        creationItems = [NSMutableArray array];
+                        creationBytes = length;
+                        upload = [[NSUUID UUID] UUIDString];
+                        if (!reply(@{ @"version": @1, @"ok": @YES, @"upload": upload, @"accepted": @0 })) { result = 1; break; }
+                        continue;
+                    }
+                    if (creationRequest) {
+                        if (!text(request[@"upload"], false) || ![upload isEqual:request[@"upload"]]) { reply(failure(@"invalid-request")); result = 1; break; }
+                        if ([operation isEqual:@"create-items"]) {
+                            NSSet *keys = [NSSet setWithArray:@[@"version", @"operation", @"upload", @"offset", @"items"]];
+                            id items = request[@"items"];
+                            if (![[NSSet setWithArray:[request allKeys]] isEqualToSet:keys] ||
+                                !integer(request[@"offset"], 0, 100000) || [request[@"offset"] unsignedIntegerValue] != creationItems.count ||
+                                ![items isKindOfClass:[NSArray class]] || [items count] == 0 || [items count] > 256 ||
+                                creationItems.count + [items count] > expectedItems) { reply(failure(@"invalid-request")); result = 1; break; }
+                            creationBytes += length;
+                            if (creationBytes > 256ULL * 1024 * 1024) { reply(failure(@"limit")); result = 1; break; }
+                            BOOL valid = YES;
+                            for (id item in items) if (![item isKindOfClass:[NSDictionary class]]) { valid = NO; break; }
+                            if (!valid) { reply(failure(@"invalid-request")); result = 1; break; }
+                            [creationItems addObjectsFromArray:items];
+                            if (!reply(@{ @"version": @1, @"ok": @YES, @"upload": upload, @"accepted": @(creationItems.count) })) { result = 1; break; }
+                            continue;
+                        }
+                        NSSet *keys = [NSSet setWithArray:@[@"version", @"operation", @"upload"]];
+                        if (![operation isEqual:@"create-commit"] || ![[NSSet setWithArray:[request allKeys]] isEqualToSet:keys] ||
+                            creationItems.count != expectedItems) { reply(failure(@"invalid-request")); result = 1; break; }
+                        creationRequest[@"items"] = creationItems;
+                        request = creationRequest;
+                    } else if (![operation isEqual:@"create"]) { reply(failure(@"unsupported-operation")); result = 1; break; }
                     int error = createArchive(argv[1], outputDescriptor, request, framedCreation, inputDescriptor);
                     if (inputDescriptor >= 0) { close(inputDescriptor); inputDescriptor = -1; }
                     reply(error ? failure(sdkError(error)) : @{ @"version": @1, @"ok": @YES, @"closed": @YES });
