@@ -28,17 +28,31 @@ def verify(output):
         if not condition:
             raise RuntimeError('Failed: ' + name)
 
+    detached_marker = output.resolve() / 'detached-child.pid'
+    child_code = 'import time; time.sleep(4)'
+    detached_code = 'import subprocess,sys; from pathlib import Path; child=subprocess.Popen([sys.executable,"-c",' + repr(child_code) + '],start_new_session=True); Path(' + repr(str(detached_marker)) + ').write_text(str(child.pid)); child.wait()'
     for name, code, expected, observe in [
         ('success', 'print("compiler output preserved", flush=True)', 0, False),
         ('failure', 'import sys; sys.exit(23)', 23, False),
         ('observation', 'import time; print("one build", flush=True); time.sleep(2)', 0, True),
+        ('detached-observation', detached_code, 0, True),
     ]:
         folder = output / name
         command = [sys.executable, str(monitor), '--output', str(folder)]
         if observe:
             command += ['--diagnostic-after', '.05', '--max-observations', '1']
         command += ['--', sys.executable, '-c', code]
-        result = subprocess.run(command, capture_output=True, text=True, timeout=12)
+        unrelated = None
+        unrelated_was_live = False
+        try:
+            if name == 'detached-observation':
+                unrelated = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(30)'],
+                                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            result = subprocess.run(command, capture_output=True, text=True, timeout=12)
+            unrelated_was_live = unrelated is not None and unrelated.poll() is None
+        finally:
+            if unrelated is not None:
+                unrelated.terminate(); unrelated.wait(timeout=3)
         report = json.loads((folder / 'result.json').read_text())
         (folder / 'stdout.log').write_text(result.stdout)
         (folder / 'stderr.log').write_text(result.stderr)
@@ -48,10 +62,19 @@ def verify(output):
             check('CompilerOutputPreserved', 'compiler output preserved' in result.stdout)
         if observe:
             observations = report['observations']
-            check('ObservationDidNotStopBuild', len(observations) == 1 and report['elapsedSeconds'] >= 2)
+            prefix = 'Detached' if name == 'detached-observation' else ''
+            check(prefix + 'ObservationDidNotStopBuild', len(observations) == 1 and report['elapsedSeconds'] >= 2)
             samples = observations[0]['samples']
-            check('ActualOwnedProcessSample', samples and all(s.get('returnCode') == 0 for s in samples))
-            check('SampleToolsReaped', all(terminal(s['observerPID']) for s in samples))
+            check(prefix + 'ActualOwnedProcessSample', samples and all(s.get('returnCode') == 0 for s in samples))
+            check(prefix + 'SampleToolsReaped', all(terminal(s['observerPID']) for s in samples))
+            if prefix:
+                child = int(detached_marker.read_text())
+                selected = next((p for p in observations[0]['processes'] if p['pid'] == child), None)
+                check('DifferentGroupChildCollected', selected is not None and selected['group'] != report['processPID'] and selected['parentPID'] == report['processPID'])
+                check('DifferentGroupChildSampled', any(s['pid'] == child and s.get('returnCode') == 0 for s in samples))
+                check('DetachedChildEnded', terminal(child))
+                check('UnrelatedProcessExcluded', unrelated_was_live and all(p['pid'] != unrelated.pid for p in observations[0]['processes'])
+                      and all(s['pid'] != unrelated.pid for s in samples))
 
     folder = output / 'cancellation'
     root_marker = output / 'fixture-parent.pid'

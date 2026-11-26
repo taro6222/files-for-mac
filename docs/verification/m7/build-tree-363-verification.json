@@ -1,0 +1,128 @@
+{
+  "increment": 363,
+  "status": "current descendant-tree sampling verified locally; remote compiler timeout root cause pending",
+  "sourcesSHA256": {
+    "scripts/build-with-diagnostics.py": "ff32ae34a3bbbf2665f789578673a74bb19f79d6168cfdff435bc7ca7ee4cb84",
+    "scripts/verify-build-diagnostics.py": "0ce213cb7070dc10d69d88afa9d194707e652cd42330e74541de03ca7a7ecc0f"
+  },
+  "verification": {
+    "passed": true,
+    "checks": {
+      "successExitPropagated": true,
+      "successNoRestart": true,
+      "CompilerOutputPreserved": true,
+      "failureExitPropagated": true,
+      "failureNoRestart": true,
+      "observationExitPropagated": true,
+      "observationNoRestart": true,
+      "ObservationDidNotStopBuild": true,
+      "ActualOwnedProcessSample": true,
+      "SampleToolsReaped": true,
+      "detached-observationExitPropagated": true,
+      "detached-observationNoRestart": true,
+      "DetachedObservationDidNotStopBuild": true,
+      "DetachedActualOwnedProcessSample": true,
+      "DetachedSampleToolsReaped": true,
+      "DifferentGroupChildCollected": true,
+      "DifferentGroupChildSampled": true,
+      "DetachedChildEnded": true,
+      "UnrelatedProcessExcluded": true,
+      "CancellationFixtureReady": true,
+      "CancellationPropagated": true,
+      "NoRedundantGroupKill": true,
+      "CancelledBuildReaped": true,
+      "CancelledBuildChildTerminated": true,
+      "CancelledObserversReaped": true,
+      "NormalCancellationReady": true,
+      "TerminalGroupPermissionPreservesReport": true,
+      "NormalCancelledBuildReaped": true
+    },
+    "productBuildVerified": false,
+    "localGUIStarted": false
+  },
+  "beforeFixReproduced": true,
+  "evidenceSHA256": {
+    "build/build-tree-363/reproduced-before.log": "082e990d933d4f43e53ef5f6a7b44517fe322414af34fd5efbd6a66e7b842bb2",
+    "build/build-tree-363/verified/cancellation/observation-01/processes.json": "767bd1f93ca4fd810e61675ec39c777e5229978840a5037d1ee71aaf14455230",
+    "build/build-tree-363/verified/cancellation/observation-01/sample-65990.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "build/build-tree-363/verified/cancellation/result.json": "fdea5a3874a71ff5f719b30e7ab312932bac11fbf6b0851284804afd3ffbadc0",
+    "build/build-tree-363/verified/cancellation.log": "a566f3bf08172ee32cf1eafbe4ff91fd3462e5e89aca4f251baeb54976335b41",
+    "build/build-tree-363/verified/detached-child.pid": "59bc8e3094f56ca7fe879ef90b296c57a80b630e6c26d573b6cda8ef18b9ad32",
+    "build/build-tree-363/verified/detached-observation/observation-01/processes.json": "6e64d8c87ba3697a82336eddac9cf73123543083eeb17d6dc37f610ae3e7220f",
+    "build/build-tree-363/verified/detached-observation/observation-01/sample-65956.log": "b7764a6265d3b2221f0de8869a0ea9805c9b0bdca5a82dcf7fe3db1dae30d2c9",
+    "build/build-tree-363/verified/detached-observation/observation-01/sample-65956.txt": "98fdf9f277aa80af6f93dd6b1097610f5eefc4219c1ee19057a5762f7d9175a3",
+    "build/build-tree-363/verified/detached-observation/observation-01/sample-65957.log": "852db92bb84c8cc131ec9abcc4e949c71f9ce23a8ee9e347b122783f64846972",
+    "build/build-tree-363/verified/detached-observation/observation-01/sample-65957.txt": "29851e4e34ead89f86b9fc5ab968a8cee1545b2787fe2d2136b00080ec40f04b",
+    "build/build-tree-363/verified/detached-observation/result.json": "001a42afd6297704d73ef2ce9e6ce2ea44a82cbf62cef42117bb10bbf2ac78b7",
+    "build/build-tree-363/verified/detached-observation/stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "build/build-tree-363/verified/detached-observation/stdout.log": "a566f3bf08172ee32cf1eafbe4ff91fd3462e5e89aca4f251baeb54976335b41",
+    "build/build-tree-363/verified/failure/result.json": "82c77d4ca738a605f6de0c471936202d58031c7564b267f97c21157d9299ff1d",
+    "build/build-tree-363/verified/failure/stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "build/build-tree-363/verified/failure/stdout.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "build/build-tree-363/verified/fixture-child.pid": "8a483b5039ea04d9b9822425e31c5ea17418ca14860a6720aaf9868f79f5b60b",
+    "build/build-tree-363/verified/fixture-parent.pid": "b913aeb2f3ba77b0f6ced36774f10f11ea7870032fcafa7aae1e8487e4c8714e",
+    "build/build-tree-363/verified/group-kill-deliveries.jsonl": "b801eed72042834f62e4c7c162340c68cc1f75fd0914c029516b8bd38e182a94",
+    "build/build-tree-363/verified/late-signal-fixture/sitecustomize.py": "ce212f09b9526946bc84d4dd6d80c3ccdab6db0469cb978478dc3bddefca2718",
+    "build/build-tree-363/verified/normal-cancellation/result.json": "669bff8bc46995b80fd234977b0fcb28c6b1d91e823cfbc5ab7e646f63f757ed",
+    "build/build-tree-363/verified/normal-cancellation.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "build/build-tree-363/verified/normal-fixture.pid": "a69da28f7d9f84a328c07dcb2b96a31d9571da099d97ad10a7bdff4df502b9f8",
+    "build/build-tree-363/verified/observation/observation-01/processes.json": "157ef22859e599b689e1ce7ab16c4699c9953aa89d86e930741bfd9794ce684b",
+    "build/build-tree-363/verified/observation/observation-01/sample-65945.log": "d61374188f89dd61a14732cf78fac773e39f64094a2d9d70f7ef54b355986d73",
+    "build/build-tree-363/verified/observation/observation-01/sample-65945.txt": "2c6aa1c161eede8a63ddc184a445162c32e98d0a0a193c531acaf140147f30f2",
+    "build/build-tree-363/verified/observation/result.json": "a73973df0af0719f87d45311a3e44abe25bc7068a93891eb90fb5ac40beff7b6",
+    "build/build-tree-363/verified/observation/stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "build/build-tree-363/verified/observation/stdout.log": "4fc3f467d0a983beaf9a88a413ff2473136152af80546c5b6a9f458dc382bdbb",
+    "build/build-tree-363/verified/result.json": "c60838ac02817d58e0b888819b1eebd8d58b187ba9d85bd04cc3304000143c49",
+    "build/build-tree-363/verified/success/result.json": "8b7f4a4da84a286e3d57d289ddc069a696eeb183e80366a744c5d120dbefa783",
+    "build/build-tree-363/verified/success/stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "build/build-tree-363/verified/success/stdout.log": "15ab03c06ad19bc594f3df2b727e443aa170909738dfa4278699be7c8d395ebe"
+  },
+  "previousRemote": {
+    "runId": 45835774065,
+    "source": "bf3a91af4bd393070498b59b01118ad6d040444e",
+    "conclusion": "failure",
+    "jobs": [
+      {
+        "id": 139964114070,
+        "name": "macOS 15 (x86_64)",
+        "conclusion": "failure",
+        "failedSteps": [
+          "Build app and test targets"
+        ]
+      },
+      {
+        "id": 139964114605,
+        "name": "macOS 15 (arm64)",
+        "conclusion": "success",
+        "failedSteps": []
+      }
+    ]
+  },
+  "sandboxRemoteObserved": {
+    "runId": 45839647910,
+    "source": "789d9b3f875e70f7c7d0b05883d499fd5622f672",
+    "status": "in_progress",
+    "jobs": [
+      {
+        "id": 139977632454,
+        "name": "macOS 15 (x86_64)",
+        "status": "in_progress",
+        "conclusion": ""
+      },
+      {
+        "id": 139977633057,
+        "name": "macOS 15 (arm64)",
+        "status": "in_progress",
+        "conclusion": ""
+      }
+    ]
+  },
+  "limitations": [
+    "only current parent-chain descendants are sampled; reparented services are not assumed owned",
+    "signal propagation remains the existing private root process group; no new descendant termination policy",
+    "actual compiler child traces and supported-environment acceptance remain pending"
+  ],
+  "applicationSourcesChanged": false,
+  "localGUIStarted": false,
+  "longRunStarted": false
+}

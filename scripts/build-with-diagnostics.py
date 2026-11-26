@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Observe a build's private process group without restarting or timing it out."""
+"""Observe a build's current descendant tree without restarting or timing it out."""
 import argparse
 import hashlib
 import json
@@ -17,18 +17,32 @@ def save_json(path, value):
     temporary.replace(path)
 
 
-def group_processes(group):
+def process_snapshot():
     result = subprocess.run(
         ['/bin/ps', '-axo', 'pid=,ppid=,pgid=,etime=,pcpu=,rss=,stat=,comm='],
         capture_output=True, text=True, timeout=5, check=True, env=dict(os.environ, LC_ALL='C'))
-    owned = []
+    processes = []
     for line in result.stdout.splitlines():
         fields = line.split(None, 7)
-        if len(fields) == 8 and int(fields[2]) == group:
-            owned.append(dict(pid=int(fields[0]), parentPID=int(fields[1]), group=int(fields[2]),
+        if len(fields) == 8:
+            processes.append(dict(pid=int(fields[0]), parentPID=int(fields[1]), group=int(fields[2]),
                               elapsed=fields[3], cpuPercent=float(fields[4]), rssKiB=int(fields[5]),
                               state=fields[6], executable=fields[7]))
-    return owned
+    return processes
+
+
+def group_processes(group):
+    return [p for p in process_snapshot() if p['group'] == group]
+
+
+def descendant_processes(root):
+    processes = process_snapshot()
+    owned = {root}
+    while True:
+        expanded = owned | {p['pid'] for p in processes if p['parentPID'] in owned}
+        if expanded == owned:
+            return [p for p in processes if p['pid'] in owned]
+        owned = expanded
 
 
 def signal_group(group, signum):
@@ -46,16 +60,16 @@ def signal_group(group, signum):
 def collect(output, group, index, cancelled, track_observer):
     folder = output / f'observation-{index:02d}'
     folder.mkdir()
-    observation = dict(processGroup=group, processes=[], samples=[])
+    observation = dict(processGroup=group, processTreeRoot=group, selection='current-parent-chain', processes=[], samples=[])
     try:
-        owned = group_processes(group)
+        owned = descendant_processes(group)
         observation['processes'] = owned
         # Prefer active compiler children to the idle package-manager parent.
         selected = sorted(owned, key=lambda p: (p['pid'] == group, -p['cpuPercent']))[:4]
         for entry in selected:
             if cancelled():
                 break
-            current = group_processes(group)
+            current = descendant_processes(group)
             if not any(p['pid'] == entry['pid'] and p['executable'] == entry['executable'] for p in current):
                 continue
             sample_file = folder / f"sample-{entry['pid']}.txt"
