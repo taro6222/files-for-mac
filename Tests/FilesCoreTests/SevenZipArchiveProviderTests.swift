@@ -973,6 +973,15 @@ private func splitWire(_ type: UInt8, _ offset: UInt64, _ data: Data = Data(), c
     }
     #expect(throws: SevenZipWorkerError.worker("source-changed")) { try broker.verify(check: {}) }
     #expect(try Data(contentsOf: source) == Data("replacement must not be read".utf8))
+    // Foundation.path preserves an encoded NUL; validate the fully decoded URI path.
+    let truncated = URL(fileURLWithPath: source.path + "\0-ignored.7z")
+    #expect(throws: SevenZipWorkerError.invalidConfiguration) { try SevenZipReadSource(archive: truncated, check: {}) }
+    let remoteURL = try #require(URL(string: "https://example.invalid" + source.path))
+    #expect(throws: SevenZipWorkerError.invalidConfiguration) { try SevenZipReadSource(archive: remoteURL, check: {}) }
+    let literalPercent = parent.appendingPathComponent("literal%00.7z")
+    try Data("literal percent filename".utf8).write(to: literalPercent)
+    let literalBroker = try SevenZipReadSource(archive: literalPercent, check: {})
+    try literalBroker.verify(check: {})
     var negativeDevice = stat(); negativeDevice.st_dev = -1
     #expect(SevenZipReadSource.Record(name: "input.7z", proof: negativeDevice).request["device"] as? String == String(UInt64.max))
 }

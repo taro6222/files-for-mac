@@ -1,0 +1,250 @@
+{
+  "sourceSHA": "47f347e59582a533d57d78a9c1fa8637a391986f",
+  "runID": 45813136385,
+  "artifacts": {
+    "arm64": 15116605494,
+    "x86_64": 15115744638
+  },
+  "reports": [
+    {
+      "architecture": "arm64",
+      "profile": "en-dark",
+      "checks": 332,
+      "passed": true,
+      "report": "build/sevenzip-356-remote355-arm-ui/files-ui-verification.mBK2OD/en-dark/report.json",
+      "sha256": "7665e02348bc1f9a09ac1993eaef6343e2bd72352bbc919064ad2dcb62830805",
+      "os": "Version 15.8.2 (Build 24H232)",
+      "physicalInputAccepted": null,
+      "newSplitChecks": {
+        "sevenZipSplitCreationOptionsAndRestore": true,
+        "sevenZipSplitCreationRoundTrip": true,
+        "sevenZipSplitHistoryWindow": true
+      }
+    },
+    {
+      "architecture": "arm64",
+      "profile": "en-light",
+      "checks": 332,
+      "passed": true,
+      "report": "build/sevenzip-356-remote355-arm-ui/files-ui-verification.mBK2OD/en-light/report.json",
+      "sha256": "396500ead5e535e95670c6b3f2deb502db1f7a4664184a51041cc31fad3635f4",
+      "os": "Version 15.8.2 (Build 24H232)",
+      "physicalInputAccepted": null,
+      "newSplitChecks": {
+        "sevenZipSplitCreationOptionsAndRestore": true,
+        "sevenZipSplitCreationRoundTrip": true,
+        "sevenZipSplitHistoryWindow": true
+      }
+    },
+    {
+      "architecture": "arm64",
+      "profile": "ko-dark",
+      "checks": 332,
+      "passed": true,
+      "report": "build/sevenzip-356-remote355-arm-ui/files-ui-verification.mBK2OD/ko-dark/report.json",
+      "sha256": "8523b8f303e8727e4378ebc7d7b54fbad0ed9ae8d4bc7e4e2f68fb6893f36d22",
+      "os": "Version 15.8.2 (Build 24H232)",
+      "physicalInputAccepted": null,
+      "newSplitChecks": {
+        "sevenZipSplitCreationOptionsAndRestore": true,
+        "sevenZipSplitCreationRoundTrip": true,
+        "sevenZipSplitHistoryWindow": true
+      }
+    },
+    {
+      "architecture": "arm64",
+      "profile": "ko-light",
+      "checks": 332,
+      "passed": true,
+      "report": "build/sevenzip-356-remote355-arm-ui/files-ui-verification.mBK2OD/ko-light/report.json",
+      "sha256": "4e9b08ed15f8b0afa0fd3dd047deae986d1fe55d45702dcc35747e58c5cdd7e5",
+      "os": "Version 15.8.2 (Build 24H232)",
+      "physicalInputAccepted": null,
+      "newSplitChecks": {
+        "sevenZipSplitCreationOptionsAndRestore": true,
+        "sevenZipSplitCreationRoundTrip": true,
+        "sevenZipSplitHistoryWindow": true
+      }
+    },
+    {
+      "architecture": "arm64",
+      "profile": "tabs-en-dark",
+      "checks": 18,
+      "passed": true,
+      "report": "build/sevenzip-356-remote355-arm-ui/files-ui-verification.mBK2OD/tabs-en-dark/report.json",
+      "sha256": "4cd5dc149461c75b593e647a0784a7a4efc95a8c5c56558ef4fd9754202c353c",
+      "os": null,
+      "physicalInputAccepted": false,
+      "newSplitChecks": {}
+    },
+    {
+      "architecture": "arm64",
+      "profile": "tabs-en-light",
+      "checks": 18,
+      "passed": true,
+      "report": "build/sevenzip-356-remote355-arm-ui/files-ui-verification.mBK2OD/tabs-en-light/report.json",
+      "sha256": "8c7ea58db35d39197a12b053f583fba009acff534def6be24e64c77900d59e6f",
+      "os": null,
+      "physicalInputAccepted": false,
+      "newSplitChecks": {}
+    },
+    {
+      "architecture": "arm64",
+      "profile": "tabs-ko-dark",
+      "checks": 18,
+      "passed": true,
+      "report": "build/sevenzip-356-remote355-arm-ui/files-ui-verification.mBK2OD/tabs-ko-dark/report.json",
+      "sha256": "d14f0ebb7836c334065287abcc60161673f48e525a3d647fc8d6ea82de87a617",
+      "os": null,
+      "physicalInputAccepted": false,
+      "newSplitChecks": {}
+    },
+    {
+      "architecture": "arm64",
+      "profile": "tabs-ko-light",
+      "checks": 18,
+      "passed": true,
+      "report": "build/sevenzip-356-remote355-arm-ui/files-ui-verification.mBK2OD/tabs-ko-light/report.json",
+      "sha256": "1b569fbfbb07dfa73d081a669fe6cb1161f69877bed214dfbe4ec0d80dfad9b9",
+      "os": null,
+      "physicalInputAccepted": false,
+      "newSplitChecks": {}
+    },
+    {
+      "architecture": "x86_64",
+      "profile": "en-dark",
+      "checks": 332,
+      "passed": true,
+      "report": "build/sevenzip-356-remote355-intel-ui/files-ui-verification.R1dJ5w/en-dark/report.json",
+      "sha256": "3c207146c65fc34e2c7a31d9a75c396931b659c1888b8acdfe98f4d69106b730",
+      "os": "Version 15.7.9 (Build 24G830)",
+      "physicalInputAccepted": null,
+      "newSplitChecks": {
+        "sevenZipSplitCreationOptionsAndRestore": true,
+        "sevenZipSplitCreationRoundTrip": true,
+        "sevenZipSplitHistoryWindow": true
+      }
+    },
+    {
+      "architecture": "x86_64",
+      "profile": "en-light",
+      "checks": 332,
+      "passed": true,
+      "report": "build/sevenzip-356-remote355-intel-ui/files-ui-verification.R1dJ5w/en-light/report.json",
+      "sha256": "20a1628ff37670e4a7fe1ee3ff4195aa44f8cbf81a48d1bab9175e7e7ee55314",
+      "os": "Version 15.7.9 (Build 24G830)",
+      "physicalInputAccepted": null,
+      "newSplitChecks": {
+        "sevenZipSplitCreationOptionsAndRestore": true,
+        "sevenZipSplitCreationRoundTrip": true,
+        "sevenZipSplitHistoryWindow": true
+      }
+    },
+    {
+      "architecture": "x86_64",
+      "profile": "ko-dark",
+      "checks": 332,
+      "passed": true,
+      "report": "build/sevenzip-356-remote355-intel-ui/files-ui-verification.R1dJ5w/ko-dark/report.json",
+      "sha256": "9c23329588c9f123622c9231d04c75b9845f61e09dde992b8a206f7f83ef9e55",
+      "os": "Version 15.7.9 (Build 24G830)",
+      "physicalInputAccepted": null,
+      "newSplitChecks": {
+        "sevenZipSplitCreationOptionsAndRestore": true,
+        "sevenZipSplitCreationRoundTrip": true,
+        "sevenZipSplitHistoryWindow": true
+      }
+    },
+    {
+      "architecture": "x86_64",
+      "profile": "ko-light",
+      "checks": 332,
+      "passed": true,
+      "report": "build/sevenzip-356-remote355-intel-ui/files-ui-verification.R1dJ5w/ko-light/report.json",
+      "sha256": "4681ddba2db98c905dad0f3512c700373ab64ee18855609fa1ee65e968a9b2d5",
+      "os": "Version 15.7.9 (Build 24G830)",
+      "physicalInputAccepted": null,
+      "newSplitChecks": {
+        "sevenZipSplitCreationOptionsAndRestore": true,
+        "sevenZipSplitCreationRoundTrip": true,
+        "sevenZipSplitHistoryWindow": true
+      }
+    },
+    {
+      "architecture": "x86_64",
+      "profile": "tabs-en-dark",
+      "checks": 18,
+      "passed": true,
+      "report": "build/sevenzip-356-remote355-intel-ui/files-ui-verification.R1dJ5w/tabs-en-dark/report.json",
+      "sha256": "4cd5dc149461c75b593e647a0784a7a4efc95a8c5c56558ef4fd9754202c353c",
+      "os": null,
+      "physicalInputAccepted": false,
+      "newSplitChecks": {}
+    },
+    {
+      "architecture": "x86_64",
+      "profile": "tabs-en-light",
+      "checks": 18,
+      "passed": true,
+      "report": "build/sevenzip-356-remote355-intel-ui/files-ui-verification.R1dJ5w/tabs-en-light/report.json",
+      "sha256": "8c7ea58db35d39197a12b053f583fba009acff534def6be24e64c77900d59e6f",
+      "os": null,
+      "physicalInputAccepted": false,
+      "newSplitChecks": {}
+    },
+    {
+      "architecture": "x86_64",
+      "profile": "tabs-ko-dark",
+      "checks": 18,
+      "passed": true,
+      "report": "build/sevenzip-356-remote355-intel-ui/files-ui-verification.R1dJ5w/tabs-ko-dark/report.json",
+      "sha256": "d14f0ebb7836c334065287abcc60161673f48e525a3d647fc8d6ea82de87a617",
+      "os": null,
+      "physicalInputAccepted": false,
+      "newSplitChecks": {}
+    },
+    {
+      "architecture": "x86_64",
+      "profile": "tabs-ko-light",
+      "checks": 18,
+      "passed": true,
+      "report": "build/sevenzip-356-remote355-intel-ui/files-ui-verification.R1dJ5w/tabs-ko-light/report.json",
+      "sha256": "1b569fbfbb07dfa73d081a669fe6cb1161f69877bed214dfbe4ec0d80dfad9b9",
+      "os": null,
+      "physicalInputAccepted": false,
+      "newSplitChecks": {}
+    }
+  ],
+  "snapshot": {
+    "status": "completed",
+    "conclusion": "success",
+    "jobs": [
+      {
+        "name": "macOS 15 (arm64)",
+        "status": "completed",
+        "conclusion": "success"
+      },
+      {
+        "name": "macOS 15 (x86_64)",
+        "status": "completed",
+        "conclusion": "success"
+      },
+      {
+        "name": "Xcode (${{ matrix.architecture }})",
+        "status": "completed",
+        "conclusion": "skipped"
+      },
+      {
+        "name": "Optimized performance (${{ matrix.architecture }})",
+        "status": "completed",
+        "conclusion": "skipped"
+      }
+    ]
+  },
+  "currentReadBrokerSourceAcceptance": false,
+  "originalWindowsVisualParityComplete": false,
+  "visuallyInspectedComponents": [
+    "x86_64 ko-dark archive-format-options.png",
+    "x86_64 en-light archive-encryption-options.png"
+  ]
+}
