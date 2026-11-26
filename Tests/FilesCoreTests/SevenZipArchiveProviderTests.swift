@@ -1983,3 +1983,107 @@ func archiveEditEmptyZIPRequiresExplicitEncryptionAndPreservesUndo() async throw
         #expect(try Data(contentsOf: archive) == Data("source".utf8))
     }
 }
+
+@Test func archiveEditFilesystemCompressionUsesNativeLogicalBytesAndPinsStorage() throws {
+    for kind in ["empty", "inline", "blocks", "incompressible"] {
+        let root = try sdkRoot(); defer { try? FileManager.default.removeItem(at: root) }
+        let url = root.appendingPathComponent("compressed")
+        var bytes: Data
+        switch kind {
+        case "empty": bytes = Data()
+        case "inline": bytes = Data(repeating: 0x41, count: 4096)
+        case "blocks": bytes = Data(repeating: 0x42, count: 300_000)
+        default:
+            var generator: UInt64 = 0x138855
+            bytes = Data((0..<150_000).map { _ in generator ^= generator << 13; generator ^= generator >> 7; generator ^= generator << 17; return UInt8(truncatingIfNeeded: generator) })
+        }
+        try bytes.write(to: url)
+        let fd = open(url.path, O_RDWR | O_NOFOLLOW); #expect(fd >= 0); defer { if fd >= 0 { Darwin.close(fd) } }
+        try archiveEditXattr(url, key: "com.files.tests.logical", value: Data("metadata".utf8))
+        try ArchiveEditCompression.encode(fd, check: {})
+        var info = stat(); #expect(fstat(fd, &info) == 0 && info.st_flags & UInt32(UF_COMPRESSED) != 0)
+        #expect(try Data(contentsOf: url) == bytes)
+        let snapshot = try ArchiveEditCompression.capture(fd, size: Int64(bytes.count), check: {})
+        #expect(snapshot.method == (kind == "inline" || kind == "empty" ? 3 : 4))
+        #expect(try archiveEditReadXattr(url, key: "com.files.tests.logical") == Data("metadata".utf8))
+        let fresh = open(url.path, O_RDONLY | O_NOFOLLOW); #expect(fresh >= 0); defer { if fresh >= 0 { Darwin.close(fresh) } }
+        #expect(try ArchiveEditFileProof.capture(fresh, check: {}).sha256 == SHA256.hash(data: bytes).map { String(format: "%02x", $0) }.joined())
+        #expect(try ArchiveEditCompression.capture(fresh, size: Int64(bytes.count), check: {}) == snapshot)
+    }
+}
+
+@Test func archiveEditFilesystemCompressionCancellationKeepsReadableCandidateAndForeignFork() throws {
+    let root = try sdkRoot(); defer { try? FileManager.default.removeItem(at: root) }
+    for cancel in [true, false] {
+        let url = root.appendingPathComponent(cancel ? "cancel" : "foreign-fork"), bytes = Data(repeating: 0x43, count: 200_000)
+        try bytes.write(to: url); let fd = open(url.path, O_RDWR | O_NOFOLLOW); defer { if fd >= 0 { Darwin.close(fd) } }
+        if !cancel { try archiveEditXattr(url, key: "com.apple.ResourceFork", value: Data("foreign fork".utf8)) }
+        #expect(throws: (any Error).self) {
+            try ArchiveEditCompression.encode(fd, check: {
+                if cancel, fgetxattr(fd, "com.apple.ResourceFork", nil, 0, 0, XATTR_SHOWCOMPRESSION) >= 0 { throw CancellationError() }
+            })
+        }
+        #expect(try Data(contentsOf: url) == bytes)
+        var info = stat(); #expect(fstat(fd, &info) == 0 && info.st_flags & UInt32(UF_COMPRESSED) == 0)
+        if !cancel { #expect(try archiveEditReadXattr(url, key: "com.apple.ResourceFork") == Data("foreign fork".utf8)) }
+    }
+}
+
+@Test(.enabled(if: hasIntegrationFixture("FILES_TEST_SEVENZIP_REFERENCE") && hasIntegrationFixture("FILES_TEST_SEVENZIP_WORKER"), "Requires native SDK and reference"))
+func archiveEditFilesystemCompressedZIPAnd7zPreserveStorageMetadataAndUndoRedo() async throws {
+    for ext in ["zip", "7z"] {
+        var phase = "create"
+        defer { print("compression-388 format=\(ext) phase=\(phase)") }
+        let root = try sdkRoot(); defer { try? FileManager.default.removeItem(at: root) }
+        let source = root.appendingPathComponent("source.txt"), added = root.appendingPathComponent("added.bin"), archive = root.appendingPathComponent("archive." + ext), journals = root.appendingPathComponent("journals")
+        var seed: UInt64 = 0x388
+        let random = Data((0..<180_000).map { _ in seed ^= seed << 13; seed ^= seed >> 7; seed ^= seed << 17; return UInt8(truncatingIfNeeded: seed) })
+        try (ext == "zip" ? Data("initial".utf8) : random).write(to: source); try random.write(to: added)
+        let provider = try sdkRealProvider()
+        if ext == "zip" { _ = try await ZipArchiveProvider().create(from: [source], at: archive) }
+        else { _ = try await provider.create(from: [source], at: archive) }
+        try archiveEditXattr(archive, key: "com.files.tests.compressed", value: Data("preserve".utf8))
+        let fd = open(archive.path, O_RDWR | O_NOFOLLOW); #expect(fd >= 0)
+        do { defer { if fd >= 0 { Darwin.close(fd) } }; try ArchiveEditCompression.encode(fd, check: {}) }
+        let original = try Data(contentsOf: archive)
+        try FileManager.default.setAttributes([.posixPermissions: 0o440], ofItemAtPath: archive.path)
+        let originalFD = open(archive.path, O_RDONLY | O_NOFOLLOW); defer { if originalFD >= 0 { Darwin.close(originalFD) } }
+        let sourceStorage = try ArchiveEditCompression.capture(originalFD, size: Int64(original.count), check: {})
+        phase = "compressed-input-list"
+        let inputEntries: [ArchiveEntryDescriptor]
+        if ext == "zip" { inputEntries = try ZipArchiveProvider().entries(at: archive) }
+        else { inputEntries = try await provider.entries(at: archive) }
+        #expect(inputEntries.contains { $0.path == source.lastPathComponent })
+        phase = "edit"
+        let operations: [ArchiveEditOperation] = ext == "zip" ? [.add(sources: [added], directory: ""), .createDirectory(path: "new")] : [.delete(paths: [source.lastPathComponent]), .createDirectory(path: "new")]
+        let saved = try await provider.edit(archive, operations: operations, encryptNewData: false, journalDirectory: journals)
+        let edited = try Data(contentsOf: archive)
+        #expect(edited != original); #expect(try Data(contentsOf: saved.backup) == original)
+        #expect(try archiveEditReadXattr(archive, key: "com.files.tests.compressed") == Data("preserve".utf8))
+        phase = "edited-list"
+        let editedEntries: [ArchiveEntryDescriptor]
+        if ext == "zip" { editedEntries = try ZipArchiveProvider().entries(at: archive) }
+        else { editedEntries = try await provider.entries(at: archive) }
+        #expect(editedEntries.contains { $0.kind == .directory && ($0.path == "new" || $0.path == "new/") })
+        let afterFD = open(archive.path, O_RDONLY | O_NOFOLLOW); defer { if afterFD >= 0 { Darwin.close(afterFD) } }
+        var info = stat(); #expect(fstat(afterFD, &info) == 0 && info.st_flags & UInt32(UF_COMPRESSED) != 0)
+        #expect(info.st_mode & 0o777 == 0o440)
+        let restored = root.appendingPathComponent("restored"); try FileManager.default.createDirectory(at: restored, withIntermediateDirectories: false)
+        phase = "extract"
+        if ext == "zip" { _ = try await ZipArchiveProvider().extract(archive, to: restored) }
+        else { _ = try await provider.extract(archive, to: restored) }
+        if ext == "zip" { #expect(try Data(contentsOf: restored.appendingPathComponent(added.lastPathComponent)) == random) }
+        let editedStorage = try ArchiveEditCompression.capture(afterFD, size: Int64(edited.count), check: {})
+        #expect(sourceStorage.method == (ext == "zip" ? 3 : 4)); #expect(editedStorage.method == (ext == "zip" ? 4 : 3))
+        phase = "undo"
+        _ = try await SevenZipArchiveProvider.recoverArchiveEdit(journal: saved.journal, journalDirectory: journals, action: .undo)
+        #expect(try Data(contentsOf: archive) == original)
+        let undoFD = open(archive.path, O_RDONLY | O_NOFOLLOW); defer { if undoFD >= 0 { Darwin.close(undoFD) } }
+        #expect(try ArchiveEditCompression.capture(undoFD, size: Int64(original.count), check: {}) == sourceStorage)
+        phase = "redo"
+        _ = try await SevenZipArchiveProvider.recoverArchiveEdit(journal: saved.journal, journalDirectory: journals, action: .redo)
+        #expect(try Data(contentsOf: archive) == edited)
+        let redoFD = open(archive.path, O_RDONLY | O_NOFOLLOW); defer { if redoFD >= 0 { Darwin.close(redoFD) } }
+        #expect(try ArchiveEditCompression.capture(redoFD, size: Int64(edited.count), check: {}) == editedStorage)
+    }
+}

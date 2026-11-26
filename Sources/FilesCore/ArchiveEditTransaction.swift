@@ -33,11 +33,10 @@ private struct ArchiveEditDirectoryProof: Codable, Equatable {
 /// External archive-file metadata, distinct from metadata encoded inside the archive.
 private struct ArchiveEditMetadata: Codable, Equatable {
     let attributes: [Data: Data], acl: Data?, birthSeconds: Int64, birthNanos: Int64, flags: UInt32
+    var compression: ArchiveEditCompression.Snapshot? = nil
     static func capture(_ fd: Int32, check: () throws -> Void) throws -> Self {
         var value = stat(); guard fstat(fd, &value) == 0, value.st_mode & S_IFMT == S_IFREG else { throw ArchiveEditError.metadataNotPreserved }
-        // A metadata-only copy of decmpfs storage would reinterpret the new data fork.
-        // Keep compressed originals intact until their storage metadata has a dedicated path.
-        guard value.st_flags & UInt32(UF_COMPRESSED | UF_IMMUTABLE | SF_IMMUTABLE | UF_APPEND | SF_APPEND) == 0 else { throw ArchiveEditError.metadataNotPreserved }
+        guard value.st_flags & UInt32(UF_IMMUTABLE | SF_IMMUTABLE | UF_APPEND | SF_APPEND) == 0 else { throw ArchiveEditError.metadataNotPreserved }
         let size = flistxattr(fd, nil, 0, 0)
         guard size >= 0 || errno == ENOTSUP, size <= 1_048_576 else { throw ArchiveEditError.metadataNotPreserved }
         var names = [UInt8](repeating: 0, count: max(0, size)), attributes: [Data: Data] = [:]
@@ -74,7 +73,8 @@ private struct ArchiveEditMetadata: Codable, Equatable {
             defer { acl_free(text) }
             if length > 0 { aclDigest = Data(SHA256.hash(data: Data(bytes: text, count: length))) }
         } else if errno != ENOENT && errno != ENOTSUP && errno != EOPNOTSUPP { throw ArchiveEditError.metadataNotPreserved }
-        return Self(attributes: attributes, acl: aclDigest, birthSeconds: Int64(value.st_birthtimespec.tv_sec), birthNanos: Int64(value.st_birthtimespec.tv_nsec), flags: value.st_flags)
+        let compression = value.st_flags & UInt32(UF_COMPRESSED) != 0 ? try ArchiveEditCompression.capture(fd, size: value.st_size, check: check) : nil
+        return Self(attributes: attributes, acl: aclDigest, birthSeconds: Int64(value.st_birthtimespec.tv_sec), birthNanos: Int64(value.st_birthtimespec.tv_nsec), flags: value.st_flags, compression: compression)
     }
 }
 
@@ -289,6 +289,7 @@ final class ArchiveEditTransaction: @unchecked Sendable {
         defer { Darwin.close(input); Darwin.close(target) }
         guard try ArchiveEditFileProof.capture(input, check: check) == record.source,
               try ArchiveEditFileProof.capture(target, check: check) == verified.candidate else { throw review }
+        if record.sourceMetadata.compression != nil { try ArchiveEditCompression.encode(target, check: check) }
         guard fcopyfile(input, target, nil, copyfile_flags_t(COPYFILE_METADATA)) == 0 else { throw ArchiveEditError.metadataMismatch("copyfile-" + String(errno)) }
         var now = timespec(); guard clock_gettime(CLOCK_REALTIME, &now) == 0 else { throw review }
         var times = [timespec(tv_sec: 0, tv_nsec: Int(UTIME_OMIT)), now]

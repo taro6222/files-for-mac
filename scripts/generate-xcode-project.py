@@ -23,7 +23,7 @@ core_link=obj('core-link',f'isa = PBXBuildFile; productRef = {core_product};')
 frameworks=obj('frameworks',f'isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = ({core_link},); runOnlyForDeploymentPostprocessing = 0;')
 configs=[]
 for name in ['Debug','Release']:
- settings='''ALWAYS_SEARCH_USER_PATHS = NO; PRODUCT_NAME = "Files macOS"; PRODUCT_MODULE_NAME = FilesMac; PRODUCT_BUNDLE_IDENTIFIER = "org.taro6222.files-for-mac"; SWIFT_VERSION = 6.0; MACOSX_DEPLOYMENT_TARGET = 14.0; SDKROOT = macosx; SWIFT_INCLUDE_PATHS = "$(SRCROOT)/Sources/CLibArchive"; GENERATE_INFOPLIST_FILE = NO; INFOPLIST_FILE = FilesMac.xcodeproj/Info.plist; CODE_SIGN_IDENTITY = "-"; CODE_SIGN_STYLE = Manual; ENABLE_APP_SANDBOX = NO; COMBINE_HIDPI_IMAGES = YES; MARKETING_VERSION = 0.1.0; CURRENT_PROJECT_VERSION = 1; '''
+ settings='''ALWAYS_SEARCH_USER_PATHS = NO; PRODUCT_NAME = "Files macOS"; PRODUCT_MODULE_NAME = FilesMac; PRODUCT_BUNDLE_IDENTIFIER = "org.taro6222.files-for-mac"; SWIFT_VERSION = 6.0; MACOSX_DEPLOYMENT_TARGET = 14.0; SDKROOT = macosx; SWIFT_INCLUDE_PATHS = ("$(SRCROOT)/Sources/CLibArchive", "$(SRCROOT)/Sources/CZlib"); GENERATE_INFOPLIST_FILE = NO; INFOPLIST_FILE = FilesMac.xcodeproj/Info.plist; CODE_SIGN_IDENTITY = "-"; CODE_SIGN_STYLE = Manual; ENABLE_APP_SANDBOX = NO; COMBINE_HIDPI_IMAGES = YES; MARKETING_VERSION = 0.1.0; CURRENT_PROJECT_VERSION = 1; '''
  settings += 'SWIFT_OPTIMIZATION_LEVEL = "'+ ('-Onone' if name=='Debug' else '-O')+'";'
  configs.append(obj('config:'+name,f'isa = XCBuildConfiguration; name = {name}; buildSettings = {{ {settings} }};'))
 configlist=obj('configlist',f'isa = XCConfigurationList; buildConfigurations = ({",".join(configs)},); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release;')
