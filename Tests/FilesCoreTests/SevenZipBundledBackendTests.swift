@@ -76,3 +76,20 @@ private func resolverManifest() -> [String: Any] {
         try SevenZipBundleVerifier.checkRunningHost(against: executable)
     }
 }
+
+@Test func sevenZipSDKBundleWorkerPolicyRejectsExpandedAuthority() throws {
+    let sandbox: [String: Any] = ["com.apple.security.app-sandbox": true]
+    let info: [String: Any] = ["CFBundleIdentifier": "org.taro6222.files-for-mac.sevenzip-worker", "CFBundleExecutable": "SevenZipWorker", "LSBackgroundOnly": true]
+    try SevenZipBundleVerifier.validateWorkerPolicy(entitlements: sandbox, info: info)
+    for policy: [String: Any] in [[:], ["com.apple.security.app-sandbox": false], ["com.apple.security.app-sandbox": 1],
+                                ["com.apple.security.app-sandbox": true, "com.apple.security.network.client": true],
+                                ["com.apple.security.app-sandbox": true, "com.apple.security.network.server": true],
+                                ["com.apple.security.app-sandbox": true, "com.apple.security.inherit": true],
+                                ["com.apple.security.app-sandbox": true, "com.apple.security.files.user-selected.read-write": true]] {
+        #expect(throws: SevenZipBundleError.invalidSignature) { try SevenZipBundleVerifier.validateWorkerPolicy(entitlements: policy, info: info) }
+    }
+    for (key, value) in [("CFBundleIdentifier", "wrong" as Any), ("CFBundleExecutable", "wrong" as Any), ("LSBackgroundOnly", false as Any)] {
+        var changed = info; changed[key] = value
+        #expect(throws: SevenZipBundleError.invalidSignature) { try SevenZipBundleVerifier.validateWorkerPolicy(entitlements: sandbox, info: changed) }
+    }
+}

@@ -14,7 +14,7 @@ import urllib.request
 import sevenzip_reference as reference
 
 RESOURCE = 'Contents/Resources/ThirdParty/7zip'
-CODE = ['Contents/Helpers/SevenZipWorker', 'Contents/Frameworks/7z.so']
+CODE = ['Contents/Helpers/SevenZipWorker', 'Contents/Helpers/7z.so']
 NOTICES = ['License.txt', 'copying.txt', 'unRarLicense.txt', 'readme.txt']
 SOURCE_FILES = ['Tools/SevenZipWorker/ArchiveSDK.h', 'Tools/SevenZipWorker/ArchiveSDK.cpp',
                 'Tools/SevenZipWorker/main.mm', 'scripts/build-sevenzip-worker.py', 'scripts/sevenzip_reference.py']
@@ -67,6 +67,11 @@ def check_code(app, expected, signatures):
                     raise ValueError('Non-system SDK dependency')
         if signatures:
             subprocess.run(['codesign', '--verify', '--all-architectures', '--strict', str(path)], check=True)
+            if name == CODE[0]:
+                for architecture in expected:
+                    entitlements = plistlib.loads(subprocess.check_output(['codesign', '-d', '--arch', architecture, '--entitlements', ':-', str(path)], stderr=subprocess.DEVNULL))
+                    if entitlements != {'com.apple.security.app-sandbox': True} or type(entitlements['com.apple.security.app-sandbox']) is not bool:
+                        raise ValueError('Worker must have only the App Sandbox entitlement')
     if signatures: subprocess.run(['codesign', '--verify', '--all-architectures', '--strict', str(app)], check=True)
 
 
@@ -100,9 +105,9 @@ def verify(app, signatures=True, changed_code=False):
     if directories != expected_directories: raise ValueError('Unexpected SDK resource directories')
     if {p.name for p in (app / 'Contents/Resources/ThirdParty').iterdir()} != {'7zip'}:
         raise ValueError('Unexpected third-party directory contents')
-    for directory, expected_file in [('Contents/Helpers', 'SevenZipWorker'), ('Contents/Frameworks', '7z.so')]:
+    for directory, expected_files in [('Contents/Helpers', {'SevenZipWorker', '7z.so'}), ('Contents/Frameworks', set())]:
         path = app / directory
-        if path.is_symlink() or set(p.name for p in path.iterdir()) != {expected_file}:
+        if path.is_symlink() or set(p.name for p in path.iterdir()) != expected_files:
             raise ValueError('Unexpected SDK code directory contents')
     source = regular(app, RESOURCE + '/' + ARCHIVE_NAME)
     if digest(source) != reference.SOURCE_SHA256: raise ValueError('SDK source archive changed')
@@ -160,6 +165,7 @@ def install(app, source_archive=None):
     # All dependencies are prepared before publishing any private SDK directory into the new app.
     with tempfile.TemporaryDirectory(prefix='.sevenzip-bundle-', dir=app.parent) as directory:
         stage = Path(directory)
+        (stage / 'Contents/Frameworks').mkdir(parents=True)
         for name in FILES: (stage / name).parent.mkdir(parents=True, exist_ok=True)
         for name, component in zip(CODE, ['SevenZipWorker', '7z.so']):
             inputs = [workers[a].parent / component for a in expected]
@@ -204,6 +210,11 @@ app. To test a rebuilt or modified SDK, use a separate writable project checkout
 at https://github.com/taro6222/files-for-mac with the supplied helper sources and
 build recipe. Packaging, local signing and verification scripts are in scripts/.
 Developer ID signing/notarization is separate from a local development rebuild.
+The command-line helper embeds its own Info.plist. Product signing grants only
+com.apple.security.app-sandbox=true (no inheritance, network, or user-file grants).
+The packaged library lives beside the helper in Contents/Helpers so it remains
+readable inside that sandbox. The rebuilding output is a diagnostic tool until
+the packaging/signing policy is applied; it is not a sandbox acceptance result.
 Compiler/SDK versions and per-architecture inputs are recorded in manifest.json;
 different toolchains are not claimed to produce byte-identical binaries.
 ''')

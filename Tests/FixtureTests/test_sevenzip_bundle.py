@@ -23,6 +23,7 @@ class SevenZipBundleGuards(unittest.TestCase):
         for name in bundle.FILES:
             path = self.app / name; path.parent.mkdir(parents=True, exist_ok=True); path.write_bytes(b'fixture')
         main = self.app / 'Contents/MacOS/FilesMac'; main.parent.mkdir(); main.write_bytes(b'fixture')
+        (self.app / 'Contents/Frameworks').mkdir()
         (self.app / 'Contents/Info.plist').write_bytes(plistlib.dumps({'FilesArchiveSDKVersion': bundle.reference.VERSION}))
         root = self.app / bundle.RESOURCE
         with tarfile.open(root / bundle.ARCHIVE_NAME, 'w:xz') as archive:

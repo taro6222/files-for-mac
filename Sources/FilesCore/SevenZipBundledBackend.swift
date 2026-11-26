@@ -37,7 +37,7 @@ private final class SevenZipBundleCancellation: @unchecked Sendable {
 
 enum SevenZipBundleVerifier {
     static let resource = "Contents/Resources/ThirdParty/7zip"
-    static let workerPath = "Contents/Helpers/SevenZipWorker", libraryPath = "Contents/Frameworks/7z.so"
+    static let workerPath = "Contents/Helpers/SevenZipWorker", libraryPath = "Contents/Helpers/7z.so"
     static let sdkVersion = "26.06"
     static let sourceSHA256 = "a4e374c8f864f51df48c2cfd0e1413ec3b2ea030deae852d6a655402ebb61ac4"
     static let helperSources = ["ArchiveSDK.h", "ArchiveSDK.cpp", "main.mm"]
@@ -116,6 +116,9 @@ enum SevenZipBundleVerifier {
             try check()
             let url = app.appendingPathComponent(path), signed = try signature(url)
             guard signed.identifier == expectedID, signed.adhoc == adhoc, signed.team == appSignature.team else { throw SevenZipBundleError.invalidSignature }
+            if path == workerPath {
+                try validateWorkerPolicy(entitlements: signed.entitlements, info: signed.info)
+            }
             if !adhoc { try requireDeveloperID(url, team: appSignature.team) }
         }
         var digests: [String: String] = [:]
@@ -139,7 +142,21 @@ enum SevenZipBundleVerifier {
         return Locations(worker: app.appendingPathComponent(workerPath), library: app.appendingPathComponent(libraryPath), identity: identity)
     }
 
-    private struct Signature { let identifier: String, team: String?, adhoc: Bool, codeDirectoryHash: Data }
+    static func validateWorkerPolicy(entitlements: [String: Any], info: [String: Any]) throws {
+        guard Set(entitlements.keys) == ["com.apple.security.app-sandbox"],
+              let sandbox = entitlements["com.apple.security.app-sandbox"] as? NSNumber,
+              CFGetTypeID(sandbox) == CFBooleanGetTypeID(), sandbox.boolValue,
+              info["CFBundleIdentifier"] as? String == "org.taro6222.files-for-mac.sevenzip-worker",
+              info["CFBundleExecutable"] as? String == "SevenZipWorker",
+              let background = info["LSBackgroundOnly"] as? NSNumber,
+              CFGetTypeID(background) == CFBooleanGetTypeID(), background.boolValue else {
+            throw SevenZipBundleError.invalidSignature
+        }
+    }
+    private struct Signature {
+        let identifier: String, team: String?, adhoc: Bool, codeDirectoryHash: Data
+        let entitlements: [String: Any], info: [String: Any]
+    }
     private static func staticCode(_ url: URL) throws -> SecStaticCode {
         var code: SecStaticCode?
         #if arch(arm64)
@@ -167,7 +184,9 @@ enum SevenZipBundleVerifier {
               let signingFlags = dictionary[kSecCodeInfoFlags as String] as? NSNumber,
               let cdHash = dictionary[kSecCodeInfoUnique as String] as? Data, !cdHash.isEmpty, cdHash.count <= 64 else { throw SevenZipBundleError.invalidSignature }
         return Signature(identifier: identifier, team: dictionary[kSecCodeInfoTeamIdentifier as String] as? String,
-                         adhoc: signingFlags.uint32Value & SecCodeSignatureFlags.adhoc.rawValue != 0, codeDirectoryHash: cdHash)
+                         adhoc: signingFlags.uint32Value & SecCodeSignatureFlags.adhoc.rawValue != 0, codeDirectoryHash: cdHash,
+                         entitlements: dictionary[kSecCodeInfoEntitlementsDict as String] as? [String: Any] ?? [:],
+                         info: dictionary[kSecCodeInfoPList as String] as? [String: Any] ?? [:])
     }
     private static func requireDeveloperID(_ url: URL, team: String?) throws {
         let requirement = try developerIDRequirement(team: team)
@@ -254,7 +273,7 @@ private final class ReadOnlyBundle {
         return hash.finalize().map { String(format: "%02x", $0) }.joined()
     }
     func verifyLayout() throws {
-        var expected: [String: Set<String>] = ["Contents/Helpers": ["SevenZipWorker"], "Contents/Frameworks": ["7z.so"], "Contents/Resources/ThirdParty": ["7zip"]]
+        var expected: [String: Set<String>] = ["Contents/Helpers": ["SevenZipWorker", "7z.so"], "Contents/Frameworks": [], "Contents/Resources/ThirdParty": ["7zip"]]
         for leaf in SevenZipBundleVerifier.resources + ["manifest.json"] {
             let parts = (SevenZipBundleVerifier.resource + "/" + leaf).split(separator: "/").map(String.init)
             for index in 4..<parts.count { expected[parts.prefix(index).joined(separator: "/"), default: []].insert(parts[index]) }

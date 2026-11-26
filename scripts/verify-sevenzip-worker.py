@@ -388,6 +388,13 @@ def verify(executable, reference, root, library=None):
         worker = Worker(executable, output_fd=stream.fileno(), library=library, creation_stream=True)
         response = worker.read(); worker.finish(1)
     check('createStreamRejectsRegularDescriptor', response['error']['code'] == 'output-descriptor' and not regular.read_bytes())
+    verify_descriptors(executable, reference, root, library, plain, payloads, check)
+    return checks
+
+
+
+def verify_descriptors(executable, reference, root, library, plain, payloads, check):
+    def initial(path, **extra): return dict(version=1, operation='list', archivePath=str(path), **extra)
     def input_spec(fd):
         value = os.fstat(fd)
         return dict(device=str(value.st_dev & ((1 << 64) - 1)), inode=str(value.st_ino), size=value.st_size, mode=value.st_mode,
@@ -472,6 +479,26 @@ def verify(executable, reference, root, library=None):
                 response, calls = worker.broker_create(request_value, provider, marker=marker, rights=rights); worker.finish(1)
             check(name, response.get('error', {}).get('code') == code)
     finally: os.close(held)
+
+
+def verify_brokered(executable, reference, root, library):
+    checks = {}
+    def check(name, condition):
+        checks[name] = bool(condition)
+        if not condition: raise RuntimeError('Failed check: ' + name)
+    fixture = root / 'input'; fixture.mkdir()
+    payloads = {'emoji-🔑.txt': b'12345'}
+    (fixture / 'emoji-🔑.txt').write_bytes(payloads['emoji-🔑.txt'])
+    plain = root / 'plain.7z'
+    created = subprocess.run([str(reference), 'a', '-t7z', str(plain), '.'], cwd=fixture,
+                             stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=20)
+    check('brokerFixtureCreated', created.returncode == 0)
+    # A product helper must refuse the old arbitrary path-opening mode outside its sandbox.
+    worker = Worker(executable, library=library)
+    response = worker.request(dict(version=1, operation='list', archivePath=str(plain)))
+    check('sandboxRejectsUnbrokeredArchivePath', response.get('error', {}).get('code') == 'source-open')
+    worker.finish(1)
+    verify_descriptors(executable, reference, root, library, plain, payloads, check)
     return checks
 
 
@@ -482,9 +509,10 @@ def main():
     parser.add_argument('--library', type=Path)
     parser.add_argument('--bundle-manifest', type=Path)
     parser.add_argument('--output', type=Path, required=True)
+    parser.add_argument('--broker-only', action='store_true', help='Exercise packaged sandbox mode; the full legacy SDK suite remains separate')
     args = parser.parse_args(); args.output.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix='sevenzip-worker-') as directory:
-        checks = verify(args.worker.resolve(), args.reference.resolve(), Path(directory), args.library)
+        checks = (verify_brokered if args.broker_only else verify)(args.worker.resolve(), args.reference.resolve(), Path(directory), args.library)
     manifest_path = args.bundle_manifest or args.worker.parent / 'manifest.json'
     manifest = json.loads(manifest_path.read_text())
     native = manifest['builds'][platform.machine()] if args.bundle_manifest else manifest
@@ -492,7 +520,7 @@ def main():
     result = dict(passed=True, checks=checks, workerFingerprint=native['fingerprint'],
                   workerSHA256=hashlib.sha256(args.worker.read_bytes()).hexdigest(),
                   librarySHA256=hashlib.sha256(library.read_bytes()).hexdigest(),
-                  architecture=native['inputs']['architecture'], productIntegration=False)
+                  architecture=native['inputs']['architecture'], productIntegration=False, brokerOnly=args.broker_only)
     (args.output / 'result.json').write_text(json.dumps(result, indent=2) + '\n')
     shutil.copyfile(manifest_path, args.output / 'manifest.json')
     print(json.dumps(result, indent=2))

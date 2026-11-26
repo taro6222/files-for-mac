@@ -45,7 +45,7 @@ developer_id='anchor apple generic and certificate 1[field.1.2.840.113635.100.6.
 verify_private_code() {
   local bundle=$1
   PYTHONDONTWRITEBYTECODE=1 python3 "$script_dir/sevenzip_bundle.py" verify --app "$bundle"
-  for component in Contents/Helpers/SevenZipWorker Contents/Frameworks/7z.so; do
+  for component in Contents/Helpers/SevenZipWorker Contents/Helpers/7z.so; do
     /usr/bin/codesign --verify --all-architectures --strict -R "=$developer_id" "$bundle/$component"
   done
 }

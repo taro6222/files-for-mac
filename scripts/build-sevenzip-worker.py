@@ -5,6 +5,7 @@ import hashlib
 import json
 from pathlib import Path, PurePosixPath
 import platform
+import plistlib
 import shutil
 import subprocess
 import tarfile
@@ -67,6 +68,10 @@ def main():
                     path.parent.mkdir(parents=True, exist_ok=True)
                     with path.open('xb') as stream: stream.write(package.extractfile(member).read())
         suffix = 'arm64' if args.architecture == 'arm64' else 'x64'
+        info = staging / 'Info.plist'
+        info.write_bytes(plistlib.dumps({'CFBundleIdentifier': 'org.taro6222.files-for-mac.sevenzip-worker',
+                                        'CFBundleExecutable': 'SevenZipWorker', 'CFBundleName': 'SevenZipWorker',
+                                        'CFBundlePackageType': 'APPL', 'CFBundleVersion': '1', 'LSBackgroundOnly': True}))
         flags = ['-arch', args.architecture, '-mmacosx-version-min=14.0']
         build_log = output.parent / (fingerprint + '-' + uuid.uuid4().hex + '.build.log')
         with build_log.open('xb') as log:
@@ -78,11 +83,13 @@ def main():
             if len(common) != 19: raise RuntimeError('Unexpected SDK support object set')
             subprocess.run(['clang++', '-std=c++11', '-Wall', '-Wextra', '-Werror', *flags, '-I', str(source), '-c', str(files[1]), '-o', str(staging / 'adapter.o')], stdout=log, stderr=log, check=True, timeout=60)
             subprocess.run(['clang++', '-std=c++11', '-fobjc-arc', '-Wall', '-Wextra', '-Werror', *flags, '-c', str(files[2]), '-o', str(staging / 'main.o')], stdout=log, stderr=log, check=True, timeout=60)
-            subprocess.run(['clang++', *flags, str(staging / 'main.o'), str(staging / 'adapter.o'), *map(str, common), '-framework', 'Foundation', '-ldl', '-lpthread', '-o', str(staging / 'SevenZipWorker')], stdout=log, stderr=log, check=True, timeout=60)
+            subprocess.run(['clang++', *flags, str(staging / 'main.o'), str(staging / 'adapter.o'), *map(str, common),
+                            '-Wl,-sectcreate,__TEXT,__info_plist,' + str(info),
+                            '-framework', 'Foundation', '-ldl', '-lpthread', '-o', str(staging / 'SevenZipWorker')], stdout=log, stderr=log, check=True, timeout=60)
         shutil.copyfile(source / f'CPP/7zip/Bundles/Format7zF/b/m_{suffix}/7z.so', staging / '7z.so')
         shutil.copyfile(source / 'DOC/License.txt', staging / 'License.txt')
         shutil.copyfile(build_log, staging / 'build.log')
-        shutil.rmtree(source); (staging / 'main.o').unlink(); (staging / 'adapter.o').unlink()
+        shutil.rmtree(source); (staging / 'main.o').unlink(); (staging / 'adapter.o').unlink(); info.unlink()
         manifest = {'fingerprint': fingerprint, 'inputs': inputs,
                     'filesSHA256': {name: digest(staging / name) for name in ['SevenZipWorker', '7z.so', 'License.txt', 'build.log']}}
         (staging / 'manifest.json').write_text(json.dumps(manifest, indent=2) + '\n')

@@ -401,7 +401,7 @@ func sevenZipSDKBundleResolutionAndUse() async throws {
     let bundle = try sdkBundleCopy(root: root), provider = try await SevenZipArchiveProvider.bundled(in: bundle)
     #expect(throws: SevenZipBundleError.invalidSignature) { try SevenZipBundleVerifier.checkRunningHost(against: provider.executable) }
     #expect(provider.executable.path == bundle.appendingPathComponent("Contents/Helpers/SevenZipWorker").path)
-    #expect(provider.library.path == bundle.appendingPathComponent("Contents/Frameworks/7z.so").path)
+    #expect(provider.library.path == bundle.appendingPathComponent("Contents/Helpers/7z.so").path)
     let fixture = try await sdkFixture(root: root, password: "QA-349-한글-🔑")
     #expect(try await provider.entries(at: fixture.archive, password: "QA-349-한글-🔑").count == 3)
     let destination = root.appendingPathComponent("resolved-result")
@@ -1282,5 +1282,32 @@ func sevenZipSDKPublishedDirectoryTimeChangeIsPreserved() async throws {
         #expect(try Data(contentsOf: retained.appendingPathComponent("locked/inner/payload")) == Data("x".utf8))
         #expect(try Data(contentsOf: root.appendingPathComponent("archive.7z")) == Data("zip".utf8))
         if existing { #expect(try Data(contentsOf: destination.appendingPathComponent("unrelated")) == Data("keep".utf8)) }
+    }
+}
+
+@Test(.enabled(if: hasIntegrationFixture("FILES_TEST_SEVENZIP_APP_BUNDLE"), "Requires the signed packaged SDK"))
+func sevenZipSDKBundleRejectsResignedExpandedWorkerAuthority() async throws {
+    let root = try sdkRoot(); defer { try? FileManager.default.removeItem(at: root) }
+    let profiles: [[String: Any]] = [[:], ["com.apple.security.app-sandbox": true, "com.apple.security.network.client": true],
+                                    ["com.apple.security.app-sandbox": true, "com.apple.security.inherit": true],
+                                    ["com.apple.security.app-sandbox": true, "com.apple.security.files.user-selected.read-write": true]]
+    for (index, profile) in profiles.enumerated() {
+        let bundle = try sdkBundleCopy(root: root, name: "Authority-\(index).app"), file = root.appendingPathComponent("profile-\(index).plist")
+        try PropertyListSerialization.data(fromPropertyList: profile, format: .xml, options: 0).write(to: file)
+        let process = Process(); process.executableURL = URL(fileURLWithPath: "/usr/bin/codesign")
+        process.arguments = ["--force", "--timestamp=none", "--sign", "-", "--identifier", "org.taro6222.files-for-mac.sevenzip-worker",
+                             "--entitlements", file.path, bundle.appendingPathComponent("Contents/Helpers/SevenZipWorker").path]
+        process.standardOutput = FileHandle.nullDevice; process.standardError = FileHandle.nullDevice
+        try process.run(); defer { if process.isRunning { process.terminate(); process.waitUntilExit() } }
+        let deadline = ContinuousClock.now + .seconds(5)
+        while process.isRunning, ContinuousClock.now < deadline { try await Task.sleep(for: .milliseconds(5)) }
+        try #require(!process.isRunning && process.terminationStatus == 0)
+        try await sdkResignOuter(bundle, root: root)
+        let workerSignature = await CodeSignatureInspector.inspect(bundle.appendingPathComponent("Contents/Helpers/SevenZipWorker"))
+        let parentSignature = await CodeSignatureInspector.inspect(bundle)
+        #expect(workerSignature.state == .valid && parentSignature.state == .valid)
+        // The parent and worker signatures are valid. Policy rejection must happen before
+        // the stale manifest hash, proving that a broader valid signature is insufficient.
+        await #expect(throws: SevenZipBundleError.invalidSignature) { try await SevenZipArchiveProvider.bundled(in: bundle) }
     }
 }

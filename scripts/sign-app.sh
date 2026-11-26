@@ -17,8 +17,8 @@ if [[ "$identity" != - ]]; then
   esac
   options=(--options runtime --timestamp)
 fi
-codesign --force "${options[@]}" --sign "$identity" --identifier org.taro6222.files-for-mac.sevenzip "$app/Contents/Frameworks/7z.so"
-codesign --force "${options[@]}" --sign "$identity" --identifier org.taro6222.files-for-mac.sevenzip-worker "$app/Contents/Helpers/SevenZipWorker"
+codesign --force "${options[@]}" --sign "$identity" --identifier org.taro6222.files-for-mac.sevenzip "$app/Contents/Helpers/7z.so"
+codesign --force "${options[@]}" --sign "$identity" --identifier org.taro6222.files-for-mac.sevenzip-worker --entitlements "$script_dir/sevenzip-worker.entitlements" "$app/Contents/Helpers/SevenZipWorker"
 python3 "$script_dir/sevenzip_bundle.py" refresh-code-hashes --app "$app"
 codesign --force "${options[@]}" --sign "$identity" "$app"
 python3 "$script_dir/sevenzip_bundle.py" verify --app "$app"

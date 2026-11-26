@@ -10,6 +10,7 @@ import signal
 import subprocess
 
 TESTS = [
+    'sevenZipSDKBundleWorkerPolicyRejectsExpandedAuthority',
     'sevenZipSDKRestoresFileAndDirectoryTimesAndPermissions', 'sevenZipSDKRestrictiveDirectoryMetadataFinishesAfterChildren',
     'sevenZipSDKRejectsMalformedMetadataBeforeStaging',
     'sevenZipSDKPublishedDirectoryTimeChangeIsPreserved',
@@ -41,7 +42,7 @@ TESTS = [
     'sevenZipSDKExistingDirectoryExtractionPreservesUnrelatedItems', 'sevenZipSDKExistingDirectoryConflictRollsBackOwnedPublication',
     'sevenZipSDKExistingDirectoryChangedPublicationIsPreserved', 'sevenZipSDKExistingDirectoryCancellationRollsBackPublication',
 ]
-BUNDLE_TESTS = ['sevenZipSDKBundleResolutionAndUse', 'sevenZipSDKBundleRejectsResealedHashMismatch',
+BUNDLE_TESTS = ['sevenZipSDKBundleRejectsResignedExpandedWorkerAuthority', 'sevenZipSDKBundleResolutionAndUse', 'sevenZipSDKBundleRejectsResealedHashMismatch',
                 'sevenZipSDKBundleRejectsAdhocStableAndWrongIdentity', 'sevenZipSDKBundleRejectsResealedSourcePinAndExtraFile',
                 'sevenZipSDKBundlePinsSelectedRevisionAcrossResigning']
 
