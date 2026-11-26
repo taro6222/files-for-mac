@@ -1,5 +1,7 @@
 # 개발 현황
 
+[383 프리뷰](verification/m7/INCREMENT_383.md): 앱 코드 7e31fc6의 최신 유니버설 개발 DMG를 만들었다. 두 CPU 서명/내용물/SDK와 실제 번들 Swift 74개·helper 113개·진단 205개·native 85개·권한 15개, 읽기 전용 DMG의 Swift 74개와 정상 해제를 확인했다. 로컬 GUI는 실행하지 않았으며 최신 Intel/전체 M7·정식 서명/공증은 미완료다.
+
 [382 실제 수용 기록](verification/m7/INCREMENT_382.md): 62f8d40 ARM 전체 작업 성공을 확인했다. 네 조합 UI 각각 369개·탭 경계 각각 18개와 번들 Swift 74개/SDK·설치 프리뷰가 통과했다. 전체 실행은 Intel의 Git 취소 정리 검사 실패로 미통과다. 고정 bare Git fixture와 내용/ref 비교, 컬럼·취소 세부 진단·artifact 보존을 추가했다. 새 도구의 원격 수용과 F23/M7 전체 완료는 미확정이며 Release 앱 코드는 유지한다.
 
 [381 실제 수용 기록](verification/m7/INCREMENT_381.md): d2f9eff ARM 네 조합 모두 탐색 복귀 10,001개와 편집/기록 29개·상세 경로 표시를 통과했다. 전체 361개는 세 조합 통과·en-light 암호 재시도 한 건 실패다. 실제 보고서/캡처를 보존하고 비밀 값 없는 단계 진단을 추가했다. 최신 62f8d40 ARM 컴파일은 원격 통과했고 전체 UI는 진행 중이다. F23/M7 전체 완료는 아니다.

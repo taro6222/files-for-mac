@@ -1,0 +1,187 @@
+{
+  "increment": 383,
+  "status": "universal ad-hoc preview built and verified; release and latest dual-CPU acceptance incomplete",
+  "createdUTC": "2026-11-26T19:32:06.572941+00:00",
+  "appSourceCommit": "7e31fc6f246b5c677b46b80daf4b42b67c435f17",
+  "sourceFiles": 128,
+  "sourceFilesSHA256": "cc481b06acdf0204c27c305f5fd3a49945b9ebcb6b6b9ed61adcff81a35b12d2",
+  "releaseNotesSHA256": "ccf9b05bebfa8a32377511224117a0e84224d12de1bc701378542a40ddd24781",
+  "image": {
+    "path": "build/preview-383/Files-macOS-preview.dmg",
+    "bytes": 11070552,
+    "sha256": "4a82e5646d3f5c4ef9e75ff61f938ba0081f2328854ec5b4d19872b2adf97ffb",
+    "checksumFile": "build/preview-383/Files-macOS-preview.dmg.sha256",
+    "architectures": [
+      "arm64",
+      "x86_64"
+    ],
+    "minimumTarget": "14.0",
+    "signature": "ad-hoc preview; not Developer ID/notarized"
+  },
+  "host": {
+    "architecture": "arm64",
+    "macOS": "27.2.1"
+  },
+  "build": {
+    "command": [
+      "bash",
+      "scripts/build-dmg.sh",
+      "--preview"
+    ],
+    "processPID": 44658,
+    "returnCode": 0,
+    "receivedSignal": null,
+    "elapsedSeconds": 144.57190999999875,
+    "observations": [
+      {
+        "processGroup": 44658,
+        "processTreeRoot": 44658,
+        "selection": "current-parent-chain",
+        "processes": [
+          {
+            "pid": 44658,
+            "parentPID": 44657,
+            "group": 44658,
+            "elapsed": "02:00",
+            "cpuPercent": 0.0,
+            "rssKiB": 2416,
+            "state": "Ss",
+            "executable": "bash"
+          },
+          {
+            "pid": 48414,
+            "parentPID": 44658,
+            "group": 44658,
+            "elapsed": "00:27",
+            "cpuPercent": 0.0,
+            "rssKiB": 2464,
+            "state": "S",
+            "executable": "bash"
+          },
+          {
+            "pid": 49026,
+            "parentPID": 48414,
+            "group": 44658,
+            "elapsed": "00:21",
+            "cpuPercent": 0.0,
+            "rssKiB": 53040,
+            "state": "S",
+            "executable": "python3"
+          },
+          {
+            "pid": 49078,
+            "parentPID": 49026,
+            "group": 49078,
+            "elapsed": "00:21",
+            "cpuPercent": 0.0,
+            "rssKiB": 59584,
+            "state": "Ss",
+            "executable": "/Library/Developer/CommandLineTools/usr/bin/swift-test"
+          },
+          {
+            "pid": 49139,
+            "parentPID": 49078,
+            "group": 49139,
+            "elapsed": "00:20",
+            "cpuPercent": 4.1,
+            "rssKiB": 77536,
+            "state": "S",
+            "executable": "/Library/Developer/CommandLineTools/usr/libexec/swift/pm/swiftpm-testing-helper"
+          },
+          {
+            "pid": 49401,
+            "parentPID": 49139,
+            "group": 49139,
+            "elapsed": "00:00",
+            "cpuPercent": 0.0,
+            "rssKiB": 0,
+            "state": "Z",
+            "executable": "<defunct>"
+          }
+        ],
+        "samples": [
+          {
+            "pid": 49139,
+            "executable": "/Library/Developer/CommandLineTools/usr/libexec/swift/pm/swiftpm-testing-helper",
+            "file": "sample-49139.txt",
+            "observerPID": 49405,
+            "returnCode": 0
+          },
+          {
+            "pid": 48414,
+            "executable": "bash",
+            "file": "sample-48414.txt",
+            "observerPID": 49428,
+            "returnCode": 0
+          },
+          {
+            "pid": 49026,
+            "executable": "python3",
+            "file": "sample-49026.txt",
+            "observerPID": 49458,
+            "returnCode": 0
+          },
+          {
+            "pid": 49078,
+            "executable": "/Library/Developer/CommandLineTools/usr/bin/swift-test",
+            "file": "sample-49078.txt",
+            "observerPID": 49482,
+            "returnCode": 0
+          }
+        ]
+      }
+    ],
+    "restarted": false,
+    "sourceSHA256": "ff32ae34a3bbbf2665f789578673a74bb19f79d6168cfdff435bc7ca7ee4cb84"
+  },
+  "sdkPackageReports": {
+    "diagnostic-worker": {
+      "count": 205,
+      "sha256": "f639b4d206d7ade43ae8e4491bfaa34050c26715e29f45825eefabdccca45a0d"
+    },
+    "worker": {
+      "count": 113,
+      "sha256": "87e33719360e8c87839c569e42b6e4430424b1ebddf57a9d5bb93d007d61df75"
+    },
+    "authority": {
+      "count": 15,
+      "sha256": "cd48a03788bb234629abfc7392ebe50ca5eeb6b77904f9597ad778290d482c6d"
+    },
+    "client": {
+      "count": 74,
+      "sha256": "b8e20630c074d7c8d992707bec6b5d5a24e5a8ed8798ba37159f2c73e192f914"
+    },
+    "edit-sdk": {
+      "count": 85,
+      "sha256": "1881018a89f21fd87a4de20f614c3f9a7165fdd12d12a5aa87d5d34bee381879"
+    }
+  },
+  "mountedVerification": {
+    "image": "/Users/changhun/Desktop/Workspace/Files/build/preview-383/Files-macOS-preview.dmg",
+    "mountPoint": "/private/tmp/files-preview-383.l0i77itk",
+    "localGUIStarted": false,
+    "checks": {
+      "readOnly": true,
+      "universalSignatureAndContents": true,
+      "mountedClient": true
+    },
+    "attached": true,
+    "volumeWritable": false,
+    "readOnlyKernelFlag": true,
+    "device": "disk5s1",
+    "mountedClientTests": 74,
+    "sha256": "4a82e5646d3f5c4ef9e75ff61f938ba0081f2328854ec5b4d19872b2adf97ffb",
+    "detached": true
+  },
+  "firstMountCheck": {
+    "issue": "Verifier expected VolumeReadOnly, while this OS reports WritableVolume. No payload checks ran before that assertion.",
+    "recordSHA256": "3c4d3664556e038fe0bf69655543d201fdc347a941b7227ce575b01e24773d65",
+    "detached": true,
+    "correction": "WritableVolume=false plus ST_RDONLY kernel flag"
+  },
+  "localGUIStarted": false,
+  "localApplicationInstallOrLaunchVerified": false,
+  "latestRemoteRun": 45882828053,
+  "latestRemoteAcceptanceComplete": false,
+  "overallM7Complete": false
+}
