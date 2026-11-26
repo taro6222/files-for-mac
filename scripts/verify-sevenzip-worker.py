@@ -11,6 +11,7 @@ import struct
 import subprocess
 import tempfile
 import time
+import threading
 
 
 def frame(value):
@@ -19,9 +20,26 @@ def frame(value):
 
 
 class Worker:
-    def __init__(self, executable):
-        self.process = subprocess.Popen([str(executable), str(executable.parent / '7z.so')],
+    def __init__(self, executable, output=False, output_fd=None):
+        arguments = [str(executable), str(executable.parent / '7z.so')]
+        self.output = bytearray(); self.reader = None; inherited = ()
+        if output:
+            read_fd, write_fd = os.pipe(); inherited = (write_fd,)
+            arguments += ['--output-fd', str(write_fd)]
+        elif output_fd is not None:
+            inherited = (output_fd,); arguments += ['--output-fd', str(output_fd)]
+        self.process = subprocess.Popen(arguments, pass_fds=inherited,
                                         stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        if output:
+            os.close(write_fd)
+            def drain():
+                with os.fdopen(read_fd, 'rb', buffering=0) as stream:
+                    while True:
+                        data = stream.read(65536)
+                        if not data: break
+                        self.output.extend(data)
+                        if len(self.output) > 2 * 1024 * 1024: break
+            self.reader = threading.Thread(target=drain, daemon=True); self.reader.start()
 
     def read(self):
         deadline = time.monotonic() + 10
@@ -51,6 +69,9 @@ class Worker:
             self.process.kill(); self.process.wait(); raise RuntimeError('Worker did not close')
         trailing = self.process.stdout.read(); diagnostic = self.process.stderr.read()
         self.process.stdout.close(); self.process.stderr.close()
+        if self.reader:
+            self.reader.join(timeout=10)
+            if self.reader.is_alive(): raise RuntimeError('Output stream did not close')
         if status != expected or trailing or diagnostic: raise RuntimeError('Unexpected worker termination/output')
 
 
@@ -140,6 +161,68 @@ def verify(executable, reference, root):
         else: worker.finish(1)
     check('originalArchivesPreserved', all(hashlib.sha256(p.read_bytes()).hexdigest() == value for p, value in originals.items()))
     check('inputFilesPreserved', all((fixture / name).read_bytes() == data for name, data in payloads.items()) and (fixture / 'link').is_symlink())
+    def extract(worker, opened, item, **extra):
+        request = dict(version=1, operation='extract', session=opened['session'], index=item['index'],
+                       expectedSize=item['size'], maximumBytes=8000000000)
+        request.update(extra); return worker.request(request)
+    worker = Worker(executable, output=True); opened = worker.request(initial(encrypted, password=password))
+    listed = {i['path']: i for i in opened['items']}; expected = b''
+    for name, data in payloads.items():
+        result = extract(worker, opened, listed[name]); expected += data
+        check('extract-' + str(listed[name]['index']), result['ok'] and result['written'] == len(data))
+    for name in ['link', 'folder']:
+        result = extract(worker, opened, listed[name])
+        check('extractReject-' + name, not result['ok'] and result['error']['code'] == 'unsupported-item' and result['written'] == 0)
+    selected = listed[next(iter(payloads))]
+    check('extractSizeMismatch', extract(worker, opened, selected, expectedSize=selected['size'] + 1)['error']['code'] == 'invalid-metadata')
+    check('extractByteLimit', extract(worker, opened, selected, maximumBytes=0)['error']['code'] == 'limit')
+    check('extractInvalidIndex', extract(worker, opened, selected, index=4294967295)['error']['code'] == 'invalid-metadata')
+    check('listAfterExtractSameSource', worker.request(dict(version=1, operation='list', session=opened['session']))['source'] == opened['source'])
+    check('extractBooleanIndex', extract(worker, opened, selected, index=True)['error']['code'] == 'invalid-request')
+    worker.finish(1); check('extractExactBytesNoRejectedOutput', worker.output == expected)
+    worker = Worker(executable); opened = worker.request(initial(plain))
+    check('extractRequiresOutputPipe', extract(worker, opened, opened['items'][-1])['error']['code'] == 'output-descriptor'); worker.finish(1)
+    # A non-header-encrypted archive can list without credentials; extraction must request them.
+    data_archive = root / 'data-encrypted.7z'
+    result = subprocess.run([str(reference), 'a', '-t7z', '-mhe=off', '-p', '-y', str(data_archive), 'emoji-🔑.txt'],
+                            cwd=fixture, input=((password + '\n') * 2).encode(), stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=30)
+    check('dataEncryptedFixture', result.returncode == 0)
+    for name, secret, error in [('extractMissingPassword', None, 'password-required'), ('extractWrongPassword', 'wrong', 'password-or-corrupt')]:
+        worker = Worker(executable, output=True); opened = worker.request(initial(data_archive, password=secret))
+        check(name + 'List', opened['ok'])
+        result = extract(worker, opened, opened['items'][0]); check(name, not result['ok'] and result['error']['code'] == error); worker.finish()
+    # Output exceeds pipe capacity; a concurrent reader proves streaming without stdout mixing.
+    stream_source = fixture / 'stream.bin'; stream_bytes = bytes(range(256)) * 2048; stream_source.write_bytes(stream_bytes)
+    stream_archive = root / 'stream.7z'
+    result = subprocess.run([str(reference), 'a', '-t7z', '-mhc=off', '-ms=off', '-y', str(stream_archive), stream_source.name],
+                            cwd=fixture, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=30)
+    check('streamFixture', result.returncode == 0)
+    worker = Worker(executable, output=True); opened = worker.request(initial(stream_archive))
+    result = extract(worker, opened, opened['items'][0]); worker.finish()
+    check('streamBeyondPipeCapacity', result['ok'] and result['written'] == len(stream_bytes) and worker.output == stream_bytes)
+    # A closed consumer pipe is a write failure, never an apparent successful extraction.
+    read_fd, write_fd = os.pipe(); os.close(read_fd)
+    worker = Worker(executable, output_fd=write_fd)
+    os.close(write_fd)
+    opened = worker.request(initial(stream_archive)); result = extract(worker, opened, opened['items'][0]); worker.finish()
+    check('closedOutputPipeRejected', not result['ok'] and result['error']['code'] == 'output-write')
+    output_path = root / 'not-a-pipe'; output_path.write_bytes(b'preserve')
+    with output_path.open('ab') as stream:
+        worker = Worker(executable, output_fd=stream.fileno())
+        check('regularOutputDescriptorRejected', worker.read()['error']['code'] == 'output-descriptor'); worker.finish(1)
+    check('regularOutputDescriptorPreserved', output_path.read_bytes() == b'preserve')
+    corrupt = bytearray(stream_archive.read_bytes()); corrupt[32] ^= 0x80
+    corrupt_archive = root / 'corrupt.7z'; corrupt_archive.write_bytes(corrupt)
+    worker = Worker(executable, output=True); opened = worker.request(initial(corrupt_archive))
+    check('corruptFixtureLists', opened['ok'])
+    result = extract(worker, opened, opened['items'][0]); worker.finish()
+    check('corruptDataNeverSuccess', not result['ok'] and result['error']['code'] == 'corrupt-data')
+    # The caller must discard output on any failure, including a source changed after listing.
+    changed_archive = root / 'extract-changed.7z'; shutil.copyfile(stream_archive, changed_archive)
+    worker = Worker(executable, output=True); opened = worker.request(initial(changed_archive))
+    with changed_archive.open('ab') as stream: stream.write(b'changed')
+    result = extract(worker, opened, opened['items'][0]); worker.finish()
+    check('extractSourceChangeBeforeOutput', not result['ok'] and result['error']['code'] == 'source-changed' and not worker.output)
     return checks
 
 

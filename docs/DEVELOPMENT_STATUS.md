@@ -647,3 +647,5 @@ M6 추가 검증: [템플릿으로 파일 생성](verification/m6/INCREMENT_103.
 [이동 위치 기록 후 재기동 복원](verification/m7/INCREMENT_304.md)은 실제 `movedToTrash` 기록 직후 QA 자식을 SIGKILL하고 다른 앱 PID의 복원 동작으로 보관소에 되돌린다. 네 언어·외형 조합 각각 19개, 위치 미기록 회귀 14개, 기존 수신 계약 53개와 Swift 성공 304개·건너뜀 18개를 확인했다. 원본 기록·수신 내용·게시 복사본을 보존하며 Release에는 종료 지점 진입을 포함하지 않는다. 최신 두 CPU·장시간·실제 접근성·정식 서명 수용은 진행 중이다.
 
 [7z SDK 목록 helper](verification/m7/INCREMENT_345.md)는 공식 고정 소스의 구조화된 속성 API와 길이 프레임을 구현했다. ARM 실제 암호·Unicode/줄바꿈·링크·원본 변경·잘못된 요청 등 34개 조건이 통과했고 Intel 교차 빌드와 두 CPU 최소 배포 메타데이터를 확인했다. 앱 연결·추출·생성·자원 격리·Intel native 수용은 미완료다. 직전 두 원격 실행은 ARM 성공·Intel 실패이며 344 Intel Spotlight EBUSY와 343 Intel Git scheduling 실패는 별도 추적한다. 인증서·공증은 준비 중이고 M7 정식 출시는 계속 진행 중이다.
+
+[7z 선택 항목 추출 stream](verification/m7/INCREMENT_346.md)은 같은 원본 FD에서 일반 파일을 전용 출력 파이프로 추출하고 크기·상한·링크·원본 변경·SDK 최종 오류를 검사한다. ARM 목록/추출 조건 총 59개가 통과했고 Intel 교차 빌드도 통과했다. 직전 345 목록 helper는 macOS 15 ARM·Intel native 보고서 각각 34개 통과를 확인했다. 앱의 안전한 staging/게시·취소·자원 격리·생성 연결과 최신 두 CPU 추출 수용은 남아 있다. M7 정식 출시는 진행 중이다.

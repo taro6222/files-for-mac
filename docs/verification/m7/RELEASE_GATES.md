@@ -281,3 +281,7 @@
 ### Increment 345: SDK 목록 경계
 
 [7z SDK 목록 helper](INCREMENT_345.md)는 공식 고정 소스의 구조화된 속성 API와 길이 프레임을 구현했다. ARM 실제 암호·Unicode/줄바꿈·링크·원본 변경·잘못된 요청 등 34개 조건이 통과했고 Intel 교차 빌드와 두 CPU 최소 배포 메타데이터를 확인했다. 앱 연결·추출·생성·자원 격리·Intel native 수용은 미완료다. 직전 두 원격 실행은 ARM 성공·Intel 실패이며 344 Intel Spotlight EBUSY와 343 Intel Git scheduling 실패는 별도 추적한다. 인증서·공증은 준비 중이고 M7 정식 출시는 계속 진행 중이다.
+
+### Increment 346: 선택 항목 추출 stream
+
+[7z 선택 항목 추출 stream](INCREMENT_346.md)은 같은 원본 FD에서 일반 파일을 전용 출력 파이프로 추출하고 크기·상한·링크·원본 변경·SDK 최종 오류를 검사한다. ARM 목록/추출 조건 총 59개가 통과했고 Intel 교차 빌드도 통과했다. 직전 345 목록 helper는 macOS 15 ARM·Intel native 보고서 각각 34개 통과를 확인했다. 앱의 안전한 staging/게시·취소·자원 격리·생성 연결과 최신 두 CPU 추출 수용은 남아 있다. M7 정식 출시는 진행 중이다.

@@ -5,6 +5,8 @@
 #include <errno.h>
 #include <signal.h>
 #include <math.h>
+#include <fcntl.h>
+#include <sys/stat.h>
 
 static const size_t RequestLimit = 1024 * 1024, ResponseLimit = 8 * 1024 * 1024;
 static ssize_t readExact(void *bytes, size_t count) {
@@ -49,7 +51,8 @@ static NSString *sdkError(int value) {
     switch (value) {
         case 1: return @"sdk-load"; case 2: return @"source-open"; case 3: return @"password-required";
         case 4: return @"password-or-corrupt"; case 5: return @"not-archive"; case 6: return @"invalid-metadata";
-        case 7: return @"limit"; case 9: return @"source-changed"; default: return @"internal";
+        case 7: return @"limit"; case 9: return @"source-changed"; case 10: return @"output-write";
+        case 11: return @"unsupported-item"; case 12: return @"corrupt-data"; default: return @"internal";
     }
 }
 @interface ItemCollector : NSObject
@@ -71,11 +74,31 @@ static int item(void *context, uint32_t index, const char *bytes, size_t length,
         @"size": @(size), @"encrypted": @(encrypted != 0) }];
     return 1;
 }
+static int outputBytes(void *context, const void *bytes, size_t length) {
+    int descriptor = *(int *)context;
+    size_t total = 0;
+    while (total < length) {
+        ssize_t count = write(descriptor, (const char *)bytes + total, length - total);
+        if (count < 0 && errno == EINTR) continue;
+        if (count <= 0) return 0;
+        total += count;
+    }
+    return 1;
+}
 
 int main(int argc, const char *argv[]) {
     @autoreleasepool {
         signal(SIGPIPE, SIG_IGN);
-        if (argc != 2) { reply(failure(@"arguments")); return 1; }
+        int outputDescriptor = -1;
+        if (argc == 4 && strcmp(argv[2], "--output-fd") == 0) {
+            char *end = nullptr; long value = strtol(argv[3], &end, 10);
+            struct stat info;
+            if (!*argv[3] || *end || value < 3 || value > INT_MAX || fstat((int)value, &info) != 0 ||
+                !S_ISFIFO(info.st_mode) || (fcntl((int)value, F_GETFL) & O_ACCMODE) != O_WRONLY) {
+                reply(failure(@"output-descriptor")); return 1;
+            }
+            outputDescriptor = (int)value;
+        } else if (argc != 2) { reply(failure(@"arguments")); return 1; }
         void *session = nullptr;
         NSString *token = nil;
         int result = 0;
@@ -95,10 +118,27 @@ int main(int argc, const char *argv[]) {
                 }
                 NSSet *allowed = session ? [NSSet setWithArray:@[@"version", @"operation", @"session", @"maxEntries"]]
                                          : [NSSet setWithArray:@[@"version", @"operation", @"archivePath", @"password", @"maxEntries"]];
+                if (session && [request[@"operation"] isEqual:@"extract"]) {
+                    allowed = [NSSet setWithArray:@[@"version", @"operation", @"session", @"index", @"expectedSize", @"maximumBytes"]];
+                }
                 bool valid = [[NSSet setWithArray:[request allKeys]] isSubsetOfSet:allowed];
                 if (session && ![request[@"session"] isEqual:token]) valid = false;
                 id limit = request[@"maxEntries"] ?: @100000;
                 if (!valid || !integer(limit, 1, 100000)) { reply(failure(@"invalid-request")); result = 1; break; }
+                if (session && [request[@"operation"] isEqual:@"extract"]) {
+                    if (!integer(request[@"index"], 0, UINT32_MAX) || !integer(request[@"expectedSize"], 0, 8000000000LL) ||
+                        !integer(request[@"maximumBytes"], 0, 8000000000LL)) {
+                        reply(failure(@"invalid-request")); result = 1; break;
+                    }
+                    if (outputDescriptor < 0) { reply(failure(@"output-descriptor")); result = 1; break; }
+                    uint64_t written = 0;
+                    int error = SevenZipExtract(session, [request[@"index"] unsignedIntValue], [request[@"expectedSize"] unsignedLongLongValue],
+                        [request[@"maximumBytes"] unsignedLongLongValue], &outputDescriptor, outputBytes, &written);
+                    NSMutableDictionary *message = error ? [failure(sdkError(error)) mutableCopy] : [@{ @"version": @1, @"ok": @YES } mutableCopy];
+                    message[@"session"] = token; message[@"written"] = @(written);
+                    if (!reply(message)) { result = 1; break; }
+                    continue;
+                }
                 if ([request[@"operation"] isEqual:@"close"] && session) {
                     SevenZipClose(session); session = nullptr;
                     reply(@{ @"version": @1, @"ok": @YES, @"closed": @YES }); break;

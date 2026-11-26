@@ -107,6 +107,25 @@ extern "C" void *SevenZipOpen(const char *library, const char *path, const char 
 static bool property(IInArchive *archive, UInt32 index, PROPID id, NWindows::NCOM::CPropVariant &value) {
     return archive->GetProperty(index, id, &value) == S_OK;
 }
+static int metadata(IInArchive *archive, UInt32 i, AString &utf8, UInt64 &bytes, int &kind, bool &isEncrypted) {
+    NWindows::NCOM::CPropVariant path, size, directory, encrypted, symbolic, hard, attributes, posix;
+    if (!property(archive, i, kpidPath, path) || path.vt != VT_BSTR ||
+        !property(archive, i, kpidSize, size) || !property(archive, i, kpidIsDir, directory) ||
+        !property(archive, i, kpidEncrypted, encrypted) || !property(archive, i, kpidSymLink, symbolic) ||
+        !property(archive, i, kpidHardLink, hard) || !property(archive, i, kpidAttrib, attributes) ||
+        !property(archive, i, kpidPosixAttrib, posix)) return 6;
+    UString wide; if (path.bstrVal) wide.SetFrom(path.bstrVal, SysStringLen(path.bstrVal));
+    ConvertUnicodeToUTF8(wide, utf8);
+    bytes = size.vt == VT_UI8 ? size.uhVal.QuadPart : (size.vt == VT_UI4 ? size.ulVal : 0);
+    if ((size.vt != VT_EMPTY && size.vt != VT_UI8 && size.vt != VT_UI4) || bytes > INT64_MAX) return 6;
+    kind = directory.vt == VT_BOOL && directory.boolVal ? 1 : 0;
+    UInt32 mode = posix.vt == VT_UI4 ? posix.ulVal : (attributes.vt == VT_UI4 ? attributes.ulVal >> 16 : 0);
+    if ((symbolic.vt == VT_BSTR && SysStringLen(symbolic.bstrVal)) || (mode & S_IFMT) == S_IFLNK) kind = 2;
+    else if (hard.vt == VT_BSTR && SysStringLen(hard.bstrVal)) kind = 3;
+    else if ((mode & S_IFMT) && (mode & S_IFMT) != S_IFREG && (mode & S_IFMT) != S_IFDIR) kind = 4;
+    isEncrypted = encrypted.vt == VT_BOOL && encrypted.boolVal;
+    return 0;
+}
 extern "C" int SevenZipList(void *handle, uint32_t maximum, void *context, SevenZipItemCallback callback) {
     auto session = (Session *)handle;
     try {
@@ -115,22 +134,10 @@ extern "C" int SevenZipList(void *handle, uint32_t maximum, void *context, Seven
         if (session->archive->GetNumberOfItems(&count) != S_OK) return 6;
         if (count > maximum) return 7;
         for (UInt32 i = 0; i < count; ++i) {
-            NWindows::NCOM::CPropVariant path, size, directory, encrypted, symbolic, hard, attributes, posix;
-            if (!property(session->archive, i, kpidPath, path) || path.vt != VT_BSTR ||
-                !property(session->archive, i, kpidSize, size) || !property(session->archive, i, kpidIsDir, directory) ||
-                !property(session->archive, i, kpidEncrypted, encrypted) || !property(session->archive, i, kpidSymLink, symbolic) ||
-                !property(session->archive, i, kpidHardLink, hard) || !property(session->archive, i, kpidAttrib, attributes) ||
-                !property(session->archive, i, kpidPosixAttrib, posix)) return 6;
-            UString wide; if (path.bstrVal) wide.SetFrom(path.bstrVal, SysStringLen(path.bstrVal));
-            AString utf8; ConvertUnicodeToUTF8(wide, utf8);
-            UInt64 bytes = size.vt == VT_UI8 ? size.uhVal.QuadPart : (size.vt == VT_UI4 ? size.ulVal : 0);
-            if ((size.vt != VT_EMPTY && size.vt != VT_UI8 && size.vt != VT_UI4) || bytes > INT64_MAX) return 6;
-            int kind = directory.vt == VT_BOOL && directory.boolVal ? 1 : 0;
-            UInt32 mode = posix.vt == VT_UI4 ? posix.ulVal : (attributes.vt == VT_UI4 ? attributes.ulVal >> 16 : 0);
-            if ((symbolic.vt == VT_BSTR && SysStringLen(symbolic.bstrVal)) || (mode & S_IFMT) == S_IFLNK) kind = 2;
-            else if (hard.vt == VT_BSTR && SysStringLen(hard.bstrVal)) kind = 3;
-            else if ((mode & S_IFMT) && (mode & S_IFMT) != S_IFREG && (mode & S_IFMT) != S_IFDIR) kind = 4;
-            if (!callback(context, i, utf8.Ptr(), utf8.Len(), kind, bytes, encrypted.vt == VT_BOOL && encrypted.boolVal)) return 7;
+            AString utf8; UInt64 bytes = 0; int kind = 0; bool encrypted = false;
+            int error = metadata(session->archive, i, utf8, bytes, kind, encrypted);
+            if (error) return error;
+            if (!callback(context, i, utf8.Ptr(), utf8.Len(), kind, bytes, encrypted)) return 7;
         }
         return session->stream->unchanged() ? 0 : 9;
     } catch (...) { return 8; }
@@ -141,3 +148,82 @@ extern "C" SevenZipSourceIdentity SevenZipIdentity(void *handle) {
 }
 extern "C" int SevenZipHeaderPasswordRequested(void *handle) { return ((Session *)handle)->openCallback->requested; }
 extern "C" void SevenZipClose(void *handle) { delete (Session *)handle; }
+
+class BoundedOutput final: public ISequentialOutStream, public CMyUnknownImp {
+    Z7_COM_UNKNOWN_IMP_1(ISequentialOutStream)
+public:
+    uint64_t count = 0, maximum;
+    bool failed = false;
+    int error = 0;
+    void *context;
+    SevenZipWriteCallback callback;
+    BoundedOutput(uint64_t limit, void *ctx, SevenZipWriteCallback write): maximum(limit), context(ctx), callback(write) {}
+    Z7_COM7F_IMF(Write(const void *data, UInt32 size, UInt32 *processed)) override {
+        if (processed) *processed = 0;
+        if (failed) return E_ABORT;
+        if (size > maximum - count) { failed = true; error = 7; return E_ABORT; }
+        if (size && !callback(context, data, size)) { failed = true; error = 10; return E_ABORT; }
+        count += size;
+        if (processed) *processed = size;
+        return S_OK;
+    }
+};
+
+class ExtractCallback final: public IArchiveExtractCallback, public ICryptoGetTextPassword, public CMyUnknownImp {
+    Z7_IFACES_IMP_UNK_2(IArchiveExtractCallback, ICryptoGetTextPassword)
+    Z7_IFACE_COM7_IMP(IProgress)
+public:
+    UInt32 selected;
+    int operationResult = -1;
+    bool selectedStream = false, passwordRequested = false;
+    OpenCallback *credentials;
+    CMyComPtr<ISequentialOutStream> output;
+};
+Z7_COM7F_IMF(ExtractCallback::SetTotal(UInt64)) { return S_OK; }
+Z7_COM7F_IMF(ExtractCallback::SetCompleted(const UInt64 *)) { return S_OK; }
+Z7_COM7F_IMF(ExtractCallback::GetStream(UInt32 index, ISequentialOutStream **stream, Int32 mode)) {
+    *stream = nullptr;
+    if (mode != NArchive::NExtract::NAskMode::kExtract) return S_OK;
+    if (index != selected || selectedStream) return E_ABORT;
+    selectedStream = true;
+    *stream = output; (*stream)->AddRef(); return S_OK;
+}
+Z7_COM7F_IMF(ExtractCallback::PrepareOperation(Int32)) { return S_OK; }
+Z7_COM7F_IMF(ExtractCallback::SetOperationResult(Int32 result)) { operationResult = result; return S_OK; }
+Z7_COM7F_IMF(ExtractCallback::CryptoGetTextPassword(BSTR *value)) {
+    passwordRequested = true;
+    if (!credentials->defined) return E_ABORT;
+    return StringToBstr(credentials->password, value);
+}
+
+extern "C" int SevenZipExtract(void *handle, uint32_t index, uint64_t expectedSize, uint64_t maximumBytes,
+                               void *context, SevenZipWriteCallback callback, uint64_t *written) {
+    *written = 0;
+    auto session = (Session *)handle;
+    try {
+        if (!session->stream->unchanged()) return 9;
+        UInt32 count = 0;
+        if (session->archive->GetNumberOfItems(&count) != S_OK) return 6;
+        if (index >= count) return 6;
+        AString path; UInt64 size = 0; int kind = 0; bool encrypted = false;
+        int error = metadata(session->archive, index, path, size, kind, encrypted);
+        if (error) return error;
+        if (kind != 0) return 11;
+        if (size != expectedSize) return 6;
+        if (size > maximumBytes) return 7;
+        auto output = new BoundedOutput(size, context, callback);
+        CMyComPtr<ISequentialOutStream> stream(output);
+        auto extract = new ExtractCallback();
+        CMyComPtr<IArchiveExtractCallback> extractOwner(extract);
+        extract->selected = index; extract->credentials = session->openCallback; extract->output = stream;
+        HRESULT result = session->archive->Extract(&index, 1, false, extractOwner);
+        *written = output->count;
+        if (!session->stream->unchanged()) return 9;
+        if (output->failed) return output->error;
+        if (result != S_OK || extract->operationResult != NArchive::NExtract::NOperationResult::kOK) {
+            if (extract->passwordRequested) return session->openCallback->defined ? 4 : 3;
+            return 12;
+        }
+        return extract->selectedStream && output->count == size ? 0 : 12;
+    } catch (...) { return 8; }
+}
