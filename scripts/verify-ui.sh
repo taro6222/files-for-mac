@@ -79,7 +79,7 @@ try:
     result = json.loads(report.read_text())
     if result["language"].split("-")[0] != language or result["theme"] != theme:
         raise ValueError("reported language or theme differs from the requested environment")
-    if len(result["checks"]) != 303 or not all(value is True for value in result["checks"].values()):
+    if len(result["checks"]) != 306 or not all(value is True for value in result["checks"].values()):
         raise ValueError("AppKit checks failed or are missing")
     progress_result = json.loads((output / "progress.json").read_text())
     if progress_result.get("state") != "passed" or progress_result.get("checks") != result["checks"]:

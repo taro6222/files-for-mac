@@ -1,0 +1,115 @@
+{
+  "sourceBaseSHA": "05dd05d07ae4641a7582b663a1611de1acf473d1",
+  "sourceSHA256": {
+    "Sources/FilesMac/BrowserWindow.swift": "5aa75f0c64ffb7bc283d0cb36d0bc180da5e8e7eb2229bad872043f418061487",
+    "scripts/verify-ui.sh": "3a5be3f8f31eeb207abd3c3fedf337f42003fc9d699b558b2e6fa31af03ee3cc"
+  },
+  "debugBinarySHA256": "10ca1691404fd0c7da4eb647a38b5ac096147fe5ce704c9da5a3ea244919b83e",
+  "releaseBinarySHA256": "dd83d379af12ca958ba10d9574bdd83f5e666e3728ba9a6dc4982e1457232d21",
+  "ui": {
+    "ko-light": {
+      "fullCheckCount": 306,
+      "boundaryCheckCount": 18,
+      "defaultNameChecks": {
+        "archiveDefaultNamePreservesSingleItem": true,
+        "archiveDefaultNameRootFallback": true,
+        "archiveDefaultNameUsesParentForMultipleItems": true
+      },
+      "reportSHA256": "b811ccbd6ccb46dd3ecae36ab23663fc5759620df987317cc3321dc96c871475",
+      "boundaryReportSHA256": "5b008d20c14072811f18b76134b1c3416b0e5965e58149ded52f3fba9b860b27"
+    },
+    "ko-dark": {
+      "fullCheckCount": 306,
+      "boundaryCheckCount": 18,
+      "defaultNameChecks": {
+        "archiveDefaultNamePreservesSingleItem": true,
+        "archiveDefaultNameRootFallback": true,
+        "archiveDefaultNameUsesParentForMultipleItems": true
+      },
+      "reportSHA256": "8f6b6bc427cf3695aa8f33ce8ddcf3863d12d2d0c5b4912c99968c317430b88b",
+      "boundaryReportSHA256": "f9e4644de8b42404017c390334d5bb70e231d287107ede7b437aa36ef7820105"
+    },
+    "en-light": {
+      "fullCheckCount": 306,
+      "boundaryCheckCount": 18,
+      "defaultNameChecks": {
+        "archiveDefaultNamePreservesSingleItem": true,
+        "archiveDefaultNameRootFallback": true,
+        "archiveDefaultNameUsesParentForMultipleItems": true
+      },
+      "reportSHA256": "9c7e4f48f5bb211d7e3ab6f4b950b0da1929f4d18d85bb6eb933c52e23d96980",
+      "boundaryReportSHA256": "8c264c2a29119eb2daf0ea2712c24b4be6ec4fa7c3f0f318ef2bc5a95b7dccc3"
+    },
+    "en-dark": {
+      "fullCheckCount": 306,
+      "boundaryCheckCount": 18,
+      "defaultNameChecks": {
+        "archiveDefaultNamePreservesSingleItem": true,
+        "archiveDefaultNameRootFallback": true,
+        "archiveDefaultNameUsesParentForMultipleItems": true
+      },
+      "reportSHA256": "de02d86d6059dfacd31713a66cbf773db9b889982a7749a42a6379c6534f660e",
+      "boundaryReportSHA256": "c336c66ffa5615d15ce0ad8170538ddff2d86cefbb915dd613652aef3c4d8698"
+    }
+  },
+  "logsSHA256": {
+    "build-final": "a5f98fd16efe22d81a76d4421b48dd9a1a0110cd61dceda78f3db5dbe88f76a4",
+    "ui": "27e38b6397d2e24717a1480611b56b948293dc525327868014bb48eb4b7c2b59",
+    "release": "afe36c2117a6e3281d29251df223cf6daa2c7f91f55ff543f4f5f9a6d2698ee0",
+    "parity": "f2e8f311d376fa306990bf6651b074ea8c5cdac5bfc49dd049df9ac2a1b96f01"
+  },
+  "singleItemCases": [
+    "preview.txt",
+    "\ud55c\uae00.\uba54\ubaa8.txt",
+    "Folder.v1",
+    "archive.zip",
+    "bundle.tar.gz"
+  ],
+  "multipleItemParent": "archive-default-parent.v1",
+  "rootFallbackLocalized": true,
+  "physicalInputAccepted": false,
+  "releaseComplete": false,
+  "limits": [
+    "Public NSSavePanel model properties were inspected without presenting or confirming a save dialog.",
+    "Core/archive engine and file operation code were unchanged; Core and volume suites were not repeated.",
+    "Existing a07c80c preview does not contain this new default-name change."
+  ],
+  "remaining": [
+    "latest-source remote and candidate acceptance",
+    "Mac/Windows remaining archive states and formats",
+    "Git initial snapshot delay and remote stacks",
+    "8-hour stability",
+    "physical input/VoiceOver and supported environments",
+    "Developer ID and notarization"
+  ],
+  "separateStackCollection": {
+    "headSha": "05dd05d07ae4641a7582b663a1611de1acf473d1",
+    "status": "in_progress",
+    "url": "https://github.com/taro6222/files-for-mac/actions/runs/45758991064"
+  },
+  "precedingGitDeadline": {
+    "sourceSHA": "55c1bee4a9f5fefb3ff473e9f91d000ea85bd00a",
+    "runURL": "https://github.com/taro6222/files-for-mac/actions/runs/45756559863",
+    "reportSHA256": "acee94da390185fa303c4821a75c118bb3eedd1daa5af03783396b854765dd98",
+    "failedChecks": [
+      "gitWindow"
+    ],
+    "stateAtDeadline": {
+      "branch": "",
+      "hasSnapshot": false,
+      "location": "/Users/runner/work/files-for-mac/files-for-mac",
+      "rowCount": 0,
+      "running": true,
+      "stage": "snapshot",
+      "status": "Git \uc0c1\ud0dc\ub97c \uc77d\ub294 \uc911\u2026",
+      "visible": true
+    },
+    "waitSeconds": 10.033156167,
+    "samplingExitStatus": {
+      "findGitChildren": 1,
+      "parentSample": 0
+    },
+    "stackArtifactRetained": false,
+    "limit": "No matching direct Git child was found after parent sampling; this does not prove absence at the original deadline."
+  }
+}

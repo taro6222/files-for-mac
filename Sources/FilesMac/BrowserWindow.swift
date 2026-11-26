@@ -1896,13 +1896,20 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
     @objc func createArchive(_ sender: Any?) {
         let sources = activeSelectedItems.map(\.url)
         guard !sources.isEmpty, !activeModel.isLoading, !ArchiveCreationWindow.isRunning, let parent = activeModel.location, let window else { return }
-        let panel = NSSavePanel(); panel.allowedContentTypes = [.zip, UTType(filenameExtension: "7z")!]; panel.canCreateDirectories = true; panel.isExtensionHidden = false
-        panel.nameFieldStringValue = sources.count == 1 ? sources[0].deletingPathExtension().lastPathComponent + ".zip" : L("압축 파일.zip", "Archive.zip")
-        panel.directoryURL = parent; panel.prompt = L("압축", "Compress")
+        let panel = Self.archiveSavePanel(sources: sources, parent: parent)
         panel.beginSheetModal(for: window) { [weak self] response in
             guard response == .OK, let destination = panel.url, let self else { return }
             ArchiveCreationWindow.start(sources: sources, destination: destination) { self.refreshActivePane() }
         }
+    }
+    private static func archiveSavePanel(sources: [URL], parent: URL) -> NSSavePanel {
+        let panel = NSSavePanel()
+        panel.allowedContentTypes = [.zip, UTType(filenameExtension: "7z")!]
+        panel.canCreateDirectories = true; panel.isExtensionHidden = false
+        let base = sources.count == 1 ? sources[0].lastPathComponent : parent.lastPathComponent
+        panel.nameFieldStringValue = (base.isEmpty || base == "/" ? L("압축 파일", "Archive") : base) + ".zip"
+        panel.directoryURL = parent; panel.prompt = L("압축", "Compress")
+        return panel
     }
     private var selectedArchiveURLs: [URL] {
         let urls = activeSelectedItems.map(\.url)
@@ -5552,6 +5559,18 @@ extension BrowserWindow {
                 controller.archiveWindow?.close(); window.makeKeyAndOrderFront(nil)
             }
             checks["sevenZipAndRarExtraction"] = extraFormatsPassed
+            let archiveParent = destination.appendingPathComponent("archive-default-parent.v1", isDirectory: true)
+            try fm.createDirectory(at: archiveParent, withIntermediateDirectories: true)
+            let names = [("preview.txt", "preview.txt.zip"), ("한글.메모.txt", "한글.메모.txt.zip"),
+                         ("Folder.v1", "Folder.v1.zip"), ("archive.zip", "archive.zip.zip"), ("bundle.tar.gz", "bundle.tar.gz.zip")]
+            checks["archiveDefaultNamePreservesSingleItem"] = names.allSatisfy { name, expected in
+                Self.archiveSavePanel(sources: [archiveParent.appendingPathComponent(name)], parent: archiveParent).nameFieldStringValue == expected
+            }
+            let archiveSources = [archiveParent.appendingPathComponent("a.txt"), archiveParent.appendingPathComponent("b.txt")]
+            checks["archiveDefaultNameUsesParentForMultipleItems"] = Self.archiveSavePanel(sources: archiveSources,
+                parent: archiveParent).nameFieldStringValue == "archive-default-parent.v1.zip"
+            checks["archiveDefaultNameRootFallback"] = Self.archiveSavePanel(sources: archiveSources,
+                parent: URL(fileURLWithPath: "/", isDirectory: true)).nameFieldStringValue == L("압축 파일.zip", "Archive.zip")
             let createdArchive = destination.appendingPathComponent("created-by-ui.zip")
             try? fm.removeItem(at: createdArchive)
             ArchiveCreationWindow.start(sources: [fixture.appendingPathComponent("00000-한글-é-📁-long-file-name.txt")], destination: createdArchive) {}
