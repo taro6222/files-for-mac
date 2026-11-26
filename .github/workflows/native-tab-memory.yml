@@ -1,0 +1,55 @@
+name: Native AppKit tab memory diagnostic
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    name: Native AppKit (${{ matrix.architecture }})
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-15
+            architecture: arm64
+          - runner: macos-15-intel
+            architecture: x86_64
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.3.app/Contents/Developer
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - name: Compile standalone AppKit probe
+        env:
+          EXPECTED_ARCH: ${{ matrix.architecture }}
+        run: |
+          test "$(uname -m)" = "$EXPECTED_ARCH"
+          mkdir -p build/native-tab-memory
+          xcrun swiftc -O -parse-as-library -target "$EXPECTED_ARCH-apple-macosx14.0" \
+            -module-cache-path "$PWD/build/native-tab-memory/ModuleCache" \
+            scripts/diagnostics/NativeTabMemoryProbe.swift -o build/native-tab-memory/NativeTabProbe
+          xcrun swiftc --version > build/native-tab-memory/build-info.txt
+          xcrun vtool -show-build build/native-tab-memory/NativeTabProbe >> build/native-tab-memory/build-info.txt
+          shasum -a 256 build/native-tab-memory/NativeTabProbe scripts/diagnostics/NativeTabMemoryProbe.swift \
+            scripts/diagnostics/verify-native-tab-memory.py >> build/native-tab-memory/build-info.txt
+          git rev-parse HEAD >> build/native-tab-memory/build-info.txt
+      - name: Measure windows and tabs at five, forty and four hundred cycles
+        run: |
+          python3 scripts/diagnostics/verify-native-tab-memory.py \
+            --binary build/native-tab-memory/NativeTabProbe --output build/native-tab-memory/results
+      - name: Retain diagnostics even when incomplete
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: native-tab-memory-${{ matrix.architecture }}
+          path: |
+            build/native-tab-memory/results
+            build/native-tab-memory/NativeTabProbe
+            build/native-tab-memory/build-info.txt
+          if-no-files-found: warn
