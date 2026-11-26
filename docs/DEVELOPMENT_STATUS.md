@@ -15,12 +15,14 @@ M7 출시 검증이 진행 중이다. [유니버설 개발 프리뷰](verificati
 | 설치·업데이트 | 유니버설 프리뷰의 Sonoma 14.8.7 설치·교체·복원, 두 언어의 실제 업데이트 메뉴 조회 | 서명·공증된 정식 배포본의 다운로드·최초 실행·버전 교체 |
 | SMB | 파일 시각, 이동·실행 취소, 게시 후 세션 재연결과 기록 중 단절 시 원본 보호·[서버 권한 회수 후 기존 대상 복구](verification/m7/INCREMENT_290.md) | 장기 단절 및 외부 서버 검증 |
 | 원격 전체 AppKit | `81524f8` ARM 네 조합 각각 세션 비교 한 검사 실패·나머지 301개 및 경계 18개 성공. [큰 창 로컬 재현과 보완](verification/m7/INCREMENT_333.md) 참고 | 보완된 세션 검사·최신 소스 두 CPU 전체 수용. 81524f8 Intel은 한국어 밝음 Git 창만 실패했고 초기 조회 단계 진단은 새 소스로 확인 |
-| Xcode 진입점 | `cc0031b`의 Apple Silicon·Intel Xcode 빌드 성공. 초기 Git 진단의 새 원격 수용은 별도 진행 | 정식 서명·배포된 산출물의 수용 검증 |
+| Xcode 진입점 | `55c1bee`의 Apple Silicon·Intel Xcode 빌드 성공. 전체 AppKit·설치 수용은 별도 진행 | 정식 서명·배포된 산출물의 수용 검증 |
 | 장시간 | `5284cb3` 8시간·9,525사이클 종료. 물리 메모리 초기/마지막 60표본 중앙값 52→160MiB로 안정성 미수용. [새 탭 구현의 단기 진단](verification/m7/INCREMENT_330.md)은 컨텍스트 개수 유지 | 최신 소스 8시간 종료 및 물리 메모리 안정성 판정 |
 
 실행별 증거와 정확한 제한은 [설치 프리뷰](verification/m7/INCREMENT_280.md), [SMB 기록 중 단절](verification/m7/INCREMENT_277.md), [서버 권한 회수](verification/m7/INCREMENT_285.md), [Intel UI 진단](verification/m7/INCREMENT_282.md), [Xcode 연결](verification/m7/INCREMENT_284.md), [8시간 시험](verification/m7/INCREMENT_283.md)에 기록했다.
 
 ## 이번 구현 단위
+
+[원격 진단 보존](verification/m7/INCREMENT_335.md)은 세션 비교 JSON·Git 시간 초과 스택의 업로드 누락을 보완했다. YAML 파싱·기대 파일 11개 매칭과 fixture 제외가 통과했다. cc0031b ARM의 네 조합 전체 UI 각각 303개/경계 18개가 실제 보고서에서 통과했으며 상세 비교 JSON은 당시 보존되지 않아 숫자를 추정하지 않는다. 앱 소스는 유지하고 기존 검증을 계속한다. Intel 지연·새 경로 원격 수용·Windows 입력/취소·장시간·정식 출시 게이트는 미완료다.
 
 [Intel 초기 Git 창 진단](verification/m7/INCREMENT_334.md)은 10초 기준을 유지하고 조회 단계·상태·실행 여부와 실패 전 소유 프로세스 스택을 기록한다. 원인 해결로 판정하지 않는다. Windows 압축 창은 실제 표시를 확인했고 창 밖 탭 닫기와 Cancel의 ID 충돌을 대화상자 범위 검사·클릭으로 보완했다. 네 조합 전체 UI 각각 303개/경계 18개·Debug·수집 보호 시험 19개가 통과했다. Intel 재수용·Windows 입력/취소·장시간·실제 입력/지원 환경·정식 서명/공증은 미완료다.
 

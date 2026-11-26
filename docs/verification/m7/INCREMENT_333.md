@@ -24,3 +24,7 @@
 332단계의 [Windows 실행](https://github.com/taro6222/files-for-mac/actions/runs/45753136603)은 원본 빌드·설치·Home/폴더 캡처 뒤 명령 팔레트에서 실패했다. 입력된 검색어는 Create archive였지만 보이는 접근성 항목의 이름은 Create archive with selected item이었다. [실제 실패 화면](windows-archive-command-failure.png)과 실패 뒤 새로 읽힌 트리에서 같은 한 항목을 확인했다. 압축 창까지 도달하지 않았으므로 압축 입력·취소 성공으로 집계하지 않는다. 취소 후 manifest도 수집되지 않았다. [실패 기록과 해시](windows-archive-332-failure.json).
 
 수집은 preview.txt 한 개만 선택하므로 그 실제 명령 이름과 정확히 일치하도록 수정했다. 실패 트리에 활성·표시된 수정 조건의 일치 항목이 한 개임을 확인했고 기존 보호 시험 16개가 통과했다. 수정한 실행에서 압축 창의 입력·오류·취소 상태를 다시 확인해야 한다.
+
+## ARM 원격 재수용
+
+cc0031b ARM의 네 조합 전체 303개·탭 경계 18개가 모두 통과했다. [335단계](INCREMENT_335.md)에 실제 report 해시를 기록한다. 비교 JSON은 당시 업로드 목록에서 빠졌으므로 원격 비율 오차의 숫자는 확인했다고 주장하지 않는다. 전체 workflow·Intel 수용은 별도다.

@@ -1,0 +1,137 @@
+{
+  "sourceBaseSHA": "55c1bee4a9f5fefb3ff473e9f91d000ea85bd00a",
+  "workflowSHA256": "626ca175a1723f1e0b6b4240351ac02a0c7bbea4bfc57eec8a2efc37a68b5543",
+  "yamlParsed": true,
+  "retainedPatterns": [
+    "${{ runner.temp }}/files-ui-verification.*/*/report.json",
+    "${{ runner.temp }}/files-ui-verification.*/*/progress.json",
+    "${{ runner.temp }}/files-ui-verification.*/*/desktop-session-comparison.json",
+    "${{ runner.temp }}/files-ui-verification.*/*/run.log",
+    "${{ runner.temp }}/files-ui-verification.*/*/timeout-sample.txt",
+    "${{ runner.temp }}/files-ui-verification.*/*/git-clone-timeout-*.txt",
+    "${{ runner.temp }}/files-ui-verification.*/*/git-clone-timeout-*.log",
+    "${{ runner.temp }}/files-ui-verification.*/*/git-window-timeout/*",
+    "${{ runner.temp }}/files-ui-verification.*/*/*.png"
+  ],
+  "syntheticMatchedFiles": [
+    "desktop-session-comparison.json",
+    "git-clone-timeout-children.txt",
+    "git-clone-timeout-parent.txt",
+    "git-clone-timeout-sample.log",
+    "git-window-timeout/git-clone-timeout-child-12.log",
+    "git-window-timeout/git-clone-timeout-child-12.txt",
+    "progress.json",
+    "report.json",
+    "run.log",
+    "timeout-sample.txt",
+    "view.png"
+  ],
+  "fixtureFilesExcluded": true,
+  "appSourcesUnchanged": true,
+  "precedingARM": {
+    "sourceSHA": "cc0031b5f4e802cd522449068e7187ec87a1eb9f",
+    "runURL": "https://github.com/taro6222/files-for-mac/actions/runs/45754750492",
+    "reports": {
+      "tabs-en-light": {
+        "checkCount": 18,
+        "failures": [],
+        "reportSHA256": "8c7ea58db35d39197a12b053f583fba009acff534def6be24e64c77900d59e6f",
+        "os": null,
+        "sessionChecks": {}
+      },
+      "en-dark": {
+        "checkCount": 303,
+        "failures": [],
+        "reportSHA256": "80896c177c862922e963b4b786b0ee571f87ba52d1dd4a8d3411827858aaa92e",
+        "os": "Version 15.8.2 (Build 24H232)",
+        "sessionChecks": {
+          "desktopSessionClampsOversizedWindow": true,
+          "desktopSessionRestoresPaneAndHistoryState": true,
+          "desktopSessionRestoresSelectedTabs": true,
+          "desktopSessionRestoresSeparateWindows": true,
+          "desktopSessionUsesVisualOrder": true,
+          "windowGeometryClampsDisconnectedDisplay": true,
+          "windowGeometryRestoresPanelPreferences": true,
+          "windowGeometryRestoresSeparateFrames": true,
+          "windowGeometryTransfersAcrossTabs": true
+        }
+      },
+      "ko-light": {
+        "checkCount": 303,
+        "failures": [],
+        "reportSHA256": "c34419a4bbc73c1c0759038d009f4d6f0c30b7abc1a3aaeedbfb4f55e158d3e8",
+        "os": "Version 15.8.2 (Build 24H232)",
+        "sessionChecks": {
+          "desktopSessionClampsOversizedWindow": true,
+          "desktopSessionRestoresPaneAndHistoryState": true,
+          "desktopSessionRestoresSelectedTabs": true,
+          "desktopSessionRestoresSeparateWindows": true,
+          "desktopSessionUsesVisualOrder": true,
+          "windowGeometryClampsDisconnectedDisplay": true,
+          "windowGeometryRestoresPanelPreferences": true,
+          "windowGeometryRestoresSeparateFrames": true,
+          "windowGeometryTransfersAcrossTabs": true
+        }
+      },
+      "en-light": {
+        "checkCount": 303,
+        "failures": [],
+        "reportSHA256": "da4555ec27630bfa164e9dc393d5c5cda0412c87e80e184d3c18be183f92a807",
+        "os": "Version 15.8.2 (Build 24H232)",
+        "sessionChecks": {
+          "desktopSessionClampsOversizedWindow": true,
+          "desktopSessionRestoresPaneAndHistoryState": true,
+          "desktopSessionRestoresSelectedTabs": true,
+          "desktopSessionRestoresSeparateWindows": true,
+          "desktopSessionUsesVisualOrder": true,
+          "windowGeometryClampsDisconnectedDisplay": true,
+          "windowGeometryRestoresPanelPreferences": true,
+          "windowGeometryRestoresSeparateFrames": true,
+          "windowGeometryTransfersAcrossTabs": true
+        }
+      },
+      "tabs-ko-dark": {
+        "checkCount": 18,
+        "failures": [],
+        "reportSHA256": "d14f0ebb7836c334065287abcc60161673f48e525a3d647fc8d6ea82de87a617",
+        "os": null,
+        "sessionChecks": {}
+      },
+      "tabs-ko-light": {
+        "checkCount": 18,
+        "failures": [],
+        "reportSHA256": "1b569fbfbb07dfa73d081a669fe6cb1161f69877bed214dfbe4ec0d80dfad9b9",
+        "os": null,
+        "sessionChecks": {}
+      },
+      "tabs-en-dark": {
+        "checkCount": 18,
+        "failures": [],
+        "reportSHA256": "4cd5dc149461c75b593e647a0784a7a4efc95a8c5c56558ef4fd9754202c353c",
+        "os": null,
+        "sessionChecks": {}
+      },
+      "ko-dark": {
+        "checkCount": 303,
+        "failures": [],
+        "reportSHA256": "6f6ea210295b00285fb96ba9790fd4c71bd9d81afe9ca75e6e416e2f6d0ccf0c",
+        "os": "Version 15.8.2 (Build 24H232)",
+        "sessionChecks": {
+          "desktopSessionClampsOversizedWindow": true,
+          "desktopSessionRestoresPaneAndHistoryState": true,
+          "desktopSessionRestoresSelectedTabs": true,
+          "desktopSessionRestoresSeparateWindows": true,
+          "desktopSessionUsesVisualOrder": true,
+          "windowGeometryClampsDisconnectedDisplay": true,
+          "windowGeometryRestoresPanelPreferences": true,
+          "windowGeometryRestoresSeparateFrames": true,
+          "windowGeometryTransfersAcrossTabs": true
+        }
+      }
+    },
+    "rawSessionComparisonRetained": false,
+    "limit": "Only ARM full AppKit evidence; this is not the complete workflow or latest-source acceptance."
+  },
+  "releaseComplete": false,
+  "physicalInputAccepted": false
+}

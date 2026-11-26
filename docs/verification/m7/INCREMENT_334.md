@@ -22,3 +22,7 @@ Intel 실패 PNG는 빈 변경 목록, 비활성 작업 버튼과 활성 중단 
 보완 후 [Windows 실행](https://github.com/taro6222/files-for-mac/actions/runs/45754753555)은 압축 창까지 도달했다. 정상 이름·포맷·압축 수준·활성 Create/Cancel을 [실제 화면](windows-archive-dialog-scope-failure.png)에서 확인했지만 검증기가 정상 창을 거부해 종료됐다. 새 접근성 트리에는 압축 창의 Cancel과 창 밖 Close Tab이 모두 CloseButton ID로 표시됐다. 전체 창에서 ID의 유일성을 요구하던 조건이 충돌했다. 입력·오류·취소 수집과 취소 후 manifest 검증은 아직 도달하지 못했다. [실패 해시·경로](windows-archive-dialog-334-failure.json).
 
 대화상자 자체의 표시·제목이 유일한지 먼저 확인하고 그 내부 컨트롤만 검사한다. 실제 취소 클릭도 Create archive 창 내부의 활성 Cancel 버튼으로 제한한다. 같은 ID의 탭 닫기를 선택하지 않는다. 이름 오류 팝업은 WinUI에서 대화상자 밖에 배치될 수 있어 표시된 해당 경고의 확인을 유지한다. 실제 실패 트리에 보완한 조건과 Cancel 선택이 각각 맞는지 확인했다. 창 밖 닫기 ID 충돌, 누락/복수 대화상자, 바깥 오류 팝업 보호를 포함한 로컬 시험은 19개다. 수정 후 실제 Windows 실행 수용은 남아 있다.
+
+## 원격 스택 보존 경로
+
+[335단계](INCREMENT_335.md)에서 중첩 Git 스택과 접두 진단 파일이 기존 CI 업로드 목록에 포함되지 않음을 확인해 보완했다. 현재 55c1bee 실행의 보고서 진단과 후속 실행의 실제 스택 보존 수용을 구분한다.

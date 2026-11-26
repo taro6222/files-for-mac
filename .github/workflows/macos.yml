@@ -188,8 +188,12 @@ jobs:
           path: |
             ${{ runner.temp }}/files-ui-verification.*/*/report.json
             ${{ runner.temp }}/files-ui-verification.*/*/progress.json
+            ${{ runner.temp }}/files-ui-verification.*/*/desktop-session-comparison.json
             ${{ runner.temp }}/files-ui-verification.*/*/run.log
             ${{ runner.temp }}/files-ui-verification.*/*/timeout-sample.txt
+            ${{ runner.temp }}/files-ui-verification.*/*/git-clone-timeout-*.txt
+            ${{ runner.temp }}/files-ui-verification.*/*/git-clone-timeout-*.log
+            ${{ runner.temp }}/files-ui-verification.*/*/git-window-timeout/*
             ${{ runner.temp }}/files-ui-verification.*/*/*.png
           if-no-files-found: ignore
       - name: Remove the owned Spotlight source fixture
