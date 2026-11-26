@@ -1903,7 +1903,7 @@ final class BrowserWindow: NSWindowController, NSTableViewDataSource, NSTableVie
             guard response == .OK, let destination = panel.url, let self else { return }
             let encryptHeader = options?.encryptHeader ?? true
             let password = options?.takePassword()
-            ArchiveCreationWindow.start(sources: sources, destination: destination, compressionLevel: options?.compressionLevel, password: password, encryptHeader: encryptHeader, sevenZipOptions: options?.sevenZipOptions) { self.refreshActivePane() }
+            ArchiveCreationWindow.start(sources: sources, destination: destination, compressionLevel: options?.compressionLevel, password: password, encryptHeader: encryptHeader, sevenZipOptions: options?.sevenZipOptions, splitSize: options?.splitSize ?? .none) { self.refreshActivePane() }
         }
     }
     private static func archiveSavePanel(sources: [URL], parent: URL, preferences: BrowserPreferences? = nil) -> NSSavePanel {
@@ -5756,7 +5756,7 @@ extension BrowserWindow {
             } else {
                 for key in ["archiveEncryptionValidationAndFormatGate", "archivePasswordRevealAndClear", "archiveEncryptedCreation", "archiveEncryptedBrowserWrongPasswordAndRetry", "archiveEncryptedBrowserCancellationAndStop", "archiveEncryptedBatchExtractionAndCancel"] { checks[key] = false }
             }
-            let sevenZipKeys = ["sevenZipEncryptedBrowseAndRetry", "sevenZipEncryptedExtractAndCancel", "sevenZipBatchPlacement", "sevenZipChildCollision", "sevenZipHeaderCancellation", "sevenZipPasswordCapability", "sevenZipEncryptedCreationOptionsAndRoundTrip", "sevenZipAdvancedOptionsAndRestore", "sevenZipAdvancedThreadValidationAndEstimate", "sevenZipSplitBrowseAndExtraction", "sevenZipSplitBatchAndMissingVolume"]
+            let sevenZipKeys = ["sevenZipEncryptedBrowseAndRetry", "sevenZipEncryptedExtractAndCancel", "sevenZipBatchPlacement", "sevenZipChildCollision", "sevenZipHeaderCancellation", "sevenZipPasswordCapability", "sevenZipEncryptedCreationOptionsAndRoundTrip", "sevenZipAdvancedOptionsAndRestore", "sevenZipAdvancedThreadValidationAndEstimate", "sevenZipSplitBrowseAndExtraction", "sevenZipSplitBatchAndMissingVolume", "sevenZipSplitCreationOptionsAndRestore", "sevenZipSplitCreationRoundTrip", "sevenZipSplitHistoryWindow"]
             if let referencePath = ProcessInfo.processInfo.environment["FILES_UI_QA_SEVENZIP_REFERENCE"],
                ProcessInfo.processInfo.environment["FILES_UI_QA_SEVENZIP_BUNDLE"] != nil {
                 let source = destination.appendingPathComponent("sdk-ui-source"), archive = destination.appendingPathComponent("sdk-encrypted.7z")
@@ -5831,7 +5831,7 @@ extension BrowserWindow {
                 let supportStart = ContinuousClock.now
                 while capabilities.qaSevenZipPassword == L("확인 중", "Checking") && supportStart.duration(to: .now) < .seconds(5) { try await Task.sleep(for: .milliseconds(10)) }
                 checks[sevenZipKeys[5]] = capabilities.qaSevenZipPassword == L("생성·추출", "Create/extract")
-                let splitCapability = capabilities.qaSevenZipSplit == L("탐색·추출", "Browse/extract")
+                let splitCapability = capabilities.qaSevenZipSplit == L("생성·탐색·추출", "Create/browse/extract")
                 capabilities.close()
                 let createdArchive = destination.appendingPathComponent("sdk-created-by-ui.7z")
                 let advancedSuite = "FilesUI.ArchiveAdvanced.\(UUID())"
@@ -5935,6 +5935,45 @@ extension BrowserWindow {
                 while incomplete.qaIsRunning && incompleteStart.duration(to: .now) < .seconds(10) { try await Task.sleep(for: .milliseconds(10)) }
                 checks[sevenZipKeys[10]] = splitBatch && !incomplete.qaIsRunning && incomplete.qaEntryCount == 0 && incomplete.qaMessage.contains("002")
                 incomplete.close(); try fm.moveItem(at: heldSecond, to: splitSecond)
+                let splitPanel = Self.archiveSavePanel(sources: [source], parent: destination, preferences: advancedPreferences)
+                if let options = splitPanel.accessoryView as? ArchiveSaveOptionsView {
+                    options.formatButton.selectItem(at: 1); NSApp.sendAction(options.formatButton.action!, to: options.formatButton.target, from: options.formatButton)
+                    options.split.button.selectItem(withTag: 10); NSApp.sendAction(options.split.button.action!, to: options.split.button.target, from: options.split.button)
+                    let savedSplit = BrowserPreferences(defaults: advancedDefaults).archiveSplitSize == .mib10
+                    options.formatButton.selectItem(at: 0); NSApp.sendAction(options.formatButton.action!, to: options.formatButton.target, from: options.formatButton)
+                    let disabledForZIP = options.splitSize == .none && !options.split.button.isEnabled
+                    options.formatButton.selectItem(at: 1); NSApp.sendAction(options.formatButton.action!, to: options.formatButton.target, from: options.formatButton)
+                    checks[sevenZipKeys[11]] = options.split.button.numberOfItems == 12 && options.splitSize == .mib10 && savedSplit && disabledForZIP
+                    let splitSource = destination.appendingPathComponent("sdk-split-ui.bin"), splitTarget = destination.appendingPathComponent("sdk-split-created-ui.7z")
+                    let splitData = Data(repeating: 0x63, count: 10 * 1_048_576 + 65536), splitJournals = destination.appendingPathComponent("sdk-split-ui-journals")
+                    try splitData.write(to: splitSource)
+                    ArchiveCreationWindow.start(sources: [splitSource], destination: splitTarget, compressionLevel: .store, splitSize: options.splitSize, journalDirectory: splitJournals) {}
+                    if let operation = ArchiveCreationWindow.qaLatest {
+                        let started = ContinuousClock.now
+                        while operation.qaRunning && started.duration(to: .now) < .seconds(20) { try await Task.sleep(for: .milliseconds(10)) }
+                        let firstPart = URL(fileURLWithPath: splitTarget.path + ".001"), lastPart = URL(fileURLWithPath: splitTarget.path + ".002")
+                        var roundTrip = operation.qaSucceeded && !fm.fileExists(atPath: splitTarget.path) && (try? firstPart.resourceValues(forKeys: [.fileSizeKey]).fileSize) == 10 * 1_048_576
+                        if roundTrip, case .sevenZip(let provider) = try await ArchiveReadBackend.resolve(for: lastPart) {
+                            let restored = destination.appendingPathComponent("sdk-split-created-restored")
+                            _ = try await provider.extractToNewDirectory(lastPart, at: restored)
+                            roundTrip = (try? Data(contentsOf: restored.appendingPathComponent(splitSource.lastPathComponent))) == splitData
+                        } else { roundTrip = false }
+                        checks[sevenZipKeys[12]] = roundTrip; operation.close()
+                        ArchiveSplitRecoveryWindow.present(journalDirectory: splitJournals)
+                        if let history = ArchiveSplitRecoveryWindow.qaLatest {
+                            let start = ContinuousClock.now
+                            while history.qaBusy && start.duration(to: .now) < .seconds(5) { try await Task.sleep(for: .milliseconds(10)) }
+                            history.qaSelect(0)
+                            let shown = history.qaRecords.first?.destination
+                            let expectedParentID = try splitTarget.deletingLastPathComponent().resourceValues(forKeys: [.fileResourceIdentifierKey]).fileResourceIdentifier as? NSObject
+                            let shownParentID = try shown?.deletingLastPathComponent().resourceValues(forKeys: [.fileResourceIdentifierKey]).fileResourceIdentifier as? NSObject
+                            let correctDestination = shown?.lastPathComponent == splitTarget.lastPathComponent && expectedParentID != nil && shownParentID == expectedParentID
+                            checks[sevenZipKeys[13]] = !history.qaBusy && history.qaRecords.count == 1 && history.qaRecords.first?.phase == "committed" && correctDestination && !history.qaRecoveryEnabled
+                            history.close()
+                        } else { checks[sevenZipKeys[13]] = false }
+                    } else { checks[sevenZipKeys[12]] = false; checks[sevenZipKeys[13]] = false }
+                    options.clearPassword()
+                } else { for index in 11...13 { checks[sevenZipKeys[index]] = false } }
                 window.makeKeyAndOrderFront(nil)
             } else { for key in sevenZipKeys { checks[key] = false } }
             try await Task.sleep(for: .milliseconds(300))

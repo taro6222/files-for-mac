@@ -14,6 +14,14 @@ func archiveExtractionErrorMessage(_ error: Error, encrypted: Bool) -> String {
 
 func archiveErrorMessage(_ error: Error) -> String {
     switch error {
+    case SevenZipSplitError.busy:
+        return L("이 분할 작업은 실행 중이거나 다른 창에서 복구 중입니다.", "This split operation is running or being recovered elsewhere.")
+    case SevenZipSplitError.invalidJournal:
+        return L("복구 기록이나 출력 위치를 확인할 수 없습니다. 파일은 보존했습니다. 볼륨 연결과 기록 위치를 확인하세요.", "The recovery record or output location could not be verified. Files were preserved. Check the volume connection and journal location.")
+    case SevenZipSplitError.invalidVolumeSize:
+        return L("분할 크기가 올바르지 않습니다.", "The split size is invalid.")
+    case let SevenZipSplitError.recoveryRequired(journal, staging, _):
+        return L("분할 생성 상태를 확인해야 합니다. 파일을 보존했습니다. 분할 압축 생성 복구에서 확인하세요.", "Split creation needs review. Files were preserved. Open Split Archive Creation Recovery.") + "\n" + staging.path + "\n" + journal.path
     case let SevenZipVolumeError.missingPart(number):
         return L("분할 압축 파일의 \(String(format: "%03d", number))번 볼륨이 없습니다. 모든 볼륨을 같은 폴더에 모은 뒤 다시 여세요.", "Archive volume \(String(format: "%03d", number)) is missing. Put all volumes in the same folder and reopen the archive.")
     case let SevenZipVolumeError.invalidPart(url):

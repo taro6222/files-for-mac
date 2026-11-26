@@ -884,3 +884,68 @@ private func splitWire(_ type: UInt8, _ offset: UInt64, _ data: Data = Data(), c
     }
     #expect(try String(contentsOf: occupied, encoding: .utf8) == "existing last volume")
 }
+
+@Test @MainActor func sevenZipSplitPreferencesPersistAndImportTransactionally() throws {
+    let suite = "FilesCore.SplitPreferences.\(UUID())", defaults = try #require(UserDefaults(suiteName: suite))
+    defer { defaults.removePersistentDomain(forName: suite) }
+    let preferences = BrowserPreferences(defaults: defaults, initialFavorites: [])
+    #expect(preferences.archiveSplitSize == .none)
+    for size in ArchiveSplitSize.allCases {
+        preferences.setArchiveSplitSize(size)
+        #expect(BrowserPreferences(defaults: defaults).archiveSplitSize == size)
+    }
+    #expect(preferences.archiveSplitSize.volumeBytes == SevenZipVolumes.maximumSplitVolumeBytes)
+    let data = try preferences.exportData()
+    preferences.setArchiveSplitSize(.none); preferences.setArchiveCreationFormat(.zip)
+    try preferences.importData(data)
+    #expect(preferences.archiveSplitSize == .bluray23040)
+    let before = try preferences.exportData()
+    var document = try #require(JSONSerialization.jsonObject(with: before) as? [String: Any])
+    for invalid in [-1, 1, 999, 23041] {
+        document["archiveSplitSizeMiB"] = invalid; document["archiveCreationFormat"] = "7z"
+        #expect(throws: BrowserPreferencesArchiveError.invalidValue) { try preferences.importData(JSONSerialization.data(withJSONObject: document)) }
+        #expect(try preferences.exportData() == before)
+    }
+    document.removeValue(forKey: "archiveSplitSizeMiB")
+    try preferences.importData(JSONSerialization.data(withJSONObject: document))
+    #expect(preferences.archiveSplitSize == .none)
+    defaults.set(123, forKey: "archiveSplitSizeMiB")
+    #expect(BrowserPreferences(defaults: defaults).archiveSplitSize == .none)
+}
+
+@Test func sevenZipSplitHistoryPreservesInvalidAndOfflineRecords() async throws {
+    let root = try sdkRoot(); defer { try? FileManager.default.removeItem(at: root) }
+    let directory = root.appendingPathComponent("journals"), registry = directory.appendingPathComponent("archive-splits")
+    let empty = try await SevenZipArchiveProvider.splitCreationHistory(journalDirectory: directory)
+    #expect(empty.isEmpty && !FileManager.default.fileExists(atPath: directory.path))
+    let parent = root.appendingPathComponent("output"), offline = root.appendingPathComponent("disconnected")
+    try FileManager.default.createDirectory(at: parent, withIntermediateDirectories: false)
+    let canonicalParent = try sevenZipCanonicalDirectory(parent)
+    var stage: SevenZipSplitStaging? = try SevenZipSplitStaging(destination: parent.appendingPathComponent("history.7z"), volumeBytes: 65536, journalDirectory: directory)
+    let fixture = try Data(contentsOf: Bundle.module.resourceURL!.appendingPathComponent("Fixtures/libarchive-empty.7z"))
+    try stage!.consume(splitWire(0, 0, fixture) + splitWire(2, UInt64(fixture.count)), check: {})
+    try stage!.prepare(check: {})
+    let journal = stage!.journalURL
+    let first = try await SevenZipArchiveProvider.splitCreationHistory(journalDirectory: directory)
+    #expect(first.count == 1 && first[0].canAttemptRecovery && first[0].phase == "prepared")
+    await #expect(throws: SevenZipSplitError.busy) { try await SevenZipArchiveProvider.recoverSplitCreation(journal: journal, journalDirectory: directory) }
+    try FileManager.default.moveItem(at: parent, to: offline)
+    let detached = try await SevenZipArchiveProvider.splitCreationHistory(journalDirectory: directory)
+    #expect(detached.first?.destination == canonicalParent.appendingPathComponent("history.7z"))
+    await #expect(throws: SevenZipSplitError.invalidJournal) { try await SevenZipArchiveProvider.recoverSplitCreation(journal: journal, journalDirectory: directory) }
+    #expect(FileManager.default.fileExists(atPath: offline.path))
+    try FileManager.default.moveItem(at: offline, to: parent)
+    #expect(stage?.journalURL == journal)
+    stage = nil
+    _ = try await SevenZipArchiveProvider.recoverSplitCreation(journal: journal, journalDirectory: directory)
+    let completed = try await SevenZipArchiveProvider.splitCreationHistory(journalDirectory: directory)
+    #expect(completed.first?.phase == "rolledBack" && completed.first?.isUnfinished == false && completed.first?.canAttemptRecovery == false)
+    let foreign = root.appendingPathComponent("foreign.txt"), corrupt = registry.appendingPathComponent(UUID().uuidString + ".json"), linked = registry.appendingPathComponent(UUID().uuidString + ".json")
+    let secret = Data("preserve external content".utf8); try secret.write(to: foreign)
+    try Data("{}".utf8).write(to: corrupt); try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: corrupt.path)
+    try FileManager.default.createSymbolicLink(at: linked, withDestinationURL: foreign)
+    let unsafe = try await SevenZipArchiveProvider.splitCreationHistory(journalDirectory: directory)
+    #expect(unsafe.count == 3 && unsafe.filter { $0.phase == "unreadable" && $0.isUnfinished && !$0.canAttemptRecovery && $0.destination == nil }.count == 2)
+    #expect(try Data(contentsOf: foreign) == secret)
+    #expect(try Data(contentsOf: corrupt) == Data("{}".utf8))
+}

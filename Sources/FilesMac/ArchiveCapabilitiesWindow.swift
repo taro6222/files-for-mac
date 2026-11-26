@@ -38,7 +38,7 @@ final class ArchiveCapabilitiesWindow: NSWindowController {
                 let supported = backend.supportsPassword(for: URL(fileURLWithPath: "/format.7z"))
                 self.sevenZipPassword.stringValue = supported ? L("생성·추출", "Create/extract") : L("미지원", "No")
                 self.sevenZipPassword.textColor = supported ? .systemGreen : .secondaryLabelColor
-                self.sevenZipSplit.stringValue = supported ? L("탐색·추출", "Browse/extract") : L("미지원", "No")
+                self.sevenZipSplit.stringValue = supported ? L("생성·탐색·추출", "Create/browse/extract") : L("미지원", "No")
                 self.sevenZipSplit.textColor = supported ? .systemGreen : .secondaryLabelColor
             } catch { guard let self, !Task.isCancelled else { return }; self.sevenZipPassword.stringValue = L("확인 실패", "Unavailable"); self.sevenZipPassword.textColor = .secondaryLabelColor; self.sevenZipSplit.stringValue = L("확인 실패", "Unavailable"); self.sevenZipSplit.textColor = .secondaryLabelColor }
         }

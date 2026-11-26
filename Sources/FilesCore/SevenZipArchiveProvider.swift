@@ -104,6 +104,16 @@ public struct SevenZipArchiveProvider: Sendable {
             }
         }
     }
+    public static func splitCreationHistory(journalDirectory: URL) async throws -> [SevenZipSplitJournalSummary] {
+        let control = SevenZipProcessControl()
+        return try await withTaskCancellationHandler(operation: {
+            try await withCheckedThrowingContinuation { continuation in
+                DispatchQueue.global(qos: .utility).async {
+                    continuation.resume(with: Result { try SevenZipSplitStaging.history(directory: journalDirectory, check: control.check) })
+                }
+            }
+        }, onCancel: { control.cancel() })
+    }
     public static func recoverSplitCreation(journal: URL, journalDirectory: URL) async throws -> SevenZipSplitRecoveryOutcome {
         let control = SevenZipProcessControl()
         return try await withTaskCancellationHandler(operation: {

@@ -10,6 +10,7 @@ import signal
 import subprocess
 
 TESTS = [
+    'sevenZipSplitPreferencesPersistAndImportTransactionally', 'sevenZipSplitHistoryPreservesInvalidAndOfflineRecords',
     'sevenZipSplitFrameValidationAndForeignStagingPreservation',
     'sevenZipSDKSplitCreationAndCommittedJournal', 'sevenZipSDKSplitConflictsChangesAndCancellationPreserveData',
     'sevenZipSDKSplitProcessRestartRecoveryAndAmbiguousIntent',
@@ -74,7 +75,7 @@ def main():
     observed = {name: bool(re.search(r'Test ' + re.escape(name) + r'\(\) passed after', text)) for name in requested_tests}
     passed = process.returncode == 0 and not timed_out and all(observed.values()) and 'skipped' not in text.lower()
     repo = Path(__file__).resolve().parent.parent
-    sources = ['Sources/FilesCore/SevenZipSplitStaging.swift', 'Tools/SplitCreationProbe/main.swift', 'Package.swift', 'Sources/FilesCore/SevenZipVolumes.swift', 'Sources/FilesCore/SevenZipCompressionOptions.swift', 'Sources/FilesCore/BrowserPreferences.swift', 'Sources/FilesCore/SevenZipCreationPlan.swift', 'Sources/FilesCore/SevenZipArchiveProvider.swift', 'Sources/FilesCore/SevenZipBundledBackend.swift',
+    sources = ['Sources/FilesCore/ArchiveSplitSize.swift', 'Sources/FilesCore/SevenZipSplitJournalSummary.swift', 'Sources/FilesCore/SevenZipSplitStaging.swift', 'Tools/SplitCreationProbe/main.swift', 'Package.swift', 'Sources/FilesCore/SevenZipVolumes.swift', 'Sources/FilesCore/SevenZipCompressionOptions.swift', 'Sources/FilesCore/BrowserPreferences.swift', 'Sources/FilesCore/SevenZipCreationPlan.swift', 'Sources/FilesCore/SevenZipArchiveProvider.swift', 'Sources/FilesCore/SevenZipBundledBackend.swift',
                'Tests/FilesCoreTests/SevenZipArchiveProviderTests.swift', 'Tests/FilesCoreTests/SevenZipBundledBackendTests.swift']
     result = dict(passed=passed, exitCode=process.returncode, timedOut=timed_out, tests=observed,
                   sourcesSHA256={name: hashlib.sha256((repo / name).read_bytes()).hexdigest() for name in sources},

@@ -70,6 +70,7 @@ public struct BrowserPreferencesArchive: Codable, Equatable, Sendable {
     public let showCompressionOptions: Bool?
     public let archiveCompressionLevel: Int?
     public let archiveCreationFormat: String?
+    public let archiveSplitSizeMiB: Int?
     public let archiveSevenZipOptions: SevenZipCompressionOptions?
     public let showFlattenOptions: Bool?
     public let showOpenTerminal: Bool?
@@ -172,6 +173,7 @@ public final class BrowserPreferences {
     public private(set) var showCompressionOptions: Bool
     public private(set) var archiveCompressionLevel: ArchiveCompressionLevel
     public private(set) var archiveCreationFormat: ArchiveFormat
+    public private(set) var archiveSplitSize: ArchiveSplitSize
     public private(set) var archiveSevenZipOptions: SevenZipCompressionOptions
     public private(set) var showFlattenOptions: Bool
     public private(set) var showOpenTerminal: Bool
@@ -271,6 +273,7 @@ public final class BrowserPreferences {
         archiveCompressionLevel = (defaults.object(forKey: "archiveCompressionLevel") as? Int).flatMap(ArchiveCompressionLevel.init(rawValue:)) ?? .normal
         let savedFormat = defaults.string(forKey: "archiveCreationFormat").flatMap(ArchiveFormat.init(rawValue:))
         archiveCreationFormat = savedFormat == .sevenZip ? .sevenZip : .zip
+        archiveSplitSize = ArchiveSplitSize(rawValue: defaults.integer(forKey: "archiveSplitSizeMiB")) ?? .none
         if let data = defaults.data(forKey: "archiveSevenZipOptions"), let options = try? JSONDecoder().decode(SevenZipCompressionOptions.self, from: data), options.isValid {
             archiveSevenZipOptions = options
         } else { archiveSevenZipOptions = .init(threadCount: SevenZipCompressionOptions.hostThreadCount) }
@@ -479,6 +482,10 @@ public final class BrowserPreferences {
     public func setArchiveCreationFormat(_ value: ArchiveFormat) {
         guard value != .rar, archiveCreationFormat != value else { return }
         archiveCreationFormat = value; defaults.set(value.rawValue, forKey: "archiveCreationFormat"); changed()
+    }
+    public func setArchiveSplitSize(_ value: ArchiveSplitSize) {
+        guard archiveSplitSize != value else { return }
+        archiveSplitSize = value; defaults.set(value.rawValue, forKey: "archiveSplitSizeMiB"); changed()
     }
     public func setArchiveSevenZipOptions(_ value: SevenZipCompressionOptions) {
         guard value.isValid, archiveSevenZipOptions != value else { return }
@@ -704,7 +711,7 @@ public final class BrowserPreferences {
             showGitCommitSHAColumn: showGitCommitSHAColumn,
             showSyncStatusColumn: showSyncStatusColumn,
             showFileTagColumn: showFileTagColumn, showPathColumn: showPathColumn,
-            showCompressionOptions: showCompressionOptions, archiveCompressionLevel: archiveCompressionLevel.rawValue, archiveCreationFormat: archiveCreationFormat.rawValue, archiveSevenZipOptions: archiveSevenZipOptions, showFlattenOptions: showFlattenOptions,
+            showCompressionOptions: showCompressionOptions, archiveCompressionLevel: archiveCompressionLevel.rawValue, archiveCreationFormat: archiveCreationFormat.rawValue, archiveSplitSizeMiB: archiveSplitSize.rawValue, archiveSevenZipOptions: archiveSevenZipOptions, showFlattenOptions: showFlattenOptions,
             showOpenTerminal: showOpenTerminal, showCreateFolderWithSelection: showCreateFolderWithSelection,
             showPinToSidebar: showPinToSidebar,
             showSendToMenu: showSendToMenu,
@@ -756,6 +763,7 @@ public final class BrowserPreferences {
             throw BrowserPreferencesArchiveError.invalidValue
         }
         let importedFormat = archive.archiveCreationFormat.flatMap(ArchiveFormat.init(rawValue:)) ?? (archive.archiveCreationFormat == nil ? .zip : nil)
+        guard let importedSplitSize = ArchiveSplitSize(rawValue: archive.archiveSplitSizeMiB ?? 0) else { throw BrowserPreferencesArchiveError.invalidValue }
         let importedSevenZip = archive.archiveSevenZipOptions ?? .init(threadCount: SevenZipCompressionOptions.hostThreadCount)
         guard let importedFormat, importedFormat != .rar, importedSevenZip.isValid else { throw BrowserPreferencesArchiveError.invalidValue }
         guard let size = BrowserViewSize(rawValue: archive.viewSize), let importedAppearance = BrowserAppearance(rawValue: archive.appearance) else { throw BrowserPreferencesArchiveError.invalidValue }
@@ -807,7 +815,7 @@ public final class BrowserPreferences {
         showFileTagColumn = archive.showFileTagColumn ?? true; showPathColumn = archive.showPathColumn ?? false
         showCompressionOptions = archive.showCompressionOptions ?? true; showOpenTerminal = archive.showOpenTerminal ?? true
         archiveCompressionLevel = importedArchiveLevel
-        archiveCreationFormat = importedFormat; archiveSevenZipOptions = importedSevenZip
+        archiveCreationFormat = importedFormat; archiveSevenZipOptions = importedSevenZip; archiveSplitSize = importedSplitSize
         showFlattenOptions = archive.showFlattenOptions ?? false
         showCreateFolderWithSelection = archive.showCreateFolderWithSelection ?? true
         showPinToSidebar = archive.showPinToSidebar ?? true
@@ -869,6 +877,7 @@ public final class BrowserPreferences {
         defaults.set(showCompressionOptions, forKey: "showCompressionOptions"); defaults.set(showOpenTerminal, forKey: "showOpenTerminal")
         defaults.set(archiveCompressionLevel.rawValue, forKey: "archiveCompressionLevel")
         defaults.set(archiveCreationFormat.rawValue, forKey: "archiveCreationFormat")
+        defaults.set(archiveSplitSize.rawValue, forKey: "archiveSplitSizeMiB")
         defaults.set(try? JSONEncoder().encode(archiveSevenZipOptions), forKey: "archiveSevenZipOptions")
         defaults.set(showFlattenOptions, forKey: "showFlattenOptions")
         defaults.set(showCreateFolderWithSelection, forKey: "showCreateFolderWithSelection")

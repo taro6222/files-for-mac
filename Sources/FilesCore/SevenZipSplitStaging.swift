@@ -98,6 +98,21 @@ final class SevenZipSplitStaging: @unchecked Sendable {
         var parentFD: Int32 = -1, rootFD: Int32 = -1, lockFD: Int32 = -1, adopted = false
         defer { if !adopted { for fd in [lockFD, rootFD, parentFD, registryFD] where fd >= 0 { Darwin.close(fd) } } }
         let (bytes, proof) = try Self.readFile(registryFD, name: journal.lastPathComponent, maximum: 4_194_304)
+        let saved = try Self.decodeRecord(bytes, id: id)
+        parentFD = open(saved.parent.path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
+        guard parentFD >= 0, saved.parentProof.identity(try Self.statFD(parentFD)) else { throw SevenZipSplitError.invalidJournal }
+        rootFD = openat(parentFD, saved.staging.lastPathComponent, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
+        if rootFD >= 0 {
+            let heldRoot = try Self.statFD(rootFD)
+            guard saved.rootProof.identity(heldRoot), heldRoot.mode == saved.rootProof.mode, heldRoot.uid == geteuid(), heldRoot.gid == saved.rootProof.gid else { throw SevenZipSplitError.invalidJournal }
+            lockFD = openat(rootFD, "lock", O_RDWR | O_NOFOLLOW | O_NONBLOCK | O_CLOEXEC)
+            guard lockFD >= 0, saved.lockProof == (try Self.statFD(lockFD)) else { throw SevenZipSplitError.invalidJournal }
+            guard flock(lockFD, LOCK_EX | LOCK_NB) == 0 else { throw SevenZipSplitError.busy }
+        } else if !(saved.stagingRemoved && ["committed", "rolledBack"].contains(saved.state) && errno == ENOENT) { throw SevenZipSplitError.invalidJournal }
+        self.parentFD = parentFD; self.rootFD = rootFD; self.lockFD = lockFD; self.registryFD = registryFD
+        staging = saved.staging; journalURL = journal; record = saved; journalDisk = bytes; journalProof = proof; adopted = true
+    }
+    private static func decodeRecord(_ bytes: Data, id: UUID) throws -> Journal {
         let envelope = try JSONDecoder().decode(Envelope.self, from: bytes)
         guard envelope.checksum == Self.digest(envelope.payload) else { throw SevenZipSplitError.invalidJournal }
         let saved = try JSONDecoder().decode(Journal.self, from: envelope.payload)
@@ -115,23 +130,42 @@ final class SevenZipSplitStaging: @unchecked Sendable {
         if saved.state == "committed" { guard saved.intent == nil, saved.parts.allSatisfy(\.moved) else { throw SevenZipSplitError.invalidJournal } }
         var savedBytes: Int64 = 0
         for (index, part) in saved.parts.enumerated() {
-            guard part.proof.size >= 0, part.proof.size <= Int64(Self.ceiling) - savedBytes else { throw SevenZipSplitError.invalidJournal }
+            guard part.proof.size >= 0, part.proof.size <= Int64(ceiling) - savedBytes else { throw SevenZipSplitError.invalidJournal }
             savedBytes += part.proof.size
             guard part.name == Self.partName(saved.base, index), part.proof.size >= 0, part.proof.size <= saved.volumeBytes,
                   part.proof.mode & UInt32(S_IFMT) == UInt32(S_IFREG), part.proof.uid == geteuid(), part.proof.mode & 0o077 == 0 else { throw SevenZipSplitError.invalidJournal }
         }
-        parentFD = open(saved.parent.path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
-        guard parentFD >= 0, saved.parentProof.identity(try Self.statFD(parentFD)) else { throw SevenZipSplitError.invalidJournal }
-        rootFD = openat(parentFD, saved.staging.lastPathComponent, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
-        if rootFD >= 0 {
-            let heldRoot = try Self.statFD(rootFD)
-            guard saved.rootProof.identity(heldRoot), heldRoot.mode == saved.rootProof.mode, heldRoot.uid == geteuid(), heldRoot.gid == saved.rootProof.gid else { throw SevenZipSplitError.invalidJournal }
-            lockFD = openat(rootFD, "lock", O_RDWR | O_NOFOLLOW | O_NONBLOCK | O_CLOEXEC)
-            guard lockFD >= 0, saved.lockProof == (try Self.statFD(lockFD)) else { throw SevenZipSplitError.invalidJournal }
-            guard flock(lockFD, LOCK_EX | LOCK_NB) == 0 else { throw SevenZipSplitError.busy }
-        } else if !(saved.stagingRemoved && ["committed", "rolledBack"].contains(saved.state) && errno == ENOENT) { throw SevenZipSplitError.invalidJournal }
-        self.parentFD = parentFD; self.rootFD = rootFD; self.lockFD = lockFD; self.registryFD = registryFD
-        staging = saved.staging; journalURL = journal; record = saved; journalDisk = bytes; journalProof = proof; adopted = true
+        return saved
+    }
+
+    static func history(directory: URL, check: () throws -> Void) throws -> [SevenZipSplitJournalSummary] {
+        let proposed = directory.appendingPathComponent("archive-splits", isDirectory: true)
+        var info = stat()
+        if lstat(proposed.path, &info) != 0 && errno == ENOENT { return [] }
+        let registry = try Self.registry(in: directory)
+        let fd = open(registry.path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
+        guard fd >= 0 else { throw SevenZipSplitError.invalidJournal }
+        defer { Darwin.close(fd) }
+        var result: [SevenZipSplitJournalSummary] = []
+        for name in try FileManager.default.contentsOfDirectory(atPath: registry.path).sorted() {
+            try check()
+            guard (name as NSString).pathExtension == "json" else { continue }
+            let url = registry.appendingPathComponent(name)
+            do {
+                guard let id = UUID(uuidString: url.deletingPathExtension().lastPathComponent) else { throw SevenZipSplitError.invalidJournal }
+                let (bytes, proof) = try readFile(fd, name: name, maximum: 4_194_304)
+                let saved = try decodeRecord(bytes, id: id)
+                result.append(SevenZipSplitJournalSummary(journal: url, destination: saved.parent.appendingPathComponent(saved.base),
+                    staging: saved.stagingRemoved ? nil : saved.staging, phase: saved.state, ambiguousIntent: saved.intent != nil,
+                    updatedAt: Date(timeIntervalSince1970: Double(proof.modified) + Double(proof.modifiedNanos) / 1_000_000_000)))
+            } catch {
+                result.append(SevenZipSplitJournalSummary(journal: url, destination: nil, staging: nil, phase: "unreadable", ambiguousIntent: true, updatedAt: .distantPast))
+            }
+        }
+        return result.sorted { a, b in
+            if a.isUnfinished != b.isUnfinished { return a.isUnfinished }
+            return a.updatedAt == b.updatedAt ? a.journal.lastPathComponent < b.journal.lastPathComponent : a.updatedAt > b.updatedAt
+        }
     }
     deinit { close() }
     private func close() {

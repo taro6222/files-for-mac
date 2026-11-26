@@ -6,6 +6,8 @@ import UniformTypeIdentifiers
 final class ArchiveSaveOptionsView: NSStackView, NSOpenSavePanelDelegate {
     let formatButton = NSPopUpButton()
     let levelButton = NSPopUpButton()
+    let split: ArchiveSaveSplitOptionsView
+    var splitSize: ArchiveSplitSize { split.effectiveSelection }
     let advanced: ArchiveSevenZipOptionsView
     var sevenZipOptions: SevenZipCompressionOptions? { selectedFormat == .sevenZip && supportsSevenZipEncryption ? advanced.options : nil }
     let encryptionButton = NSButton(checkboxWithTitle: L("암호화", "Encrypt"), target: nil, action: nil)
@@ -29,6 +31,7 @@ final class ArchiveSaveOptionsView: NSStackView, NSOpenSavePanelDelegate {
         self.panel = panel
         self.preferences = preferences
         advanced = ArchiveSevenZipOptionsView(preferences: preferences)
+        split = ArchiveSaveSplitOptionsView(preferences: preferences)
         super.init(frame: NSRect(x: 0, y: 0, width: 400, height: 210))
         orientation = .vertical; alignment = .leading; spacing = 12
         formatButton.addItems(withTitles: ["ZIP (.zip)", "7z (.7z)"])
@@ -50,6 +53,7 @@ final class ArchiveSaveOptionsView: NSStackView, NSOpenSavePanelDelegate {
             let row = NSStackView(views: [label, button]); row.orientation = .horizontal; row.alignment = .centerY; row.spacing = 12
             addArrangedSubview(row)
         }
+        addArrangedSubview(split)
         addArrangedSubview(advanced)
         panel.allowedContentTypes = [.zip]
         panel.allowsOtherFileTypes = false
@@ -61,6 +65,7 @@ final class ArchiveSaveOptionsView: NSStackView, NSOpenSavePanelDelegate {
         panel.delegate = self
         if preferences?.archiveCreationFormat == .sevenZip { formatButton.selectItem(at: 1); changeFormat(formatButton) }
         advanced.update(level: compressionLevel, supported: selectedFormat == .sevenZip && supportsSevenZipEncryption)
+        split.update(supported: selectedFormat == .sevenZip && supportsSevenZipEncryption)
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
 
@@ -113,6 +118,7 @@ final class ArchiveSaveOptionsView: NSStackView, NSOpenSavePanelDelegate {
         panel.allowedContentTypes = [type]
         panel.nameFieldStringValue = name.isEmpty ? "" : name + "." + format.rawValue
         selectedFormat = format
+        split.update(supported: format == .sevenZip && supportsSevenZipEncryption)
         preferences?.setArchiveCreationFormat(format)
         advanced.update(level: compressionLevel, supported: format == .sevenZip && supportsSevenZipEncryption)
         encryptionButton.isEnabled = format == .zip || supportsSevenZipEncryption
@@ -131,13 +137,16 @@ final class ArchiveCreationWindow: NSWindowController, NSWindowDelegate {
     private let progress = NSProgressIndicator()
     private let details = NSTextView()
     private let cancelButton = NSButton()
+    private let recoveryButton = NSButton(title: L("분할 생성 복구…", "Split Creation Recovery…"), target: nil, action: nil)
+    private var recoveryDirectory: URL?
     private var task: Task<Void, Never>?
     private var running = true
     private var succeeded = false
     private var pendingClose = false
 
-    static func start(sources: [URL], destination: URL, compressionLevel: ArchiveCompressionLevel? = nil, password: String? = nil, encryptHeader: Bool = true, sevenZipOptions: SevenZipCompressionOptions? = nil, completion: @escaping @MainActor () -> Void) {
+    static func start(sources: [URL], destination: URL, compressionLevel: ArchiveCompressionLevel? = nil, password: String? = nil, encryptHeader: Bool = true, sevenZipOptions: SevenZipCompressionOptions? = nil, splitSize: ArchiveSplitSize = .none, journalDirectory: URL? = nil, completion: @escaping @MainActor () -> Void) {
         guard !sources.isEmpty, !isRunning else { return }
+        let journalDirectory = journalDirectory ?? ArchiveSplitRecoveryWindow.journalDirectory
         let controller = ArchiveCreationWindow(sources: sources, destination: destination)
         operations.append(controller); controller.showWindow(nil); controller.window?.makeKeyAndOrderFront(nil)
         controller.task = Task { [weak controller] in
@@ -148,9 +157,17 @@ final class ArchiveCreationWindow: NSWindowController, NSWindowDelegate {
                 }
                 switch backend {
                 case .sevenZip(let provider):
-                    _ = try await provider.create(from: sources, at: destination, compressionLevel: compressionLevel ?? .normal,
-                                                  password: password, encryptHeader: encryptHeader, options: sevenZipOptions ?? .init(), progress: update)
+                    if let volumeBytes = splitSize.volumeBytes {
+                        let report = try await provider.createSplit(from: sources, at: destination, volumeBytes: volumeBytes, journalDirectory: journalDirectory,
+                            compressionLevel: compressionLevel ?? .normal, password: password, encryptHeader: encryptHeader, options: sevenZipOptions ?? .init(), progress: update)
+                        controller?.details.string = report.publishedURLs.map(\.path).joined(separator: "\n")
+                        if report.retainedStaging != nil { controller?.showRecovery(journalDirectory) }
+                    } else {
+                        _ = try await provider.create(from: sources, at: destination, compressionLevel: compressionLevel ?? .normal,
+                                                      password: password, encryptHeader: encryptHeader, options: sevenZipOptions ?? .init(), progress: update)
+                    }
                 case .system:
+                    guard splitSize == .none else { throw SevenZipVolumeError.sdkRequired }
                     _ = try await ZipArchiveProvider().create(from: sources, at: destination, compressionLevel: compressionLevel, password: password, progress: update)
                 }
                 guard let controller else { return }
@@ -158,6 +175,7 @@ final class ArchiveCreationWindow: NSWindowController, NSWindowDelegate {
             } catch is CancellationError {
                 controller?.finish(success: false, message: L("생성을 중단했습니다.", "Creation stopped."))
             } catch {
+                if case SevenZipSplitError.recoveryRequired = error { controller?.showRecovery(journalDirectory) }
                 controller?.finish(success: false, message: archiveErrorMessage(error))
             }
         }
@@ -168,6 +186,8 @@ final class ArchiveCreationWindow: NSWindowController, NSWindowDelegate {
         super.init(window: panel); panel.title = L("압축 파일 생성", "Create Archive"); panel.delegate = self; panel.center(); panel.minSize = NSSize(width: 500, height: 300)
         let stack = NSStackView(); stack.orientation = .vertical; stack.alignment = .leading; stack.spacing = 12; stack.translatesAutoresizingMaskIntoConstraints = false
         panel.contentView!.addSubview(stack); NSLayoutConstraint.activate([stack.leadingAnchor.constraint(equalTo: panel.contentView!.leadingAnchor, constant: 18), stack.trailingAnchor.constraint(equalTo: panel.contentView!.trailingAnchor, constant: -18), stack.topAnchor.constraint(equalTo: panel.contentView!.topAnchor, constant: 18), stack.bottomAnchor.constraint(equalTo: panel.contentView!.bottomAnchor, constant: -18)])
+        recoveryButton.isHidden = true; recoveryButton.target = self; recoveryButton.action = #selector(openRecovery(_:))
+        stack.addArrangedSubview(recoveryButton)
         let target = NSTextField(wrappingLabelWithString: L("대상: ", "Destination: ") + destination.path); target.isSelectable = true; stack.addArrangedSubview(target)
         label.stringValue = L("원본을 검증하고 압축 파일을 생성하는 중…", "Validating sources and creating archive…"); stack.addArrangedSubview(label)
         progress.style = .bar; progress.isIndeterminate = true; progress.startAnimation(nil); stack.addArrangedSubview(progress)
@@ -179,6 +199,8 @@ final class ArchiveCreationWindow: NSWindowController, NSWindowDelegate {
     required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
     deinit { task?.cancel() }
 
+    private func showRecovery(_ directory: URL) { recoveryDirectory = directory; recoveryButton.isHidden = false }
+    @objc private func openRecovery(_ sender: Any?) { if let recoveryDirectory { ArchiveSplitRecoveryWindow.present(journalDirectory: recoveryDirectory) } }
     @objc private func cancel(_ sender: Any?) {
         if !running { close(); return }
         task?.cancel(); cancelButton.isEnabled = false; label.stringValue = L("중단 요청됨 — 안전한 지점에서 임시 파일을 정리합니다.", "Stop requested — temporary output will be cleaned at a safe point.")
