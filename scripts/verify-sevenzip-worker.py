@@ -17,6 +17,7 @@ import tempfile
 import time
 import threading
 import platform
+from sevenzip_fixture import empty_files
 
 
 def frame(value):
@@ -75,8 +76,10 @@ class Worker:
         self.process.stdin.write(frame(value)); self.process.stdin.flush()
         return self.read()
 
-    def descriptors(self, specs, descriptors, split=False, password=None, marker=b'F', together=False, trailing=b''):
-        self.process.stdin.write(frame(dict(version=1, operation='list', sourceFDs=specs, splitVolumes=split, password=password, maxEntries=100)))
+    def descriptors(self, specs, descriptors, split=False, password=None, marker=b'F', together=False, trailing=b'', page_size=None, maximum=100):
+        request = dict(version=1, operation='list', sourceFDs=specs, splitVolumes=split, password=password, maxEntries=maximum)
+        if page_size is not None: request.update(offset=0, pageSize=page_size)
+        self.process.stdin.write(frame(request))
         self.process.stdin.flush()
         try:
             groups = [descriptors] if together else [[fd] for fd in descriptors]
@@ -400,6 +403,61 @@ def verify_descriptors(executable, reference, root, library, plain, payloads, ch
         return dict(device=str(value.st_dev & ((1 << 64) - 1)), inode=str(value.st_ino), size=value.st_size, mode=value.st_mode,
                     modifiedSeconds=value.st_mtime_ns // 1_000_000_000, modifiedNanos=value.st_mtime_ns % 1_000_000_000,
                     changedSeconds=value.st_ctime_ns // 1_000_000_000, changedNanos=value.st_ctime_ns % 1_000_000_000)
+    large = root / 'large-list.7z'
+    empty_files(large, ('entry-' + str(index) + '-' + 'a' * 80 for index in range(35000)))
+    validated = subprocess.run([str(reference), 't', str(large)], stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=10)
+    check('pagedFixtureOfficiallyValid', validated.returncode == 0)
+    with large.open('rb') as stream:
+        worker = Worker(executable, output=True, library=library, descriptor_input=True)
+        page = worker.descriptors([input_spec(stream.fileno())], [stream.fileno()], page_size=256, maximum=100000)
+        token = page['session']; identity = page['source']; items = []; pages = 0
+        while True:
+            check('pagedListBoundary', page.get('ok') and page.get('offset') == len(items) and page.get('total') == 35000
+                  and page.get('source') == identity and page.get('session') == token and 0 < len(page['items']) <= 256 and len(frame(page)) <= 8388612)
+            items.extend(page['items']); pages += 1
+            if len(items) == 35000: break
+            page = worker.request(dict(version=1, operation='list', session=token, maxEntries=100000, offset=len(items), pageSize=256))
+        check('pagedListExceedsLegacyResponse', len(json.dumps(items).encode()) > 8 * 1024 * 1024)
+        check('pagedListExactIndicesAndPaths', all(i['index'] == n and i['path'] == 'entry-' + str(n) + '-' + 'a' * 80 for n, i in enumerate(items)))
+        extracted = worker.request(dict(version=1, operation='extract', session=token, index=34999, expectedSize=0, maximumBytes=0))
+        check('pagedListIndexExtracts', extracted.get('ok') and extracted.get('written') == 0)
+        worker.request(dict(version=1, operation='close', session=token)); worker.finish()
+    escaped = root / 'escaped-pages.7z'
+    empty_files(escaped, (str(index) + '-' + '\x01' * 10000 for index in range(160)))
+    validated = subprocess.run([str(reference), 't', str(escaped)], stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=10)
+    check('pagedEscapedFixtureOfficiallyValid', validated.returncode == 0)
+    with escaped.open('rb') as stream:
+        worker = Worker(executable, library=library, descriptor_input=True)
+        page = worker.descriptors([input_spec(stream.fileno())], [stream.fileno()], page_size=256, maximum=1000)
+        check('pagedListEncodedByteBudget', page.get('ok') and 0 < len(page['items']) < 160 and len(frame(page)) < 8 * 1024 * 1024)
+        items = list(page['items']); token = page['session']
+        while len(items) < 160:
+            page = worker.request(dict(version=1, operation='list', session=token, offset=len(items), pageSize=256))
+            check('pagedListEncodedContinuation', page.get('ok') and page.get('offset') == len(items) and bool(page.get('items')))
+            items.extend(page['items'])
+        check('pagedListEncodedPathsPreserved', all(i['index'] == n and i['path'] == str(n) + '-' + '\x01' * 10000 for n, i in enumerate(items)))
+        worker.request(dict(version=1, operation='close', session=token)); worker.finish()
+    empty = root / 'empty-pages.7z'
+    empty_files(empty, [])
+    with empty.open('rb') as stream:
+        worker = Worker(executable, library=library, descriptor_input=True)
+        page = worker.descriptors([input_spec(stream.fileno())], [stream.fileno()], page_size=256)
+        check('pagedListEmptyArchive', page.get('ok') and page.get('total') == 0 and page.get('offset') == 0 and page.get('items') == [])
+        worker.request(dict(version=1, operation='close', session=page['session'])); worker.finish()
+    for name, bad in [('booleanOffset', dict(offset=True, pageSize=256)), ('oversizedPage', dict(offset=0, pageSize=257)),
+                      ('missingPageSize', dict(offset=0))]:
+        with plain.open('rb') as stream:
+            worker = Worker(executable, library=library, descriptor_input=True)
+            opened = worker.descriptors([input_spec(stream.fileno())], [stream.fileno()], page_size=1)
+            response = worker.request(dict(version=1, operation='list', session=opened['session'], **bad))
+            check('pagedListRejects-' + name, response.get('error', {}).get('code') == 'invalid-request'); worker.finish(1)
+    mutable_page = root / 'mutable-page.7z'; shutil.copyfile(large, mutable_page)
+    with mutable_page.open('rb') as stream:
+        worker = Worker(executable, library=library, descriptor_input=True)
+        opened = worker.descriptors([input_spec(stream.fileno())], [stream.fileno()], page_size=1, maximum=100000)
+        with mutable_page.open('ab') as changed: changed.write(b'changed')
+        response = worker.request(dict(version=1, operation='list', session=opened['session'], offset=1, pageSize=256))
+        check('pagedListSourceChangeRejected', response.get('error', {}).get('code') == 'source-changed'); worker.finish()
     broker_archive = root / 'descriptor-unlinked.7z'; shutil.copyfile(plain, broker_archive)
     with broker_archive.open('rb') as stream:
         broker_archive.unlink()

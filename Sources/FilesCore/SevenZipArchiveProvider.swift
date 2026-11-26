@@ -338,6 +338,7 @@ private struct SevenZipReply: Decodable {
     let version: Int, ok: Bool
     let session: String?, source: Source?, items: [SevenZipItem]?, error: Failure?, written: UInt64?, closed: Bool?
     let upload: String?, accepted: Int?
+    let offset: Int?, total: Int?
 }
 
 private final class SevenZipSession {
@@ -561,21 +562,44 @@ private final class SevenZipSession {
     func open(_ archive: URL, password: String?, maximumEntries: Int = 100_000) throws -> [SevenZipItem] {
         guard archive.isFileURL, maximumEntries > 0, maximumEntries <= 100_000,
               password?.utf8.contains(0) != true else { throw SevenZipWorkerError.invalidConfiguration }
-        var request: [String: Any] = ["version": 1, "operation": "list", "password": password as Any? ?? NSNull(), "maxEntries": maximumEntries]
+        var request: [String: Any] = ["version": 1, "operation": "list", "password": password as Any? ?? NSNull(), "maxEntries": maximumEntries,
+                                      "offset": 0, "pageSize": 256]
         let source = try SevenZipReadSource(archive: archive, check: check)
         request["sourceFDs"] = source.records.map(\.request); request["splitVolumes"] = source.split
         try source.verify(check: check)
         try send(request)
         for index in source.records.indices { try source.withDescriptor(index) { try sendDescriptor($0) } }
         Darwin.close(inputFD); inputFD = -1
-        let response = try receive()
+        var response = try receive()
         try source.verify(check: check)
         readSource = source
-        guard let items = response.items, items.count <= maximumEntries, let token = response.session, UUID(uuidString: token) != nil,
-              let source = response.source, UInt64(source.device) != nil, UInt64(source.inode) != nil else { throw SevenZipWorkerError.invalidResponse }
-        for (index, item) in items.enumerated() {
-            guard item.index == UInt32(index), ArchiveEntryKind(rawValue: item.kind) != nil, item.size >= 0,
-                  !item.path.utf8.contains(0), item.metadata?.isValid != false else { throw SevenZipWorkerError.invalidResponse }
+        guard let token = response.session, UUID(uuidString: token) != nil,
+              let identity = response.source, UInt64(identity.device) != nil, UInt64(identity.inode) != nil else { throw SevenZipWorkerError.invalidResponse }
+        let total = response.total
+        let paged = response.offset != nil || total != nil
+        if paged { guard let total, total >= 0, total <= maximumEntries else { throw SevenZipWorkerError.invalidResponse } }
+        var items: [SevenZipItem] = [], pathBytes = 0
+        while true {
+            try check()
+            guard response.session == token, response.source == identity, let page = response.items,
+                  items.count + page.count <= maximumEntries,
+                  response.closed == nil, response.written == nil else { throw SevenZipWorkerError.invalidResponse }
+            if paged {
+                guard response.offset == items.count, response.total == total, page.count <= 256,
+                      items.count + page.count <= total!, !page.isEmpty || total == 0 else { throw SevenZipWorkerError.invalidResponse }
+            } else if response.offset != nil || response.total != nil { throw SevenZipWorkerError.invalidResponse }
+            for item in page {
+                try check()
+                pathBytes += item.path.utf8.count
+                guard item.index == UInt32(items.count), ArchiveEntryKind(rawValue: item.kind) != nil, item.size >= 0,
+                      !item.path.utf8.contains(0), item.metadata?.isValid != false, pathBytes <= 268_435_456 else { throw SevenZipWorkerError.invalidResponse }
+                items.append(item)
+            }
+            try source.verify(check: check)
+            if !paged || items.count == total { break }
+            try send(["version": 1, "operation": "list", "session": token, "maxEntries": maximumEntries,
+                      "offset": items.count, "pageSize": 256])
+            response = try receive()
         }
         self.token = token
         return items

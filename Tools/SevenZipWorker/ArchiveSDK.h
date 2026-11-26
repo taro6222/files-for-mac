@@ -23,6 +23,9 @@ typedef struct {
 void *SevenZipOpenDescriptors(const char *library, int *descriptors, const SevenZipInputSource *sources,
                              uint32_t count, int split, const char *password, int *error);
 int SevenZipList(void *session, uint32_t maximumEntries, void *context, SevenZipItemCallback callback);
+// Callback 2 ends a page before consuming that item; 0 rejects metadata/limits.
+int SevenZipListPage(void *session, uint32_t maximumEntries, uint32_t offset, uint32_t pageSize,
+                     void *context, SevenZipItemCallback callback, uint32_t *total);
 // Writes only one regular item's bytes to the caller-owned stream callback.
 typedef int (*SevenZipWriteCallback)(void *, const void *, size_t);
 int SevenZipExtract(void *session, uint32_t index, uint64_t expectedSize, uint64_t maximumBytes,

@@ -1,5 +1,7 @@
 # 7z 고급 기능 백엔드 연결 계약
 
+현재 목록 계약(365단계): 제품은 첫 list부터 offset=0/pageSize=256을 지정하고, 같은 session·source·total의 다음 offset을 순차 조회한다. SDK는 매 페이지 전후 입력 FD의 스냅샷을 재확인하며 해당 범위 metadata만 수집한다. 응답 하나의 8MiB 상한과 100,000항목 한도는 유지한다. helper는 최대 256항목이며 item JSON 합계 4MiB를 기준으로 더 일찍 나눈다. 단일 큰 항목은 프레임 상한에서 4096바이트 여유를 둔 범위 내에서 한 페이지로 허용한다. 부모는 offset·총수·연속 index·세션/원본·metadata를 검사하고 빈 미완료 페이지를 거부하며, 전체 경로 UTF-8 합계는 256MiB로 제한한다. 매 응답 사이에도 취소/기한과 원본 재확인을 수행한다. 부모는 결과 전체를 반환하므로 전체 메모리의 하드 상한이나 100,000항목 수용을 의미하지 않는다. 단일 목록 응답은 진단/기존 mock 계약으로 유지한다. 아래 이전 단계의 전체 목록 8MiB 제한은 역사적 기록이며 현재 페이지별 상한과 구분한다. [검증](verification/m7/INCREMENT_365.md).
+
 현재 생성 목록 계약(364단계): 제품은 `create-begin(itemCount, options)` → `create-items(upload UUID, offset, items)` 반복 → `create-commit(upload UUID)`를 사용한다. 각 ACK의 UUID와 누적 accepted를 부모가 확인한다. 한 묶음은 최대 256항목·부모의 item JSON 합계 512KiB이며 기존 요청 프레임 상한 1MiB를 유지한다. helper는 최대 100,000항목·누적 계획 JSON 256MiB로 제한하고 항목 수가 맞는 commit에서 전체 metadata/경로 검증을 끝낸 뒤 SDK와 FD broker를 시작한다. 그 전에는 출력 데이터를 쓰지 않는다. 일반/분할 생성이 같은 업로드 경로를 쓰며 취소·기한·독립 메모리 관찰·원본 재확인·게시/복구는 기존 계약을 따른다. 단일 create는 진단용으로 보존한다. 아래 이전 단계의 단일 생성 프레임 설명은 역사적 기록이다. 목록 응답 8MiB와 극대규모/지원 환경 수용은 여전히 별도 제한이다. [검증](verification/m7/INCREMENT_364.md).
 
 상태: 362단계에서 제품 helper의 단일 App Sandbox·내장 ID와 정책 검증을 연결했다. [362단계](verification/m7/INCREMENT_362.md)를 따른다. 최신 원격/지원 환경·CPU/프로세스 트리·나머지 metadata와 정식 출시는 미완료다.

@@ -63,22 +63,31 @@ static NSString *sdkError(int value) {
 @property NSMutableArray *items;
 @property size_t pathBytes;
 @property BOOL invalidMetadata;
+@property BOOL paged;
+@property size_t encodedBytes;
 @end
 @implementation ItemCollector
 @end
 static int item(void *context, uint32_t index, const char *bytes, size_t length, int kind, uint64_t size, int encrypted, const SevenZipEntryMetadata *metadata) {
     ItemCollector *collector = (__bridge ItemCollector *)context;
-    if (length > RequestLimit || collector.pathBytes + length > ResponseLimit) return 0;
+    if (length > RequestLimit || (!collector.paged && collector.pathBytes + length > ResponseLimit)) return 0;
     if (memchr(bytes, 0, length) || kind < 0 || kind > 4) { collector.invalidMetadata = YES; return 0; }
     NSString *path = [[NSString alloc] initWithBytes:bytes length:length encoding:NSUTF8StringEncoding];
     if (!path) { collector.invalidMetadata = YES; return 0; }
-    collector.pathBytes += length;
-    [collector.items addObject:@{ @"index": @(index), @"path": path,
+    NSDictionary *record = @{ @"index": @(index), @"path": path,
         @"kind": @[@"regularFile", @"directory", @"symbolicLink", @"hardLink", @"other"][(NSUInteger)kind],
         @"size": @(size), @"encrypted": @(encrypted != 0),
         @"metadata": @{ @"permissions": metadata->hasPermissions ? @(metadata->permissions) : [NSNull null],
             @"modifiedSeconds": metadata->hasModifiedTime ? @(metadata->modifiedSeconds) : [NSNull null],
-            @"modifiedNanos": metadata->hasModifiedTime ? @(metadata->modifiedNanos) : [NSNull null] } }];
+            @"modifiedNanos": metadata->hasModifiedTime ? @(metadata->modifiedNanos) : [NSNull null] } };
+    if (collector.paged) {
+        NSData *encoded = [NSJSONSerialization dataWithJSONObject:record options:0 error:nil];
+        if (!encoded || encoded.length > ResponseLimit - 4096) return 0;
+        if (collector.items.count && collector.encodedBytes + encoded.length + 1 > 4 * 1024 * 1024) return 2;
+        collector.encodedBytes += encoded.length + 1;
+    }
+    collector.pathBytes += length;
+    [collector.items addObject:record];
     return 1;
 }
 static int outputBytes(void *context, const void *bytes, size_t length) {
@@ -345,9 +354,9 @@ int main(int argc, const char *argv[]) {
                     reply(error ? failure(sdkError(error)) : @{ @"version": @1, @"ok": @YES, @"closed": @YES });
                     result = error ? 1 : 0; break;
                 }
-                NSSet *allowed = session ? [NSSet setWithArray:@[@"version", @"operation", @"session", @"maxEntries"]]
-                                         : (descriptorInput ? [NSSet setWithArray:@[@"version", @"operation", @"sourceFDs", @"splitVolumes", @"password", @"maxEntries"]]
-                                                            : [NSSet setWithArray:@[@"version", @"operation", @"archivePath", @"archivePaths", @"password", @"maxEntries"]]);
+                NSSet *allowed = session ? [NSSet setWithArray:@[@"version", @"operation", @"session", @"maxEntries", @"offset", @"pageSize"]]
+                                         : (descriptorInput ? [NSSet setWithArray:@[@"version", @"operation", @"sourceFDs", @"splitVolumes", @"password", @"maxEntries", @"offset", @"pageSize"]]
+                                                            : [NSSet setWithArray:@[@"version", @"operation", @"archivePath", @"archivePaths", @"password", @"maxEntries", @"offset", @"pageSize"]]);
                 if (session && [request[@"operation"] isEqual:@"extract"]) {
                     allowed = [NSSet setWithArray:@[@"version", @"operation", @"session", @"index", @"expectedSize", @"maximumBytes"]];
                 }
@@ -374,6 +383,10 @@ int main(int argc, const char *argv[]) {
                     reply(@{ @"version": @1, @"ok": @YES, @"closed": @YES }); break;
                 }
                 if (![request[@"operation"] isEqual:@"list"]) { reply(failure(@"unsupported-operation")); result = 1; break; }
+                bool paged = request[@"offset"] || request[@"pageSize"];
+                if (paged && (!integer(request[@"offset"], 0, 100000) || !integer(request[@"pageSize"], 1, 256))) {
+                    reply(failure(@"invalid-request")); result = 1; break;
+                }
                 if (!session) {
                     id password = request[@"password"];
                     if (password && password != [NSNull null] && !text(password, true)) { reply(failure(@"invalid-request")); result = 1; break; }
@@ -404,8 +417,11 @@ int main(int argc, const char *argv[]) {
                     if (!session) { reply(failure(sdkError(error))); result = 1; break; }
                     token = [[NSUUID UUID] UUIDString];
                 }
-                ItemCollector *collector = [ItemCollector new]; collector.items = [NSMutableArray array];
-                int error = SevenZipList(session, [limit unsignedIntValue], (__bridge void *)collector, item);
+                ItemCollector *collector = [ItemCollector new]; collector.items = [NSMutableArray array]; collector.paged = paged;
+                uint32_t total = 0;
+                int error = paged ? SevenZipListPage(session, [limit unsignedIntValue], [request[@"offset"] unsignedIntValue],
+                    [request[@"pageSize"] unsignedIntValue], (__bridge void *)collector, item, &total)
+                    : SevenZipList(session, [limit unsignedIntValue], (__bridge void *)collector, item);
                 if (error) {
                     NSMutableDictionary *message = [failure(sdkError(collector.invalidMetadata ? 6 : error)) mutableCopy];
                     message[@"session"] = token;
@@ -415,8 +431,10 @@ int main(int argc, const char *argv[]) {
                 SevenZipSourceIdentity identity = SevenZipIdentity(session);
                 NSDictionary *source = @{ @"device": [NSString stringWithFormat:@"%llu", (unsigned long long)identity.device],
                     @"inode": [NSString stringWithFormat:@"%llu", (unsigned long long)identity.inode], @"size": @(identity.size) };
-                if (!reply(@{ @"version": @1, @"ok": @YES, @"session": token, @"source": source,
-                              @"headerPasswordRequested": @(SevenZipHeaderPasswordRequested(session) != 0), @"items": collector.items })) { result = 1; break; }
+                NSMutableDictionary *message = [@{ @"version": @1, @"ok": @YES, @"session": token, @"source": source,
+                    @"headerPasswordRequested": @(SevenZipHeaderPasswordRequested(session) != 0), @"items": collector.items } mutableCopy];
+                if (paged) { message[@"offset"] = request[@"offset"]; message[@"total"] = @(total); }
+                if (!reply(message)) { result = 1; break; }
             }
         }
         if (session) SevenZipClose(session);

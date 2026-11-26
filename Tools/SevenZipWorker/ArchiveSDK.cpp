@@ -260,18 +260,27 @@ static int metadata(IInArchive *archive, UInt32 i, AString &utf8, UInt64 &bytes,
     return 0;
 }
 extern "C" int SevenZipList(void *handle, uint32_t maximum, void *context, SevenZipItemCallback callback) {
+    uint32_t total = 0;
+    return SevenZipListPage(handle, maximum, 0, UINT32_MAX, context, callback, &total);
+}
+extern "C" int SevenZipListPage(void *handle, uint32_t maximum, uint32_t offset, uint32_t pageSize,
+                                void *context, SevenZipItemCallback callback, uint32_t *total) {
     auto session = (Session *)handle;
     try {
         if (!session->stream->unchanged()) return 9;
         UInt32 count = 0;
         if (session->archive->GetNumberOfItems(&count) != S_OK) return 6;
         if (count > maximum) return 7;
-        for (UInt32 i = 0; i < count; ++i) {
+        if (offset > count || !pageSize) return 6;
+        *total = count;
+        for (UInt32 i = offset; i < count && i - offset < pageSize; ++i) {
             AString utf8; UInt64 bytes = 0; int kind = 0; bool encrypted = false;
             SevenZipEntryMetadata extra = {};
             int error = metadata(session->archive, i, utf8, bytes, kind, encrypted, &extra);
             if (error) return error;
-            if (!callback(context, i, utf8.Ptr(), utf8.Len(), kind, bytes, encrypted, &extra)) return 7;
+            int accepted = callback(context, i, utf8.Ptr(), utf8.Len(), kind, bytes, encrypted, &extra);
+            if (!accepted) return 7;
+            if (accepted == 2) break;
         }
         return session->stream->unchanged() ? 0 : 9;
     } catch (...) { return 8; }

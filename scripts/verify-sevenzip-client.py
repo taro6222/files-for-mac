@@ -8,8 +8,10 @@ from pathlib import Path
 import re
 import signal
 import subprocess
+from sevenzip_fixture import empty_files
 
 TESTS = [
+    'sevenZipSDKLargePagedListing', 'sevenZipSDKRejectsMalformedListingPages',
     'sevenZipCreationUploadRejectsIncorrectAcknowledgments',
     'sevenZipSDKBundleWorkerPolicyRejectsExpandedAuthority',
     'sevenZipSDKRestoresFileAndDirectoryTimesAndPermissions', 'sevenZipSDKRestrictiveDirectoryMetadataFinishesAfterChildren',
@@ -61,6 +63,10 @@ def main():
     args.output.mkdir(parents=True, exist_ok=True)
     environment = dict(os.environ, FILES_TEST_SEVENZIP_WORKER=str(args.worker.resolve()),
                        FILES_TEST_SEVENZIP_REFERENCE=str(args.reference.resolve()))
+    large = args.output / 'large-list.7z'
+    empty_files(large, ('entry-' + str(index) + '-' + 'a' * 80 for index in range(35000)))
+    subprocess.run([str(args.reference), 't', str(large)], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=10)
+    environment['FILES_TEST_SEVENZIP_LARGE_LIST'] = str(large.resolve())
     if args.library: environment['FILES_TEST_SEVENZIP_LIBRARY'] = str(args.library.resolve())
     else: environment.pop('FILES_TEST_SEVENZIP_LIBRARY', None)
     if args.app: environment['FILES_TEST_SEVENZIP_APP_BUNDLE'] = str(args.app.resolve())

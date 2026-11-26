@@ -75,6 +75,48 @@ private func sdkMock(_ body: String, root: URL, timeout: TimeInterval = 2,
 
 private let sdkEmptyReply = #"{"version":1,"ok":true,"session":"5BC9424B-FAE6-4A89-9DD5-AC627611EFD3","source":{"device":"1","inode":"2","size":3},"items":[]}"#
 
+@Test(.enabled(if: hasIntegrationFixture("FILES_TEST_SEVENZIP_LARGE_LIST") && hasIntegrationFixture("FILES_TEST_SEVENZIP_WORKER"), "Requires large SDK listing fixture"))
+func sevenZipSDKLargePagedListing() async throws {
+    let archive = URL(fileURLWithPath: try #require(ProcessInfo.processInfo.environment["FILES_TEST_SEVENZIP_LARGE_LIST"]))
+    let before = try Data(contentsOf: archive)
+    let entries = try await sdkRealProvider().entries(at: archive)
+    #expect(entries.count == 35000)
+    for (index, entry) in entries.enumerated() {
+        #expect(entry.path == "entry-\(index)-" + String(repeating: "a", count: 80))
+        #expect(entry.kind == .regularFile && entry.uncompressedSize == 0)
+    }
+    #expect(try Data(contentsOf: archive) == before)
+}
+
+@Test func sevenZipSDKRejectsMalformedListingPages() async throws {
+    let root = try sdkRoot(); defer { try? FileManager.default.removeItem(at: root) }
+    let base = try #require(JSONSerialization.jsonObject(with: Data(sdkEmptyReply.utf8)) as? [String: Any])
+    for mutation in 0..<11 {
+        var first = base, second = base
+        first["offset"] = 0; first["total"] = 2
+        first["items"] = [["index": 0, "path": "first", "kind": "regularFile", "size": 0, "encrypted": false]]
+        second["offset"] = 1; second["total"] = 2
+        second["items"] = [["index": 1, "path": "second", "kind": "regularFile", "size": 0, "encrypted": false]]
+        switch mutation {
+        case 0: second["offset"] = 0
+        case 1: second["total"] = 3
+        case 2: second["session"] = UUID().uuidString
+        case 3: second["source"] = ["device": "1", "inode": "999", "size": 3]
+        case 4: second["items"] = []
+        case 5: second["items"] = [["index": 0, "path": "first", "kind": "regularFile", "size": 0, "encrypted": false]]
+        case 6: first["offset"] = 1
+        case 7: first["total"] = -1
+        case 8: first["total"] = 100001
+        case 9: first.removeValue(forKey: "total")
+        default: first["offset"] = true
+        }
+        let one = String(decoding: try JSONSerialization.data(withJSONObject: first), as: UTF8.self)
+        let two = String(decoding: try JSONSerialization.data(withJSONObject: second), as: UTF8.self)
+        let provider = try sdkMock("request(); reply('\(one)'); request(); reply('\(two)');", root: root)
+        await #expect(throws: SevenZipWorkerError.invalidResponse) { try await provider.entries(at: root.appendingPathComponent("archive.7z")) }
+    }
+}
+
 @Test func sevenZipSDKFramedClientRejectsMalformedReplies() async throws {
     let root = try sdkRoot(); defer { try? FileManager.default.removeItem(at: root) }
     let bodies = [
